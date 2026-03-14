@@ -190,7 +190,6 @@ export const processGroupsData = (data, userGroup) => {
     label:
       info.desc.length > 20 ? info.desc.substring(0, 20) + '...' : info.desc,
     value: group,
-    ratio: info.ratio,
     fullLabel: info.desc,
   }));
 
@@ -199,7 +198,6 @@ export const processGroupsData = (data, userGroup) => {
       {
         label: '用户分组',
         value: '',
-        ratio: 1,
       },
     ];
   } else if (userGroup) {

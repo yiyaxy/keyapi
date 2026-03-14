@@ -76,11 +76,11 @@ export const useLogsData = () => {
   const isAdminUser = isAdmin();
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
-    ? 'logs-table-columns-admin'
-    : 'logs-table-columns-user';
+      ? 'logs-table-columns-admin'
+      : 'logs-table-columns-user';
   const BILLING_DISPLAY_MODE_STORAGE_KEY = isAdminUser
-    ? 'logs-billing-display-mode-admin'
-    : 'logs-billing-display-mode-user';
+      ? 'logs-billing-display-mode-admin'
+      : 'logs-billing-display-mode-user';
 
   // Statistics state
   const [stat, setStat] = useState({
@@ -121,7 +121,7 @@ export const useLogsData = () => {
       [COLUMN_KEYS.COST]: true,
       [COLUMN_KEYS.RETRY]: isAdminUser,
       [COLUMN_KEYS.IP]: true,
-      [COLUMN_KEYS.DETAILS]: true,
+      [COLUMN_KEYS.DETAILS]: isAdminUser,
     };
   };
 
@@ -141,6 +141,7 @@ export const useLogsData = () => {
         merged[COLUMN_KEYS.CHANNEL] = false;
         merged[COLUMN_KEYS.USERNAME] = false;
         merged[COLUMN_KEYS.RETRY] = false;
+        merged[COLUMN_KEYS.DETAILS] = false;
       }
 
       return merged;
@@ -156,15 +157,15 @@ export const useLogsData = () => {
       return savedMode;
     }
     return localStorage.getItem('quota_display_type') === 'TOKENS'
-      ? 'ratio'
-      : 'price';
+        ? 'ratio'
+        : 'price';
   };
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
-    getInitialBillingDisplayMode,
+      getInitialBillingDisplayMode,
   );
 
   // Compact mode
@@ -180,7 +181,7 @@ export const useLogsData = () => {
     setShowChannelAffinityUsageCacheModal,
   ] = useState(false);
   const [channelAffinityUsageCacheTarget, setChannelAffinityUsageCacheTarget] =
-    useState(null);
+      useState(null);
 
   // Initialize default column visibility
   const initDefaultColumns = () => {
@@ -202,10 +203,11 @@ export const useLogsData = () => {
 
     allKeys.forEach((key) => {
       if (
-        (key === COLUMN_KEYS.CHANNEL ||
-          key === COLUMN_KEYS.USERNAME ||
-          key === COLUMN_KEYS.RETRY) &&
-        !isAdminUser
+          (key === COLUMN_KEYS.CHANNEL ||
+              key === COLUMN_KEYS.USERNAME ||
+              key === COLUMN_KEYS.RETRY ||
+              key === COLUMN_KEYS.DETAILS) &&
+          !isAdminUser
       ) {
         updatedColumns[key] = false;
       } else {
@@ -235,9 +237,9 @@ export const useLogsData = () => {
     let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
 
     if (
-      formValues.dateRange &&
-      Array.isArray(formValues.dateRange) &&
-      formValues.dateRange.length === 2
+        formValues.dateRange &&
+        Array.isArray(formValues.dateRange) &&
+        formValues.dateRange.length === 2
     ) {
       start_timestamp = formValues.dateRange[0];
       end_timestamp = formValues.dateRange[1];
@@ -349,8 +351,8 @@ export const useLogsData = () => {
   const setLogsFormat = (logs) => {
     const requestConversionDisplayValue = (conversionChain) => {
       const chain = Array.isArray(conversionChain)
-        ? conversionChain.filter(Boolean)
-        : [];
+          ? conversionChain.filter(Boolean)
+          : [];
       if (chain.length <= 1) {
         return t('原生格式');
       }
@@ -363,6 +365,11 @@ export const useLogsData = () => {
       logs[i].key = logs[i].id;
       let other = getLogOther(logs[i].other);
       let expandDataLocal = [];
+
+      if (!isAdminUser) {
+        expandDatesLocal[logs[i].key] = expandDataLocal;
+        continue;
+      }
 
       if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
         expandDataLocal.push({
@@ -410,38 +417,38 @@ export const useLogsData = () => {
         expandDataLocal.push({
           key: t('日志详情'),
           value: other?.claude
-            ? renderClaudeLogContent(
-                other?.model_ratio,
-                other.completion_ratio,
-                other.model_price,
-                other.group_ratio,
-                other?.user_group_ratio,
-                other.cache_ratio || 1.0,
-                other.cache_creation_ratio || 1.0,
-                other.cache_creation_tokens_5m || 0,
-                other.cache_creation_ratio_5m ||
+              ? renderClaudeLogContent(
+                  other?.model_ratio,
+                  other.completion_ratio,
+                  other.model_price,
+                  other.group_ratio,
+                  other?.user_group_ratio,
+                  other.cache_ratio || 1.0,
+                  other.cache_creation_ratio || 1.0,
+                  other.cache_creation_tokens_5m || 0,
+                  other.cache_creation_ratio_5m ||
                   other.cache_creation_ratio ||
                   1.0,
-                other.cache_creation_tokens_1h || 0,
-                other.cache_creation_ratio_1h ||
+                  other.cache_creation_tokens_1h || 0,
+                  other.cache_creation_ratio_1h ||
                   other.cache_creation_ratio ||
                   1.0,
-                billingDisplayMode,
+                  billingDisplayMode,
               )
-            : renderLogContent(
-                other?.model_ratio,
-                other.completion_ratio,
-                other.model_price,
-                other.group_ratio,
-                other?.user_group_ratio,
-                other.cache_ratio || 1.0,
-                false,
-                1.0,
-                other.web_search || false,
-                other.web_search_call_count || 0,
-                other.file_search || false,
-                other.file_search_call_count || 0,
-                billingDisplayMode,
+              : renderLogContent(
+                  other?.model_ratio,
+                  other.completion_ratio,
+                  other.model_price,
+                  other.group_ratio,
+                  other?.user_group_ratio,
+                  other.cache_ratio || 1.0,
+                  false,
+                  1.0,
+                  other.web_search || false,
+                  other.web_search_call_count || 0,
+                  other.file_search || false,
+                  other.file_search_call_count || 0,
+                  billingDisplayMode,
               ),
         });
         if (logs[i]?.content) {
@@ -459,9 +466,9 @@ export const useLogsData = () => {
       }
       if (logs[i].type === 2) {
         let modelMapped =
-          other?.is_model_mapped &&
-          other?.upstream_model_name &&
-          other?.upstream_model_name !== '';
+            other?.is_model_mapped &&
+            other?.upstream_model_name &&
+            other?.upstream_model_name !== '';
         if (modelMapped) {
           expandDataLocal.push({
             key: t('请求并计费模型'),
@@ -474,78 +481,78 @@ export const useLogsData = () => {
         }
 
         const isViolationFeeLog =
-          other?.violation_fee === true ||
-          Boolean(other?.violation_fee_code) ||
-          Boolean(other?.violation_fee_marker);
+            other?.violation_fee === true ||
+            Boolean(other?.violation_fee_code) ||
+            Boolean(other?.violation_fee_marker);
 
         let content = '';
         if (!isViolationFeeLog) {
           if (other?.ws || other?.audio) {
             content = renderAudioModelPrice(
-              other?.text_input,
-              other?.text_output,
-              other?.model_ratio,
-              other?.model_price,
-              other?.completion_ratio,
-              other?.audio_input,
-              other?.audio_output,
-              other?.audio_ratio,
-              other?.audio_completion_ratio,
-              other?.group_ratio,
-              other?.user_group_ratio,
-              other?.cache_tokens || 0,
-              other?.cache_ratio || 1.0,
-              billingDisplayMode,
+                other?.text_input,
+                other?.text_output,
+                other?.model_ratio,
+                other?.model_price,
+                other?.completion_ratio,
+                other?.audio_input,
+                other?.audio_output,
+                other?.audio_ratio,
+                other?.audio_completion_ratio,
+                other?.group_ratio,
+                other?.user_group_ratio,
+                other?.cache_tokens || 0,
+                other?.cache_ratio || 1.0,
+                billingDisplayMode,
             );
           } else if (other?.claude) {
             content = renderClaudeModelPrice(
-              logs[i].prompt_tokens,
-              logs[i].completion_tokens,
-              other.model_ratio,
-              other.model_price,
-              other.completion_ratio,
-              other.group_ratio,
-              other?.user_group_ratio,
-              other.cache_tokens || 0,
-              other.cache_ratio || 1.0,
-              other.cache_creation_tokens || 0,
-              other.cache_creation_ratio || 1.0,
-              other.cache_creation_tokens_5m || 0,
-              other.cache_creation_ratio_5m ||
+                logs[i].prompt_tokens,
+                logs[i].completion_tokens,
+                other.model_ratio,
+                other.model_price,
+                other.completion_ratio,
+                other.group_ratio,
+                other?.user_group_ratio,
+                other.cache_tokens || 0,
+                other.cache_ratio || 1.0,
+                other.cache_creation_tokens || 0,
+                other.cache_creation_ratio || 1.0,
+                other.cache_creation_tokens_5m || 0,
+                other.cache_creation_ratio_5m ||
                 other.cache_creation_ratio ||
                 1.0,
-              other.cache_creation_tokens_1h || 0,
-              other.cache_creation_ratio_1h ||
+                other.cache_creation_tokens_1h || 0,
+                other.cache_creation_ratio_1h ||
                 other.cache_creation_ratio ||
                 1.0,
-              billingDisplayMode,
+                billingDisplayMode,
             );
           } else {
             content = renderModelPrice(
-              logs[i].prompt_tokens,
-              logs[i].completion_tokens,
-              other?.model_ratio,
-              other?.model_price,
-              other?.completion_ratio,
-              other?.group_ratio,
-              other?.user_group_ratio,
-              other?.cache_tokens || 0,
-              other?.cache_ratio || 1.0,
-              other?.image || false,
-              other?.image_ratio || 0,
-              other?.image_output || 0,
-              other?.web_search || false,
-              other?.web_search_call_count || 0,
-              other?.web_search_price || 0,
-              other?.file_search || false,
-              other?.file_search_call_count || 0,
-              other?.file_search_price || 0,
-              other?.audio_input_seperate_price || false,
-              other?.audio_input_token_count || 0,
-              other?.audio_input_price || 0,
-              other?.image_generation_call || false,
-              other?.image_generation_call_price || 0,
-              billingDisplayMode,
+                logs[i].prompt_tokens,
+                logs[i].completion_tokens,
+                other?.model_ratio,
+                other?.model_price,
+                other?.completion_ratio,
+                other?.group_ratio,
+                other?.user_group_ratio,
+                other?.cache_tokens || 0,
+                other?.cache_ratio || 1.0,
+                other?.image || false,
+                other?.image_ratio || 0,
+                other?.image_output || 0,
+                other?.web_search || false,
+                other?.web_search_call_count || 0,
+                other?.web_search_price || 0,
+                other?.file_search || false,
+                other?.file_search_call_count || 0,
+                other?.file_search_price || 0,
+                other?.audio_input_seperate_price || false,
+                other?.audio_input_token_count || 0,
+                other?.audio_input_price || 0,
+                other?.image_generation_call || false,
+                other?.image_generation_call_price || 0,
+                billingDisplayMode,
             );
           }
           expandDataLocal.push({
@@ -571,9 +578,9 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
-                {other.reason}
-              </div>
+                <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+                  {other.reason}
+                </div>
             ),
           });
         }
@@ -612,12 +619,12 @@ export const useLogsData = () => {
           `${t('结算差额')}：${postDelta > 0 ? '+' : ''}${postDelta} ${unit}`,
           `${t('最终抵扣')}：${finalConsumed} ${unit}`,
         ]
-          .filter(Boolean)
-          .join('\n');
+            .filter(Boolean)
+            .join('\n');
         expandDataLocal.push({
           key: t('订阅结算'),
           value: (
-            <div style={{ whiteSpace: 'pre-line' }}>{settlementLines}</div>
+              <div style={{ whiteSpace: 'pre-line' }}>{settlementLines}</div>
           ),
         });
         if (remain !== undefined && total !== undefined) {
@@ -629,7 +636,7 @@ export const useLogsData = () => {
         expandDataLocal.push({
           key: t('订阅说明'),
           value: t(
-            'token 会按倍率换算成“额度/次数”，请求结束后再做差额结算（补扣/返还）。',
+              'token 会按倍率换算成“额度/次数”，请求结束后再做差额结算（补扣/返还）。',
           ),
         });
       }
@@ -676,11 +683,11 @@ export const useLogsData = () => {
     } = getFormValues();
 
     const currentLogType =
-      customLogType !== null
-        ? customLogType
-        : formLogType !== undefined
-          ? formLogType
-          : logType;
+        customLogType !== null
+            ? customLogType
+            : formLogType !== undefined
+                ? formLogType
+                : logType;
 
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
@@ -716,10 +723,10 @@ export const useLogsData = () => {
     setPageSize(size);
     setActivePage(1);
     loadLogs(activePage, size)
-      .then()
-      .catch((reason) => {
-        showError(reason);
-      });
+        .then()
+        .catch((reason) => {
+          showError(reason);
+        });
   };
 
   // Refresh function
@@ -742,13 +749,13 @@ export const useLogsData = () => {
   // Initialize data
   useEffect(() => {
     const localPageSize =
-      parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
+        parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
     setPageSize(localPageSize);
     loadLogs(activePage, localPageSize)
-      .then()
-      .catch((reason) => {
-        showError(reason);
-      });
+        .then()
+        .catch((reason) => {
+          showError(reason);
+        });
   }, []);
 
   // Initialize statistics when formApi is available
@@ -761,7 +768,7 @@ export const useLogsData = () => {
   // Check if any record has expandable content
   const hasExpandableRows = () => {
     return logs.some(
-      (log) => expandData[log.key] && expandData[log.key].length > 0,
+        (log) => expandData[log.key] && expandData[log.key].length > 0,
     );
   };
 

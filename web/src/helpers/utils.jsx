@@ -123,6 +123,10 @@ export function showError(error) {
   console.error(error);
   if (error.message) {
     if (error.name === 'AxiosError') {
+      if (!error.response) {
+        Toast.error('错误：' + error.message);
+        return;
+      }
       switch (error.response.status) {
         case 401:
           // 清除用户状态
