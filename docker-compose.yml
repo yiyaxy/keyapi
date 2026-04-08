@@ -12,11 +12,12 @@
 #
 # ⚠️  IMPORTANT: Change all default passwords before deploying to production!
 
-version: '3.8' # Use 3.8 for healthcheck condition support
+version: "3.8" # Use 3.8 for healthcheck condition support
 
 services:
   new-api:
-    image: calciumion/new-api:latest
+    # image: calciumion/new-api:latest
+    build: . # 添加这一行，假设 Dockerfile 在当前目录
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
@@ -25,6 +26,8 @@ services:
     volumes:
       - ./data:/data
       - ./logs:/app/logs
+    env_file:
+      - .env # 这样 Docker 会自动把 .env 里的变量注入到容器的环境变量中
     environment:
       - SQL_DSN=postgresql://postgres:aliez123@postgres:5432/new-api # ⚠️ IMPORTANT: Change the password in production!
       #      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api  # Point to the mysql service, uncomment if using MySQL
@@ -49,7 +52,11 @@ services:
     networks:
       - new-api-network
     healthcheck:
-      test: [ "CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1" ]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -115,7 +122,7 @@ services:
 volumes:
   pg_data:
   redis_data:
-  #  mysql_data:
+    #  mysql_data:
 
 networks:
   new-api-network:

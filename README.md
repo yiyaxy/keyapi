@@ -4,7 +4,8 @@
 
 # New API
 
-🍥 **Next-Generation LLM Gateway and AI Asset Management System**
+🍥 **<a href="https://docs.newapi.ai/">文档地址</a>Next-Generation LLM Gateway and AI Asset Management System**
+
 
 <p align="center">
   <a href="./README.zh_CN.md">简体中文</a> |
