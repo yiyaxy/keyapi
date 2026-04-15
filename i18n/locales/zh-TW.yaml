@@ -22,6 +22,7 @@ common.delete_success: "刪除成功"
 common.delete_failed: "刪除失敗"
 common.already_exists: "已存在"
 common.name_cannot_be_empty: "名稱不能為空"
+common.batch_too_many: "批次請求數量過多，最多 {{.Max}} 條"
 
 # Token messages
 token.name_too_long: "令牌名稱過長"
@@ -119,7 +120,10 @@ payment.callback_error: "回調位址設定錯誤"
 payment.create_failed: "建立訂單失敗"
 payment.start_failed: "啟用支付失敗"
 payment.amount_too_low: "訂閱方案金額過低"
-payment.alipay_not_configured: "支付寶未設定或密鑰無效"
+payment.stripe_not_configured: "Stripe 未設定或密鑰無效"
+payment.webhook_not_configured: "Webhook 未設定"
+payment.price_id_not_configured: "該訂閱方案未設定 StripePriceId"
+payment.creem_not_configured: "該訂閱方案未設定 CreemProductId"
 
 # Topup messages
 topup.not_provided: "未提供支付單號"

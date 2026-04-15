@@ -1,12 +1,14 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -35,7 +37,7 @@ type User struct {
 	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
 	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
 	VerificationCode string         `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
-	AccessToken      *string        `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	AccessToken      *string        `json:"access_token" gorm:"column:access_token;uniqueIndex"` // this token is for system management
 	Quota            int            `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
@@ -45,11 +47,14 @@ type User struct {
 	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
 	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
 	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt `gorm:"index"`
+	TopUpCount                int            `json:"top_up_count" gorm:"type:int;default:0;column:top_up_count"` // 用户充值成功次数（用于计算返利）
+	SubscriptionPurchaseCount int            `json:"subscription_purchase_count" gorm:"type:int;default:0;column:subscription_purchase_count"`
+	DeletedAt                 gorm.DeletedAt `gorm:"index"`
 	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	IpSet            string         `json:"ip_set,omitempty" gorm:"type:text;column:ip_set;default:''"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -164,11 +169,14 @@ func CheckUserExistOrDeleted(username string, email string) (bool, error) {
 
 	// err := DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
 	// check email if empty
+	email = strings.ToLower(email)
 	var err error
 	if email == "" {
 		err = DB.Unscoped().First(&user, "username = ?", username).Error
 	} else {
-		err = DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
+		// 邮箱转小写，确保大小写不敏感
+		email = strings.ToLower(email)
+		err = DB.Unscoped().First(&user, "username = ? or LOWER(email) = ?", username, email).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -222,7 +230,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, ip string, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -267,6 +275,11 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 		}
 	}
 
+	// IP 搜索条件
+	if ip != "" {
+		query = query.Where("ip_set LIKE ?", "%"+ip+"%")
+	}
+
 	// 获取总数
 	err = query.Count(&total).Error
 	if err != nil {
@@ -290,15 +303,23 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {
+	return GetUserByIdWithContext(context.Background(), id, selectAll)
+}
+
+func GetUserByIdWithContext(ctx context.Context, id int, selectAll bool) (*User, error) {
 	if id == 0 {
 		return nil, errors.New("id 为空！")
 	}
 	user := User{Id: id}
-	var err error = nil
+	q := DB
+	if ctx != nil {
+		q = DB.WithContext(ctx)
+	}
+	var err error
 	if selectAll {
-		err = DB.First(&user, "id = ?", id).Error
+		err = q.First(&user, "id = ?", id).Error
 	} else {
-		err = DB.Omit("password").First(&user, "id = ?", id).Error
+		err = q.Omit("password").First(&user, "id = ?", id).Error
 	}
 	return &user, err
 }
@@ -328,14 +349,14 @@ func HardDeleteUserById(id int) error {
 	return err
 }
 
-func inviteUser(inviterId int) (err error) {
+func inviteUser(inviterId int, registerReward int) (err error) {
 	user, err := GetUserById(inviterId, true)
 	if err != nil {
 		return err
 	}
 	user.AffCount++
-	user.AffQuota += common.QuotaForInviter
-	user.AffHistoryQuota += common.QuotaForInviter
+	user.AffQuota += registerReward
+	user.AffHistoryQuota += registerReward
 	return DB.Save(user).Error
 }
 
@@ -419,14 +440,22 @@ func (user *User) Insert(inviterId int) error {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+		rebateSetting := GetEffectiveRebateSetting(inviterId)
+		if rebateSetting.InviteeReward > 0 {
+			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true)
+			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
+		if rebateSetting.RegisterReward > 0 {
+			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
+			_ = inviteUser(inviterId, rebateSetting.RegisterReward)
+			CreateAffRebateLog(&AffRebateLog{
+				UserId:      inviterId,
+				InviteeId:   user.Id,
+				InviteeName: user.Username,
+				Type:        AffRebateTypeRegister,
+				Quota:       rebateSetting.RegisterReward,
+				Remark:      fmt.Sprintf("邀请注册奖励 %s", logger.LogQuota(rebateSetting.RegisterReward)),
+			})
 		}
 	}
 	return nil
@@ -486,7 +515,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 		}
 		if common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
+			_ = inviteUser(inviterId, common.QuotaForInviter)
 		}
 	}
 }
@@ -600,8 +629,8 @@ func (user *User) ValidateAndFill() (err error) {
 	if username == "" || password == "" {
 		return errors.New("用户名或密码为空")
 	}
-	// find buy username or email
-	DB.Where("username = ? OR email = ?", username, username).First(user)
+	// find by username or email (邮箱大小写不敏感)
+	DB.Where("username = ? OR LOWER(email) = ?", username, strings.ToLower(username)).First(user)
 	okay := common.ValidatePasswordAndHash(password, user.Password)
 	if !okay || user.Status != common.UserStatusEnabled {
 		return errors.New("用户名或密码错误，或用户已被封禁")
@@ -621,7 +650,8 @@ func (user *User) FillUserByEmail() error {
 	if user.Email == "" {
 		return errors.New("email 为空！")
 	}
-	DB.Where(User{Email: user.Email}).First(user)
+	// 邮箱大小写不敏感
+	DB.Where("LOWER(email) = ?", strings.ToLower(user.Email)).First(user)
 	return nil
 }
 
@@ -677,38 +707,31 @@ func (user *User) FillUserByTelegramId() error {
 }
 
 func IsEmailAlreadyTaken(email string) bool {
-	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected == 1
-}
-
-func IsWeChatIdAlreadyTaken(wechatId string) bool {
-	return DB.Unscoped().Where("wechat_id = ?", wechatId).Find(&User{}).RowsAffected == 1
-}
-
-func IsGitHubIdAlreadyTaken(githubId string) bool {
-	return DB.Unscoped().Where("github_id = ?", githubId).Find(&User{}).RowsAffected == 1
-}
-
-func IsDiscordIdAlreadyTaken(discordId string) bool {
-	return DB.Unscoped().Where("discord_id = ?", discordId).Find(&User{}).RowsAffected == 1
-}
-
-func IsOidcIdAlreadyTaken(oidcId string) bool {
-	return DB.Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
-}
-
-func IsTelegramIdAlreadyTaken(telegramId string) bool {
-	return DB.Unscoped().Where("telegram_id = ?", telegramId).Find(&User{}).RowsAffected == 1
+	// 邮箱大小写不敏感，使用 > 0 以处理可能存在的重复数据
+	return DB.Unscoped().Where("LOWER(email) = ?", strings.ToLower(email)).Find(&User{}).RowsAffected > 0
 }
 
 func ResetUserPasswordByEmail(email string, password string) error {
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}
+	// 邮箱大小写不敏感，先检查匹配的用户数量
+	normalizedEmail := strings.ToLower(email)
+	var count int64
+	if err := DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail).Count(&count).Error; err != nil {
+		return fmt.Errorf("查询邮箱失败: %w", err)
+	}
+	if count == 0 {
+		return errors.New("该邮箱地址未注册")
+	}
+	if count > 1 {
+		return errors.New("存在多个相同邮箱的账户，请联系管理员处理")
+	}
 	hashedPassword, err := common.Password2Hash(password)
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("email = ?", email).Update("password", hashedPassword).Error
+	err = DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail).Update("password", hashedPassword).Error
 	return err
 }
 
@@ -1021,12 +1044,77 @@ func IsLinuxDOIdAlreadyTaken(linuxDOId string) bool {
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
+func IsGitHubIdAlreadyTaken(githubId string) bool {
+	var user User
+	err := DB.Unscoped().Where("github_id = ?", githubId).First(&user).Error
+	return !errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+func IsDiscordIdAlreadyTaken(discordId string) bool {
+	var user User
+	err := DB.Unscoped().Where("discord_id = ?", discordId).First(&user).Error
+	return !errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+func IsOidcIdAlreadyTaken(oidcId string) bool {
+	var user User
+	err := DB.Unscoped().Where("oidc_id = ?", oidcId).First(&user).Error
+	return !errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+func IsTelegramIdAlreadyTaken(telegramId string) bool {
+	var user User
+	err := DB.Unscoped().Where("telegram_id = ?", telegramId).First(&user).Error
+	return !errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+func IsWeChatIdAlreadyTaken(wechatId string) bool {
+	var user User
+	err := DB.Unscoped().Where("wechat_id = ?", wechatId).First(&user).Error
+	return !errors.Is(err, gorm.ErrRecordNotFound)
+}
+
 func (user *User) FillUserByLinuxDOId() error {
 	if user.LinuxDOId == "" {
 		return errors.New("linux do id is empty")
 	}
 	err := DB.Where("linux_do_id = ?", user.LinuxDOId).First(user).Error
 	return err
+}
+
+var ipSetLocks sync.Map // key: int(userId), value: *sync.Mutex
+
+// AddIpToUserSet appends an IP to the user's ip_set if not already present.
+func AddIpToUserSet(userId int, ip string) {
+	if userId == 0 || ip == "" {
+		return
+	}
+	// Per-user lock to prevent concurrent read-modify-write race
+	lockI, _ := ipSetLocks.LoadOrStore(userId, &sync.Mutex{})
+	mu := lockI.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	var currentSet string
+	err := DB.Model(&User{}).Where("id = ?", userId).Select("ip_set").Scan(&currentSet).Error
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to read ip_set for user %d: %v", userId, err))
+		return
+	}
+	// Check if IP already exists
+	if currentSet != "" {
+		for _, existing := range strings.Split(currentSet, ",") {
+			if existing == ip {
+				return
+			}
+		}
+		currentSet = currentSet + "," + ip
+	} else {
+		currentSet = ip
+	}
+	err = DB.Model(&User{}).Where("id = ?", userId).Update("ip_set", currentSet).Error
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to update ip_set for user %d: %v", userId, err))
+	}
 }
 
 func RootUserExists() bool {

@@ -28,6 +28,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError, getRelativeTime } from '../../helpers';
+import { fetchTranslation } from '../../helpers/translationCache';
 import { marked } from 'marked';
 import {
   IllustrationNoContent,
@@ -43,14 +44,15 @@ const NoticeModal = ({
   defaultTab = 'inApp',
   unreadKeys = [],
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [noticeContent, setNoticeContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [translatedAnnouncements, setTranslatedAnnouncements] = useState(null);
 
   const [statusState] = useContext(StatusContext);
 
-  const announcements = statusState?.status?.announcements || [];
+  const announcements = translatedAnnouncements || statusState?.status?.announcements || [];
 
   const unreadSet = useMemo(() => new Set(unreadKeys), [unreadKeys]);
 
@@ -70,11 +72,11 @@ const NoticeModal = ({
         time: absoluteTime,
         content: item.content,
         extra: item.extra,
-        relative: getRelativeTime(item.publishDate),
+        relative: getRelativeTime(item.publishDate, t),
         isUnread: unreadSet.has(getKeyForItem(item)),
       };
     });
-  }, [announcements, unreadSet]);
+  }, [announcements, unreadSet, t]);
 
   const handleCloseTodayNotice = () => {
     const today = new Date().toDateString();
@@ -85,7 +87,12 @@ const NoticeModal = ({
   const displayNotice = async () => {
     setLoading(true);
     try {
-      const res = await API.get('/api/notice');
+      const lang = i18n.language?.split('-')[0] || 'zh';
+      let noticeUrl = '/api/notice';
+      if (lang && lang !== 'zh') {
+        noticeUrl += `?lang=${lang}`;
+      }
+      const res = await API.get(noticeUrl);
       const { success, message, data } = res.data;
       if (success) {
         if (data !== '') {
@@ -104,11 +111,28 @@ const NoticeModal = ({
     }
   };
 
+  const loadTranslatedAnnouncements = async () => {
+    const lang = i18n.language?.split('-')[0] || 'zh';
+    if (lang === 'zh') {
+      setTranslatedAnnouncements(null);
+      return;
+    }
+    try {
+      const data = await fetchTranslation('/api/console/translated', lang);
+      if (data?.announcements) {
+        setTranslatedAnnouncements(data.announcements);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     if (visible) {
       displayNotice();
+      loadTranslatedAnnouncements();
     }
-  }, [visible]);
+  }, [visible, i18n.language]);
 
   useEffect(() => {
     if (visible) {

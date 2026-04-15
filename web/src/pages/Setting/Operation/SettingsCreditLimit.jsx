@@ -36,6 +36,10 @@ export default function SettingsCreditLimit(props) {
     PreConsumedQuota: '',
     QuotaForInviter: '',
     QuotaForInvitee: '',
+    TopUpRebateCount: '',
+    TopUpRebatePercent: '',
+    SubscriptionRebateCount: '',
+    SubscriptionRecommendCount: '',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const refForm = useRef();
@@ -77,9 +81,19 @@ export default function SettingsCreditLimit(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    const currentInputs = {
+      QuotaForNewUser: '',
+      PreConsumedQuota: '',
+      QuotaForInviter: '',
+      QuotaForInvitee: '',
+      TopUpRebateCount: '',
+      TopUpRebatePercent: '',
+      SubscriptionRebateCount: '',
+      SubscriptionRecommendCount: '',
+      'quota_setting.enable_free_model_pre_consume': true,
+    };
     for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
+      if (key in currentInputs) {
         currentInputs[key] = props.options[key];
       }
     }
@@ -162,6 +176,79 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInvitee: String(value),
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('充值返利次数')}
+                  field={'TopUpRebateCount'}
+                  step={1}
+                  min={-1}
+                  suffix={t('次')}
+                  extraText={t('被邀请者前N次充值可触发邀请人充值返利，-1表示永久返利，0表示关闭')}
+                  placeholder={t('例如：3')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      TopUpRebateCount: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('充值返利百分比')}
+                  field={'TopUpRebatePercent'}
+                  step={1}
+                  min={0}
+                  max={100}
+                  suffix={'%'}
+                  extraText={t('每次充值按比例返利给邀请人')}
+                  placeholder={t('例如：10')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      TopUpRebatePercent: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('订阅返利次数')}
+                  field={'SubscriptionRebateCount'}
+                  step={1}
+                  min={-1}
+                  suffix={t('次')}
+                  extraText={t('被邀请者前N次订阅购买可触发邀请人订阅返利，-1表示永久返利，0表示关闭')}
+                  placeholder={t('例如：3')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionRebateCount: String(value),
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('订阅推荐标签数量')}
+                  field={'SubscriptionRecommendCount'}
+                  step={1}
+                  min={0}
+                  suffix={t('个')}
+                  extraText={t('订阅套餐页面前N个套餐显示推荐标签，0表示不显示')}
+                  placeholder={t('例如：3')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionRecommendCount: String(value),
                     })
                   }
                 />

@@ -48,7 +48,7 @@ export function isRoot() {
 
 export function getSystemName() {
   let system_name = localStorage.getItem('system_name');
-  if (!system_name) return 'New API';
+  if (!system_name) return 'CaMeL API';
   return system_name;
 }
 
@@ -123,15 +123,11 @@ export function showError(error) {
   console.error(error);
   if (error.message) {
     if (error.name === 'AxiosError') {
-      if (!error.response) {
-        Toast.error('错误：' + error.message);
-        return;
-      }
       switch (error.response.status) {
         case 401:
-          // 清除用户状态
+          // 首页不跳转登录
+          if (window.location.pathname === '/') break;
           localStorage.removeItem('user');
-          // toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);
           window.location.href = '/login?expired=true';
           break;
         case 429:
@@ -194,7 +190,9 @@ export function getTodayStartTimestamp() {
 }
 
 export function timestamp2string(timestamp) {
-  let date = new Date(timestamp * 1000);
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return '-';
+  let date = new Date(ts * 1000);
   let year = date.getFullYear().toString();
   let month = (date.getMonth() + 1).toString();
   let day = date.getDate().toString();
@@ -506,7 +504,8 @@ export const getLastAssistantMessage = (messages) => {
 };
 
 // 计算相对时间（几天前、几小时前等）
-export const getRelativeTime = (publishDate) => {
+// t 参数为可选的翻译函数，不传则返回中文
+export const getRelativeTime = (publishDate, t = null) => {
   if (!publishDate) return '';
 
   const now = new Date();
@@ -524,6 +523,9 @@ export const getRelativeTime = (publishDate) => {
   const diffMonths = Math.floor(diffDays / 30);
   const diffYears = Math.floor(diffDays / 365);
 
+  // 翻译函数，如果没有传入则返回原文
+  const tr = t || ((s) => s);
+
   // 如果是未来时间，显示具体日期
   if (diffMs < 0) {
     return formatDateString(pubDate);
@@ -531,19 +533,19 @@ export const getRelativeTime = (publishDate) => {
 
   // 根据时间差返回相应的描述
   if (diffSeconds < 60) {
-    return '刚刚';
+    return tr('刚刚');
   } else if (diffMinutes < 60) {
-    return `${diffMinutes} 分钟前`;
+    return `${diffMinutes} ${tr('分钟前')}`;
   } else if (diffHours < 24) {
-    return `${diffHours} 小时前`;
+    return `${diffHours} ${tr('小时前')}`;
   } else if (diffDays < 7) {
-    return `${diffDays} 天前`;
+    return `${diffDays} ${tr('天前')}`;
   } else if (diffWeeks < 4) {
-    return `${diffWeeks} 周前`;
+    return `${diffWeeks} ${tr('周前')}`;
   } else if (diffMonths < 12) {
-    return `${diffMonths} 个月前`;
+    return `${diffMonths} ${tr('个月前')}`;
   } else if (diffYears < 2) {
-    return '1 年前';
+    return `1 ${tr('年前')}`;
   } else {
     // 超过2年显示具体日期
     return formatDateString(pubDate);
@@ -616,6 +618,7 @@ export const calculateModelPrice = ({
   record,
   selectedGroup,
   groupRatio,
+  autoGroups = [],
   tokenUnit,
   displayPrice,
   currency,
@@ -625,6 +628,22 @@ export const calculateModelPrice = ({
   // 1. 选择实际使用的分组
   let usedGroup = selectedGroup;
   let usedGroupRatio = groupRatio[selectedGroup];
+
+  // all 视图优先按 auto 分组链路取真实结算分组；找不到再回退到最低倍率分组
+  if (selectedGroup === 'all' && Array.isArray(autoGroups) && autoGroups.length) {
+    for (const g of autoGroups) {
+      const r = groupRatio[g];
+      if (
+        r !== undefined &&
+        Array.isArray(record.enable_groups) &&
+        record.enable_groups.includes(g)
+      ) {
+        usedGroup = g;
+        usedGroupRatio = r;
+        break;
+      }
+    }
+  }
 
   if (selectedGroup === 'all' || usedGroupRatio === undefined) {
     // 在模型可用分组中选择倍率最小的分组，若无则使用 1
@@ -642,11 +661,11 @@ export const calculateModelPrice = ({
         }
       });
     }
+  }
 
-    // 如果找不到合适分组倍率，回退为 1
-    if (usedGroupRatio === undefined) {
-      usedGroupRatio = 1;
-    }
+  // 如果找不到合适分组倍率，回退为 1
+  if (usedGroupRatio === undefined) {
+    usedGroupRatio = 1;
   }
 
   // 2. 根据计费类型计算价格

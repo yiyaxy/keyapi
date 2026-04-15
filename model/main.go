@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/relaymetrics"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
@@ -181,6 +182,7 @@ func InitDB() (err error) {
 			db = db.Debug()
 		}
 		DB = db
+		relaymetrics.RegisterGormCallbacks(DB)
 		// MySQL charset/collation startup check: ensure Chinese-capable charset
 		if common.UsingMySQL {
 			if err := checkMySQLChineseSupport(DB); err != nil {
@@ -280,10 +282,33 @@ func migrateDB() error {
 		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
+		&Message{},
+		&MessageReadStatus{},
+		&UserIpRecord{},
+		&IpBan{},
+		&MessageTranslation{},
+		&ContentTranslation{},
+		&PromptRule{},
+		&AffTransferRequest{},
+		&AffRebateLog{},
+		&UserRebateSetting{},
+		&Ticket{},
+		&TicketReply{},
+		&TicketAttachment{},
+		&TicketUpload{},
+		&InvoiceApplication{},
+		&InvoiceItem{},
+		&InvoiceUpload{},
+		&InvoiceFile{},
+		&SiteRPMSnapshot{},
+		&AgentLog{},
+		&AgentReport{},
 	)
 	if err != nil {
 		return err
 	}
+	LoadIpBanCache()
+	LoadPromptRuleCache()
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -293,6 +318,7 @@ func migrateDB() error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -328,6 +354,25 @@ func migrateDBFast() error {
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
+		{&Message{}, "Message"},
+		{&MessageReadStatus{}, "MessageReadStatus"},
+		{&MessageTranslation{}, "MessageTranslation"},
+		{&ContentTranslation{}, "ContentTranslation"},
+		{&PromptRule{}, "PromptRule"},
+		{&AffTransferRequest{}, "AffTransferRequest"},
+		{&AffRebateLog{}, "AffRebateLog"},
+		{&UserRebateSetting{}, "UserRebateSetting"},
+		{&Ticket{}, "Ticket"},
+		{&TicketReply{}, "TicketReply"},
+		{&TicketAttachment{}, "TicketAttachment"},
+		{&TicketUpload{}, "TicketUpload"},
+		{&InvoiceApplication{}, "InvoiceApplication"},
+		{&InvoiceItem{}, "InvoiceItem"},
+		{&InvoiceUpload{}, "InvoiceUpload"},
+		{&InvoiceFile{}, "InvoiceFile"},
+		{&SiteRPMSnapshot{}, "SiteRPMSnapshot"},
+		{&AgentLog{}, "AgentLog"},
+		{&AgentReport{}, "AgentReport"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

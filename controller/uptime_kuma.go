@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 
 	"github.com/gin-gonic/gin"
@@ -18,16 +20,24 @@ import (
 const (
 	requestTimeout   = 30 * time.Second
 	httpTimeout      = 10 * time.Second
-	uptimeKeySuffix  = "_24"
+	uptimeKeySuffix   = "_24"
+	uptimeKey7dSuffix = "_168"
 	apiStatusPath    = "/api/status-page/"
 	apiHeartbeatPath = "/api/status-page/heartbeat/"
 )
 
+type Heartbeat struct {
+	Status int    `json:"status"`
+	Time   string `json:"time"`
+}
+
 type Monitor struct {
-	Name   string  `json:"name"`
-	Uptime float64 `json:"uptime"`
-	Status int     `json:"status"`
-	Group  string  `json:"group,omitempty"`
+	Name       string      `json:"name"`
+	Uptime     float64     `json:"uptime"`
+	Uptime7d   float64     `json:"uptime_7d"`
+	Status     int         `json:"status"`
+	Group      string      `json:"group,omitempty"`
+	Heartbeats []Heartbeat `json:"heartbeats"`
 }
 
 type UptimeGroupResult struct {
@@ -83,7 +93,8 @@ func fetchGroupData(ctx context.Context, client *http.Client, groupConfig map[st
 
 	var heartbeatData struct {
 		HeartbeatList map[string][]struct {
-			Status int `json:"status"`
+			Status int    `json:"status"`
+			Time   string `json:"time"`
 		} `json:"heartbeatList"`
 		UptimeList map[string]float64 `json:"uptimeList"`
 	}
@@ -117,8 +128,15 @@ func fetchGroupData(ctx context.Context, client *http.Client, groupConfig map[st
 				monitor.Uptime = uptime
 			}
 
+			if uptime7d, exists := heartbeatData.UptimeList[monitorID+uptimeKey7dSuffix]; exists {
+				monitor.Uptime7d = uptime7d
+			}
+
 			if heartbeats, exists := heartbeatData.HeartbeatList[monitorID]; exists && len(heartbeats) > 0 {
 				monitor.Status = heartbeats[0].Status
+				for _, hb := range heartbeats {
+					monitor.Heartbeats = append(monitor.Heartbeats, Heartbeat{Status: hb.Status, Time: hb.Time})
+				}
 			}
 
 			result.Monitors = append(result.Monitors, monitor)
@@ -151,5 +169,60 @@ func GetUptimeKumaStatus(c *gin.Context) {
 	}
 
 	g.Wait()
+
+	lang := c.Query("lang")
+	if lang != "" && lang != "zh" {
+		// Concurrent translation with max 50 goroutines
+		const maxConcurrency = 50
+		sem := make(chan struct{}, maxConcurrency)
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+
+		// Translate categories concurrently
+		for i := range results {
+			wg.Add(1)
+			sem <- struct{}{}
+
+			go func(idx int) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				categoryId := results[idx].CategoryName
+				translated, _ := service.TranslateContent("uptime_category", categoryId, map[string]string{"categoryName": results[idx].CategoryName}, lang)
+
+				mu.Lock()
+				if v, ok := translated["categoryName"]; ok {
+					results[idx].CategoryName = v
+				}
+				mu.Unlock()
+			}(i)
+		}
+
+		// Translate monitors concurrently
+		for i := range results {
+			for j := range results[i].Monitors {
+				wg.Add(1)
+				sem <- struct{}{}
+
+				go func(catIdx, monIdx int, categoryId string) {
+					defer wg.Done()
+					defer func() { <-sem }()
+
+					monitorName := results[catIdx].Monitors[monIdx].Name
+					monitorId := categoryId + "_" + monitorName
+					translated, _ := service.TranslateContent("uptime_monitor", monitorId, map[string]string{"name": monitorName}, lang)
+
+					mu.Lock()
+					if v, ok := translated["name"]; ok {
+						results[catIdx].Monitors[monIdx].Name = v
+					}
+					mu.Unlock()
+				}(i, j, results[i].CategoryName)
+			}
+		}
+
+		wg.Wait()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": results})
 }

@@ -25,6 +25,7 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
     const defaultModules = {
       home: true,
       console: true,
+      plans: true,
       pricing: true,
       docs: true,
       about: true,
@@ -43,6 +44,11 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         text: t('控制台'),
         itemKey: 'console',
         to: '/console',
+      },
+      {
+        text: t('定价'),
+        itemKey: 'plans',
+        to: '/plans',
       },
       {
         text: t('模型广场'),
@@ -76,6 +82,10 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         return typeof modules.pricing === 'object'
           ? modules.pricing.enabled
           : modules.pricing;
+      }
+      // 向后兼容：旧配置没有plans字段，默认显示
+      if (link.itemKey === 'plans') {
+        return modules[link.itemKey] !== false;
       }
       return modules[link.itemKey] === true;
     });

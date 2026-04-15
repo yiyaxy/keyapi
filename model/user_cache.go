@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -72,6 +73,10 @@ func updateUserCache(user User) error {
 
 // GetUserCache gets complete user cache from hash
 func GetUserCache(userId int) (userCache *UserBase, err error) {
+	return GetUserCacheWithContext(context.Background(), userId)
+}
+
+func GetUserCacheWithContext(ctx context.Context, userId int) (userCache *UserBase, err error) {
 	var user *User
 	var fromDB bool
 	defer func() {
@@ -93,7 +98,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// If Redis fails, get from DB
 	fromDB = true
-	user, err = GetUserById(userId, false)
+	user, err = GetUserByIdWithContext(ctx, userId, false)
 	if err != nil {
 		return nil, err // Return nil and error if DB lookup fails
 	}

@@ -22,6 +22,7 @@ common.delete_success: "删除成功"
 common.delete_failed: "删除失败"
 common.already_exists: "已存在"
 common.name_cannot_be_empty: "名称不能为空"
+common.batch_too_many: "批量请求数量过多，最多 {{.Max}} 条"
 
 # Token messages
 token.name_too_long: "令牌名称过长"
@@ -119,7 +120,10 @@ payment.callback_error: "回调地址配置错误"
 payment.create_failed: "创建订单失败"
 payment.start_failed: "拉起支付失败"
 payment.amount_too_low: "套餐金额过低"
-payment.alipay_not_configured: "支付宝未配置或密钥无效"
+payment.stripe_not_configured: "Stripe 未配置或密钥无效"
+payment.webhook_not_configured: "Webhook 未配置"
+payment.price_id_not_configured: "该套餐未配置 StripePriceId"
+payment.creem_not_configured: "该套餐未配置 CreemProductId"
 
 # Topup messages
 topup.not_provided: "未提供支付单号"

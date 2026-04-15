@@ -31,6 +31,13 @@ body {
   background-color: var(--semi-color-bg-0);
 }
 
+/* 桌面端禁止 body 纵向滚动 - 防止 VChart tooltip 触发页面滚动条 */
+@media (min-width: 768px) {
+  body {
+    overflow-y: hidden;
+  }
+}
+
 .app-layout {
   height: 100vh;
   height: 100dvh;
@@ -468,6 +475,9 @@ html.dark .sbg-variant-green {
 /* 页脚样式 */
 .custom-footer {
   font-size: 1.1em;
+}
+.custom-footer.na-cb6feafeb3990c78 {
+  position: relative;
 }
 
 /* 卡片内容容器通用样式 */
@@ -955,6 +965,225 @@ html.dark .with-pastel-balls::before {
   gap: 0.25rem;
 }
 
+/* ==================== Gradient Text 渐变文字 ==================== */
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1 0%, #14b8a6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.dark .gradient-text {
+  background: linear-gradient(135deg, #818cf8 0%, #2dd4bf 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ==================== Glow Border 微光边框 ==================== */
+.glow-border {
+  border: 1px solid rgba(99,102,241,0.15);
+  box-shadow: 0 0 8px rgba(99,102,241,0.08), 0 0 20px rgba(20,184,166,0.04);
+}
+
+html.dark .glow-border {
+  border-color: rgba(129,140,248,0.2);
+  box-shadow: 0 0 8px rgba(129,140,248,0.06), 0 0 20px rgba(45,212,191,0.03);
+}
+
+/* ==================== Stat Pill 统计指标 ==================== */
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: rgba(var(--semi-grey-0), 0.6);
+  border: 1px solid rgba(var(--semi-grey-2), 0.12);
+  backdrop-filter: blur(8px);
+  color: var(--semi-color-text-1);
+}
+
+html.dark .stat-pill {
+  background: rgba(var(--semi-grey-9), 0.4);
+  border-color: rgba(255,255,255,0.08);
+}
+
+/* ==================== Hero Gradient Mesh 背景 ==================== */
+@keyframes mesh-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.hero-mesh {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.25) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(20,184,166,0.2) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(168,85,247,0.15) 0%, transparent 50%);
+  background-size: 200% 200%;
+  animation: mesh-shift 12s ease infinite;
+}
+
+html.dark .hero-mesh {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(20,184,166,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(168,85,247,0.1) 0%, transparent 50%);
+  background-size: 200% 200%;
+  animation: mesh-shift 12s ease infinite;
+}
+
+/* ==================== Marquee 无限滚动 ==================== */
+@keyframes marquee-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.marquee-container {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 40s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+.marquee-item {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  transition: transform 0.3s ease;
+}
+
+.marquee-item:hover {
+  transform: scale(1.25);
+}
+
+/* ==================== Glass Card 毛玻璃卡片 ==================== */
+.glass-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(var(--semi-grey-2), 0.15);
+  background: rgba(var(--semi-grey-0), 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.08);
+}
+
+html.dark .glass-card {
+  background: rgba(var(--semi-grey-9), 0.35);
+  border-color: rgba(255,255,255,0.08);
+}
+
+html.dark .glass-card:hover {
+  box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+}
+
+/* ==================== Home Split Layout ==================== */
+.home-split {
+  display: flex;
+  gap: 3rem;
+  align-items: stretch;
+  height: 100%;
+  padding: 2rem;
+}
+
+@media (max-width: 767px) {
+  .home-split {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    overflow-y: auto;
+  }
+}
+
+/* Status Panel */
+.status-panel {
+  border-radius: 1rem;
+  border: 1px solid rgba(var(--semi-grey-2), 0.15);
+  background: rgba(var(--semi-grey-0), 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+
+html.dark .status-panel {
+  background: rgba(var(--semi-grey-9), 0.4);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.status-row {
+  padding: 8px 12px;
+  margin: 2px 4px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.status-row:hover {
+  background: rgba(var(--semi-grey-2), 0.08);
+}
+
+/* Status Dot */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Overall Uptime Bar */
+.overall-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(var(--semi-grey-2), 0.12);
+  overflow: hidden;
+}
+
+.overall-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width 0.6s ease;
+}
+
+/* ==================== Entrance 入场动画 ==================== */
+@keyframes fade-slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-on-scroll {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+.animate-on-scroll.is-visible {
+  animation: fade-slide-up 0.6s ease forwards;
+}
+
+.animate-on-scroll.delay-1 { animation-delay: 0.15s; }
+.animate-on-scroll.delay-2 { animation-delay: 0.3s; }
+.animate-on-scroll.delay-3 { animation-delay: 0.45s; }
+
 /* ==================== 自定义圆角样式 ==================== */
 .semi-radio,
 .semi-tagInput,
@@ -971,3 +1200,208 @@ html.dark .with-pastel-balls::before {
 .semi-datepicker-range-input {
   border-radius: 10px !important;
 }
+
+/* ==================== Home: Dot-Grid Background ==================== */
+.home-grid-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse at 50% 40%, black 30%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, black 30%, transparent 70%);
+}
+
+html.dark .home-grid-bg {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+}
+
+/* ==================== Home: Accent Line ==================== */
+.home-accent-line {
+  width: 48px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #6366f1, #14b8a6);
+  margin-bottom: 1rem;
+}
+
+html.dark .home-accent-line {
+  background: linear-gradient(90deg, #818cf8, #2dd4bf);
+}
+
+/* ==================== Home: Terminal Bar ==================== */
+.home-terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1e1e2e;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 10px 16px;
+  max-width: 28rem;
+  margin-top: 1.5rem;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Courier New', monospace;
+  font-size: 0.875rem;
+}
+
+.terminal-prompt {
+  color: #a6e3a1;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.terminal-url {
+  color: #cdd6f4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-endpoint {
+  color: #89b4fa;
+  flex: 1;
+  min-width: 0;
+}
+
+.terminal-copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: #cdd6f4;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.terminal-copy-btn:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.home-terminal-bar .semi-scrolllist-item {
+  color: #89b4fa !important;
+}
+
+/* ==================== Home: Uptime Hero Number ==================== */
+.uptime-hero-number {
+  font-size: 3.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #10b981;
+}
+
+/* ==================== Home: Status Mini Bar Chart ==================== */
+.status-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 48px;
+}
+
+.status-bar-item {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s ease, opacity 0.15s ease;
+  opacity: 0.8;
+}
+
+.status-bar-item:hover {
+  opacity: 1;
+}
+
+/* ==================== Home: Marquee Pill ==================== */
+.marquee-pill {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 8px;
+  border-radius: 12px;
+  background: rgba(var(--semi-grey-0), 0.6);
+  border: 1px solid rgba(var(--semi-grey-2), 0.1);
+  transition: transform 0.3s ease, box-shadow 0.2s ease;
+}
+
+.marquee-pill:hover {
+  transform: scale(1.12);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+html.dark .marquee-pill {
+  background: rgba(var(--semi-grey-9), 0.5);
+  border-color: rgba(255,255,255,0.06);
+}
+
+html.dark .marquee-pill:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* ==================== Home: Status Panel (no hover lift) ==================== */
+.home-status-panel:hover {
+  transform: none;
+}
+
+/* ==================== Home: Staggered Entrance Animation ==================== */
+@keyframes home-fade-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.home-enter {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: home-fade-in 0.6s ease forwards;
+}
+
+.home-enter-d1 { animation-delay: 0.05s; }
+.home-enter-d2 { animation-delay: 0.12s; }
+.home-enter-d3 { animation-delay: 0.2s; }
+.home-enter-d4 { animation-delay: 0.3s; }
+.home-enter-d5 { animation-delay: 0.4s; }
+
+/* ==================== Home: Mobile Overrides ==================== */
+@media (max-width: 767px) {
+  .home-terminal-bar {
+    max-width: 100%;
+  }
+  .uptime-hero-number {
+    font-size: 2.5rem;
+  }
+  .status-bars {
+    height: 36px;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Channel advanced settings side panel animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.ec-dbcd0a3c01b55203 { forced-color-adjust: auto; }
+

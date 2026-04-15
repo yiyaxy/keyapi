@@ -15,7 +15,7 @@ const DEV_FRONTEND_PORT = 5173; // Vite dev server port
 function saveAndOpenErrorLog() {
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const logFileName = `new-api-crash-${timestamp}.log`;
+    const logFileName = `camel-api-crash-${timestamp}.log`;
     const logDir = app.getPath('logs');
     const logFilePath = path.join(logDir, logFileName);
     
@@ -25,7 +25,7 @@ function saveAndOpenErrorLog() {
     }
     
     // 写入日志
-    const logContent = `New API 崩溃日志
+    const logContent = `CaMeL API 崩溃日志
 生成时间: ${new Date().toLocaleString('zh-CN')}
 平台: ${process.platform}
 架构: ${process.arch}
@@ -72,7 +72,7 @@ function analyzeError(errorLogs) {
       type: '端口被占用',
       title: '端口 ' + PORT + ' 被占用',
       message: '无法启动服务器，端口已被其他程序占用',
-      solution: `可能的解决方案：\n\n1. 关闭占用端口 ${PORT} 的其他程序\n2. 检查是否已经运行了另一个 New API 实例\n3. 使用以下命令查找占用端口的进程：\n   Mac/Linux: lsof -i :${PORT}\n   Windows: netstat -ano | findstr :${PORT}\n4. 重启电脑以释放端口`
+      solution: `可能的解决方案：\n\n1. 关闭占用端口 ${PORT} 的其他程序\n2. 检查是否已经运行了另一个 CaMeL API 实例\n3. 使用以下命令查找占用端口的进程：\n   Mac/Linux: lsof -i :${PORT}\n   Windows: netstat -ano | findstr :${PORT}\n4. 重启电脑以释放端口`
     };
   }
   
@@ -261,7 +261,7 @@ function startServer() {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    env.SQLITE_PATH = path.join(dataDir, 'new-api.db');
+    env.SQLITE_PATH = path.join(dataDir, 'camel-api.db');
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📁 您的数据存储位置：');
@@ -397,7 +397,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true
     },
-    title: 'New API',
+    title: 'CaMeL API',
     icon: path.join(__dirname, 'icon.png')
   });
 
@@ -436,7 +436,7 @@ function createTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show New API',
+      label: 'Show CaMeL API',
       click: () => {
         if (mainWindow === null) {
           createWindow();
@@ -458,7 +458,7 @@ function createTray() {
     }
   ]);
 
-  tray.setToolTip('New API');
+  tray.setToolTip('CaMeL API');
   tray.setContextMenu(contextMenu);
 
   // On macOS, clicking the tray icon shows the window

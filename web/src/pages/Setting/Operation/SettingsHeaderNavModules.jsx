@@ -42,6 +42,7 @@ export default function SettingsHeaderNavModules(props) {
   const [headerNavModules, setHeaderNavModules] = useState({
     home: true,
     console: true,
+    plans: true,
     pricing: {
       enabled: true,
       requireAuth: false, // 默认不需要登录鉴权
@@ -82,6 +83,7 @@ export default function SettingsHeaderNavModules(props) {
     const defaultModules = {
       home: true,
       console: true,
+      plans: true,
       pricing: {
         enabled: true,
         requireAuth: false,
@@ -138,8 +140,13 @@ export default function SettingsHeaderNavModules(props) {
         if (typeof modules.pricing === 'boolean') {
           modules.pricing = {
             enabled: modules.pricing,
-            requireAuth: false, // 默认不需要登录鉴权
+            requireAuth: false,
           };
+        }
+
+        // 向后兼容：旧配置没有plans字段，默认启用
+        if (modules.plans === undefined) {
+          modules.plans = true;
         }
 
         setHeaderNavModules(modules);
@@ -171,6 +178,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'console',
       title: t('控制台'),
       description: t('用户控制面板，管理账户'),
+    },
+    {
+      key: 'plans',
+      title: t('定价'),
+      description: t('订阅套餐定价页面，公开可见'),
     },
     {
       key: 'pricing',

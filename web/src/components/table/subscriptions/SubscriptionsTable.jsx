@@ -32,19 +32,19 @@ const SubscriptionsTable = (subscriptionsData) => {
     loading,
     compactMode,
     openEdit,
-    setPlanEnabled,
+    setPlanStatus,
     t,
-    enableAlipay,
+    enableEpay,
   } = subscriptionsData;
 
   const columns = useMemo(() => {
     return getSubscriptionsColumns({
       t,
       openEdit,
-      setPlanEnabled,
-      enableAlipay,
+      setPlanStatus,
+      enableEpay,
     });
-  }, [t, openEdit, setPlanEnabled, enableAlipay]);
+  }, [t, openEdit, setPlanStatus, enableEpay]);
 
   const tableColumns = useMemo(() => {
     return compactMode

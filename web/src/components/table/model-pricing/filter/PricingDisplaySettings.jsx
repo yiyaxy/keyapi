@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import SelectableButtonGroup from '../../../common/ui/SelectableButtonGroup';
-import { isAdmin } from '../../../../helpers';
 
 const PricingDisplaySettings = ({
   showWithRecharge,
@@ -47,14 +46,10 @@ const PricingDisplaySettings = ({
           },
         ]
       : []),
-    ...(isAdmin()
-      ? [
-          {
-            value: 'ratio',
-            label: t('显示倍率'),
-          },
-        ]
-      : []),
+    {
+      value: 'ratio',
+      label: t('显示倍率'),
+    },
     {
       value: 'tableView',
       label: t('表格视图'),

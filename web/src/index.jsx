@@ -20,16 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-
-// 屏蔽 Semi UI 的 findDOMNode 废弃警告（Semi UI 内部问题，无法在业务代码修复）
-const _origWarn = console.warn;
-const _origError = console.error;
-const _filterDOMNode = (orig) => (...args) => {
-  if (typeof args[0] === 'string' && args[0].includes('findDOMNode')) return;
-  orig.apply(console, args);
-};
-console.warn = _filterDOMNode(_origWarn);
-console.error = _filterDOMNode(_origError);
+import '@douyinfe/semi-ui/dist/css/semi.css';
 import { UserProvider } from './context/User';
 import 'react-toastify/dist/ReactToastify.css';
 import { StatusProvider } from './context/Status';
@@ -46,7 +37,7 @@ import en_GB from '@douyinfe/semi-ui/lib/es/locale/source/en_GB';
 // Welcome message (Do not remove this without permission from the original developer)
 if (typeof window !== 'undefined') {
   console.log(
-    '%cWE ❤ NEWAPI%c Github: https://github.com/QuantumNous/new-api',
+    '%cCaMeL API%c',
     'color: #10b981; font-weight: bold; font-size: 24px;',
     'color: inherit; font-size: 14px;',
   );

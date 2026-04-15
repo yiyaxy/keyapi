@@ -39,6 +39,16 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 		return err
 	}
 
+	// Apply response content replacement rules
+	for i := range streamResponse.Choices {
+		if content := streamResponse.Choices[i].Delta.GetContentString(); content != "" {
+			newContent := service.ApplyResponseContentRules(content, info.ChannelId)
+			if newContent != content {
+				streamResponse.Choices[i].Delta.SetContentString(newContent)
+			}
+		}
+	}
+
 	if streamResponse.Usage != nil {
 		info.ClaudeConvertInfo.Usage = streamResponse.Usage
 	}
@@ -54,6 +64,16 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
 		logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
 		return err
+	}
+
+	// Apply response content replacement rules
+	for i := range streamResponse.Choices {
+		if content := streamResponse.Choices[i].Delta.GetContentString(); content != "" {
+			newContent := service.ApplyResponseContentRules(content, info.ChannelId)
+			if newContent != content {
+				streamResponse.Choices[i].Delta.SetContentString(newContent)
+			}
+		}
 	}
 
 	geminiResponse := service.StreamResponseOpenAI2Gemini(&streamResponse, info)

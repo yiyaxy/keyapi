@@ -18,9 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { memo, useCallback } from 'react';
-import { Input, Button, Switch, Select, Divider } from '@douyinfe/semi-ui';
+import { Input, Button, Switch, Divider } from '@douyinfe/semi-ui';
 import { IconSearch, IconCopy, IconFilter } from '@douyinfe/semi-icons';
-import { isAdmin } from '../../../../../helpers';
 
 const SearchActions = memo(
   ({
@@ -118,13 +117,11 @@ const SearchActions = memo(
               />
             )}
 
-            {/* 显示倍率开关（仅管理员可见） */}
-            {isAdmin() && (
-              <div className='flex items-center gap-2'>
-                <span className='text-sm text-gray-600'>{t('倍率')}</span>
-                <Switch checked={showRatio} onChange={setShowRatio} />
-              </div>
-            )}
+            {/* 显示倍率开关 */}
+            <div className='flex items-center gap-2'>
+              <span className='text-sm text-gray-600'>{t('倍率')}</span>
+              <Switch checked={showRatio} onChange={setShowRatio} />
+            </div>
 
             {/* 视图模式切换按钮 */}
             <Button

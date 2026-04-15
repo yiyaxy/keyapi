@@ -25,6 +25,7 @@ const (
 	MsgDeleteFailed      = "common.delete_failed"
 	MsgAlreadyExists     = "common.already_exists"
 	MsgNameCannotBeEmpty = "common.name_cannot_be_empty"
+	MsgBatchTooMany      = "common.batch_too_many"
 )
 
 // Token related messages
@@ -134,7 +135,10 @@ const (
 	MsgPaymentCreateFailed     = "payment.create_failed"
 	MsgPaymentStartFailed      = "payment.start_failed"
 	MsgPaymentAmountTooLow     = "payment.amount_too_low"
-	MsgPaymentAlipayNotConfig = "payment.alipay_not_configured"
+	MsgPaymentStripeNotConfig  = "payment.stripe_not_configured"
+	MsgPaymentWebhookNotConfig = "payment.webhook_not_configured"
+	MsgPaymentPriceIdNotConfig = "payment.price_id_not_configured"
+	MsgPaymentCreemNotConfig   = "payment.creem_not_configured"
 )
 
 // Topup related messages

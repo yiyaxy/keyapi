@@ -73,6 +73,18 @@ func authHelper(c *gin.Context, minRole int) {
 			return
 		}
 	}
+	// Check session version (only for cookie sessions, skip for access tokens)
+	if !useAccessToken {
+		sessionVersion := session.Get("session_version")
+		if sessionVersion == nil || sessionVersion.(int) != common.SessionVersion {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "会话已过期，请重新登录",
+			})
+			c.Abort()
+			return
+		}
+	}
 	// get header New-Api-User
 	apiUserIdStr := c.Request.Header.Get("New-Api-User")
 	if apiUserIdStr == "" {
@@ -210,7 +222,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		token, err := model.GetTokenByKeyWithContext(c.Request.Context(), key, false)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
@@ -220,7 +232,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			return
 		}
 
-		userCache, err := model.GetUserCache(token.UserId)
+		userCache, err := model.GetUserCacheWithContext(c.Request.Context(), token.UserId)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
@@ -301,7 +313,7 @@ func TokenAuth() func(c *gin.Context) {
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		}
-		token, err := model.ValidateUserToken(key)
+		token, err := model.ValidateUserTokenWithContext(c.Request.Context(), key)
 		if token != nil {
 			id := c.GetInt("id")
 			if id == 0 {
@@ -329,7 +341,7 @@ func TokenAuth() func(c *gin.Context) {
 			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)
 		}
 
-		userCache, err := model.GetUserCache(token.UserId)
+		userCache, err := model.GetUserCacheWithContext(c.Request.Context(), token.UserId)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusInternalServerError, err.Error())
 			return
@@ -344,20 +356,56 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
-		if tokenGroup != "" {
-			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
-				return
+		// When token has no group set, check if the user's group has channels.
+		// If not (e.g. VIP/SVIP are pure billing tiers), fall back to "default".
+		if tokenGroup == "" {
+			if !model.GroupHasChannels(userGroup) {
+				userGroup = "default"
 			}
-			// check group in common.GroupRatio
-			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
-				if tokenGroup != "auto" {
-					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
+		}
+		if tokenGroup != "" {
+			if strings.Contains(tokenGroup, ",") {
+				// Custom group chain: validate each group in the chain
+				chainGroups := strings.Split(tokenGroup, ",")
+				usable := service.GetUserUsableGroups(userGroup)
+				for _, g := range chainGroups {
+					g = strings.TrimSpace(g)
+					if g == "" {
+						continue
+					}
+					if _, ok := usable[g]; !ok {
+						abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", g))
+						return
+					}
+					if !ratio_setting.ContainsGroupRatio(g) {
+						abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", g))
+						return
+					}
+				}
+				// Set userGroup to the first non-empty group in the chain
+				for _, g := range chainGroups {
+					g = strings.TrimSpace(g)
+					if g != "" {
+						userGroup = g
+						break
+					}
+				}
+			} else {
+				// Single group: original logic
+				// check common.UserUsableGroups[userGroup]
+				if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 					return
 				}
+				// check group in common.GroupRatio
+				if !ratio_setting.ContainsGroupRatio(tokenGroup) {
+					if tokenGroup != "auto" {
+						abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
+						return
+					}
+				}
+				userGroup = tokenGroup
 			}
-			userGroup = tokenGroup
 		}
 		common.SetContextKey(c, constant.ContextKeyUsingGroup, userGroup)
 

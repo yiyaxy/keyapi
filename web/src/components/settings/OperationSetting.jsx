@@ -36,6 +36,8 @@ const OperationSetting = () => {
     PreConsumedQuota: 0,
     QuotaForInviter: 0,
     QuotaForInvitee: 0,
+    TopUpRebateCount: 0,
+    TopUpRebatePercent: 0,
     'quota_setting.enable_free_model_pre_consume': true,
 
     /* 通用设置 */
@@ -81,6 +83,10 @@ const OperationSetting = () => {
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
+
+    /* 翻译设置 */
+    TranslationChannelId: '',
+    TranslationModel: '',
   });
 
   let [loading, setLoading] = useState(false);
@@ -109,7 +115,7 @@ const OperationSetting = () => {
       await getOptions();
       // showSuccess('刷新成功');
     } catch (error) {
-      showError('刷新失败');
+      showError(t('刷新失败'));
     } finally {
       setLoading(false);
     }

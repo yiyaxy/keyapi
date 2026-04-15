@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -166,11 +167,28 @@ func ListModels(c *gin.Context, modelType int) {
 		tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if tokenGroup != "" {
 			group = tokenGroup
+		} else {
+			// Token has no group set — use user's group if it has channels,
+			// otherwise fall back to "default"
+			if !model.GroupHasChannels(userGroup) {
+				group = "default"
+			}
 		}
 		var models []string
 		if tokenGroup == "auto" {
 			for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
 				groupModels := model.GetGroupEnabledModels(autoGroup)
+				for _, g := range groupModels {
+					if !common.StringsContains(models, g) {
+						models = append(models, g)
+					}
+				}
+			}
+		} else if strings.Contains(group, ",") {
+			// Custom group chain: collect models from all groups in the chain
+			chainGroups := service.ParseGroupChain(group, userGroup)
+			for _, cg := range chainGroups {
+				groupModels := model.GetGroupEnabledModels(cg)
 				for _, g := range groupModels {
 					if !common.StringsContains(models, g) {
 						models = append(models, g)

@@ -81,7 +81,7 @@ const CONTENT_TEXTS = {
 const getVendorDisplayName = (vendorName, t) => {
   return vendorName === CONFIG.UNKNOWN_VENDOR
     ? CONTENT_TEXTS.unknown.displayName(t)
-    : vendorName;
+    : t(vendorName, vendorName);
 };
 
 const createDefaultAvatar = () => (

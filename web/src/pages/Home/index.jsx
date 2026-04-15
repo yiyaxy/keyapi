@@ -17,50 +17,33 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useMemo } from 'react';
 import {
   Button,
   Typography,
-  Input,
   ScrollList,
   ScrollItem,
+  Spin,
 } from '@douyinfe/semi-ui';
 import { API, showError, copy, showSuccess } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { API_ENDPOINTS } from '../../constants/common.constant';
+import { UPTIME_STATUS_MAP } from '../../constants/dashboard.constants';
 import { StatusContext } from '../../context/Status';
 import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
+import { IconPlay, IconFile, IconCopy } from '@douyinfe/semi-icons';
+import { DollarSign, Shield, Activity } from 'lucide-react';
 import {
-  IconGithubLogo,
-  IconPlay,
-  IconFile,
-  IconCopy,
-} from '@douyinfe/semi-icons';
+  getUptimeStatusColor,
+  getUptimeStatusText,
+} from '../../helpers/dashboard';
 import { Link } from 'react-router-dom';
-import NoticeModal from '../../components/layout/NoticeModal';
 import {
-  Moonshot,
-  OpenAI,
-  XAI,
-  Zhipu,
-  Volcengine,
-  Cohere,
-  Claude,
-  Gemini,
-  Suno,
-  Minimax,
-  Wenxin,
-  Spark,
-  Qingyan,
-  DeepSeek,
-  Qwen,
-  Midjourney,
-  Grok,
-  AzureAI,
-  Hunyuan,
-  Xinference,
+  Moonshot, OpenAI, XAI, Zhipu, Volcengine, Cohere, Claude,
+  Gemini, Suno, Minimax, Wenxin, Spark, Qingyan, DeepSeek,
+  Qwen, Midjourney, Grok, AzureAI, Hunyuan, Xinference,
 } from '@lobehub/icons';
 
 const { Text } = Typography;
@@ -71,7 +54,6 @@ const Home = () => {
   const actualTheme = useActualTheme();
   const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
   const [homePageContent, setHomePageContent] = useState('');
-  const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
   const docsLink = statusState?.status?.docs_link || '';
@@ -80,6 +62,21 @@ const Home = () => {
   const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
   const [endpointIndex, setEndpointIndex] = useState(0);
   const isChinese = i18n.language.startsWith('zh');
+  const [uptimeData, setUptimeData] = useState([]);
+  const [uptimeLoading, setUptimeLoading] = useState(false);
+
+  const loadUptimeData = async () => {
+    setUptimeLoading(true);
+    try {
+      const lang = i18n.language?.split('-')[0] || 'zh';
+      let uptimeUrl = '/api/uptime/status';
+      if (lang && lang !== 'zh') uptimeUrl += `?lang=${lang}`;
+      const res = await API.get(uptimeUrl);
+      const { success, data } = res.data;
+      if (success && Array.isArray(data)) setUptimeData(data);
+    } catch (e) { /* ignore */ }
+    setUptimeLoading(false);
+  };
 
   const displayHomePageContent = async () => {
     setHomePageContent(localStorage.getItem('home_page_content') || '');
@@ -92,8 +89,6 @@ const Home = () => {
       }
       setHomePageContent(content);
       localStorage.setItem('home_page_content', content);
-
-      // 如果内容是 URL，则发送主题模式
       if (data.startsWith('https://')) {
         const iframe = document.querySelector('iframe');
         if (iframe) {
@@ -105,41 +100,18 @@ const Home = () => {
       }
     } else {
       showError(message);
-      setHomePageContent('加载首页内容失败...');
+      setHomePageContent(t('加载首页内容失败'));
     }
     setHomePageContentLoaded(true);
   };
 
   const handleCopyBaseURL = async () => {
     const ok = await copy(serverAddress);
-    if (ok) {
-      showSuccess(t('已复制到剪切板'));
-    }
+    if (ok) showSuccess(t('已复制到剪切板'));
   };
 
-  useEffect(() => {
-    const checkNoticeAndShow = async () => {
-      const lastCloseDate = localStorage.getItem('notice_close_date');
-      const today = new Date().toDateString();
-      if (lastCloseDate !== today) {
-        try {
-          const res = await API.get('/api/notice');
-          const { success, data } = res.data;
-          if (success && data && data.trim() !== '') {
-            setNoticeVisible(true);
-          }
-        } catch (error) {
-          console.error('获取公告失败:', error);
-        }
-      }
-    };
 
-    checkNoticeAndShow();
-  }, []);
-
-  useEffect(() => {
-    displayHomePageContent().then();
-  }, []);
+  useEffect(() => { displayHomePageContent(); }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -148,188 +120,218 @@ const Home = () => {
     return () => clearInterval(timer);
   }, [endpointItems.length]);
 
+  useEffect(() => { loadUptimeData(); }, []);
+
+  // 语言切换时重新加载 uptime 数据
+  useEffect(() => { loadUptimeData(); }, [i18n.language]);
+
+  const allMonitors = useMemo(() => {
+    const list = [];
+    uptimeData.forEach((group) => {
+      (group.monitors || []).forEach((m) => list.push(m));
+    });
+    return list;
+  }, [uptimeData]);
+
+  const overallUptime = useMemo(() => {
+    if (allMonitors.length === 0) return 0;
+    const sum = allMonitors.reduce((acc, m) => acc + (m.uptime || 0), 0);
+    return (sum / allMonitors.length) * 100;
+  }, [allMonitors]);
+
+  const providerIcons = [
+    <Moonshot size={28} />, <OpenAI size={28} />, <XAI size={28} />,
+    <Zhipu.Color size={28} />, <Volcengine.Color size={28} />,
+    <Cohere.Color size={28} />, <Claude.Color size={28} />,
+    <Gemini.Color size={28} />, <Suno size={28} />,
+    <Minimax.Color size={28} />, <Wenxin.Color size={28} />,
+    <Spark.Color size={28} />, <Qingyan.Color size={28} />,
+    <DeepSeek.Color size={28} />, <Qwen.Color size={28} />,
+    <Midjourney size={28} />, <Grok size={28} />,
+    <AzureAI.Color size={28} />, <Hunyuan.Color size={28} />,
+    <Xinference.Color size={28} />,
+  ];
+
   return (
     <div className='w-full overflow-x-hidden'>
-      <NoticeModal
-        visible={noticeVisible}
-        onClose={() => setNoticeVisible(false)}
-        isMobile={isMobile}
-      />
       {homePageContentLoaded && homePageContent === '' ? (
-        <div className='w-full overflow-x-hidden'>
-          {/* Banner 部分 */}
-          <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
-            {/* 背景模糊晕染球 */}
-            <div className='blur-ball blur-ball-indigo' />
-            <div className='blur-ball blur-ball-teal' />
-            <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
-              {/* 居中内容区 */}
-              <div className='flex flex-col items-center justify-center text-center max-w-4xl mx-auto'>
-                <div className='flex flex-col items-center justify-center mb-6 md:mb-8'>
-                  <h1
-                    className={`text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-semi-color-text-0 leading-tight ${isChinese ? 'tracking-wide md:tracking-wider' : ''}`}
-                  >
-                    <>
-                      {t('统一的')}
-                      <br />
-                      <span className='shine-text'>{t('大模型接口网关')}</span>
-                    </>
-                  </h1>
-                  <p className='text-base md:text-lg lg:text-xl text-semi-color-text-1 mt-4 md:mt-6 max-w-xl'>
-                    {t('更好的价格，更好的稳定性，只需要将模型基址替换为：')}
-                  </p>
-                  {/* BASE URL 与端点选择 */}
-                  <div className='flex flex-col md:flex-row items-center justify-center gap-4 w-full mt-4 md:mt-6 max-w-md'>
-                    <Input
-                      readonly
-                      value={serverAddress}
-                      className='flex-1 !rounded-full'
-                      size={isMobile ? 'default' : 'large'}
-                      suffix={
-                        <div className='flex items-center gap-2'>
-                          <ScrollList
-                            bodyHeight={32}
-                            style={{ border: 'unset', boxShadow: 'unset' }}
-                          >
-                            <ScrollItem
-                              mode='wheel'
-                              cycled={true}
-                              list={endpointItems}
-                              selectedIndex={endpointIndex}
-                              onSelect={({ index }) => setEndpointIndex(index)}
-                            />
-                          </ScrollList>
-                          <Button
-                            type='primary'
-                            onClick={handleCopyBaseURL}
-                            icon={<IconCopy />}
-                            className='!rounded-full'
-                          />
-                        </div>
-                      }
+        <div className='w-full mt-16 h-[calc(100vh-64px-36px)] flex flex-col relative overflow-hidden'>
+          {/* Backgrounds */}
+          <div className='home-grid-bg' />
+          <div className='hero-mesh' style={{ opacity: 0.3 }} />
+
+          {/* Main split area */}
+          <div className={`home-split flex-1 min-h-0 ${isMobile ? '' : 'items-center'}`}>
+            {/* Left: Hero */}
+            <div className={`flex flex-col justify-center ${isMobile ? 'flex-none' : 'w-[55%]'}`}>
+              <div className='home-accent-line home-enter home-enter-d1' />
+
+              <h1 className={`text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold leading-tight home-enter home-enter-d2 ${isChinese ? 'tracking-wide' : ''}`}>
+                <span className='gradient-text'>{t('heroTitle')}</span>
+              </h1>
+
+              <div className='home-enter home-enter-d3'>
+                <p className='text-sm md:text-base lg:text-lg text-semi-color-text-2 mt-3 md:mt-5 max-w-xl leading-relaxed'>
+                  {t('heroDesc')}
+                </p>
+
+                {/* Pills */}
+                <div className='flex flex-wrap gap-3 mt-5'>
+                  <span className='stat-pill !bg-amber-500/10 !border-amber-500/20'>
+                    <DollarSign size={14} className='text-amber-500' />{t('heroPillPrice')}
+                  </span>
+                  <span className='stat-pill !bg-emerald-500/10 !border-emerald-500/20'>
+                    <Shield size={14} className='text-emerald-500' />{t('heroPillStable')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Terminal bar */}
+              <div className='home-terminal-bar home-enter home-enter-d4'>
+                <span className='terminal-prompt'>$</span>
+                <span className='terminal-url'>{serverAddress}</span>
+                <span className='terminal-endpoint'>
+                  <ScrollList bodyHeight={24} style={{ border: 'unset', boxShadow: 'unset' }}>
+                    <ScrollItem
+                      mode='wheel'
+                      cycled={true}
+                      list={endpointItems}
+                      selectedIndex={endpointIndex}
+                      onSelect={({ index }) => setEndpointIndex(index)}
                     />
+                  </ScrollList>
+                </span>
+                <button className='terminal-copy-btn' onClick={handleCopyBaseURL}>
+                  <IconCopy size='small' />
+                </button>
+              </div>
+
+              {/* CTA buttons */}
+              <div className='flex flex-row gap-3 mt-6 home-enter home-enter-d5'>
+                <Link to='/console'>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    size={isMobile ? 'default' : 'large'}
+                    className='!rounded-3xl px-8 py-2'
+                    icon={<IconPlay />}
+                  >
+                    {t('获取密钥')}
+                  </Button>
+                </Link>
+                {isDemoSiteMode && statusState?.status?.version ? (
+                  <Button
+                    size={isMobile ? 'default' : 'large'}
+                    className='!rounded-3xl px-6 py-2'
+                  >
+                    {statusState.status.version}
+                  </Button>
+                ) : (
+                  docsLink && (
+                    <Button
+                      size={isMobile ? 'default' : 'large'}
+                      className='!rounded-3xl px-6 py-2'
+                      icon={<IconFile />}
+                      onClick={() => window.open(docsLink, '_blank')}
+                    >
+                      {t('文档')}
+                    </Button>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Right: Status Panel */}
+            <div className={`glass-card home-status-panel flex flex-col overflow-hidden ${isMobile ? 'flex-none max-h-[40vh]' : 'w-[45%] max-h-full'}`}>
+              {/* Uptime hero */}
+              <div className='px-5 pt-5 pb-3'>
+                {allMonitors.length > 0 && (
+                  <div className='uptime-hero-number'>
+                    {overallUptime.toFixed(1)}%
                   </div>
+                )}
+                <div className='flex items-center gap-2 mt-1'>
+                  <Activity size={14} className='text-emerald-500' />
+                  <span className='text-xs font-medium text-semi-color-text-2'>{t('systemStatus')}</span>
                 </div>
 
-                {/* 操作按钮 */}
-                <div className='flex flex-row gap-4 justify-center items-center'>
-                  <Link to='/console'>
-                    <Button
-                      theme='solid'
-                      type='primary'
-                      size={isMobile ? 'default' : 'large'}
-                      className='!rounded-3xl px-8 py-2'
-                      icon={<IconPlay />}
-                    >
-                      {t('获取密钥')}
-                    </Button>
-                  </Link>
-                  {isDemoSiteMode && statusState?.status?.version ? (
-                    <Button
-                      size={isMobile ? 'default' : 'large'}
-                      className='flex items-center !rounded-3xl px-6 py-2'
-                      icon={<IconGithubLogo />}
-                      onClick={() =>
-                        window.open(
-                          'https://github.com/QuantumNous/new-api',
-                          '_blank',
-                        )
-                      }
-                    >
-                      {statusState.status.version}
-                    </Button>
+                {/* Mini bar chart */}
+                {allMonitors.length > 0 && (
+                  <div className='status-bars mt-4'>
+                    {allMonitors.map((monitor, idx) => {
+                      const pct = (monitor.uptime || 0) * 100;
+                      const color = getUptimeStatusColor(monitor.status, UPTIME_STATUS_MAP);
+                      return (
+                        <div
+                          key={idx}
+                          className='status-bar-item'
+                          style={{ height: `${Math.max(pct * 0.48, 4)}px`, backgroundColor: color }}
+                          title={`${monitor.name}: ${pct.toFixed(2)}%`}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className='mx-4 border-t border-semi-color-border opacity-50' />
+
+              {/* Monitor list */}
+              <Spin spinning={uptimeLoading}>
+                <div className='flex-1 overflow-y-auto px-3 py-2 scrollbar-hide'>
+                  {allMonitors.length > 0 ? (
+                    allMonitors.map((monitor, idx) => {
+                      const pct = (monitor.uptime || 0) * 100;
+                      const color = getUptimeStatusColor(monitor.status, UPTIME_STATUS_MAP);
+                      return (
+                        <div key={idx} className='status-row'>
+                          <div className='flex items-center justify-between'>
+                            <div className='flex items-center gap-2 min-w-0'>
+                              <div className='status-dot' style={{ backgroundColor: color }} />
+                              <span className='text-xs font-medium text-semi-color-text-0 truncate'>
+                                {monitor.name}
+                              </span>
+                            </div>
+                            <span className='text-xs font-mono font-semibold ml-2 flex-shrink-0' style={{ color }}>
+                              {pct.toFixed(2)}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
                   ) : (
-                    docsLink && (
-                      <Button
-                        size={isMobile ? 'default' : 'large'}
-                        className='flex items-center !rounded-3xl px-6 py-2'
-                        icon={<IconFile />}
-                        onClick={() => window.open(docsLink, '_blank')}
-                      >
-                        {t('文档')}
-                      </Button>
+                    !uptimeLoading && (
+                      <div className='flex flex-col items-center justify-center py-10 text-semi-color-text-3'>
+                        <Activity size={32} className='mb-3 opacity-30' />
+                        <span className='text-sm'>{t('noMonitorData')}</span>
+                      </div>
                     )
                   )}
                 </div>
+              </Spin>
+            </div>
+          </div>
 
-                {/* 框架兼容性图标 */}
-                <div className='mt-12 md:mt-16 lg:mt-20 w-full'>
-                  <div className='flex items-center mb-6 md:mb-8 justify-center'>
-                    <Text
-                      type='tertiary'
-                      className='text-lg md:text-xl lg:text-2xl font-light'
-                    >
-                      {t('支持众多的大模型供应商')}
-                    </Text>
-                  </div>
-                  <div className='flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 lg:gap-8 max-w-5xl mx-auto px-4'>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Moonshot size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <OpenAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <XAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Zhipu.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Volcengine.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Cohere.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Claude.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Gemini.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Suno size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Minimax.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Wenxin.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Spark.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qingyan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <DeepSeek.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qwen.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Midjourney size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Grok size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <AzureAI.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Hunyuan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Xinference.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Typography.Text className='!text-lg sm:!text-xl md:!text-2xl lg:!text-3xl font-bold'>
-                        30+
-                      </Typography.Text>
-                    </div>
-                  </div>
-                </div>
+          {/* Bottom: Provider marquee */}
+          <div className='flex-none px-4 pb-4 pt-2'>
+            <div className='border-t border-semi-color-border opacity-30 mb-4' />
+            <div className='flex items-center justify-center mb-2'>
+              <Text type='tertiary' className='text-xs md:text-sm font-medium tracking-wider uppercase'>
+                {t('支持众多的大模型供应商')}
+              </Text>
+            </div>
+            <div className='marquee-container max-w-4xl mx-auto'>
+              <div className='marquee-track'>
+                {[...Array(2)].map((_, i) => (
+                  <React.Fragment key={i}>
+                    {providerIcons.map((icon, j) => (
+                      <div key={`${i}-${j}`} className='marquee-pill'>
+                        {icon}
+                      </div>
+                    ))}
+                  </React.Fragment>
+                ))}
               </div>
             </div>
           </div>
@@ -343,7 +345,7 @@ const Home = () => {
             />
           ) : (
             <div
-              className='mt-[60px]'
+              className='mt-[64px]'
               dangerouslySetInnerHTML={{ __html: homePageContent }}
             />
           )}

@@ -47,8 +47,27 @@ const routerMap = {
   task: '/console/task',
   models: '/console/models',
   deployment: '/console/deployment',
+  analytics: '/console/analytics',
+  purchase: '/console/purchase',
+  purchaseAnalytics: '/console/purchase-analytics',
+  message: '/console/message',
+  inbox: '/console/inbox',
+  ipAnalysis: '/console/ip-analysis',
+  promptRule: '/console/prompt-rule',
   playground: '/console/playground',
   personal: '/console/personal',
+  affTransfer: '/console/aff-transfer',
+  affTransferAdmin: '/console/aff-transfer-admin',
+  rebateSettings: '/console/rebate-settings',
+  tickets: '/console/tickets',
+  ticketsAdmin: '/console/tickets-admin',
+  invoice: '/console/invoice',
+  invoiceAdmin: '/console/invoice-admin',
+  siteRpm: '/console/site-rpm',
+  channelMonitor: '/console/channel-monitor',
+  agentLog: '/console/agent-log',
+  agentReport: '/console/agent-report',
+  requestTrace: '/console/request-trace',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -134,6 +153,26 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'personal',
         to: '/personal',
       },
+      {
+        text: t('我的消息'),
+        itemKey: 'inbox',
+        to: '/inbox',
+      },
+      {
+        text: t('tickets.title'),
+        itemKey: 'tickets',
+        to: '/tickets',
+      },
+      {
+        text: t('invoice.title'),
+        itemKey: 'invoice',
+        to: '/invoice',
+      },
+      {
+        text: t('sidebar.affTransfer'),
+        itemKey: 'affTransfer',
+        to: '/aff-transfer',
+      },
     ];
 
     // 根据配置过滤项目
@@ -151,7 +190,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('渠道管理'),
         itemKey: 'channel',
         to: '/channel',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('订阅管理'),
@@ -184,10 +223,100 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
+        text: t('数据分析'),
+        itemKey: 'analytics',
+        to: '/analytics',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('订单管理'),
+        itemKey: 'purchase',
+        to: '/purchase',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('sidebar.purchaseAnalytics'),
+        itemKey: 'purchaseAnalytics',
+        to: '/purchase-analytics',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('提示词替换'),
+        itemKey: 'promptRule',
+        to: '/prompt-rule',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('站内消息'),
+        itemKey: 'message',
+        to: '/message',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('tickets.adminTitle'),
+        itemKey: 'ticketsAdmin',
+        to: '/tickets-admin',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('invoice.adminTitle'),
+        itemKey: 'invoiceAdmin',
+        to: '/invoice-admin',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('IP 分析'),
+        itemKey: 'ipAnalysis',
+        to: '/ip-analysis',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('sidebar.affTransferAdmin'),
+        itemKey: 'affTransferAdmin',
+        to: '/aff-transfer-admin',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('sidebar.rebateSettings'),
+        itemKey: 'rebateSettings',
+        to: '/rebate-settings',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
         text: t('系统设置'),
         itemKey: 'setting',
         to: '/setting',
         className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
+        text: 'Site RPM',
+        itemKey: 'siteRpm',
+        to: '/site-rpm',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('渠道监控'),
+        itemKey: 'channelMonitor',
+        to: '/channel-monitor',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('agentLog.sidebarTitle'),
+        itemKey: 'agentLog',
+        to: '/agent-log',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('agentReport.sidebarTitle'),
+        itemKey: 'agentReport',
+        to: '/agent-report',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('请求追踪'),
+        itemKey: 'requestTrace',
+        to: '/admin/request-trace',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
     ];
 
@@ -266,7 +395,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           updateRouterMapWithChats(chats);
         }
       } catch (e) {
-        showError('聊天数据解析失败');
+        showError(t('聊天数据解析失败'));
       }
     }
   }, []);

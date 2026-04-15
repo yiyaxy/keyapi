@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -72,9 +73,60 @@ func InitOptionMap() {
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
 	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
 	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(system_setting.WorkerAllowHttpImageRequestEnabled)
+	common.OptionMap["PayAddress"] = ""
+	common.OptionMap["CustomCallbackAddress"] = ""
+	common.OptionMap["PaymentReturnUrl"] = ""
+	common.OptionMap["EpayId"] = ""
+	common.OptionMap["EpayKey"] = ""
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
+	common.OptionMap["MinInvoiceAmount"] = strconv.Itoa(operation_setting.MinInvoiceAmount)
+	common.OptionMap["InvoiceProvider"] = common.InvoiceProvider
+	common.OptionMap["InvoiceAutoIssueEnabled"] = strconv.FormatBool(common.InvoiceAutoIssueEnabled)
+	common.OptionMap["InvoicePiaoTongBaseURL"] = ""
+	common.OptionMap["InvoicePiaoTongPlatformCode"] = ""
+	common.OptionMap["InvoicePiaoTongPlatformAlias"] = ""
+	common.OptionMap["InvoicePiaoTong3DESKey"] = ""
+	common.OptionMap["InvoicePiaoTongPrivateKey"] = ""
+	common.OptionMap["InvoicePiaoTongPublicKey"] = ""
+	common.OptionMap["InvoiceSellerTaxpayerNum"] = ""
+	common.OptionMap["InvoiceSellerEnterpriseName"] = ""
+	common.OptionMap["InvoiceDefaultIssueKindCode"] = "82"
+	common.OptionMap["InvoiceDefaultTaxClassificationCode"] = ""
+	common.OptionMap["InvoiceDefaultGoodsName"] = "技术服务费"
+	common.OptionMap["InvoiceDefaultTaxRateValue"] = "0.01"
+	common.OptionMap["InvoiceDefaultPaymentCode"] = ""
+	common.OptionMap["InvoiceDefaultSubMchid"] = ""
+	common.OptionMap["InvoiceDefaultAccount"] = ""
+	common.OptionMap["InvoiceQueryRetryIntervalSeconds"] = "60"
+	common.OptionMap["InvoiceQueryMaxAttempts"] = "60"
+	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(setting.StripeMinTopUp)
+	common.OptionMap["StripeApiSecret"] = setting.StripeApiSecret
+	common.OptionMap["StripeWebhookSecret"] = setting.StripeWebhookSecret
+	common.OptionMap["StripePriceId"] = setting.StripePriceId
+	common.OptionMap["StripeUnitPrice"] = strconv.FormatFloat(setting.StripeUnitPrice, 'f', -1, 64)
+	common.OptionMap["StripePromotionCodesEnabled"] = strconv.FormatBool(setting.StripePromotionCodesEnabled)
+	common.OptionMap["CreemApiKey"] = setting.CreemApiKey
+	common.OptionMap["CreemProducts"] = setting.CreemProducts
+	common.OptionMap["CreemTestMode"] = strconv.FormatBool(setting.CreemTestMode)
+	common.OptionMap["CreemWebhookSecret"] = setting.CreemWebhookSecret
+	common.OptionMap["WaffoEnabled"] = strconv.FormatBool(setting.WaffoEnabled)
+	common.OptionMap["WaffoApiKey"] = setting.WaffoApiKey
+	common.OptionMap["WaffoPrivateKey"] = setting.WaffoPrivateKey
+	common.OptionMap["WaffoPublicCert"] = setting.WaffoPublicCert
+	common.OptionMap["WaffoSandboxPublicCert"] = setting.WaffoSandboxPublicCert
+	common.OptionMap["WaffoSandboxApiKey"] = setting.WaffoSandboxApiKey
+	common.OptionMap["WaffoSandboxPrivateKey"] = setting.WaffoSandboxPrivateKey
+	common.OptionMap["WaffoSandbox"] = strconv.FormatBool(setting.WaffoSandbox)
+	common.OptionMap["WaffoMerchantId"] = setting.WaffoMerchantId
+	common.OptionMap["WaffoNotifyUrl"] = setting.WaffoNotifyUrl
+	common.OptionMap["WaffoReturnUrl"] = setting.WaffoReturnUrl
+	common.OptionMap["WaffoSubscriptionReturnUrl"] = setting.WaffoSubscriptionReturnUrl
+	common.OptionMap["WaffoCurrency"] = setting.WaffoCurrency
+	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(setting.WaffoUnitPrice, 'f', -1, 64)
+	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(setting.WaffoMinTopUp)
+	common.OptionMap["WaffoPayMethods"] = setting.WaffoPayMethods2JsonString()
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -92,6 +144,12 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["TopUpRebateCount"] = strconv.Itoa(common.TopUpRebateCount)
+	common.OptionMap["TopUpRebatePercent"] = strconv.Itoa(common.TopUpRebatePercent)
+	common.OptionMap["SubscriptionRebateCount"] = strconv.Itoa(common.SubscriptionRebateCount)
+	common.OptionMap["TranslationChannelId"] = strconv.Itoa(common.TranslationChannelId)
+	common.OptionMap["TranslationModel"] = common.TranslationModel
+	common.OptionMap["SubscriptionRecommendCount"] = strconv.Itoa(common.SubscriptionRecommendCount)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -117,6 +175,7 @@ func InitOptionMap() {
 	common.OptionMap["DataExportInterval"] = strconv.Itoa(common.DataExportInterval)
 	common.OptionMap["DataExportDefaultTime"] = common.DataExportDefaultTime
 	common.OptionMap["DefaultCollapseSidebar"] = strconv.FormatBool(common.DefaultCollapseSidebar)
+	common.OptionMap["SessionVersion"] = strconv.Itoa(common.SessionVersion)
 	common.OptionMap["MjNotifyEnabled"] = strconv.FormatBool(setting.MjNotifyEnabled)
 	common.OptionMap["MjAccountFilterEnabled"] = strconv.FormatBool(setting.MjAccountFilterEnabled)
 	common.OptionMap["MjModeClearEnabled"] = strconv.FormatBool(setting.MjModeClearEnabled)
@@ -160,6 +219,8 @@ func SyncOptions(frequency int) {
 		time.Sleep(time.Duration(frequency) * time.Second)
 		common.SysLog("syncing options from database")
 		loadOptionsFromDatabase()
+		LoadIpBanCache()
+		CleanExpiredIpBans()
 	}
 }
 
@@ -182,11 +243,18 @@ func UpdateOption(key string, value string) error {
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	oldValue, existed := common.OptionMap[key]
+	changed := !existed || oldValue != value
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
-	if handleConfigUpdate(key, value) {
+	if handleConfigUpdate(key, value, changed) {
 		return nil // 已由配置系统处理
+	}
+
+	// Clear translation cache for Notice
+	if key == "Notice" && changed {
+		DeleteContentTranslationsByTypeAndId("notice", "main")
 	}
 
 	// 处理传统配置项...
@@ -284,6 +352,8 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
+		case "ErrorLogEnabled":
+			constant.ErrorLogEnabled = boolValue
 		}
 	}
 	switch key {
@@ -306,16 +376,102 @@ func updateOptionMap(key string, value string) (err error) {
 		system_setting.WorkerUrl = value
 	case "WorkerValidKey":
 		system_setting.WorkerValidKey = value
+	case "PayAddress":
+		operation_setting.PayAddress = value
 	case "Chats":
 		err = setting.UpdateChatsByJsonString(value)
 	case "AutoGroups":
 		err = setting.UpdateAutoGroupsByJsonString(value)
+	case "CustomCallbackAddress":
+		operation_setting.CustomCallbackAddress = value
+	case "PaymentReturnUrl":
+		operation_setting.PaymentReturnUrl = value
+	case "EpayId":
+		operation_setting.EpayId = value
+	case "EpayKey":
+		operation_setting.EpayKey = value
 	case "Price":
 		operation_setting.Price, _ = strconv.ParseFloat(value, 64)
 	case "USDExchangeRate":
 		operation_setting.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
 	case "MinTopUp":
 		operation_setting.MinTopUp, _ = strconv.Atoi(value)
+	case "MinInvoiceAmount":
+		operation_setting.MinInvoiceAmount, _ = strconv.Atoi(value)
+	case "InvoiceProvider":
+		provider := strings.TrimSpace(value)
+		if provider != common.InvoiceProviderPiaoTong {
+			provider = common.InvoiceProviderManual
+		}
+		common.InvoiceProvider = provider
+	case "InvoiceAutoIssueEnabled":
+		common.InvoiceAutoIssueEnabled = value == "true"
+	case "InvoicePiaoTongBaseURL",
+		"InvoicePiaoTongPlatformCode",
+		"InvoicePiaoTongPlatformAlias",
+		"InvoicePiaoTong3DESKey",
+		"InvoicePiaoTongPrivateKey",
+		"InvoicePiaoTongPublicKey",
+		"InvoiceSellerTaxpayerNum",
+		"InvoiceSellerEnterpriseName",
+		"InvoiceDefaultIssueKindCode",
+		"InvoiceDefaultTaxClassificationCode",
+		"InvoiceDefaultGoodsName",
+		"InvoiceDefaultTaxRateValue",
+		"InvoiceQueryRetryIntervalSeconds",
+		"InvoiceQueryMaxAttempts":
+		// Already written to OptionMap at the top of updateOptionMap;
+		// no additional in-memory variable to update.
+	case "StripeApiSecret":
+		setting.StripeApiSecret = value
+	case "StripeWebhookSecret":
+		setting.StripeWebhookSecret = value
+	case "StripePriceId":
+		setting.StripePriceId = value
+	case "StripeUnitPrice":
+		setting.StripeUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "StripeMinTopUp":
+		setting.StripeMinTopUp, _ = strconv.Atoi(value)
+	case "StripePromotionCodesEnabled":
+		setting.StripePromotionCodesEnabled = value == "true"
+	case "CreemApiKey":
+		setting.CreemApiKey = value
+	case "CreemProducts":
+		setting.CreemProducts = value
+	case "CreemTestMode":
+		setting.CreemTestMode = value == "true"
+	case "CreemWebhookSecret":
+		setting.CreemWebhookSecret = value
+	case "WaffoEnabled":
+		setting.WaffoEnabled = value == "true"
+	case "WaffoApiKey":
+		setting.WaffoApiKey = value
+	case "WaffoPrivateKey":
+		setting.WaffoPrivateKey = value
+	case "WaffoPublicCert":
+		setting.WaffoPublicCert = value
+	case "WaffoSandboxPublicCert":
+		setting.WaffoSandboxPublicCert = value
+	case "WaffoSandboxApiKey":
+		setting.WaffoSandboxApiKey = value
+	case "WaffoSandboxPrivateKey":
+		setting.WaffoSandboxPrivateKey = value
+	case "WaffoSandbox":
+		setting.WaffoSandbox = value == "true"
+	case "WaffoMerchantId":
+		setting.WaffoMerchantId = value
+	case "WaffoNotifyUrl":
+		setting.WaffoNotifyUrl = value
+	case "WaffoReturnUrl":
+		setting.WaffoReturnUrl = value
+	case "WaffoSubscriptionReturnUrl":
+		setting.WaffoSubscriptionReturnUrl = value
+	case "WaffoCurrency":
+		setting.WaffoCurrency = value
+	case "WaffoUnitPrice":
+		setting.WaffoUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "WaffoMinTopUp":
+		setting.WaffoMinTopUp, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
@@ -354,6 +510,18 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "TopUpRebateCount":
+		common.TopUpRebateCount, _ = strconv.Atoi(value)
+	case "TopUpRebatePercent":
+		common.TopUpRebatePercent, _ = strconv.Atoi(value)
+	case "SubscriptionRebateCount":
+		common.SubscriptionRebateCount, _ = strconv.Atoi(value)
+	case "TranslationChannelId":
+		common.TranslationChannelId, _ = strconv.Atoi(value)
+	case "TranslationModel":
+		common.TranslationModel = value
+	case "SubscriptionRecommendCount":
+		common.SubscriptionRecommendCount, _ = strconv.Atoi(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
@@ -368,6 +536,8 @@ func updateOptionMap(key string, value string) (err error) {
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
+	case "SessionVersion":
+		common.SessionVersion, _ = strconv.Atoi(value)
 	case "DataExportInterval":
 		common.DataExportInterval, _ = strconv.Atoi(value)
 	case "DataExportDefaultTime":
@@ -416,12 +586,16 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	case "PayMethods":
 		err = operation_setting.UpdatePayMethodsByJsonString(value)
+	case "WaffoPayMethods":
+		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
+		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
+		// No additional in-memory variable to update.
 	}
 	return err
 }
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
-func handleConfigUpdate(key, value string) bool {
+func handleConfigUpdate(key, value string, changed bool) bool {
 	parts := strings.SplitN(key, ".", 2)
 	if len(parts) != 2 {
 		return false // 不是分层配置
@@ -441,6 +615,9 @@ func handleConfigUpdate(key, value string) bool {
 		configKey: value,
 	}
 	config.UpdateConfigFromMap(cfg, configMap)
+
+	// Hash-based cache validation handles stale entries automatically,
+	// no need to clear translation cache on save.
 
 	// 特定配置的后处理
 	if configName == "performance_setting" {

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -69,6 +70,7 @@ func GetStatus(c *gin.Context) {
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
 		"top_up_link":                 common.TopUpLink,
+		"topup_subscription_notice":   strings.TrimSpace(common.OptionMap["TopupSubscriptionNotice"]),
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
@@ -90,6 +92,12 @@ func GetStatus(c *gin.Context) {
 
 		"usd_exchange_rate": operation_setting.USDExchangeRate,
 		"price":             operation_setting.Price,
+		"min_invoice_amount": operation_setting.MinInvoiceAmount,
+		"invoice_provider": common.InvoiceProvider,
+		"invoice_auto_issue_enabled": common.InvoiceAutoIssueEnabled,
+		"invoice_default_issue_kind_code": strings.TrimSpace(common.OptionMap["InvoiceDefaultIssueKindCode"]),
+		"invoice_default_goods_name": strings.TrimSpace(common.OptionMap["InvoiceDefaultGoodsName"]),
+		"stripe_unit_price": setting.StripeUnitPrice,
 
 		// 面板启用开关
 		"api_info_enabled":      cs.ApiInfoEnabled,
@@ -114,7 +122,13 @@ func GetStatus(c *gin.Context) {
 		"setup":                       constant.Setup,
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
+		"refund_policy_enabled":       legalSetting.RefundPolicy != "",
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		"top_up_rebate_count":         common.TopUpRebateCount,
+		"top_up_rebate_percent":       common.TopUpRebatePercent,
+		"quota_for_inviter":           common.QuotaForInviter,
+		"quota_for_invitee":           common.QuotaForInvitee,
+		"subscription_recommend_count": common.SubscriptionRecommendCount,
 		"_qn":                         "new-api",
 	}
 
@@ -167,11 +181,21 @@ func GetStatus(c *gin.Context) {
 
 func GetNotice(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
+	notice := common.OptionMap["Notice"]
+	common.OptionMapRWMutex.RUnlock()
+
+	lang := c.Query("lang")
+	if lang != "" && lang != "zh" && notice != "" {
+		translated, err := service.TranslateContent("notice", "main", map[string]string{"content": notice}, lang)
+		if err == nil && translated["content"] != "" {
+			notice = translated["content"]
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    common.OptionMap["Notice"],
+		"data":    notice,
 	})
 	return
 }
@@ -201,6 +225,15 @@ func GetPrivacyPolicy(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    system_setting.GetLegalSettings().PrivacyPolicy,
+	})
+	return
+}
+
+func GetRefundPolicy(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    system_setting.GetLegalSettings().RefundPolicy,
 	})
 	return
 }
@@ -283,10 +316,13 @@ func SendEmailVerification(c *gin.Context) {
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
 	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
-	content := fmt.Sprintf("<p>您好，你正在进行%s邮箱验证。</p>"+
-		"<p>您的验证码为: <strong>%s</strong></p>"+
-		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
-	err := common.SendEmail(subject, email, content)
+	body := fmt.Sprintf(`<p style="margin:0 0 16px">您好，您正在进行 <strong>%s</strong> 邮箱验证。</p>
+<div style="margin:20px 0;padding:20px;background-color:#f0f4ff;border-radius:8px;text-align:center">
+<span style="font-size:32px;font-weight:700;letter-spacing:8px;color:#4f46e5">%s</span>
+</div>
+<p style="margin:16px 0 0;color:#6b7280;font-size:13px">验证码 %d 分钟内有效，如果不是本人操作，请忽略此邮件。</p>`,
+		common.SystemName, code, common.VerificationValidMinutes)
+	err := common.SendEmail(subject, email, common.WrapEmailHTML(body))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -318,11 +354,15 @@ func SendPasswordResetEmail(c *gin.Context) {
 	common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 	link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
 	subject := fmt.Sprintf("%s密码重置", common.SystemName)
-	content := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
-		"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
-		"<p>如果链接无法点击，请尝试点击下面的链接或将其复制到浏览器中打开：<br> %s </p>"+
-		"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, link, link, common.VerificationValidMinutes)
-	err := common.SendEmail(subject, email, content)
+	body := fmt.Sprintf(`<p style="margin:0 0 16px">您好，您正在进行 <strong>%s</strong> 密码重置。</p>
+<div style="margin:20px 0;text-align:center">
+<a href="%s" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600">重置密码</a>
+</div>
+<p style="margin:16px 0 8px;color:#6b7280;font-size:13px">如果按钮无法点击，请复制以下链接到浏览器中打开：</p>
+<p style="margin:0 0 16px;word-break:break-all;color:#4f46e5;font-size:13px">%s</p>
+<p style="margin:0;color:#6b7280;font-size:13px">链接 %d 分钟内有效，如果不是本人操作，请忽略此邮件。</p>`,
+		common.SystemName, link, link, common.VerificationValidMinutes)
+	err := common.SendEmail(subject, email, common.WrapEmailHTML(body))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -331,7 +371,6 @@ func SendPasswordResetEmail(c *gin.Context) {
 		"success": true,
 		"message": "",
 	})
-	return
 }
 
 type PasswordResetRequest struct {

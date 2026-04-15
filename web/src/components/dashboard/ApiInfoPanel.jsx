@@ -49,56 +49,51 @@ const ApiInfoPanel = ({
     >
       <ScrollableContainer maxHeight='24rem'>
         {apiInfoData.length > 0 ? (
-          apiInfoData.map((api) => (
-            <React.Fragment key={api.id}>
-              <div className='flex p-2 hover:bg-white rounded-lg transition-colors cursor-pointer'>
-                <div className='flex-shrink-0 mr-3'>
-                  <Avatar size='extra-small' color={api.color}>
+          <div className={`grid gap-2 p-2 ${apiInfoData.length >= 3 ? 'grid-cols-3' : apiInfoData.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {apiInfoData.map((api) => (
+              <div key={api.id} className='p-2 hover:bg-white rounded-lg transition-colors cursor-pointer border border-gray-100'>
+                <div className='flex items-center gap-2 mb-1'>
+                  <Avatar size='extra-extra-small' color={api.color}>
                     {api.route.substring(0, 2)}
                   </Avatar>
+                  <span className='text-sm font-medium text-gray-900 !font-bold truncate'>
+                    {api.route}
+                  </span>
                 </div>
-                <div className='flex-1'>
-                  <div className='flex flex-wrap items-center justify-between mb-1 w-full gap-2'>
-                    <span className='text-sm font-medium text-gray-900 !font-bold break-all'>
-                      {api.route}
-                    </span>
-                    <div className='flex items-center gap-1 mt-1 lg:mt-0'>
-                      <Tag
-                        prefixIcon={<Gauge size={12} />}
-                        size='small'
-                        color='white'
-                        shape='circle'
-                        onClick={() => handleSpeedTest(api.url)}
-                        className='cursor-pointer hover:opacity-80 text-xs'
-                      >
-                        {t('测速')}
-                      </Tag>
-                      <Tag
-                        prefixIcon={<ExternalLink size={12} />}
-                        size='small'
-                        color='white'
-                        shape='circle'
-                        onClick={() =>
-                          window.open(api.url, '_blank', 'noopener,noreferrer')
-                        }
-                        className='cursor-pointer hover:opacity-80 text-xs'
-                      >
-                        {t('跳转')}
-                      </Tag>
-                    </div>
-                  </div>
-                  <div
-                    className='!text-semi-color-primary break-all cursor-pointer hover:underline mb-1'
-                    onClick={() => handleCopyUrl(api.url)}
+                <div
+                  className='!text-semi-color-primary text-xs break-all cursor-pointer hover:underline mb-1'
+                  onClick={() => handleCopyUrl(api.url)}
+                >
+                  {api.url}
+                </div>
+                <div className='text-xs text-gray-500 mb-1.5'>{api.description}</div>
+                <div className='flex items-center gap-1'>
+                  <Tag
+                    prefixIcon={<Gauge size={12} />}
+                    size='small'
+                    color='white'
+                    shape='circle'
+                    onClick={() => handleSpeedTest(api.url)}
+                    className='cursor-pointer hover:opacity-80 text-xs'
                   >
-                    {api.url}
-                  </div>
-                  <div className='text-gray-500'>{api.description}</div>
+                    {t('测速')}
+                  </Tag>
+                  <Tag
+                    prefixIcon={<ExternalLink size={12} />}
+                    size='small'
+                    color='white'
+                    shape='circle'
+                    onClick={() =>
+                      window.open(api.url, '_blank', 'noopener,noreferrer')
+                    }
+                    className='cursor-pointer hover:opacity-80 text-xs'
+                  >
+                    {t('跳转')}
+                  </Tag>
                 </div>
               </div>
-              <Divider />
-            </React.Fragment>
-          ))
+            ))}
+          </div>
         ) : (
           <div className='flex justify-center items-center min-h-[20rem] w-full'>
             <Empty

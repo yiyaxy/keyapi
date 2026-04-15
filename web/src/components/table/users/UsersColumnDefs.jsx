@@ -209,6 +209,7 @@ const renderOperations = (
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
+    showUserIpHistoryModal,
     t,
   },
 ) => {
@@ -221,6 +222,11 @@ const renderOperations = (
       node: 'item',
       name: t('订阅管理'),
       onClick: () => showUserSubscriptionsModal(record),
+    },
+    {
+      node: 'item',
+      name: t('IP 记录'),
+      onClick: () => showUserIpHistoryModal(record),
     },
     {
       node: 'divider',
@@ -309,6 +315,7 @@ export const getUsersColumns = ({
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
+  showUserIpHistoryModal,
 }) => {
   return [
     {
@@ -366,6 +373,7 @@ export const getUsersColumns = ({
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,
+          showUserIpHistoryModal,
           t,
         }),
     },

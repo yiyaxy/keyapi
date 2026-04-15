@@ -17,6 +17,15 @@ export function formatSubscriptionDuration(plan, t) {
   return `${value} ${unitLabels[unit] || unit}`;
 }
 
+export function formatQuotaLabel(plan, t) {
+  const period = plan?.quota_reset_period || 'never';
+  if (period === 'daily') return t('每日额度');
+  if (period === 'weekly') return t('每周额度');
+  if (period === 'monthly') return t('每月额度');
+  if (period === 'custom') return t('周期额度');
+  return t('总额度');
+}
+
 export function formatSubscriptionResetPeriod(plan, t) {
   const period = plan?.quota_reset_period || 'never';
   if (period === 'never') return t('不重置');

@@ -17,8 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef } from 'react';
-import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import {
+  Button,
+  Col,
+  Form,
+  Row,
+  Spin,
+  Tag,
+  Typography,
+} from '@douyinfe/semi-ui';
 import {
   compareObjects,
   API,
@@ -32,7 +40,11 @@ import HttpStatusCodeRulesInput from '../../../components/settings/HttpStatusCod
 
 export default function SettingsMonitoring(props) {
   const { t } = useTranslation();
+  const { Text } = Typography;
   const [loading, setLoading] = useState(false);
+  const [channelLoading, setChannelLoading] = useState(false);
+  const [allChannels, setAllChannels] = useState([]);
+  const [channelSearchText, setChannelSearchText] = useState('');
   const [inputs, setInputs] = useState({
     ChannelDisableThreshold: '',
     QuotaRemindThreshold: '',
@@ -44,12 +56,92 @@ export default function SettingsMonitoring(props) {
       '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
     'monitor_setting.auto_test_channel_enabled': false,
     'monitor_setting.auto_test_channel_minutes': 10,
+    ChannelMonitorVisibility: '{"hidden_channel_ids":[]}',
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
   const parsedAutoDisableStatusCodes = parseHttpStatusCodeRules(
     inputs.AutomaticDisableStatusCodes || '',
   );
+  const parsedMonitorVisibility = useMemo(() => {
+    try {
+      const parsed = JSON.parse(inputs.ChannelMonitorVisibility || '{}');
+      const hiddenIds = Array.isArray(parsed?.hidden_channel_ids)
+        ? parsed.hidden_channel_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id))
+        : [];
+      return { ok: true, hiddenChannelIds: hiddenIds };
+    } catch (error) {
+      return { ok: false, hiddenChannelIds: [] };
+    }
+  }, [inputs.ChannelMonitorVisibility]);
+
+  const visibleChannels = useMemo(() => {
+    const keyword = channelSearchText.trim().toLowerCase();
+    const selectedIds = new Set(parsedMonitorVisibility.hiddenChannelIds);
+    const matches = keyword
+      ? allChannels.filter((channel) => {
+          const name = String(channel.name || '').toLowerCase();
+          const baseURL = String(channel.base_url || '').toLowerCase();
+          return name.includes(keyword) || baseURL.includes(keyword);
+        })
+      : allChannels;
+
+    return [...matches].sort((a, b) => {
+      const aSelected = selectedIds.has(Number(a.id)) ? 1 : 0;
+      const bSelected = selectedIds.has(Number(b.id)) ? 1 : 0;
+      if (aSelected !== bSelected) return bSelected - aSelected;
+      return Number(a.id) - Number(b.id);
+    });
+  }, [allChannels, channelSearchText, parsedMonitorVisibility.hiddenChannelIds]);
+
+  const hiddenChannelIdsValue = parsedMonitorVisibility.hiddenChannelIds.map(String);
+
+  const updateMonitorVisibility = (hiddenChannelIds) => {
+    const normalized = Array.from(
+      new Set(
+        (hiddenChannelIds || [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id)),
+      ),
+    ).sort((a, b) => a - b);
+
+    setInputs({
+      ...inputs,
+      ChannelMonitorVisibility: JSON.stringify({
+        hidden_channel_ids: normalized,
+      }),
+    });
+  };
+
+  const toggleHiddenChannel = (channelId) => {
+    const nextHiddenIds = new Set(parsedMonitorVisibility.hiddenChannelIds);
+    if (nextHiddenIds.has(channelId)) {
+      nextHiddenIds.delete(channelId);
+    } else {
+      nextHiddenIds.add(channelId);
+    }
+    updateMonitorVisibility(Array.from(nextHiddenIds));
+  };
+
+  const fetchChannels = async () => {
+    try {
+      setChannelLoading(true);
+      const res = await API.get('/api/channel/?p=0&page_size=1000&id_sort=true');
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message);
+        return;
+      }
+      setAllChannels(data?.items || []);
+    } catch (error) {
+      showError(t('获取渠道失败：') + error.message);
+    } finally {
+      setChannelLoading(false);
+    }
+  };
+
   const parsedAutoRetryStatusCodes = parseHttpStatusCodeRules(
     inputs.AutomaticRetryStatusCodes || '',
   );
@@ -73,6 +165,9 @@ export default function SettingsMonitoring(props) {
           : '';
       return showError(`${t('自动重试状态码格式不正确')}${details}`);
     }
+    if (!parsedMonitorVisibility.ok) {
+      return showError(t('渠道监控可见性配置格式不正确'));
+    }
     const requestQueue = updateArray.map((item) => {
       let value = '';
       if (typeof inputs[item.key] === 'boolean') {
@@ -81,6 +176,9 @@ export default function SettingsMonitoring(props) {
         const normalizedMap = {
           AutomaticDisableStatusCodes: parsedAutoDisableStatusCodes.normalized,
           AutomaticRetryStatusCodes: parsedAutoRetryStatusCodes.normalized,
+          ChannelMonitorVisibility: JSON.stringify({
+            hidden_channel_ids: parsedMonitorVisibility.hiddenChannelIds,
+          }),
         };
         value = normalizedMap[item.key] ?? inputs[item.key];
       }
@@ -110,10 +208,35 @@ export default function SettingsMonitoring(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    fetchChannels();
+  }, []);
+
+  useEffect(() => {
+    const currentInputs = {
+      ...inputs,
+      ChannelMonitorVisibility:
+        inputs.ChannelMonitorVisibility || '{"hidden_channel_ids":[]}',
+    };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+        if (key === 'ChannelMonitorVisibility') {
+          try {
+            const parsed = JSON.parse(
+              props.options[key] || '{"hidden_channel_ids":[]}',
+            );
+            currentInputs[key] = JSON.stringify({
+              hidden_channel_ids: Array.isArray(parsed?.hidden_channel_ids)
+                ? parsed.hidden_channel_ids
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isInteger(id))
+                : [],
+            });
+          } catch (error) {
+            currentInputs[key] = props.options[key] || '{"hidden_channel_ids":[]}';
+          }
+        } else {
+          currentInputs[key] = props.options[key];
+        }
       }
     }
     setInputs(currentInputs);
@@ -130,6 +253,65 @@ export default function SettingsMonitoring(props) {
           style={{ marginBottom: 15 }}
         >
           <Form.Section text={t('监控设置')}>
+            <Row gutter={16}>
+              <Col xs={24} sm={24} md={16} lg={16} xl={16}>
+                <Form.Select
+                  field={'ChannelMonitorVisibilityHiddenIds'}
+                  label={t('监控隐藏渠道')}
+                  placeholder={t('搜索并选择需要在监控页隐藏的渠道')}
+                  extraText={t(
+                    '这里选中的渠道会从通道监控页面隐藏，不影响实际渠道配置与请求转发。',
+                  )}
+                  multiple
+                  filter
+                  searchPosition='dropdown'
+                  loading={channelLoading}
+                  value={hiddenChannelIdsValue}
+                  onSearch={setChannelSearchText}
+                  onChange={(value) => updateMonitorVisibility(value || [])}
+                  optionList={visibleChannels.map((channel) => ({
+                    value: String(channel.id),
+                    label: `${channel.name || '-'} (#${channel.id})`,
+                  }))}
+                  renderSelectedItem={(optionNode) => optionNode}
+                />
+                <div style={{ marginTop: 8 }}>
+                  <Text type='tertiary' size='small'>
+                    {t('已隐藏渠道数')}：{parsedMonitorVisibility.hiddenChannelIds.length}
+                  </Text>
+                </div>
+              </Col>
+              <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                <div style={{ marginTop: 28 }}>
+                  <Button
+                    type='tertiary'
+                    onClick={() => updateMonitorVisibility([])}
+                    disabled={parsedMonitorVisibility.hiddenChannelIds.length === 0}
+                  >
+                    {t('清空监控隐藏渠道')}
+                  </Button>
+                </div>
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {parsedMonitorVisibility.hiddenChannelIds.slice(0, 8).map((id) => (
+                    <Tag
+                      key={id}
+                      closable
+                      onClose={(e) => {
+                        e.preventDefault();
+                        toggleHiddenChannel(id);
+                      }}
+                    >
+                      #{id}
+                    </Tag>
+                  ))}
+                  {parsedMonitorVisibility.hiddenChannelIds.length > 8 && (
+                    <Tag color='grey'>
+                      +{parsedMonitorVisibility.hiddenChannelIds.length - 8}
+                    </Tag>
+                  )}
+                </div>
+              </Col>
+            </Row>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.Switch

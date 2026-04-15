@@ -20,6 +20,7 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -59,6 +60,8 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	c.Set("login_type", "password")
+
 	// 检查是否启用2FA
 	if model.IsTwoFAEnabled(user.Id) {
 		// 设置pending session，等待2FA验证
@@ -92,11 +95,24 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
+	session.Set("session_version", common.SessionVersion)
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
 		return
 	}
+
+	// Record login IP asynchronously
+	ip := c.ClientIP()
+	userAgent := c.Request.UserAgent()
+	loginType := c.GetString("login_type")
+	userId := user.Id
+	username := user.Username
+	gopool.Go(func() {
+		model.RecordLoginIp(userId, username, ip, loginType, userAgent)
+		service.LookupIPAsync(ip)
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "",
 		"success": true,
@@ -176,8 +192,9 @@ func Register(c *gin.Context) {
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
 	}
-	if common.EmailVerificationEnabled {
-		cleanUser.Email = user.Email
+	if user.Email != "" {
+		// 邮箱统一转为小写存储，确保大小写不敏感
+		cleanUser.Email = strings.ToLower(user.Email)
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
 		common.ApiError(c, err)
@@ -244,8 +261,9 @@ func GetAllUsers(c *gin.Context) {
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
+	ip := c.Query("ip")
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.SearchUsers(keyword, group, ip, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -332,8 +350,21 @@ func TransferAffQuota(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	err = user.TransferAffQuotaToQuota(tran.Quota)
-	if err != nil {
+	if float64(tran.Quota) < common.QuotaPerUnit {
+		common.ApiErrorMsg(c, "转移额度不足最小额度")
+		return
+	}
+	if user.AffQuota < tran.Quota {
+		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": "邀请额度不足"})
+		return
+	}
+	transferReq := &model.AffTransferRequest{
+		UserId:   id,
+		Username: user.Username,
+		Quota:    tran.Quota,
+		Status:   model.AffTransferStatusPending,
+	}
+	if err := model.CreateAffTransferRequest(transferReq); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
 		return
 	}
@@ -406,9 +437,17 @@ func GetSelf(c *gin.Context) {
 		"inviter_id":        user.InviterId,
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
+		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
 	}
+
+	// Expose effective rebate settings for the current user (as inviter)
+	rebateSetting := model.GetEffectiveRebateSetting(user.Id)
+	responseData["effective_register_reward"] = rebateSetting.RegisterReward
+	responseData["effective_invitee_reward"] = rebateSetting.InviteeReward
+	responseData["effective_top_up_rebate_count"] = rebateSetting.TopUpRebateCount
+	responseData["effective_top_up_rebate_percent"] = rebateSetting.TopUpRebatePercent
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -732,6 +771,11 @@ func UpdateSelf(c *gin.Context) {
 }
 
 func checkUpdatePassword(originalPassword string, newPassword string, userId int) (updatePassword bool, err error) {
+	// 没有新密码，不需要验证原密码，直接跳过
+	if newPassword == "" {
+		return
+	}
+
 	var currentUser *model.User
 	currentUser, err = model.GetUserById(userId, true)
 	if err != nil {
@@ -742,9 +786,6 @@ func checkUpdatePassword(originalPassword string, newPassword string, userId int
 	// 支持第一次账号绑定时原密码为空的情况
 	if !common.ValidatePasswordAndHash(originalPassword, currentUser.Password) && currentUser.Password != "" {
 		err = fmt.Errorf("原密码错误")
-		return
-	}
-	if newPassword == "" {
 		return
 	}
 	updatePassword = true
@@ -924,9 +965,19 @@ func ManageUser(c *gin.Context) {
 	return
 }
 
+type emailBindRequest struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
+}
+
 func EmailBind(c *gin.Context) {
-	email := c.Query("email")
-	code := c.Query("code")
+	var req emailBindRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+	email := req.Email
+	code := req.Code
 	if !common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose) {
 		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 		return
@@ -941,7 +992,8 @@ func EmailBind(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	user.Email = email
+	// 邮箱存储为小写，确保大小写不敏感
+	user.Email = strings.ToLower(email)
 	// no need to check if this email already taken, because we have used verification code to check it
 	err = user.Update(false)
 	if err != nil {

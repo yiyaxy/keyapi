@@ -483,6 +483,7 @@ func Verify2FALogin(c *gin.Context) {
 	session.Delete("pending_user_id")
 	session.Save()
 
+	c.Set("login_type", "2fa")
 	setupLogin(user, c)
 }
 

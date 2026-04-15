@@ -25,24 +25,23 @@ import {
   Tooltip,
   Popover,
   Typography,
-  Button
 } from '@douyinfe/semi-ui';
 import {
-  timestamp2string,
   renderGroup,
   renderQuota,
   stringToColor,
   getLogOther,
   renderModelTag,
-  renderClaudeLogContent,
-  renderLogContent,
   renderModelPriceSimple,
   renderAudioModelPrice,
   renderClaudeModelPrice,
   renderModelPrice,
+  isRoot,
+  getSmartCacheSavingsQuota,
+  renderSmartCacheQuota,
 } from '../../../helpers';
 import { IconHelpCircle } from '@douyinfe/semi-icons';
-import { Route, Sparkles } from 'lucide-react';
+import { CircleAlert, Route, Sparkles } from 'lucide-react';
 
 const colors = [
   'amber',
@@ -148,12 +147,58 @@ function renderType(type, t) {
   }
 }
 
-function renderIsStream(bool, t) {
+function buildStreamStatusTooltip(ss, t) {
+  if (!ss) return null;
+  const lines = [
+    t('流状态') + '：' + t('异常'),
+    (ss.end_reason || 'unknown'),
+  ];
+  if (ss.error_count > 0) {
+    lines.push(`${t('软错误')}: ${ss.error_count}`);
+  }
+  if (ss.end_error) {
+    lines.push(ss.end_error);
+  }
+  return (
+    <div style={{ lineHeight: 1.6, display: 'flex', flexDirection: 'column' }}>
+      {lines.map((line, i) => (
+        <div key={i}>{line}</div>
+      ))}
+    </div>
+  );
+}
+
+function renderIsStream(bool, t, streamStatus) {
+  const isError = streamStatus && streamStatus.status !== 'ok';
+
   if (bool) {
     return (
-      <Tag color='blue' shape='circle'>
-        {t('流')}
-      </Tag>
+      <span style={{ position: 'relative', display: 'inline-block' }}>
+        <Tag color='blue' shape='circle'>
+          {t('流')}
+        </Tag>
+        {isError && (
+          <Tooltip content={buildStreamStatusTooltip(streamStatus, t)}>
+            <span
+              style={{
+                position: 'absolute',
+                right: -4,
+                top: -4,
+                lineHeight: 1,
+                color: '#ef4444',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              <CircleAlert
+                size={14}
+                strokeWidth={2.5}
+                color='currentColor'
+              />
+            </span>
+          </Tooltip>
+        )}
+      </span>
     );
   } else {
     return (
@@ -330,12 +375,149 @@ function getPromptCacheSummary(other) {
   };
 }
 
+function normalizeDetailText(detail) {
+  return String(detail || '')
+    .replace(/\n\r/g, '\n')
+    .replace(/\r\n/g, '\n');
+}
+
+function getUsageLogGroupSummary(groupRatio, userGroupRatio, t) {
+  const parsedUserGroupRatio = Number(userGroupRatio);
+  const useUserGroupRatio =
+    Number.isFinite(parsedUserGroupRatio) && parsedUserGroupRatio !== -1;
+  const ratio = useUserGroupRatio ? userGroupRatio : groupRatio;
+  if (ratio === undefined || ratio === null || ratio === '') {
+    return '';
+  }
+  return `${useUserGroupRatio ? t('专属倍率') : t('分组')} ${formatRatio(ratio)}x`;
+}
+
+function renderCompactDetailSummary(summarySegments) {
+  const segments = Array.isArray(summarySegments)
+    ? summarySegments.filter((segment) => segment?.text)
+    : [];
+  if (!segments.length) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        maxWidth: 180,
+        lineHeight: 1.35,
+      }}
+    >
+      {segments.map((segment, index) => (
+        <Typography.Text
+          key={`${segment.text}-${index}`}
+          type={segment.tone === 'secondary' ? 'tertiary' : undefined}
+          size={segment.tone === 'secondary' ? 'small' : undefined}
+          style={{
+            display: 'block',
+            maxWidth: '100%',
+            fontSize: 12,
+            marginTop: index === 0 ? 0 : 2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {segment.text}
+        </Typography.Text>
+      ))}
+    </div>
+  );
+}
+
+function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
+  const other = getLogOther(record.other);
+
+  if (record.type === 6) {
+    return {
+      segments: [{ text: t('异步任务退款'), tone: 'primary' }],
+    };
+  }
+
+  if (other == null || record.type !== 2) {
+    return null;
+  }
+
+  if (
+    other?.violation_fee === true ||
+    Boolean(other?.violation_fee_code) ||
+    Boolean(other?.violation_fee_marker)
+  ) {
+    const feeQuota = other?.fee_quota ?? record?.quota;
+    const groupText = getUsageLogGroupSummary(
+      other?.group_ratio,
+      other?.user_group_ratio,
+      t,
+    );
+    return {
+      segments: [
+        groupText ? { text: groupText, tone: 'primary' } : null,
+        { text: t('违规扣费'), tone: 'primary' },
+        {
+          text: `${t('扣费')}：${renderQuota(feeQuota, 6)}`,
+          tone: 'secondary',
+        },
+        text ? { text: `${t('详情')}：${text}`, tone: 'secondary' } : null,
+      ].filter(Boolean),
+    };
+  }
+
+  return {
+    segments: other?.claude
+      ? renderModelPriceSimple(
+          other.model_ratio,
+          other.model_price,
+          other.group_ratio,
+          other?.user_group_ratio,
+          other.cache_tokens || 0,
+          other.cache_ratio || 1.0,
+          other.cache_creation_tokens || 0,
+          other.cache_creation_ratio || 1.0,
+          other.cache_creation_tokens_5m || 0,
+          other.cache_creation_ratio_5m || other.cache_creation_ratio || 1.0,
+          other.cache_creation_tokens_1h || 0,
+          other.cache_creation_ratio_1h || other.cache_creation_ratio || 1.0,
+          false,
+          1.0,
+          other?.is_system_prompt_overwritten,
+          'claude',
+          billingDisplayMode,
+          'segments',
+        )
+      : renderModelPriceSimple(
+          other.model_ratio,
+          other.model_price,
+          other.group_ratio,
+          other?.user_group_ratio,
+          other.cache_tokens || 0,
+          other.cache_ratio || 1.0,
+          0,
+          1.0,
+          0,
+          1.0,
+          0,
+          1.0,
+          false,
+          1.0,
+          other?.is_system_prompt_overwritten,
+          'openai',
+          billingDisplayMode,
+          'segments',
+        ),
+  };
+}
+
 export const getLogsColumns = ({
   t,
   COLUMN_KEYS,
   copyText,
   showUserInfoFunc,
   openChannelAffinityUsageCacheModal,
+  onIpClick,
   isAdminUser,
   billingDisplayMode = 'price',
 }) => {
@@ -375,10 +557,26 @@ export const getLogsColumns = ({
         }
 
         return isAdminUser &&
-          (record.type === 0 || record.type === 2 || record.type === 5 || record.type === 6) ? (
+          (record.type === 0 ||
+            record.type === 2 ||
+            record.type === 5 ||
+            record.type === 6) ? (
           <Space>
             <span style={{ position: 'relative', display: 'inline-block' }}>
-              <Tooltip content={record.channel_name || t('未知渠道')}>
+              <Tooltip content={
+                <div>
+                  <div>{record.channel_name || t('未知渠道')}</div>
+                  {(other?.admin_info?.site_label || other?.admin_info?.upstream_address) && (
+                    <div style={{ opacity: 0.8, fontSize: 12 }}>
+                      {other.admin_info.site_label
+                        ? other.admin_info.upstream_address
+                          ? `${other.admin_info.site_label} (${other.admin_info.upstream_address})`
+                          : other.admin_info.site_label
+                        : other.admin_info.upstream_address}
+                    </div>
+                  )}
+                </div>
+              }>
                 <span>
                   <Tag
                     color={colors[parseInt(text) % colors.length]}
@@ -466,7 +664,10 @@ export const getLogsColumns = ({
       title: t('令牌'),
       dataIndex: 'token_name',
       render: (text, record, index) => {
-        return record.type === 0 || record.type === 2 || record.type === 5 || record.type === 6 ? (
+        return record.type === 0 ||
+          record.type === 2 ||
+          record.type === 5 ||
+          record.type === 6 ? (
           <div>
             <Tag
               color='grey'
@@ -489,7 +690,12 @@ export const getLogsColumns = ({
       title: t('分组'),
       dataIndex: 'group',
       render: (text, record, index) => {
-        if (record.type === 0 || record.type === 2 || record.type === 5 || record.type === 6) {
+        if (
+          record.type === 0 ||
+          record.type === 2 ||
+          record.type === 5 ||
+          record.type === 6
+        ) {
           if (record.group) {
             return <>{renderGroup(record.group)}</>;
           } else {
@@ -529,7 +735,10 @@ export const getLogsColumns = ({
       title: t('模型'),
       dataIndex: 'model_name',
       render: (text, record, index) => {
-        return record.type === 0 || record.type === 2 || record.type === 5 || record.type === 6 ? (
+        return record.type === 0 ||
+          record.type === 2 ||
+          record.type === 5 ||
+          record.type === 6 ? (
           <>{renderModelName(record, copyText, t)}</>
         ) : (
           <></>
@@ -551,7 +760,7 @@ export const getLogsColumns = ({
               <Space>
                 {renderUseTime(text, t)}
                 {renderFirstUseTime(other?.frt, t)}
-                {renderIsStream(record.is_stream, t)}
+                {renderIsStream(record.is_stream, t, other?.stream_status)}
               </Space>
             </>
           );
@@ -596,7 +805,37 @@ export const getLogsColumns = ({
           cacheText = `${t('缓存写')} ${formatTokenCount(cacheSummary.cacheWriteTokens)}`;
         }
 
-        return record.type === 0 || record.type === 2 || record.type === 5 || record.type === 6 ? (
+        // Channel discount savings calculation
+        const cached = Number(other?.cache_tokens || 0);
+        const baseInputRatio = Number(other?.model_ratio || 0) * (
+          Number.isFinite(Number(other?.user_group_ratio)) &&
+          Number(other?.user_group_ratio) > 0 &&
+          Number(other?.user_group_ratio) !== -1
+            ? Number(other?.user_group_ratio)
+            : Number(other?.group_ratio || 0)
+        );
+        const channelRatio = Number(other?.channel_ratio || 0);
+        const channelSavingsQuota =
+          cached > 0 && channelRatio > 0 && channelRatio < 1
+            ? getSmartCacheSavingsQuota(
+                {
+                  ...other,
+                  cache_ratio: 1,
+                },
+                record.prompt_tokens,
+                record.completion_tokens,
+                record.quota,
+              )
+            : 0;
+        const discountTokenEquivalent =
+          cached > 0 && baseInputRatio > 0 && channelSavingsQuota > 0
+            ? Math.round(channelSavingsQuota / baseInputRatio)
+            : 0;
+
+        return record.type === 0 ||
+          record.type === 2 ||
+          record.type === 5 ||
+          record.type === 6 ? (
           <div
             style={{
               display: 'inline-flex',
@@ -605,7 +844,16 @@ export const getLogsColumns = ({
               lineHeight: 1.2,
             }}
           >
-            <span>{text}</span>
+            <span>
+              {text}
+              {discountTokenEquivalent > 0 && (
+                <Tooltip content={`${t('渠道优惠')}: ${renderSmartCacheQuota(channelSavingsQuota)} (-${discountTokenEquivalent})`}>
+                  <span style={{ color: 'var(--semi-color-success)', marginLeft: 4 }}>
+                    (-{discountTokenEquivalent})
+                  </span>
+                </Tooltip>
+              )}
+            </span>
             {cacheText ? (
               <span
                 style={{
@@ -630,7 +878,10 @@ export const getLogsColumns = ({
       dataIndex: 'completion_tokens',
       render: (text, record, index) => {
         return parseInt(text) > 0 &&
-          (record.type === 0 || record.type === 2 || record.type === 5 || record.type === 6) ? (
+          (record.type === 0 ||
+            record.type === 2 ||
+            record.type === 5 ||
+            record.type === 6) ? (
           <>{<span> {text} </span>}</>
         ) : (
           <></>
@@ -642,23 +893,64 @@ export const getLogsColumns = ({
       title: t('花费'),
       dataIndex: 'quota',
       render: (text, record, index) => {
-        if (!(record.type === 0 || record.type === 2 || record.type === 5 || record.type === 6)) {
+        if (
+          !(
+            record.type === 0 ||
+            record.type === 2 ||
+            record.type === 5 ||
+            record.type === 6
+          )
+        ) {
           return <></>;
         }
         const other = getLogOther(record.other);
         const isSubscription = other?.billing_source === 'subscription';
+        const actualQuota = Number(record.quota || 0);
+        const savedQuota = getSmartCacheSavingsQuota(
+          other,
+          record.prompt_tokens,
+          record.completion_tokens,
+          record.quota,
+        );
+        const originalQuota = actualQuota + savedQuota;
+        const hasCacheSavings = savedQuota > 0;
         if (isSubscription) {
-          // Subscription billed: show only tag (no $0), but keep tooltip for equivalent cost.
           return (
-            <Tooltip content={`${t('由订阅抵扣')}：${renderQuota(text, 6)}`}>
-              <span>{renderBillingTag(record, t)}</span>
+            <Tooltip content={
+              hasCacheSavings
+                ? `${t('由订阅抵扣')} | ${t('已节约')}: ${renderSmartCacheQuota(savedQuota)}`
+                : t('由订阅抵扣')
+            }>
+              <span>
+                {hasCacheSavings && (
+                  <span style={{ textDecoration: 'line-through', opacity: 0.4, marginRight: 4 }}>
+                    {renderSmartCacheQuota(originalQuota)}
+                  </span>
+                )}
+                {renderQuota(actualQuota, 6)}
+                <Tag color='green' size='small' shape='circle' style={{marginLeft: 4}}>
+                  {t('抵')}
+                </Tag>
+              </span>
             </Tooltip>
           );
         }
-        return <>{renderQuota(text, 6)}</>;
+        if (hasCacheSavings) {
+          return (
+            <Tooltip content={`${t('已节约')}: ${renderSmartCacheQuota(savedQuota)}`}>
+              <span>
+                <span style={{ textDecoration: 'line-through', opacity: 0.4, marginRight: 4 }}>
+                  {renderSmartCacheQuota(originalQuota)}
+                </span>
+                {renderSmartCacheQuota(actualQuota)}
+              </span>
+            </Tooltip>
+          );
+        }
+        return <>{renderQuota(actualQuota, 6)}</>;
       },
     },
-    {
+    isAdminUser && {
       key: COLUMN_KEYS.IP,
       title: (
         <div className='flex items-center gap-1'>
@@ -674,14 +966,20 @@ export const getLogsColumns = ({
       ),
       dataIndex: 'ip',
       render: (text, record, index) => {
-        return (record.type === 2 || record.type === 5) && text ? (
-          <Tooltip content={text}>
+        return text ? (
+          <Tooltip content={t('查询IP信息')}>
             <span>
               <Tag
                 color='orange'
                 shape='circle'
+                style={{ cursor: 'pointer' }}
                 onClick={(event) => {
-                  copyText(event, text);
+                  event.stopPropagation();
+                  if (onIpClick) {
+                    onIpClick(text);
+                  } else {
+                    copyText(event, text);
+                  }
                 }}
               >
                 {text}
@@ -690,6 +988,41 @@ export const getLogsColumns = ({
           </Tooltip>
         ) : (
           <></>
+        );
+      },
+    },
+    isRoot() && {
+      key: COLUMN_KEYS.UPSTREAM_IP,
+      title: t('本站标签'),
+      dataIndex: 'other',
+      render: (text, record, index) => {
+        if (record.type !== 2) return <></>;
+        const other = getLogOther(record.other);
+        const label = other?.admin_info?.site_label;
+        const addr = other?.admin_info?.upstream_address;
+        const display = label || addr;
+        if (!display) return <></>;
+        const tooltipContent = label && addr ? `${label} (${addr})` : display;
+        return (
+          <Tooltip content={label ? tooltipContent : t('查询IP信息')}>
+            <span>
+              <Tag
+                color='cyan'
+                shape='circle'
+                style={{ cursor: 'pointer' }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (onIpClick) {
+                    onIpClick(addr);
+                  } else {
+                    copyText(event, display);
+                  }
+                }}
+              >
+                {display}
+              </Tag>
+            </span>
+          </Tooltip>
         );
       },
     },
@@ -709,14 +1042,19 @@ export const getLogsColumns = ({
           }
           if (other.admin_info !== undefined) {
             if (
-                other.admin_info.use_channel !== null &&
-                other.admin_info.use_channel !== undefined &&
-                other.admin_info.use_channel !== ''
+              other.admin_info.use_channel !== null &&
+              other.admin_info.use_channel !== undefined &&
+              other.admin_info.use_channel !== ''
             ) {
               let useChannel = other.admin_info.use_channel;
               let useChannelStr = useChannel.join('->');
               content = t('渠道') + `：${useChannelStr}`;
             }
+          }
+          if (other.admin_info?.retry_errors?.length > 0) {
+            content += ` (${other.admin_info.retry_errors.length}${t('次重试')})`;
+          }
+          if (other.admin_info !== undefined) {
           }
         }
         return isAdminUser ? <div>{content}</div> : <></>;
@@ -727,19 +1065,16 @@ export const getLogsColumns = ({
       title: t('详情'),
       dataIndex: 'content',
       fixed: 'right',
+      width: 200,
       render: (text, record, index) => {
-        let other = getLogOther(record.other);
-        if (record.type === 6) {
-          return (
-            <Typography.Paragraph
-              ellipsis={{ rows: 2 }}
-              style={{ maxWidth: 240 }}
-            >
-              {t('异步任务退款')}
-            </Typography.Paragraph>
-          );
-        }
-        if (other == null || record.type !== 2) {
+        const detailSummary = getUsageLogDetailSummary(
+          record,
+          text,
+          billingDisplayMode,
+          t,
+        );
+
+        if (!detailSummary) {
           return (
             <Typography.Paragraph
               ellipsis={{
@@ -749,97 +1084,15 @@ export const getLogsColumns = ({
                   opts: { style: { width: 240 } },
                 },
               }}
-              style={{ maxWidth: 240 }}
+              style={{ maxWidth: 200, marginBottom: 0 }}
             >
               {text}
             </Typography.Paragraph>
           );
         }
 
-        if (
-          other?.violation_fee === true ||
-          Boolean(other?.violation_fee_code) ||
-          Boolean(other?.violation_fee_marker)
-        ) {
-          const feeQuota = other?.fee_quota ?? record?.quota;
-          const summary = [
-            t('违规扣费'),
-            `${t('扣费')}：${renderQuota(feeQuota, 6)}`,
-            `${t('分组倍率')}：${formatRatio(other?.group_ratio)}`,
-            text ? `${t('详情')}：${text}` : null,
-          ]
-            .filter(Boolean)
-            .join('\n');
-          return (
-            <Typography.Paragraph
-              ellipsis={{
-                rows: 2,
-                showTooltip: {
-                  type: 'popover',
-                  opts: { style: { width: 240 } },
-                },
-              }}
-              style={{ maxWidth: 240, whiteSpace: 'pre-line' }}
-            >
-              {summary}
-            </Typography.Paragraph>
-          );
-        }
-
-        let content = other?.claude
-          ? renderModelPriceSimple(
-              other.model_ratio,
-              other.model_price,
-              other.group_ratio,
-              other?.user_group_ratio,
-              other.cache_tokens || 0,
-              other.cache_ratio || 1.0,
-              other.cache_creation_tokens || 0,
-              other.cache_creation_ratio || 1.0,
-              other.cache_creation_tokens_5m || 0,
-              other.cache_creation_ratio_5m ||
-                other.cache_creation_ratio ||
-                1.0,
-              other.cache_creation_tokens_1h || 0,
-              other.cache_creation_ratio_1h ||
-                other.cache_creation_ratio ||
-                1.0,
-              false,
-              1.0,
-              other?.is_system_prompt_overwritten,
-              'claude',
-              billingDisplayMode,
-            )
-          : renderModelPriceSimple(
-              other.model_ratio,
-              other.model_price,
-              other.group_ratio,
-              other?.user_group_ratio,
-              other.cache_tokens || 0,
-              other.cache_ratio || 1.0,
-              0,
-              1.0,
-              0,
-              1.0,
-              0,
-              1.0,
-              false,
-              1.0,
-              other?.is_system_prompt_overwritten,
-              'openai',
-              billingDisplayMode,
-            );
-        return (
-            <Typography.Paragraph
-                ellipsis={{
-                  rows: 3,
-                }}
-                style={{ maxWidth: 240, whiteSpace: 'pre-line' }}
-            >
-              {content}
-            </Typography.Paragraph>
-        );
+        return renderCompactDetailSummary(detailSummary.segments);
       },
     },
-  ];
+  ].filter(Boolean);
 };

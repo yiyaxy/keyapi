@@ -49,6 +49,13 @@ func RelayMidjourneyImage(c *gin.Context) {
 	if httpClient == nil {
 		httpClient = service.GetHttpClient()
 	}
+	fetchSetting := system_setting.GetFetchSetting()
+	if err := common.ValidateURLWithFetchSetting(midjourneyTask.ImageUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": fmt.Sprintf("request blocked: %v", err),
+		})
+		return
+	}
 	resp, err := httpClient.Get(midjourneyTask.ImageUrl)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -180,6 +187,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	}
 
 	info.InitChannelMeta(c)
+	helper.ApplyChannelBillingOverrides(info)
 
 	if swapFaceRequest.SourceBase64 == "" || swapFaceRequest.TargetBase64 == "" {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "sour_base64_and_target_base64_is_required")
@@ -382,6 +390,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	}
 
 	relayInfo.InitChannelMeta(c)
+	helper.ApplyChannelBillingOverrides(relayInfo)
 
 	if relayInfo.RelayMode == relayconstant.RelayModeMidjourneyAction { // midjourney plus，需要从customId中获取任务信息
 		mjErr := service.CoverPlusActionToNormalAction(&midjRequest)

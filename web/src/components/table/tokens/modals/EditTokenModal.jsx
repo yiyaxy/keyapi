@@ -72,7 +72,7 @@ const EditTokenModal = (props) => {
     model_limits_enabled: false,
     model_limits: [],
     allow_ips: '',
-    group: '',
+    group: [],
     cross_group_retry: false,
     tokenCount: 1,
   });
@@ -127,12 +127,13 @@ const EditTokenModal = (props) => {
   };
 
   const loadGroups = async () => {
-    let res = await API.get(`/api/user/self/groups`);
+    let res = await API.get(`/api/user/self/channel-groups`);
     const { success, message, data } = res.data;
     if (success) {
       let localGroupOptions = Object.entries(data).map(([group, info]) => ({
         label: info.desc,
         value: group,
+        ratio: info.ratio,
       }));
       if (statusState?.status?.default_use_auto_group) {
         if (localGroupOptions.some((group) => group.value === 'auto')) {
@@ -160,6 +161,12 @@ const EditTokenModal = (props) => {
         data.model_limits = data.model_limits.split(',');
       } else {
         data.model_limits = [];
+      }
+      // Convert group string to array for multi-select
+      if (data.group && data.group !== '') {
+        data.group = data.group.split(',').map(g => g.trim()).filter(Boolean);
+      } else {
+        data.group = [];
       }
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
@@ -220,6 +227,10 @@ const EditTokenModal = (props) => {
       }
       localInputs.model_limits = localInputs.model_limits.join(',');
       localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+      // Convert group array to comma-separated string
+      if (Array.isArray(localInputs.group)) {
+        localInputs.group = localInputs.group.join(',');
+      }
       let res = await API.put(`/api/token/`, {
         ...localInputs,
         id: parseInt(props.editingToken.id),
@@ -257,6 +268,10 @@ const EditTokenModal = (props) => {
         }
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+        // Convert group array to comma-separated string
+        if (Array.isArray(localInputs.group)) {
+          localInputs.group = localInputs.group.join(',');
+        }
         let res = await API.post(`/api/token/`, localInputs);
         const { success, message } = res.data;
         if (success) {
@@ -365,8 +380,22 @@ const EditTokenModal = (props) => {
                         placeholder={t('令牌分组，默认为用户的分组')}
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
+                        multiple
                         showClear
                         style={{ width: '100%' }}
+                        onChange={(val) => {
+                          if (!formApiRef.current) return;
+                          // If 'auto' is selected, it's exclusive — clear others
+                          if (Array.isArray(val) && val.includes('auto') && val.length > 1) {
+                            const lastAdded = val[val.length - 1];
+                            if (lastAdded === 'auto') {
+                              formApiRef.current.setValue('group', ['auto']);
+                            } else {
+                              formApiRef.current.setValue('group', val.filter(v => v !== 'auto'));
+                            }
+                          }
+                        }}
+                        extraText={t('选择多个分组时按顺序形成分组链，请求将按顺序尝试各分组的渠道')}
                       />
                     ) : (
                       <Form.Select
@@ -380,7 +409,7 @@ const EditTokenModal = (props) => {
                   <Col
                     span={24}
                     style={{
-                      display: values.group === 'auto' ? 'block' : 'none',
+                      display: (Array.isArray(values.group) ? values.group.includes('auto') || values.group.length > 1 : values.group === 'auto') ? 'block' : 'none',
                     }}
                   >
                     <Form.Switch

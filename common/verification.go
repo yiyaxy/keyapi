@@ -33,8 +33,11 @@ func GenerateVerificationCode(length int) string {
 }
 
 func RegisterVerificationCodeWithKey(key string, code string, purpose string) {
+	key = strings.ToLower(key)
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
+	// 将key转为小写，确保邮箱大小写不敏感
+	key = strings.ToLower(key)
 	verificationMap[purpose+key] = verificationValue{
 		code: code,
 		time: time.Now(),
@@ -45,8 +48,11 @@ func RegisterVerificationCodeWithKey(key string, code string, purpose string) {
 }
 
 func VerifyCodeWithKey(key string, code string, purpose string) bool {
+	key = strings.ToLower(key)
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
+	// 将key转为小写，确保邮箱大小写不敏感
+	key = strings.ToLower(key)
 	value, okay := verificationMap[purpose+key]
 	now := time.Now()
 	if !okay || int(now.Sub(value.time).Seconds()) >= VerificationValidMinutes*60 {
@@ -56,8 +62,11 @@ func VerifyCodeWithKey(key string, code string, purpose string) bool {
 }
 
 func DeleteKey(key string, purpose string) {
+	key = strings.ToLower(key)
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
+	// 将key转为小写，确保邮箱大小写不敏感
+	key = strings.ToLower(key)
 	delete(verificationMap, purpose+key)
 }
 

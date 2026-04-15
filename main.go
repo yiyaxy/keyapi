@@ -20,9 +20,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -113,6 +113,16 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
+	// Site RPM snapshot writer (master-only, retained permanently)
+	if common.IsMasterNode {
+		go model.StartSiteRPMSnapshotWriter()
+	}
+
+	// Invoice query worker (polls PiaoTong for async invoice status)
+	if common.IsMasterNode {
+		go service.InvoiceQueryWorker()
+	}
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)
@@ -185,6 +195,7 @@ func main() {
 
 	// 设置路由
 	router.SetRouter(server, buildFS, indexPage)
+	relaymetrics.RegisterGinMetrics(server)
 	var port = os.Getenv("PORT")
 	if port == "" {
 		port = strconv.Itoa(*common.Port)
@@ -253,9 +264,6 @@ func InitResources() error {
 	// 加载环境变量
 	common.InitEnv()
 
-	// 加载支付宝配置（依赖 .env 已加载）
-	setting.InitAlipaySettings()
-
 	logger.SetupLogger()
 
 	// Initialize model settings
@@ -287,6 +295,11 @@ func InitResources() error {
 	err = model.InitLogDB()
 	if err != nil {
 		return err
+	}
+
+	// Backfill aff_rebate_logs from historical system logs (runs once, needs LOG_DB)
+	if common.IsMasterNode {
+		model.BackfillAffRebateLogs()
 	}
 
 	// Initialize Redis

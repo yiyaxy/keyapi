@@ -17,25 +17,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Banner,
   Modal,
   Typography,
-  Card,
   Button,
+  Select,
   Divider,
   Tooltip,
+  Checkbox,
 } from '@douyinfe/semi-ui';
-import { Crown, CalendarClock, Package } from 'lucide-react';
+import { Crown, CalendarClock, Package, ShieldCheck } from 'lucide-react';
+import { SiStripe } from 'react-icons/si';
+import { IconCreditCard } from '@douyinfe/semi-icons';
 import { renderQuota } from '../../../helpers';
-import { getCurrencyConfig } from '../../../helpers/render';
+
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
+  formatQuotaLabel,
 } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
+
+const normalizePlanStatus = (plan) => {
+  if (plan?.status) return plan.status;
+  return plan?.enabled === false ? 'disabled' : 'active';
+};
 
 const SubscriptionPurchaseModal = ({
   t,
@@ -43,30 +52,51 @@ const SubscriptionPurchaseModal = ({
   onCancel,
   selectedPlan,
   paying,
+  selectedEpayMethod,
+  setSelectedEpayMethod,
+  epayMethods = [],
   enableOnlineTopUp = false,
+  enableStripeTopUp = false,
+  enableCreemTopUp = false,
   purchaseLimitInfo = null,
-  onPayAlipay,
+  refundPolicyEnabled = false,
+  refundPolicyText = '',
+  onPayStripe,
+  onPayCreem,
+  onPayEpay,
 }) => {
+  const [refundPolicyAgreed, setRefundPolicyAgreed] = useState(false);
+
+  useEffect(() => {
+    if (!visible) setRefundPolicyAgreed(false);
+  }, [visible]);
+
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
-  const { symbol, rate } = getCurrencyConfig();
   const price = plan ? Number(plan.price_amount || 0) : 0;
-  const convertedPrice = price * rate;
-  const displayPrice = convertedPrice.toFixed(
-    Number.isInteger(convertedPrice) ? 0 : 2,
-  );
-  const hasAnyPayment = enableOnlineTopUp;
+  const displayPrice = price.toFixed(Number.isInteger(price) ? 0 : 2);
+  
+  const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
+  const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
+  const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
+  const hasAnyPayment = hasStripe || hasCreem || hasEpay;
+  
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
-  const purchaseLimitReached =
-    purchaseLimit > 0 && purchaseCount >= purchaseLimit;
+  const purchaseLimitReached = purchaseLimit > 0 && purchaseCount >= purchaseLimit;
+  const planStatus = normalizePlanStatus(plan);
+  const statusBlocked = planStatus === 'sold_out' || planStatus === 'disabled';
+  const policyBlocked = refundPolicyEnabled && !refundPolicyAgreed;
+  const paymentDisabled = purchaseLimitReached || statusBlocked || policyBlocked;
 
   return (
     <Modal
       title={
-        <div className='flex items-center'>
-          <Crown className='mr-2' size={18} />
-          {t('购买订阅套餐')}
+        <div className='flex items-center gap-2'>
+          <div className='bg-slate-900 p-1.5 rounded-lg text-white'>
+            <Crown size={18} />
+          </div>
+          <span className='font-bold text-slate-900'>{t('购买订阅套餐')}</span>
         </div>
       }
       visible={visible}
@@ -74,117 +104,147 @@ const SubscriptionPurchaseModal = ({
       footer={null}
       size='small'
       centered
+      className='!rounded-3xl'
     >
       {plan ? (
-        <div className='space-y-4 pb-10'>
-          {/* 套餐信息 */}
-          <Card className='!rounded-xl !border-0 bg-slate-50 dark:bg-slate-800'>
+        <div className='space-y-4 pb-4 pt-1'>
+          {/* Plan Info Card */}
+          <div className='p-4 rounded-xl bg-slate-50 border border-slate-100'>
             <div className='space-y-3'>
               <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('套餐名称')}：
-                </Text>
-                <Typography.Text
-                  ellipsis={{ rows: 1, showTooltip: true }}
-                  className='text-slate-900 dark:text-slate-100'
-                  style={{ maxWidth: 200 }}
-                >
-                  {plan.title}
-                </Typography.Text>
+                <span className='text-sm text-slate-500 font-medium'>{t('套餐名称')}</span>
+                <span className='text-sm font-bold text-slate-900 truncate max-w-[180px]'>{plan.title}</span>
               </div>
+              
               <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('有效期')}：
-                </Text>
-                <div className='flex items-center'>
-                  <CalendarClock size={14} className='mr-1 text-slate-500' />
-                  <Text className='text-slate-900 dark:text-slate-100'>
-                    {formatSubscriptionDuration(plan, t)}
-                  </Text>
+                <span className='text-sm text-slate-500 font-medium'>{t('有效期')}</span>
+                <div className='flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-sm'>
+                  <CalendarClock size={14} className='text-slate-400' />
+                  <span className='text-xs font-bold text-slate-700'>{formatSubscriptionDuration(plan, t)}</span>
                 </div>
               </div>
-              {formatSubscriptionResetPeriod(plan, t) !== t('不重置') && (
-                <div className='flex justify-between items-center'>
-                  <Text strong className='text-slate-700 dark:text-slate-200'>
-                    {t('重置周期')}：
-                  </Text>
-                  <Text className='text-slate-900 dark:text-slate-100'>
-                    {formatSubscriptionResetPeriod(plan, t)}
-                  </Text>
-                </div>
-              )}
+
               <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('总额度')}：
-                </Text>
-                <div className='flex items-center'>
-                  <Package size={14} className='mr-1 text-slate-500' />
-                  {totalAmount > 0 ? (
-                    <Tooltip content={`${t('原生额度')}：${totalAmount}`}>
-                      <Text className='text-slate-900 dark:text-slate-100'>
-                        {renderQuota(totalAmount)}
-                      </Text>
-                    </Tooltip>
-                  ) : (
-                    <Text className='text-slate-900 dark:text-slate-100'>
-                      {t('不限')}
-                    </Text>
-                  )}
+                <span className='text-sm text-slate-500 font-medium'>{formatQuotaLabel(plan, t)}</span>
+                <div className='flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-sm'>
+                  <Package size={14} className='text-slate-400' />
+                  <span className='text-xs font-bold text-slate-700'>
+                    {totalAmount > 0 ? renderQuota(totalAmount) : t('不限')}
+                  </span>
                 </div>
               </div>
-              {plan?.upgrade_group ? (
-                <div className='flex justify-between items-center'>
-                  <Text strong className='text-slate-700 dark:text-slate-200'>
-                    {t('升级分组')}：
-                  </Text>
-                  <Text className='text-slate-900 dark:text-slate-100'>
-                    {plan.upgrade_group}
-                  </Text>
+
+              <div className='pt-4 border-t border-slate-200/60 flex justify-between items-center'>
+                <span className='text-sm text-slate-900 font-bold'>{t('应付总额')}</span>
+                <div className='flex items-baseline gap-1'>
+                  <span className='text-xs font-bold text-slate-900'>¥</span>
+                  <span className='text-2xl font-black text-slate-900'>{displayPrice}</span>
                 </div>
-              ) : null}
-              <Divider margin={8} />
-              <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('应付金额')}：
-                </Text>
-                <Text strong className='text-xl text-purple-600'>
-                  {symbol}
-                  {displayPrice}
-                </Text>
               </div>
             </div>
-          </Card>
+          </div>
 
-          {/* 支付方式 */}
+          {/* Limits & Payment */}
+          {planStatus === 'sold_out' && (
+            <div className='flex items-center gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs font-medium'>
+              <ShieldCheck size={14} />
+              <span>{t('当前套餐已售罄，暂不可购买')}</span>
+            </div>
+          )}
+
+          {planStatus === 'disabled' && (
+            <div className='flex items-center gap-2 p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-700 text-xs font-medium'>
+              <ShieldCheck size={14} />
+              <span>{t('当前套餐已禁用，暂不可购买')}</span>
+            </div>
+          )}
+
           {purchaseLimitReached && (
-            <Banner
-              type='warning'
-              description={`${t('已达到购买上限')} (${purchaseCount}/${purchaseLimit})`}
-              className='!rounded-xl'
-              closeIcon={null}
-            />
+            <div className='flex items-center gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs font-medium'>
+               <ShieldCheck size={14} />
+               <span>{t('已达到购买上限')} ({purchaseCount}/{purchaseLimit})</span>
+            </div>
           )}
 
           {hasAnyPayment ? (
             <div className='space-y-3'>
-              <Button
-                theme='solid'
-                type='primary'
-                block
-                onClick={onPayAlipay}
-                loading={paying}
-                disabled={purchaseLimitReached}
-              >
-                {t('支付宝支付')}
-              </Button>
+              {refundPolicyEnabled && (
+                <div className='p-3 bg-amber-50/50 border border-amber-100 rounded-xl space-y-2'>
+                  <div className='text-xs text-slate-600 max-h-24 overflow-y-auto whitespace-pre-wrap'>
+                    {refundPolicyText || t('退款政策内容加载中...')}
+                  </div>
+                  <Checkbox
+                    checked={refundPolicyAgreed}
+                    onChange={(e) => setRefundPolicyAgreed(e.target.checked)}
+                  >
+                    <span className='text-xs font-medium text-slate-700'>
+                      {t('我已阅读并同意退款政策')}
+                    </span>
+                  </Checkbox>
+                </div>
+              )}
+
+              <div className='text-xs font-bold text-slate-400 uppercase tracking-wider ml-1'>
+                {t('支付网关')}
+              </div>
+
+              <div className='grid grid-cols-1 gap-2'>
+                {hasStripe && (
+                  <Button
+                    theme='solid'
+                    className='!h-10 !rounded-xl !bg-slate-900 hover:!bg-slate-800 !border-0 !font-bold flex items-center justify-center gap-2'
+                    onClick={onPayStripe}
+                    loading={paying}
+                    disabled={paymentDisabled}
+                  >
+                    <SiStripe size={20} />
+                    <span>Pay with Stripe</span>
+                  </Button>
+                )}
+                
+                {hasCreem && (
+                  <Button
+                    theme='light'
+                    className='!h-10 !rounded-xl !border-slate-200 hover:!border-slate-300 !font-bold flex items-center justify-center gap-2'
+                    onClick={onPayCreem}
+                    loading={paying}
+                    disabled={paymentDisabled}
+                  >
+                    <IconCreditCard size='large' />
+                    <span>Pay with Creem</span>
+                  </Button>
+                )}
+
+                {hasEpay && (
+                  <div className='flex gap-2'>
+                    <Select
+                      value={selectedEpayMethod}
+                      onChange={setSelectedEpayMethod}
+                      className='flex-1 !h-10 !rounded-xl'
+                      placeholder={t('选择支付渠道')}
+                      optionList={epayMethods.map(m => ({
+                        value: m.type,
+                        label: m.name || m.type,
+                      }))}
+                      disabled={paymentDisabled}
+                    />
+                    <Button
+                      theme='solid'
+                      className='!h-10 !px-8 !rounded-xl !bg-slate-900 hover:!bg-slate-800 !font-bold'
+                      onClick={onPayEpay}
+                      loading={paying}
+                      disabled={!selectedEpayMethod || paymentDisabled}
+                    >
+                      {t('结算')}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            <Banner
-              type='info'
-              description={t('管理员未开启在线支付功能，请联系管理员配置。')}
-              className='!rounded-xl'
-              closeIcon={null}
-            />
+            <div className='p-6 text-center border-2 border-dashed border-slate-100 rounded-2xl'>
+               <p className='text-sm text-slate-400 font-medium'>{t('暂无可用支付方式')}</p>
+            </div>
           )}
         </div>
       ) : null}

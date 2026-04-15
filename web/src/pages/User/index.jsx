@@ -18,11 +18,27 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import { Button } from '@douyinfe/semi-ui';
+import { BarChart2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import UsersTable from '../../components/table/users';
 
 const User = () => {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
   return (
     <div className='mt-[60px] px-2'>
+      <div className='flex justify-end mb-2'>
+        <Button
+          icon={<BarChart2 size={14} />}
+          size='small'
+          theme='light'
+          onClick={() => navigate('/console/analytics')}
+        >
+          {t('数据分析')}
+        </Button>
+      </div>
       <UsersTable />
     </div>
   );

@@ -338,7 +338,7 @@ export const useDashboardCharts = (
             rawQuota: aggregated?.quota || 0,
             Usage: aggregated?.quota
               ? getQuotaWithUnit(aggregated.quota, 4)
-              : 0,
+              : '0',
           };
         });
 

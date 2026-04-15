@@ -58,7 +58,8 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		if otherMap != nil {
 			// Remove admin-only debug fields.
 			delete(otherMap, "admin_info")
-			delete(otherMap, "reject_reason")
+			// delete(otherMap, "reject_reason")
+			delete(otherMap, "stream_status")
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 		logs[i].Id = startIdx + i + 1
@@ -89,19 +90,30 @@ func RecordLog(userId int, logType int, content string) {
 	}
 }
 
+// RecordTopUpLog records a topup log with quota amount.
+// This ensures the quota field is properly set for topup records.
+func RecordTopUpLog(userId int, quota int, content string) {
+	username, _ := GetUsernameById(userId, false)
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeTopup,
+		Content:   content,
+		Quota:     quota,
+	}
+	err := LOG_DB.Create(log).Error
+	if err != nil {
+		common.SysLog("failed to record topup log: " + err.Error())
+	}
+}
+
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, content))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -118,14 +130,9 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		UseTime:          useTimeSeconds,
 		IsStream:         isStream,
 		Group:            group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
-		RequestId: requestId,
-		Other:     otherStr,
+		Ip:               c.ClientIP(),
+		RequestId:        requestId,
+		Other:            otherStr,
 	}
 	err := LOG_DB.Create(log).Error
 	if err != nil {
@@ -156,13 +163,6 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -179,14 +179,9 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
 		Group:            params.Group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
-		RequestId: requestId,
-		Other:     otherStr,
+		Ip:               c.ClientIP(),
+		RequestId:        requestId,
+		Other:            otherStr,
 	}
 	err := LOG_DB.Create(log).Error
 	if err != nil {
@@ -242,7 +237,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, ip string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -273,6 +268,9 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if ip != "" {
+		tx = tx.Where("logs.ip = ?", ip)
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -374,30 +372,44 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota                  int   `json:"quota"`
+	Rpm                    int   `json:"rpm"`
+	Tpm                    int   `json:"tpm"`
+	TotalRequests          int64 `json:"total_requests"`
+	TotalTokens            int64 `json:"total_tokens"`
+	SmartCacheSavingsQuota int64 `json:"smartcache_savings_quota"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
+	_ = logType
+	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) as quota")
 
 	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
+	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) as rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) as tpm")
+	totalUsageQuery := LOG_DB.Table("logs").Select("count(*) as total_requests, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) as total_tokens")
+	savingsQuery := LOG_DB.Table("logs").Select("quota, prompt_tokens, completion_tokens, other")
 
 	if username != "" {
 		tx = tx.Where("username = ?", username)
 		rpmTpmQuery = rpmTpmQuery.Where("username = ?", username)
+		totalUsageQuery = totalUsageQuery.Where("username = ?", username)
+		savingsQuery = savingsQuery.Where("username = ?", username)
 	}
 	if tokenName != "" {
 		tx = tx.Where("token_name = ?", tokenName)
 		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
+		totalUsageQuery = totalUsageQuery.Where("token_name = ?", tokenName)
+		savingsQuery = savingsQuery.Where("token_name = ?", tokenName)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
+		totalUsageQuery = totalUsageQuery.Where("created_at >= ?", startTimestamp)
+		savingsQuery = savingsQuery.Where("created_at >= ?", startTimestamp)
 	}
 	if endTimestamp != 0 {
 		tx = tx.Where("created_at <= ?", endTimestamp)
+		totalUsageQuery = totalUsageQuery.Where("created_at <= ?", endTimestamp)
+		savingsQuery = savingsQuery.Where("created_at <= ?", endTimestamp)
 	}
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
@@ -406,31 +418,71 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		}
 		tx = tx.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
 		rpmTpmQuery = rpmTpmQuery.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
+		totalUsageQuery = totalUsageQuery.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
+		savingsQuery = savingsQuery.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
 	}
 	if channel != 0 {
 		tx = tx.Where("channel_id = ?", channel)
 		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
+		totalUsageQuery = totalUsageQuery.Where("channel_id = ?", channel)
+		savingsQuery = savingsQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
 		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+		totalUsageQuery = totalUsageQuery.Where(logGroupCol+" = ?", group)
+		savingsQuery = savingsQuery.Where(logGroupCol+" = ?", group)
 	}
 
 	tx = tx.Where("type = ?", LogTypeConsume)
 	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
+	totalUsageQuery = totalUsageQuery.Where("type = ?", LogTypeConsume)
+	savingsQuery = savingsQuery.Where("type = ?", LogTypeConsume).Where("other LIKE ?", "%cache_tokens%")
 
 	// 只统计最近60秒的rpm和tpm
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 
-	// 执行查询
-	if err := tx.Scan(&stat).Error; err != nil {
+	// Scan each query into its own temporary struct, then merge.
+	// Scanning all three into &stat directly would cause each .Scan() to
+	// zero-out the fields set by the previous one.
+	var quotaStat struct {
+		Quota int `gorm:"column:quota"`
+	}
+	if err := tx.Scan(&quotaStat).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
-	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+
+	var rpmTpmStat struct {
+		Rpm int `gorm:"column:rpm"`
+		Tpm int `gorm:"column:tpm"`
+	}
+	if err := rpmTpmQuery.Scan(&rpmTpmStat).Error; err != nil {
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+
+	var totalStat struct {
+		TotalRequests int64 `gorm:"column:total_requests"`
+		TotalTokens   int64 `gorm:"column:total_tokens"`
+	}
+	if err := totalUsageQuery.Scan(&totalStat).Error; err != nil {
+		common.SysError("failed to query total usage stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	smartCacheSavingsQuota, err := sumSmartCacheSavingsQuotaFromQuery(savingsQuery)
+	if err != nil {
+		common.SysError("failed to query smartcache savings stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	stat.Quota = quotaStat.Quota
+	stat.Rpm = rpmTpmStat.Rpm
+	stat.Tpm = rpmTpmStat.Tpm
+	stat.TotalRequests = totalStat.TotalRequests
+	stat.TotalTokens = totalStat.TotalTokens
+	stat.SmartCacheSavingsQuota = smartCacheSavingsQuota
 
 	return stat, nil
 }
@@ -477,4 +529,382 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	}
 
 	return total, nil
+}
+
+// ========== Analytics Aggregation ==========
+
+type AnalyticsItem struct {
+	Name   string `json:"name" gorm:"column:name"`
+	Quota  int64  `json:"quota" gorm:"column:quota"`
+	Count  int64  `json:"count" gorm:"column:count"`
+	Tokens int64  `json:"tokens" gorm:"column:tokens"`
+}
+
+type AnalyticsSummary struct {
+	TotalQuota  int64 `json:"total_quota"`
+	TotalCount  int64 `json:"total_count"`
+	TotalTokens int64 `json:"total_tokens"`
+	RPM         int64 `json:"rpm"`
+	TPM         int64 `json:"tpm"`
+}
+
+type AnalyticsResult struct {
+	Items   []AnalyticsItem  `json:"items"`
+	Summary AnalyticsSummary `json:"summary"`
+}
+
+func buildAnalyticsSummary(items []AnalyticsItem, startTs, endTs int64) AnalyticsSummary {
+	var summary AnalyticsSummary
+	for _, item := range items {
+		summary.TotalQuota += item.Quota
+		summary.TotalCount += item.Count
+		summary.TotalTokens += item.Tokens
+	}
+	// RPM/TPM: count requests and tokens in last 60 seconds
+	var rpmTpm struct {
+		RPM int64 `gorm:"column:rpm"`
+		TPM int64 `gorm:"column:tpm"`
+	}
+	since60s := time.Now().Add(-60 * time.Second).Unix()
+	if err := LOG_DB.Table("logs").
+		Select("count(*) as rpm, COALESCE(sum(prompt_tokens),0) + COALESCE(sum(completion_tokens),0) as tpm").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, since60s).
+		Scan(&rpmTpm).Error; err == nil {
+		summary.RPM = rpmTpm.RPM
+		summary.TPM = rpmTpm.TPM
+	}
+	return summary
+}
+
+func SumQuotaByChannel(startTs, endTs int64) (*AnalyticsResult, error) {
+	var items []AnalyticsItem
+	tx := LOG_DB.Table("logs").
+		Select("logs.channel_id as cid, COALESCE(sum(logs.quota),0) as quota, count(*) as count, COALESCE(sum(logs.prompt_tokens),0) + COALESCE(sum(logs.completion_tokens),0) as tokens").
+		Where("logs.type = ?", LogTypeConsume).
+		Group("logs.channel_id")
+	if startTs != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTs)
+	}
+	if endTs != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTs)
+	}
+
+	type channelRow struct {
+		Cid    int   `gorm:"column:cid"`
+		Quota  int64 `gorm:"column:quota"`
+		Count  int64 `gorm:"column:count"`
+		Tokens int64 `gorm:"column:tokens"`
+	}
+	var rows []channelRow
+	if err := tx.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	// Batch fetch channel names
+	channelIds := make([]int, 0, len(rows))
+	for _, r := range rows {
+		if r.Cid != 0 {
+			channelIds = append(channelIds, r.Cid)
+		}
+	}
+	channelNameMap := make(map[int]string)
+	if len(channelIds) > 0 {
+		var channels []struct {
+			Id   int    `gorm:"column:id"`
+			Name string `gorm:"column:name"`
+		}
+		DB.Table("channels").Select("id, name").Where("id IN ?", channelIds).Find(&channels)
+		for _, ch := range channels {
+			channelNameMap[ch.Id] = ch.Name
+		}
+	}
+
+	for _, r := range rows {
+		name := channelNameMap[r.Cid]
+		if name == "" {
+			name = fmt.Sprintf("channel#%d", r.Cid)
+		}
+		items = append(items, AnalyticsItem{Name: name, Quota: r.Quota, Count: r.Count, Tokens: r.Tokens})
+	}
+
+	summary := buildAnalyticsSummary(items, startTs, endTs)
+	return &AnalyticsResult{Items: items, Summary: summary}, nil
+}
+
+func SumQuotaByModel(startTs, endTs int64) (*AnalyticsResult, error) {
+	var items []AnalyticsItem
+	tx := LOG_DB.Table("logs").
+		Select("model_name as name, COALESCE(sum(quota),0) as quota, count(*) as count, COALESCE(sum(prompt_tokens),0) + COALESCE(sum(completion_tokens),0) as tokens").
+		Where("type = ?", LogTypeConsume).
+		Group("model_name")
+	if startTs != 0 {
+		tx = tx.Where("created_at >= ?", startTs)
+	}
+	if endTs != 0 {
+		tx = tx.Where("created_at <= ?", endTs)
+	}
+	if err := tx.Scan(&items).Error; err != nil {
+		return nil, err
+	}
+	summary := buildAnalyticsSummary(items, startTs, endTs)
+	return &AnalyticsResult{Items: items, Summary: summary}, nil
+}
+
+func SumQuotaByUser(startTs, endTs int64) (*AnalyticsResult, error) {
+	var items []AnalyticsItem
+	tx := LOG_DB.Table("logs").
+		Select("logs.user_id as uid, COALESCE(sum(logs.quota),0) as quota, count(*) as count, COALESCE(sum(logs.prompt_tokens),0) + COALESCE(sum(logs.completion_tokens),0) as tokens").
+		Where("logs.type = ?", LogTypeConsume).
+		Group("logs.user_id")
+	if startTs != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTs)
+	}
+	if endTs != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTs)
+	}
+
+	type userRow struct {
+		Uid    int   `gorm:"column:uid"`
+		Quota  int64 `gorm:"column:quota"`
+		Count  int64 `gorm:"column:count"`
+		Tokens int64 `gorm:"column:tokens"`
+	}
+	var rows []userRow
+	if err := tx.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	// Batch fetch usernames
+	userIds := make([]int, 0, len(rows))
+	for _, r := range rows {
+		if r.Uid != 0 {
+			userIds = append(userIds, r.Uid)
+		}
+	}
+	userNameMap := make(map[int]string)
+	if len(userIds) > 0 {
+		var users []struct {
+			Id       int    `gorm:"column:id"`
+			Username string `gorm:"column:username"`
+		}
+		DB.Table("users").Select("id, username").Where("id IN ?", userIds).Find(&users)
+		for _, u := range users {
+			userNameMap[u.Id] = u.Username
+		}
+	}
+
+	for _, r := range rows {
+		name := userNameMap[r.Uid]
+		if name == "" {
+			name = fmt.Sprintf("user#%d", r.Uid)
+		}
+		items = append(items, AnalyticsItem{Name: name, Quota: r.Quota, Count: r.Count, Tokens: r.Tokens})
+	}
+
+	summary := buildAnalyticsSummary(items, startTs, endTs)
+	return &AnalyticsResult{Items: items, Summary: summary}, nil
+}
+
+// ========== Cache Savings ==========
+
+type CacheSavingsResult struct {
+	TotalSavingsQuota int64 `json:"total_savings_quota"`
+	TotalCacheTokens  int64 `json:"total_cache_tokens"`
+	CacheHitCount     int64 `json:"cache_hit_count"`
+}
+
+func GetUserCacheSavings(userId int, startTimestamp, endTimestamp int64) (*CacheSavingsResult, error) {
+	return getCacheSavings(func(tx *gorm.DB) *gorm.DB {
+		return tx.Where("user_id = ?", userId)
+	}, startTimestamp, endTimestamp)
+}
+
+func GetAllCacheSavings(startTimestamp, endTimestamp int64) (*CacheSavingsResult, error) {
+	return getCacheSavings(func(tx *gorm.DB) *gorm.DB {
+		return tx
+	}, startTimestamp, endTimestamp)
+}
+
+func getCacheSavings(applyScope func(tx *gorm.DB) *gorm.DB, startTimestamp, endTimestamp int64) (*CacheSavingsResult, error) {
+	tx := LOG_DB.Table("logs").Select("quota, prompt_tokens, completion_tokens, other").Where("type = ?", LogTypeConsume).Where("other LIKE ?", "%cache_tokens%")
+	if applyScope != nil {
+		tx = applyScope(tx)
+	}
+	if startTimestamp > 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp > 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+
+	result := &CacheSavingsResult{}
+	var logs []Log
+	err := tx.Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, log := range logs {
+		savingsQuota, cacheTokens := getSmartCacheSavingsQuotaFromLog(log)
+		if savingsQuota <= 0 || cacheTokens <= 0 {
+			continue
+		}
+		result.TotalSavingsQuota += savingsQuota
+		result.TotalCacheTokens += cacheTokens
+		result.CacheHitCount++
+	}
+	return result, nil
+}
+
+func sumSmartCacheSavingsQuotaFromQuery(tx *gorm.DB) (int64, error) {
+	var logs []Log
+	if err := tx.Find(&logs).Error; err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, log := range logs {
+		savingsQuota, _ := getSmartCacheSavingsQuotaFromLog(log)
+		total += savingsQuota
+	}
+	return total, nil
+}
+
+func getSmartCacheSavingsQuotaFromLog(log Log) (int64, int64) {
+	if log.Other == "" {
+		return 0, 0
+	}
+	otherMap, err := common.StrToMap(log.Other)
+	if err != nil || otherMap == nil {
+		return 0, 0
+	}
+	cacheTokens := getFloat64FromMap(otherMap, "cache_tokens")
+	if cacheTokens <= 0 {
+		return 0, 0
+	}
+
+	baseInputRatio := getFloat64FromMap(otherMap, "model_ratio")
+	if baseInputRatio <= 0 {
+		return 0, int64(cacheTokens)
+	}
+	if userGroupRatio := getFloat64FromMap(otherMap, "user_group_ratio"); userGroupRatio > 0 {
+		baseInputRatio *= userGroupRatio
+	} else {
+		groupRatio := getFloat64FromMap(otherMap, "group_ratio")
+		if groupRatio <= 0 {
+			return 0, int64(cacheTokens)
+		}
+		baseInputRatio *= groupRatio
+	}
+
+	cacheRatio := getFloat64FromMap(otherMap, "cache_ratio")
+	if cacheRatio < 0 {
+		return 0, int64(cacheTokens)
+	}
+
+	savingsQuota := cacheTokens * baseInputRatio * (1 - cacheRatio)
+	if channelRatio := getFloat64FromMap(otherMap, "channel_ratio"); channelRatio > 0 && channelRatio < 1 {
+		fullQuotaBeforeChannelDiscount := float64(log.Quota) / channelRatio
+		if fullQuotaBeforeChannelDiscount <= 0 {
+			fullQuotaBeforeChannelDiscount = baseInputRatio * float64(log.PromptTokens)
+			fullQuotaBeforeChannelDiscount += baseInputRatio * cacheTokens * cacheRatio
+			completionRatio := getFloat64FromMap(otherMap, "completion_ratio")
+			if completionRatio > 0 {
+				fullQuotaBeforeChannelDiscount += baseInputRatio * completionRatio * float64(log.CompletionTokens)
+			}
+		}
+		if fullQuotaBeforeChannelDiscount > 0 {
+			savingsQuota += fullQuotaBeforeChannelDiscount * (1 - channelRatio)
+		}
+	}
+	if savingsQuota <= 0 {
+		return 0, int64(cacheTokens)
+	}
+	return int64(savingsQuota), int64(cacheTokens)
+}
+
+func getFloat64FromMap(m map[string]interface{}, key string) float64 {
+	val, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch v := val.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	default:
+		return 0
+	}
+}
+
+// ========== Site RPM ==========
+
+type SiteRPMEntry struct {
+	SiteLabel string  `json:"site_label"`
+	RPM       float64 `json:"rpm"`
+}
+
+type SiteRPMResult struct {
+	WindowSeconds int64          `json:"window_seconds"`
+	All           struct {
+		RPM float64 `json:"rpm"`
+	} `json:"all"`
+	Sites []SiteRPMEntry `json:"sites"`
+}
+
+// GetSiteRPM fetches consume logs within window_seconds and groups by site_label from other.admin_info.
+// It selects only (other, created_at) to keep the scan lightweight.
+// We cap at 50 000 rows to bound memory usage for very high-traffic deployments.
+func GetSiteRPM(windowSeconds int64) (*SiteRPMResult, error) {
+	if windowSeconds <= 0 {
+		windowSeconds = 60
+	}
+	since := time.Now().Add(-time.Duration(windowSeconds) * time.Second).Unix()
+
+	type row struct {
+		Other     string `gorm:"column:other"`
+		CreatedAt int64  `gorm:"column:created_at"`
+	}
+	var rows []row
+	if err := LOG_DB.Table("logs").
+		Select("other, created_at").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, since).
+		Limit(50000).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64)
+	for _, r := range rows {
+		label := ""
+		if r.Other != "" {
+			otherMap, err := common.StrToMap(r.Other)
+			if err == nil && otherMap != nil {
+				if ai, ok := otherMap["admin_info"]; ok {
+					if aiMap, ok := ai.(map[string]interface{}); ok {
+						if sl, ok := aiMap["site_label"]; ok {
+							if s, ok := sl.(string); ok {
+								label = s
+							}
+						}
+					}
+				}
+			}
+		}
+		if label == "" {
+			label = "(unset)"
+		}
+		counts[label]++
+	}
+
+	result := &SiteRPMResult{WindowSeconds: windowSeconds}
+	var totalCount int64
+	for label, cnt := range counts {
+		totalCount += cnt
+		rpm := float64(cnt) * 60.0 / float64(windowSeconds)
+		result.Sites = append(result.Sites, SiteRPMEntry{SiteLabel: label, RPM: rpm})
+	}
+	result.All.RPM = float64(totalCount) * 60.0 / float64(windowSeconds)
+	return result, nil
 }

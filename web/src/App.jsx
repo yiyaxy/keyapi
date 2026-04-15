@@ -21,7 +21,7 @@ import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
-import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
+import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers';
 import RegisterForm from './components/auth/RegisterForm';
 import LoginForm from './components/auth/LoginForm';
 import NotFound from './pages/NotFound';
@@ -45,6 +45,8 @@ import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
+import Message from './pages/Message';
+import Inbox from './pages/Inbox';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
 import Setup from './pages/Setup';
@@ -52,9 +54,29 @@ import SetupCheck from './components/layout/SetupCheck';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Purchase = lazy(() => import('./pages/Purchase'));
+const PurchaseAnalytics = lazy(() => import('./pages/PurchaseAnalytics'));
+const IpAnalysis = lazy(() => import('./pages/IpAnalysis'));
+const PromptRule = lazy(() => import('./pages/PromptRule'));
 const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
+const Plans = lazy(() => import('./pages/Plans'));
+const AffTransfer = lazy(() => import('./pages/AffTransfer'));
+const AffTransferAdmin = lazy(() => import('./pages/AffTransferAdmin'));
+const RebateSettings = lazy(() => import('./pages/RebateSettings'));
+const SmartCache = lazy(() => import('./pages/SmartCache'));
+const TicketsUser = lazy(() => import('./pages/TicketsUser'));
+const TicketsAdmin = lazy(() => import('./pages/TicketsAdmin'));
+const InvoiceUser = lazy(() => import('./pages/InvoiceUser'));
+const InvoiceAdmin = lazy(() => import('./pages/InvoiceAdmin'));
+const SiteRPM = lazy(() => import('./pages/SiteRPM'));
+const ChannelMonitor = lazy(() => import('./pages/ChannelMonitor'));
+const AgentLog = lazy(() => import('./pages/AgentLog'));
+const AgentReport = lazy(() => import('./pages/AgentReport'));
+const RequestTrace = lazy(() => import('./pages/RequestTrace'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -132,11 +154,99 @@ function App() {
           }
         />
         <Route
-          path='/console/channel'
+          path='/console/analytics'
           element={
             <AdminRoute>
-              <Channel />
+              <Suspense fallback={<Loading></Loading>}>
+                <Analytics />
+              </Suspense>
             </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/purchase'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <Purchase />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/purchase-analytics'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <PurchaseAnalytics />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/ip-analysis'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <IpAnalysis />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/prompt-rule'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <PromptRule />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/aff-transfer'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <AffTransfer />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/aff-transfer-admin'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <AffTransferAdmin />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/rebate-settings'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <RebateSettings />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/message'
+          element={
+            <AdminRoute>
+              <Message />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/channel'
+          element={
+            <RootRoute>
+              <Channel />
+            </RootRoute>
           }
         />
         <Route
@@ -278,10 +388,128 @@ function App() {
           }
         />
         <Route
+          path='/console/smart-cache'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <SmartCache />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
           path='/console/log'
           element={
             <PrivateRoute>
               <Log />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/tickets-admin'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <TicketsAdmin />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/site-rpm'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <SiteRPM />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/channel-monitor'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <ChannelMonitor />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/agent-log'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <AgentLog />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/agent-report'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <AgentReport />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/request-trace'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <RequestTrace />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/request-trace/:requestId'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <RequestTrace />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tickets'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <TicketsUser />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/invoice-admin'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <InvoiceAdmin />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/invoice'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>}>
+                <InvoiceUser />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/inbox'
+          element={
+            <PrivateRoute>
+              <Inbox />
             </PrivateRoute>
           }
         />
@@ -355,6 +583,22 @@ function App() {
           element={
             <Suspense fallback={<Loading></Loading>} key={location.pathname}>
               <PrivacyPolicy />
+            </Suspense>
+          }
+        />
+        <Route
+          path='/plans'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <Plans />
+            </Suspense>
+          }
+        />
+        <Route
+          path='/refund-policy'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <RefundPolicy />
             </Suspense>
           }
         />

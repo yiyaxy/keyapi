@@ -61,7 +61,7 @@ const renderVendor = (vendorName, vendorIcon, t) => {
       shape='circle'
       prefixIcon={getLobeHubIcon(vendorIcon || 'Layers', 14)}
     >
-      {vendorName}
+      {t(vendorName, vendorName)}
     </Tag>
   );
 };
@@ -105,6 +105,7 @@ export const getPricingTableColumns = ({
   t,
   selectedGroup,
   groupRatio,
+  autoGroups,
   copyText,
   setModalImageUrl,
   setIsModalOpenurl,
@@ -124,6 +125,7 @@ export const getPricingTableColumns = ({
         record,
         selectedGroup,
         groupRatio,
+        autoGroups,
         tokenUnit,
         displayPrice,
         currency,

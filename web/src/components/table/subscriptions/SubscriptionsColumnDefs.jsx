@@ -64,6 +64,29 @@ function formatResetPeriod(plan, t) {
   return t('不重置');
 }
 
+const normalizePlanStatus = (plan) => {
+  if (plan?.status) return plan.status;
+  return plan?.enabled === false ? 'disabled' : 'active';
+};
+
+const getStatusMeta = (status, t) => {
+  const statusMap = {
+    active: {
+      label: t('启用'),
+      dotType: 'success',
+    },
+    sold_out: {
+      label: t('售罄'),
+      dotType: 'warning',
+    },
+    disabled: {
+      label: t('禁用'),
+      dotType: 'danger',
+    },
+  };
+  return statusMap[status] || statusMap.active;
+};
+
 const renderPlanTitle = (text, record, t) => {
   const subtitle = record?.plan?.subtitle;
   const plan = record?.plan;
@@ -146,24 +169,17 @@ const renderDuration = (text, record, t) => {
   return <Text type='secondary'>{formatDuration(record?.plan, t)}</Text>;
 };
 
-const renderEnabled = (text, record, t) => {
-  return text ? (
+const renderStatus = (text, record, t) => {
+  const status = normalizePlanStatus(record?.plan);
+  const meta = getStatusMeta(status, t);
+  return (
     <Tag
       color='white'
       shape='circle'
       type='light'
-      prefixIcon={<Badge dot type='success' />}
+      prefixIcon={<Badge dot type={meta.dotType} />}
     >
-      {t('启用')}
-    </Tag>
-  ) : (
-    <Tag
-      color='white'
-      shape='circle'
-      type='light'
-      prefixIcon={<Badge dot type='danger' />}
-    >
-      {t('禁用')}
+      {meta.label}
     </Tag>
   );
 };
@@ -202,41 +218,70 @@ const renderResetPeriod = (text, record, t) => {
   );
 };
 
-const renderPaymentConfig = (text, record, t, enableAlipay) => {
+const renderPaymentConfig = (text, record, t, enableEpay) => {
+  const hasStripe = !!record?.plan?.stripe_price_id;
+  const hasCreem = !!record?.plan?.creem_product_id;
+  const hasEpay = !!enableEpay;
+
   return (
     <Space spacing={4}>
-      {enableAlipay && (
-        <Tag color='blue' shape='circle'>
-          {t('支付宝')}
+      {hasStripe && (
+        <Tag color='violet' shape='circle'>
+          Stripe
+        </Tag>
+      )}
+      {hasCreem && (
+        <Tag color='cyan' shape='circle'>
+          Creem
+        </Tag>
+      )}
+      {hasEpay && (
+        <Tag color='light-green' shape='circle'>
+          {t('易支付')}
         </Tag>
       )}
     </Space>
   );
 };
 
-const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
-  const isEnabled = record?.plan?.enabled;
+const renderOperations = (text, record, { openEdit, setPlanStatus, t }) => {
+  const currentStatus = normalizePlanStatus(record?.plan);
 
-  const handleToggle = () => {
-    if (isEnabled) {
-      Modal.confirm({
-        title: t('确认禁用'),
-        content: t('禁用后用户端不再展示，但历史订单不受影响。是否继续？'),
-        centered: true,
-        onOk: () => setPlanEnabled(record, false),
-      });
-    } else {
-      Modal.confirm({
-        title: t('确认启用'),
-        content: t('启用后套餐将在用户端展示。是否继续？'),
-        centered: true,
-        onOk: () => setPlanEnabled(record, true),
-      });
-    }
+  const statusActions = [
+    {
+      status: 'active',
+      buttonType: 'primary',
+      title: t('确认启用'),
+      content: t('启用后套餐将在用户端展示并允许购买。是否继续？'),
+      label: t('启用'),
+    },
+    {
+      status: 'sold_out',
+      buttonType: 'warning',
+      title: t('确认设为售罄'),
+      content: t('设为售罄后套餐仍会展示，但用户无法购买。是否继续？'),
+      label: t('设为售罄'),
+    },
+    {
+      status: 'disabled',
+      buttonType: 'danger',
+      title: t('确认禁用'),
+      content: t('禁用后套餐仍可保留历史记录，但用户无法购买。是否继续？'),
+      label: t('禁用'),
+    },
+  ].filter((action) => action.status !== currentStatus);
+
+  const handleChangeStatus = (action) => {
+    Modal.confirm({
+      title: action.title,
+      content: action.content,
+      centered: true,
+      onOk: () => setPlanStatus(record, action.status),
+    });
   };
 
   return (
-    <Space spacing={8}>
+    <Space spacing={8} wrap>
       <Button
         theme='light'
         type='tertiary'
@@ -245,20 +290,17 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
       >
         {t('编辑')}
       </Button>
-      {isEnabled ? (
-        <Button theme='light' type='danger' size='small' onClick={handleToggle}>
-          {t('禁用')}
-        </Button>
-      ) : (
+      {statusActions.map((action) => (
         <Button
+          key={action.status}
           theme='light'
-          type='primary'
+          type={action.buttonType}
           size='small'
-          onClick={handleToggle}
+          onClick={() => handleChangeStatus(action)}
         >
-          {t('启用')}
+          {action.label}
         </Button>
-      )}
+      ))}
     </Space>
   );
 };
@@ -266,8 +308,8 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
 export const getSubscriptionsColumns = ({
   t,
   openEdit,
-  setPlanEnabled,
-  enableAlipay,
+  setPlanStatus,
+  enableEpay,
 }) => {
   return [
     {
@@ -311,15 +353,15 @@ export const getSubscriptionsColumns = ({
     },
     {
       title: t('状态'),
-      dataIndex: ['plan', 'enabled'],
+      dataIndex: ['plan', 'status'],
       width: 80,
-      render: (text, record) => renderEnabled(text, record, t),
+      render: (text, record) => renderStatus(text, record, t),
     },
     {
       title: t('支付渠道'),
       width: 180,
       render: (text, record) =>
-        renderPaymentConfig(text, record, t, enableAlipay),
+        renderPaymentConfig(text, record, t, enableEpay),
     },
     {
       title: t('总额度'),
@@ -337,7 +379,7 @@ export const getSubscriptionsColumns = ({
       fixed: 'right',
       width: 160,
       render: (text, record) =>
-        renderOperations(text, record, { openEdit, setPlanEnabled, t }),
+        renderOperations(text, record, { openEdit, setPlanStatus, t }),
     },
   ];
 };

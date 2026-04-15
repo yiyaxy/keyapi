@@ -124,6 +124,7 @@ func HandleOAuth(c *gin.Context) {
 	}
 
 	// 9. Setup login
+	c.Set("login_type", "oauth_"+c.Param("provider"))
 	setupLogin(user, c)
 }
 
@@ -190,7 +191,9 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 		}
 	}
 
-	common.ApiSuccessI18n(c, i18n.MsgOAuthBindSuccess, nil)
+	common.ApiSuccessI18n(c, i18n.MsgOAuthBindSuccess, gin.H{
+		"action": "bind",
+	})
 }
 
 // findOrCreateOAuthUser finds existing user or creates new user
@@ -257,6 +260,15 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if oauthUser.Email != "" {
 		user.Email = oauthUser.Email
 	}
+
+	if oauthUser.Username != "" {
+		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
+			if len(oauthUser.Username) <= model.UserNameMaxLength {
+				user.Username = oauthUser.Username
+			}
+		}
+	}
+
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
 

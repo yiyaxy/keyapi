@@ -22,6 +22,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+/*
+Task 任务通过平台、Action 区分任务
+*/
+
 type TaskSubmitResult struct {
 	UpstreamTaskID string
 	TaskData       []byte
@@ -149,6 +153,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if platform == "" {
 		platform = GetTaskPlatform(c)
 	}
+
+	helper.ApplyChannelBillingOverrides(info)
 	adaptor := GetTaskAdaptor(platform)
 	if adaptor == nil {
 		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)

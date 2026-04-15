@@ -18,9 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Form, Row, Col, Spin } from '@douyinfe/semi-ui';
+import { Button, Form, Row, Col, Typography, Spin } from '@douyinfe/semi-ui';
+const { Text } = Typography;
 import {
   API,
+  removeTrailingSlash,
   showError,
   showSuccess,
   verifyJSON,
@@ -31,12 +33,18 @@ export default function SettingsPaymentGateway(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
+    PayAddress: '',
+    EpayId: '',
+    EpayKey: '',
     Price: 7.3,
     MinTopUp: 1,
+    MinInvoiceAmount: 200,
     TopupGroupRatio: '',
+    CustomCallbackAddress: '',
     PayMethods: '',
     AmountOptions: '',
     AmountDiscount: '',
+    TopupSubscriptionNotice: '',
   });
   const [originInputs, setOriginInputs] = useState({});
   const formApiRef = useRef(null);
@@ -44,6 +52,9 @@ export default function SettingsPaymentGateway(props) {
   useEffect(() => {
     if (props.options && formApiRef.current) {
       const currentInputs = {
+        PayAddress: props.options.PayAddress || '',
+        EpayId: props.options.EpayId || '',
+        EpayKey: props.options.EpayKey || '',
         Price:
           props.options.Price !== undefined
             ? parseFloat(props.options.Price)
@@ -52,10 +63,16 @@ export default function SettingsPaymentGateway(props) {
           props.options.MinTopUp !== undefined
             ? parseFloat(props.options.MinTopUp)
             : 1,
+        MinInvoiceAmount:
+          props.options.MinInvoiceAmount !== undefined
+            ? parseFloat(props.options.MinInvoiceAmount)
+            : 200,
         TopupGroupRatio: props.options.TopupGroupRatio || '',
+        CustomCallbackAddress: props.options.CustomCallbackAddress || '',
         PayMethods: props.options.PayMethods || '',
         AmountOptions: props.options.AmountOptions || '',
         AmountDiscount: props.options.AmountDiscount || '',
+        TopupSubscriptionNotice: props.options.TopupSubscriptionNotice || '',
       };
 
       // 美化 JSON 展示
@@ -130,13 +147,30 @@ export default function SettingsPaymentGateway(props) {
 
     setLoading(true);
     try {
-      const options = [];
+      const options = [
+        { key: 'PayAddress', value: removeTrailingSlash(inputs.PayAddress) },
+      ];
 
+      if (inputs.EpayId !== '') {
+        options.push({ key: 'EpayId', value: inputs.EpayId });
+      }
+      if (inputs.EpayKey !== undefined && inputs.EpayKey !== '') {
+        options.push({ key: 'EpayKey', value: inputs.EpayKey });
+      }
       if (inputs.Price !== '') {
         options.push({ key: 'Price', value: inputs.Price.toString() });
       }
       if (inputs.MinTopUp !== '') {
         options.push({ key: 'MinTopUp', value: inputs.MinTopUp.toString() });
+      }
+      if (inputs.MinInvoiceAmount !== '') {
+        options.push({ key: 'MinInvoiceAmount', value: inputs.MinInvoiceAmount.toString() });
+      }
+      if (inputs.CustomCallbackAddress !== '') {
+        options.push({
+          key: 'CustomCallbackAddress',
+          value: inputs.CustomCallbackAddress,
+        });
       }
       if (originInputs['TopupGroupRatio'] !== inputs.TopupGroupRatio) {
         options.push({ key: 'TopupGroupRatio', value: inputs.TopupGroupRatio });
@@ -154,6 +188,14 @@ export default function SettingsPaymentGateway(props) {
         options.push({
           key: 'payment_setting.amount_discount',
           value: inputs.AmountDiscount,
+        });
+      }
+      if (
+        originInputs['TopupSubscriptionNotice'] !== inputs.TopupSubscriptionNotice
+      ) {
+        options.push({
+          key: 'TopupSubscriptionNotice',
+          value: inputs.TopupSubscriptionNotice,
         });
       }
 
@@ -193,7 +235,46 @@ export default function SettingsPaymentGateway(props) {
         getFormApi={(api) => (formApiRef.current = api)}
       >
         <Form.Section text={t('支付设置')}>
+          <Text>
+            {t(
+              '（当前仅支持易支付接口，默认使用上方服务器地址作为回调地址！）',
+            )}
+          </Text>
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Input
+                field='PayAddress'
+                label={t('支付地址')}
+                placeholder={t('例如：https://yourdomain.com')}
+              />
+            </Col>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Input
+                field='EpayId'
+                label={t('易支付商户ID')}
+                placeholder={t('例如：0001')}
+              />
+            </Col>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Input
+                field='EpayKey'
+                label={t('易支付商户密钥')}
+                placeholder={t('敏感信息不会发送到前端显示')}
+                type='password'
+              />
+            </Col>
+          </Row>
+          <Row
+            gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+            style={{ marginTop: 16 }}
+          >
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Input
+                field='CustomCallbackAddress'
+                label={t('回调地址')}
+                placeholder={t('例如：https://yourdomain.com')}
+              />
+            </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.InputNumber
                 field='Price'
@@ -207,6 +288,13 @@ export default function SettingsPaymentGateway(props) {
                 field='MinTopUp'
                 label={t('最低充值美元数量')}
                 placeholder={t('例如：2，就是最低充值2$')}
+              />
+            </Col>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='MinInvoiceAmount'
+                label={t('最低开票金额')}
+                placeholder={t('例如：200，就是最低满200才可申请开票')}
               />
             </Col>
           </Row>
@@ -257,6 +345,21 @@ export default function SettingsPaymentGateway(props) {
                 extraText={t(
                   '设置不同充值金额对应的折扣，键为充值金额，值为折扣率，例如：{"100": 0.95, "200": 0.9, "500": 0.85}',
                 )}
+              />
+            </Col>
+          </Row>
+
+          <Row
+            gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+            style={{ marginTop: 16 }}
+          >
+            <Col span={24}>
+              <Form.TextArea
+                field='TopupSubscriptionNotice'
+                label={t('订阅公告')}
+                placeholder={t('显示在选择订阅方案下方，留空则不显示')}
+                autosize
+                extraText={t('显示在选择订阅方案下方，留空则不显示')}
               />
             </Col>
           </Row>

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -21,7 +22,8 @@ func GetAllLogs(c *gin.Context) {
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
 	requestId := c.Query("request_id")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId)
+	ip := c.Query("ip")
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, ip)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -30,6 +32,25 @@ func GetAllLogs(c *gin.Context) {
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+func GetRequestTrace(c *gin.Context) {
+	requestId := c.Param("request_id")
+	if requestId == "" {
+		common.ApiError(c, fmt.Errorf("request_id is required"))
+		return
+	}
+	// Query all logs with this request_id (may include consume log + error logs)
+	logs, _, err := model.GetAllLogs(0, 0, 0, "", "", "", 0, 100, 0, "", requestId, "")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if len(logs) == 0 {
+		common.ApiError(c, fmt.Errorf("no logs found for request_id: %s", requestId))
+		return
+	}
+	common.ApiSuccess(c, logs)
 }
 
 func GetUserLogs(c *gin.Context) {
@@ -112,9 +133,12 @@ func GetLogsStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": stat.Quota,
-			"rpm":   stat.Rpm,
-			"tpm":   stat.Tpm,
+			"quota":                    stat.Quota,
+			"rpm":                      stat.Rpm,
+			"tpm":                      stat.Tpm,
+			"total_requests":           stat.TotalRequests,
+			"total_tokens":             stat.TotalTokens,
+			"smartcache_savings_quota": stat.SmartCacheSavingsQuota,
 		},
 	})
 	return
@@ -139,9 +163,12 @@ func GetLogsSelfStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": quotaNum.Quota,
-			"rpm":   quotaNum.Rpm,
-			"tpm":   quotaNum.Tpm,
+			"quota":                    quotaNum.Quota,
+			"rpm":                      quotaNum.Rpm,
+			"tpm":                      quotaNum.Tpm,
+			"total_requests":           quotaNum.TotalRequests,
+			"total_tokens":             quotaNum.TotalTokens,
+			"smartcache_savings_quota": quotaNum.SmartCacheSavingsQuota,
 			//"token": tokenNum,
 		},
 	})
@@ -168,4 +195,27 @@ func DeleteHistoryLogs(c *gin.Context) {
 		"data":    count,
 	})
 	return
+}
+
+func GetCacheSavingsSelf(c *gin.Context) {
+	userId := c.GetInt("id")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	result, err := model.GetUserCacheSavings(userId, startTimestamp, endTimestamp)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func GetCacheSavingsStat(c *gin.Context) {
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	result, err := model.GetAllCacheSavings(startTimestamp, endTimestamp)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
 }

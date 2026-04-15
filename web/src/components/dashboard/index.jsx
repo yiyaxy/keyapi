@@ -93,6 +93,8 @@ const Dashboard = () => {
       }
     });
     await dashboardData.loadUptimeData();
+    dashboardData.loadCacheSavings?.();
+    dashboardData.loadTranslatedConsole?.();
   };
 
   const handleRefresh = async () => {
@@ -107,15 +109,15 @@ const Dashboard = () => {
   };
 
   // ========== 数据准备 ==========
-  const apiInfoData = statusState?.status?.api_info || [];
-  const announcementData = (statusState?.status?.announcements || []).map(
+  const apiInfoData = dashboardData.translatedConsole?.api_info || statusState?.status?.api_info || [];
+  const announcementData = (dashboardData.translatedConsole?.announcements || statusState?.status?.announcements || []).map(
     (item) => {
       const pubDate = item?.publishDate ? new Date(item.publishDate) : null;
       const absoluteTime =
         pubDate && !isNaN(pubDate.getTime())
           ? `${pubDate.getFullYear()}-${String(pubDate.getMonth() + 1).padStart(2, '0')}-${String(pubDate.getDate()).padStart(2, '0')} ${String(pubDate.getHours()).padStart(2, '0')}:${String(pubDate.getMinutes()).padStart(2, '0')}`
           : item?.publishDate || '';
-      const relativeTime = getRelativeTime(item.publishDate);
+      const relativeTime = getRelativeTime(item.publishDate, dashboardData.t);
       return {
         ...item,
         time: absoluteTime,
@@ -123,7 +125,7 @@ const Dashboard = () => {
       };
     },
   );
-  const faqData = statusState?.status?.faq || [];
+  const faqData = dashboardData.translatedConsole?.faq || statusState?.status?.faq || [];
 
   const uptimeLegendData = Object.entries(UPTIME_STATUS_MAP).map(
     ([status, info]) => ({
@@ -146,6 +148,8 @@ const Dashboard = () => {
         showSearchModal={dashboardData.showSearchModal}
         refresh={handleRefresh}
         loading={dashboardData.loading}
+        cacheSavings={dashboardData.cacheSavings}
+        onSmartCacheClick={() => dashboardData.navigate('/console/smart-cache')}
         t={dashboardData.t}
       />
 

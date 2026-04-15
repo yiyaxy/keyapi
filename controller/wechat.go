@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -25,7 +26,7 @@ func getWeChatIdByCode(code string) (string, error) {
 	if code == "" {
 		return "", errors.New("无效的参数")
 	}
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/wechat/user?code=%s", common.WeChatServerAddress, code), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/wechat/user?code=%s", common.WeChatServerAddress, url.QueryEscape(code)), nil)
 	if err != nil {
 		return "", err
 	}
@@ -118,7 +119,12 @@ func WeChatAuth(c *gin.Context) {
 		})
 		return
 	}
+	c.Set("login_type", "oauth_wechat")
 	setupLogin(&user, c)
+}
+
+type wechatBindRequest struct {
+	Code string `json:"code"`
 }
 
 func WeChatBind(c *gin.Context) {
@@ -129,7 +135,15 @@ func WeChatBind(c *gin.Context) {
 		})
 		return
 	}
-	code := c.Query("code")
+	var req wechatBindRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的请求",
+		})
+		return
+	}
+	code := req.Code
 	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{

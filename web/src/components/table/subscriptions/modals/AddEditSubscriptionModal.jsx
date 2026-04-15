@@ -35,6 +35,7 @@ import {
 import {
   IconCalendarClock,
   IconClose,
+  IconCreditCard,
   IconSave,
 } from '@douyinfe/semi-icons';
 import { Clock, RefreshCw } from 'lucide-react';
@@ -63,6 +64,17 @@ const resetPeriodOptions = [
   { value: 'custom', label: '自定义(秒)' },
 ];
 
+const statusOptions = [
+  { value: 'active', label: '启用' },
+  { value: 'sold_out', label: '售罄' },
+  { value: 'disabled', label: '禁用' },
+];
+
+const normalizePlanStatus = (plan) => {
+  if (plan?.status) return plan.status;
+  return plan?.enabled === false ? 'disabled' : 'active';
+};
+
 const AddEditSubscriptionModal = ({
   visible,
   handleClose,
@@ -89,12 +101,17 @@ const AddEditSubscriptionModal = ({
     custom_seconds: 0,
     quota_reset_period: 'never',
     quota_reset_custom_seconds: 0,
-    enabled: true,
+    status: 'active',
     sort_order: 0,
     max_purchase_per_user: 0,
     total_amount: 0,
     upgrade_group: '',
+    promo_highlights: '',
+    inviter_reward_amount: 0,
+    stripe_price_id: '',
+    creem_product_id: '',
   });
+
 
   const buildFormValues = () => {
     const base = getInitValues();
@@ -111,13 +128,17 @@ const AddEditSubscriptionModal = ({
       custom_seconds: Number(p.custom_seconds || 0),
       quota_reset_period: p.quota_reset_period || 'never',
       quota_reset_custom_seconds: Number(p.quota_reset_custom_seconds || 0),
-      enabled: p.enabled !== false,
+      status: normalizePlanStatus(p),
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
       ),
       upgrade_group: p.upgrade_group || '',
+      promo_highlights: p.promo_highlights || '',
+      inviter_reward_amount: Number(p.inviter_reward_amount || 0),
+      stripe_price_id: p.stripe_price_id || '',
+      creem_product_id: p.creem_product_id || '',
     };
   };
 
@@ -157,8 +178,10 @@ const AddEditSubscriptionModal = ({
               : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
+          inviter_reward_amount: Number(values.inviter_reward_amount || 0),
           total_amount: displayAmountToQuota(values.total_amount),
           upgrade_group: values.upgrade_group || '',
+          status: values.status || 'active',
         },
       };
       if (editingPlan?.plan?.id) {
@@ -337,6 +360,15 @@ const AddEditSubscriptionModal = ({
                       </Form.Select>
                     </Col>
 
+                    <Col span={24}>
+                      <Form.TextArea
+                        field='promo_highlights'
+                        label={t('卖点文案（每行一条，最多5条）')}
+                        placeholder={t('每行一条卖点')}
+                        rows={4}
+                      />
+                    </Col>
+
                     <Col span={12}>
                       <Form.Input
                         field='currency'
@@ -367,11 +399,29 @@ const AddEditSubscriptionModal = ({
                     </Col>
 
                     <Col span={12}>
-                      <Form.Switch
-                        field='enabled'
-                        label={t('启用状态')}
-                        size='large'
+                      <Form.InputNumber
+                        field='inviter_reward_amount'
+                        label={t('邀请人奖励金额')}
+                        min={0}
+                        precision={2}
+                        prefix='$'
+                        extraText={t('被邀请人购买此套餐时，邀请人获得的固定USD奖励，0表示无奖励')}
+                        style={{ width: '100%' }}
                       />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.Select
+                        field='status'
+                        label={t('状态')}
+                        rules={[{ required: true, message: t('请选择状态') }]}
+                      >
+                        {statusOptions.map((option) => (
+                          <Select.Option key={option.value} value={option.value}>
+                            {t(option.label)}
+                          </Select.Option>
+                        ))}
+                      </Form.Select>
                     </Col>
                   </Row>
                 </Card>
@@ -496,6 +546,46 @@ const AddEditSubscriptionModal = ({
                   </Row>
                 </Card>
 
+                {/* 第三方支付配置 */}
+                <Card className='!rounded-2xl shadow-sm border-0 mb-4'>
+                  <div className='flex items-center mb-2'>
+                    <Avatar
+                      size='small'
+                      color='purple'
+                      className='mr-2 shadow-md'
+                    >
+                      <IconCreditCard size={16} />
+                    </Avatar>
+                    <div>
+                      <Text className='text-lg font-medium'>
+                        {t('第三方支付配置')}
+                      </Text>
+                      <div className='text-xs text-gray-600'>
+                        {t('Stripe/Creem 商品ID（可选）')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Row gutter={12}>
+                    <Col span={24}>
+                      <Form.Input
+                        field='stripe_price_id'
+                        label='Stripe PriceId'
+                        placeholder='price_...'
+                        showClear
+                      />
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.Input
+                        field='creem_product_id'
+                        label='Creem ProductId'
+                        placeholder='prod_...'
+                        showClear
+                      />
+                    </Col>
+                  </Row>
+                </Card>
               </div>
             )}
           </Form>

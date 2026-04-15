@@ -2,10 +2,12 @@ package channel
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"regexp"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -515,6 +518,21 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	// 通过 httptrace 捕获本站出口实际连接的 IP:Port
+	trace := &httptrace.ClientTrace{
+		GotConn: func(connInfo httptrace.GotConnInfo) {
+			if connInfo.Conn != nil {
+				info.UpstreamAddress = connInfo.Conn.LocalAddr().String()
+			}
+		},
+		TLSHandshakeStart: func() {},
+		TLSHandshakeDone:  func(_ tls.ConnectionState, _ error) {},
+	}
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+
+	if sess := relaymetrics.SessionFromGin(c); sess != nil {
+		sess.MarkUpstreamIssued(info.IsStream)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.LogError(c, "do request failed: "+err.Error())
@@ -522,6 +540,13 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 	if resp == nil {
 		return nil, errors.New("resp is nil")
+	}
+
+	// Extract upstream provider request IDs from response headers
+	info.UpstreamRequestIds = extractUpstreamRequestIds(resp.Header)
+
+	if sess := relaymetrics.SessionFromGin(c); sess != nil && resp.Body != nil {
+		resp.Body = relaymetrics.InstrumentReadCloser(resp.Body, sess)
 	}
 
 	_ = req.Body.Close()
@@ -551,4 +576,32 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 		return nil, fmt.Errorf("do request failed: %w", err)
 	}
 	return resp, nil
+}
+
+// upstreamRequestIdHeaders lists the response headers that may contain upstream provider request IDs.
+var upstreamRequestIdHeaders = []string{
+	"x-request-id",          // OpenAI, generic
+	"request-id",            // Anthropic/Claude
+	"x-kong-request-id",     // Kong gateway
+	"cf-ray",                // Cloudflare Ray ID
+	"x-ms-request-id",       // Azure
+	"x-amzn-requestid",      // AWS Bedrock
+	"x-cloud-trace-context", // Google Cloud
+}
+
+// extractUpstreamRequestIds extracts known request ID headers from the upstream response.
+func extractUpstreamRequestIds(header http.Header) map[string]string {
+	if header == nil {
+		return nil
+	}
+	ids := make(map[string]string)
+	for _, h := range upstreamRequestIdHeaders {
+		if v := header.Get(h); v != "" {
+			ids[h] = v
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }

@@ -42,6 +42,23 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["model_price"] = modelPrice
 	other["user_group_ratio"] = userGroupRatio
 	other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())
+	other["cache_billing_mode"] = string(GetEffectiveCacheBillingMode(relayInfo))
+	other["cache_billing_semantic"] = GetEffectiveCacheBillingSemantic(relayInfo)
+	// Channel-specific billing overrides
+	if relayInfo.PriceData.OtherRatios != nil {
+		if channelRatio, ok := relayInfo.PriceData.OtherRatios["channel_ratio"]; ok {
+			other["channel_ratio"] = channelRatio
+		}
+	}
+	if relayInfo.VirtualCacheTokens > 0 {
+		other["virtual_cache_tokens"] = relayInfo.VirtualCacheTokens
+		other["virtual_cache_hit_rate"] = relayInfo.VirtualCacheHitRate
+	}
+	if relayInfo.ChannelMeta != nil && relayInfo.ChannelMeta.ChannelSetting.ModelRatioOverride != nil {
+		if override, ok := relayInfo.ChannelMeta.ChannelSetting.ModelRatioOverride[relayInfo.OriginModelName]; ok {
+			other["model_ratio_override"] = override
+		}
+	}
 	if relayInfo.ReasoningEffort != "" {
 		other["reasoning_effort"] = relayInfo.ReasoningEffort
 	}
@@ -68,13 +85,69 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 		adminInfo["local_count_tokens"] = isLocalCountTokens
 	}
 
+	if relayInfo.UpstreamAddress != "" {
+		adminInfo["upstream_address"] = relayInfo.UpstreamAddress
+	}
+	if relayInfo.ChannelBaseUrl != "" {
+		adminInfo["channel_base_url"] = relayInfo.ChannelBaseUrl
+	}
+	if common.SiteLabel != "" {
+		adminInfo["site_label"] = common.SiteLabel
+	}
+
 	AppendChannelAffinityAdminInfo(ctx, adminInfo)
+	if retryErrors, exists := ctx.Get("retry_errors"); exists && retryErrors != nil {
+		adminInfo["retry_errors"] = retryErrors
+	}
+	if relayInfo.UpstreamRequestIds != nil {
+		adminInfo["upstream_request_ids"] = relayInfo.UpstreamRequestIds
+	}
 
 	other["admin_info"] = adminInfo
+	if traceEvents, exists := ctx.Get("trace_events"); exists && traceEvents != nil {
+		other["trace_events"] = traceEvents
+	}
 	appendRequestPath(ctx, relayInfo, other)
 	appendRequestConversionChain(relayInfo, other)
+	appendFinalRequestFormat(relayInfo, other)
 	appendBillingInfo(relayInfo, other)
+	appendParamOverrideInfo(relayInfo, other)
+	appendStreamStatus(relayInfo, other)
 	return other
+}
+
+func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || other == nil || len(relayInfo.ParamOverrideAudit) == 0 {
+		return
+	}
+	other["po"] = relayInfo.ParamOverrideAudit
+}
+
+func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || other == nil || !relayInfo.IsStream || relayInfo.StreamStatus == nil {
+		return
+	}
+	ss := relayInfo.StreamStatus
+	status := "ok"
+	if !ss.IsNormalEnd() || ss.HasErrors() {
+		status = "error"
+	}
+	streamInfo := map[string]interface{}{
+		"status":     status,
+		"end_reason": string(ss.EndReason),
+	}
+	if ss.EndError != nil {
+		streamInfo["end_error"] = ss.EndError.Error()
+	}
+	if ss.ErrorCount > 0 {
+		streamInfo["error_count"] = ss.ErrorCount
+		messages := make([]string, 0, len(ss.Errors))
+		for _, e := range ss.Errors {
+			messages = append(messages, e.Message)
+		}
+		streamInfo["errors"] = messages
+	}
+	other["stream_status"] = streamInfo
 }
 
 func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
@@ -157,6 +230,17 @@ func appendRequestConversionChain(relayInfo *relaycommon.RelayInfo, other map[st
 		return
 	}
 	other["request_conversion"] = chain
+}
+
+func appendFinalRequestFormat(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || other == nil {
+		return
+	}
+	if relayInfo.GetFinalRequestRelayFormat() == types.RelayFormatClaude {
+		// claude indicates the final upstream request format is Claude Messages.
+		// Frontend log rendering uses this to keep the original Claude input display.
+		other["claude"] = true
+	}
 }
 
 func GenerateWssOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage, modelRatio, groupRatio, completionRatio, audioRatio, audioCompletionRatio, modelPrice, userGroupRatio float64) map[string]interface{} {

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
@@ -180,11 +182,28 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 		// 获取分组
 		group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if group == "" {
-			group = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+			userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+			if model.GroupHasChannels(userGroup) {
+				group = userGroup
+			} else {
+				group = "default"
+			}
+		}
+
+		// 如果是分组链（逗号分隔），使用第一个分组的限流配置
+		rateLimitGroup := group
+		if strings.Contains(group, ",") {
+			for _, g := range strings.Split(group, ",") {
+				g = strings.TrimSpace(g)
+				if g != "" {
+					rateLimitGroup = g
+					break
+				}
+			}
 		}
 
 		//获取分组的限流配置
-		groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(group)
+		groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(rateLimitGroup)
 		if found {
 			totalMaxCount = groupTotalCount
 			successMaxCount = groupSuccessCount

@@ -17,13 +17,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { API } from '../../helpers/api';
 import UsageLogsTable from '../../components/table/usage-logs';
 
-const Token = () => (
-  <div className='mt-[60px] px-2'>
-    <UsageLogsTable />
-  </div>
-);
+const Token = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tradeNo = params.get('trade_no');
+    const tradeStatus = params.get('trade_status');
+    if (tradeNo && tradeStatus === 'TRADE_SUCCESS') {
+      API.get('/api/user/epay/notify' + location.search).catch(() => {});
+    }
+  }, [location.search]);
+
+  return (
+    <div className='mt-[60px] px-2'>
+      <UsageLogsTable />
+    </div>
+  );
+};
 
 export default Token;

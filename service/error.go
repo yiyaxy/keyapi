@@ -91,6 +91,20 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		return
 	}
 	CloseResponseBodyGracefully(resp)
+
+	// Capture raw upstream response for admin debugging (truncate to 4KB)
+	rawBody := string(responseBody)
+	if len(rawBody) > 4096 {
+		rawBody = rawBody[:4096] + "...(truncated)"
+	}
+	// Use defer to ensure all return paths get the upstream details
+	defer func() {
+		if newApiErr != nil {
+			newApiErr.UpstreamResponseBody = rawBody
+			newApiErr.UpstreamStatusCode = resp.StatusCode
+		}
+	}()
+
 	var errResponse dto.GeneralErrorResponse
 	buildErrWithBody := func(message string) error {
 		if message == "" {

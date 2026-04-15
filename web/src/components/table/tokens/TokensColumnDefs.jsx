@@ -104,6 +104,25 @@ const renderGroupColumn = (text, record, t) => {
       </Tooltip>
     );
   }
+  // Custom group chain: "vip,default,free"
+  if (text && text.includes(',')) {
+    const groups = text.split(',').map(g => g.trim()).filter(Boolean);
+    return (
+      <Tooltip content={t('自定义分组链，按顺序尝试各分组渠道')} position='top'>
+        <Space spacing={2} wrap>
+          {groups.map((g, i) => (
+            <React.Fragment key={`${g}-${i}`}>
+              <Tag color='blue' size='small' shape='circle'>{g}</Tag>
+              {i < groups.length - 1 && <span className='text-[10px] text-gray-400'>→</span>}
+            </React.Fragment>
+          ))}
+          {record && record.cross_group_retry && (
+            <Tag color='green' size='small' shape='circle'>{t('跨分组')}</Tag>
+          )}
+        </Space>
+      </Tooltip>
+    );
+  }
   return renderGroup(text);
 };
 
@@ -116,6 +135,8 @@ const renderTokenKey = (
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
+  copyTokenConnectionString,
+  t,
 ) => {
   const revealed = !!showKeys[record.id];
   const loading = !!loadingTokenKeys[record.id];
@@ -145,18 +166,35 @@ const renderTokenKey = (
                 await toggleTokenVisibility(record);
               }}
             />
-            <Button
-              theme='borderless'
-              size='small'
-              type='tertiary'
-              icon={<IconCopy />}
-              loading={loading}
-              aria-label='copy token key'
-              onClick={async (e) => {
-                e.stopPropagation();
-                await copyTokenKey(record);
-              }}
-            />
+            <Dropdown
+              trigger='click'
+              position='bottomRight'
+              clickToHide
+              menu={[
+                {
+                  node: 'item',
+                  name: t('复制密钥'),
+                  onClick: () => copyTokenKey(record),
+                },
+                {
+                  node: 'item',
+                  name: t('复制连接信息'),
+                  onClick: () => copyTokenConnectionString(record),
+                },
+              ]}
+            >
+              <Button
+                theme='borderless'
+                size='small'
+                type='tertiary'
+                icon={<IconCopy />}
+                loading={loading}
+                aria-label='copy token key'
+                onClick={async (e) => {
+                  e.stopPropagation();
+                }}
+              />
+            </Dropdown>
           </div>
         }
       />
@@ -444,6 +482,7 @@ export const getTokensColumns = ({
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
+  copyTokenConnectionString,
   manageToken,
   onOpenLink,
   setEditingToken,
@@ -484,6 +523,8 @@ export const getTokensColumns = ({
           loadingTokenKeys,
           toggleTokenVisibility,
           copyTokenKey,
+          copyTokenConnectionString,
+          t,
         ),
     },
     {

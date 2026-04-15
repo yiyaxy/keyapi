@@ -12,6 +12,7 @@ type PriceData struct {
 	FreeModel            bool
 	ModelPrice           float64
 	ModelRatio           float64
+	OriginalModelRatio   float64
 	CompletionRatio      float64
 	CacheRatio           float64
 	CacheCreationRatio   float64

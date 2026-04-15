@@ -52,11 +52,7 @@ services:
     networks:
       - new-api-network
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"
-        ]
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -73,7 +69,7 @@ services:
     networks:
       - new-api-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -111,7 +107,7 @@ services:
     networks:
       - new-api-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d new-api"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d new-api" ]
       interval: 10s
       timeout: 5s
       retries: 5

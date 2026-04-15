@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/types"
@@ -27,13 +28,27 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 		return nil
 	}
 
-	if !forceFormat && !thinkToContent {
+	needResponseReplace := service.HasResponseRules(info.ChannelId)
+
+	if !forceFormat && !thinkToContent && !needResponseReplace {
 		return helper.StringData(c, data)
 	}
 
 	var lastStreamResponse dto.ChatCompletionsStreamResponse
 	if err := common.UnmarshalJsonStr(data, &lastStreamResponse); err != nil {
 		return err
+	}
+
+	// Apply response content replacement rules
+	if needResponseReplace {
+		for i := range lastStreamResponse.Choices {
+			if content := lastStreamResponse.Choices[i].Delta.GetContentString(); content != "" {
+				newContent := service.ApplyResponseContentRules(content, info.ChannelId)
+				if newContent != content {
+					lastStreamResponse.Choices[i].Delta.SetContentString(newContent)
+				}
+			}
+		}
 	}
 
 	if !thinkToContent {
@@ -122,15 +137,16 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var streamItems []string // store stream items
 	var lastStreamData string
 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
+	needRewrite := service.HasRewriteRules(info.ChannelId)
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
-	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
+	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if lastStreamData != "" {
-			err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
-			if err != nil {
+			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
+				sr.Error(err)
 			}
 		}
 		if len(data) > 0 {
@@ -142,8 +158,38 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			lastStreamData = data
 			streamItems = append(streamItems, data)
 		}
-		return true
 	})
+
+	// Zero chunks = upstream returned empty stream, trigger retry
+	if info.ReceivedResponseCount == 0 {
+		return nil, types.NewOpenAIError(
+			fmt.Errorf("upstream stream ended without sending any data chunks"),
+			types.ErrorCodeBadResponse,
+			http.StatusBadGateway,
+		)
+	}
+
+	// Received chunk(s) but produced no meaningful content — trigger retry if nothing sent yet
+	if info.ReceivedResponseCount > 0 && info.SendResponseCount == 0 && !needRewrite {
+		// Check if the single buffered lastStreamData has actual content
+		var lastResp dto.ChatCompletionsStreamResponse
+		hasContent := false
+		if err := common.UnmarshalJsonStr(lastStreamData, &lastResp); err == nil {
+			for _, choice := range lastResp.Choices {
+				if choice.Delta.GetContentString() != "" || choice.Delta.GetReasoningContent() != "" || len(choice.Delta.ToolCalls) > 0 {
+					hasContent = true
+					break
+				}
+			}
+		}
+		if !hasContent {
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("upstream stream had %d chunks but no content produced", info.ReceivedResponseCount),
+				types.ErrorCodeEmptyResponse,
+				http.StatusBadGateway,
+			)
+		}
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -171,7 +217,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
-		if shouldSendLastResp {
+		if shouldSendLastResp && !needRewrite {
 			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
 		}
 	}
@@ -179,6 +225,30 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	// 处理token计算
 	if err := processTokens(info.RelayMode, streamItems, &responseTextBuilder, &toolCount); err != nil {
 		logger.LogError(c, "error processing tokens: "+err.Error())
+	}
+
+	// Handle AI rewrite for streaming
+	if needRewrite {
+		fullContent := responseTextBuilder.String()
+		rewrittenContent, rewritten := service.ApplyResponseRewriteRules(fullContent, info.ChannelId, info.OriginModelName)
+		if rewritten {
+			if len(streamItems) > 0 {
+				var tpl dto.ChatCompletionsStreamResponse
+				if err := common.UnmarshalJsonStr(streamItems[0], &tpl); err == nil && len(tpl.Choices) > 0 {
+					tpl.Choices[0].Delta.SetContentString(rewrittenContent)
+					tpl.Choices[0].Delta.ReasoningContent = nil
+					tpl.Choices[0].Delta.Reasoning = nil
+					helper.ObjectData(c, tpl)
+				}
+			}
+		} else {
+			for i := 0; i < len(streamItems)-1; i++ {
+				HandleStreamFormat(c, info, streamItems[i], info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+			}
+			if info.RelayFormat == types.RelayFormatOpenAI && lastStreamData != "" {
+				sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+			}
+		}
 	}
 
 	if !containStreamUsage {
@@ -200,6 +270,10 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	}
+	// Mark non-stream body fully read as "first data parsed"
+	if sess := relaymetrics.SessionFromGin(c); sess != nil {
+		sess.MarkFirstDataParsed()
 	}
 	if common.DebugEnabled {
 		println("upstream response body:", string(responseBody))
@@ -229,6 +303,15 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
+	// Empty response check: no choices = empty response, trigger retry
+	if len(simpleResponse.Choices) == 0 {
+		return nil, types.NewOpenAIError(
+			fmt.Errorf("upstream returned empty response with no choices"),
+			types.ErrorCodeEmptyResponse,
+			http.StatusBadGateway,
+		)
+	}
+
 	for _, choice := range simpleResponse.Choices {
 		if choice.FinishReason == constant.FinishReasonContentFilter {
 			common.SetContextKey(c, constant.ContextKeyAdminRejectReason, "openai_finish_reason=content_filter")
@@ -239,6 +322,27 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	forceFormat := false
 	if info.ChannelSetting.ForceFormat {
 		forceFormat = true
+	}
+
+	// Apply response content replacement rules
+	for i := range simpleResponse.Choices {
+		if content := simpleResponse.Choices[i].Message.StringContent(); content != "" {
+			newContent := service.ApplyResponseContentRules(content, info.ChannelId)
+			if newContent != content {
+				simpleResponse.Choices[i].Message.SetStringContent(newContent)
+				forceFormat = true
+			}
+		}
+	}
+
+	// Apply AI rewrite rules (type=4)
+	if len(simpleResponse.Choices) > 0 {
+		if rewrittenContent, rewritten := service.ApplyResponseRewriteRules(
+			simpleResponse.Choices[0].Message.StringContent(), info.ChannelId, info.OriginModelName,
+		); rewritten {
+			simpleResponse.Choices[0].Message.SetStringContent(rewrittenContent)
+			forceFormat = true
+		}
 	}
 
 	usageModified := false
@@ -627,6 +731,12 @@ func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, res
 				usage.PromptTokensDetails.CachedTokens = usage.PromptCacheHitTokens
 			}
 		}
+	case constant.ChannelTypeOpenAI:
+		if usage.PromptTokensDetails.CachedTokens == 0 {
+			if cachedTokens, ok := extractLlamaCachedTokensFromBody(responseBody); ok {
+				usage.PromptTokensDetails.CachedTokens = cachedTokens
+			}
+		}
 	}
 }
 
@@ -688,4 +798,26 @@ func extractMoonshotCachedTokensFromBody(body []byte) (int, bool) {
 	}
 
 	return 0, false
+}
+
+// extractLlamaCachedTokensFromBody 从llama.cpp的非标准位置提取cache_n
+func extractLlamaCachedTokensFromBody(body []byte) (int, bool) {
+	if len(body) == 0 {
+		return 0, false
+	}
+
+	var payload struct {
+		Timings struct {
+			CachedTokens *int `json:"cache_n"`
+		} `json:"timings"`
+	}
+
+	if err := common.Unmarshal(body, &payload); err != nil {
+		return 0, false
+	}
+
+	if payload.Timings.CachedTokens == nil {
+		return 0, false
+	}
+	return *payload.Timings.CachedTokens, true
 }

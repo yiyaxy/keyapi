@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -18,19 +19,33 @@ type SubscriptionPlanDTO struct {
 }
 
 type BillingPreferenceRequest struct {
-	BillingPreference string `json:"billing_preference"`
+	BillingPreference       string `json:"billing_preference"`
+	PreferredSubscriptionId *int   `json:"preferred_subscription_id,omitempty"`
 }
 
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := model.DB.Where("status IN ?", []string{model.SubscriptionPlanStatusActive, model.SubscriptionPlanStatusSoldOut}).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	lang := c.Query("lang")
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		if lang != "" && lang != "zh" {
+			translated, _ := service.TranslateContent("plan", strconv.Itoa(p.Id), map[string]string{"title": p.Title, "subtitle": p.Subtitle, "promo_highlights": p.PromoHighlights}, lang)
+			if t, ok := translated["title"]; ok {
+				p.Title = t
+			}
+			if t, ok := translated["subtitle"]; ok {
+				p.Subtitle = t
+			}
+			if t, ok := translated["promo_highlights"]; ok {
+				p.PromoHighlights = t
+			}
+		}
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -56,10 +71,25 @@ func GetSubscriptionSelf(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"billing_preference":        pref,
+		"preferred_subscription_id": settingMap.PreferredSubscriptionId,
+		"subscriptions":             activeSubscriptions, // all active subscriptions
+		"all_subscriptions":         allSubscriptions,    // all subscriptions including expired
 	})
+}
+
+func ActivateSubscription(c *gin.Context) {
+	userId := c.GetInt("id")
+	subId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	if err := model.ActivateUserSubscription(userId, subId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 func UpdateSubscriptionPreference(c *gin.Context) {
@@ -78,12 +108,18 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	current := user.GetSetting()
 	current.BillingPreference = pref
+	if req.PreferredSubscriptionId != nil {
+		current.PreferredSubscriptionId = *req.PreferredSubscriptionId
+	}
 	user.SetSetting(current)
 	if err := user.Update(false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"billing_preference": pref})
+	common.ApiSuccess(c, gin.H{
+		"billing_preference":        pref,
+		"preferred_subscription_id": current.PreferredSubscriptionId,
+	})
 }
 
 // ---- Admin APIs ----
@@ -107,6 +143,18 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+func normalizeSubscriptionPlanStatusAndEnabled(plan *model.SubscriptionPlan) {
+	if plan == nil {
+		return
+	}
+	status := model.NormalizeSubscriptionPlanStatus(plan.Status)
+	if !plan.Enabled && strings.TrimSpace(plan.Status) == "" {
+		status = model.SubscriptionPlanStatusDisabled
+	}
+	plan.Status = status
+	plan.Enabled = model.SubscriptionPlanStatusAllowsPublicList(status)
+}
+
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	var req AdminUpsertSubscriptionPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -114,6 +162,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = 0
+	normalizeSubscriptionPlanStatusAndEnabled(&req.Plan)
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return
@@ -140,6 +189,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	if req.Plan.InviterRewardAmount < 0 {
+		common.ApiErrorMsg(c, "邀请人奖励金额不能为负数")
+		return
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -148,6 +201,20 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
 			common.ApiErrorMsg(c, "升级分组不存在")
+			return
+		}
+	}
+	req.Plan.PromoHighlights = strings.TrimSpace(req.Plan.PromoHighlights)
+	if req.Plan.PromoHighlights != "" {
+		lines := strings.Split(req.Plan.PromoHighlights, "\n")
+		nonEmpty := 0
+		for _, l := range lines {
+			if strings.TrimSpace(l) != "" {
+				nonEmpty++
+			}
+		}
+		if nonEmpty > 5 {
+			common.ApiErrorMsg(c, "卖点最多支持 5 条")
 			return
 		}
 	}
@@ -189,6 +256,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = id
+	normalizeSubscriptionPlanStatusAndEnabled(&req.Plan)
 	if req.Plan.Currency == "" {
 		req.Plan.Currency = "USD"
 	}
@@ -203,6 +271,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	if req.Plan.InviterRewardAmount < 0 {
+		common.ApiErrorMsg(c, "邀请人奖励金额不能为负数")
+		return
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -211,6 +283,20 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
 			common.ApiErrorMsg(c, "升级分组不存在")
+			return
+		}
+	}
+	req.Plan.PromoHighlights = strings.TrimSpace(req.Plan.PromoHighlights)
+	if req.Plan.PromoHighlights != "" {
+		lines := strings.Split(req.Plan.PromoHighlights, "\n")
+		nonEmpty := 0
+		for _, l := range lines {
+			if strings.TrimSpace(l) != "" {
+				nonEmpty++
+			}
+		}
+		if nonEmpty > 5 {
+			common.ApiErrorMsg(c, "卖点最多支持 5 条")
 			return
 		}
 	}
@@ -225,14 +311,19 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
+			"promo_highlights":           req.Plan.PromoHighlights,
 			"price_amount":               req.Plan.PriceAmount,
 			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,
 			"duration_value":             req.Plan.DurationValue,
 			"custom_seconds":             req.Plan.CustomSeconds,
+			"status":                     req.Plan.Status,
 			"enabled":                    req.Plan.Enabled,
 			"sort_order":                 req.Plan.SortOrder,
+			"stripe_price_id":            req.Plan.StripePriceId,
+			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
+			"inviter_reward_amount":      req.Plan.InviterRewardAmount,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
@@ -249,11 +340,13 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	model.InvalidateSubscriptionPlanCache(id)
+	_ = model.DeleteContentTranslationsByTypeAndId("plan", strconv.Itoa(id))
 	common.ApiSuccess(c, nil)
 }
 
 type AdminUpdateSubscriptionPlanStatusRequest struct {
-	Enabled *bool `json:"enabled"`
+	Status  *string `json:"status"`
+	Enabled *bool   `json:"enabled"`
 }
 
 func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
@@ -263,11 +356,26 @@ func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
 		return
 	}
 	var req AdminUpdateSubscriptionPlanStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Status == nil && req.Enabled == nil) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
+
+	status := ""
+	if req.Status != nil {
+		status = model.NormalizeSubscriptionPlanStatus(*req.Status)
+	} else if req.Enabled != nil {
+		if *req.Enabled {
+			status = model.SubscriptionPlanStatusActive
+		} else {
+			status = model.SubscriptionPlanStatusDisabled
+		}
+	}
+	enabled := model.SubscriptionPlanStatusAllowsPublicList(status)
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":  status,
+		"enabled": enabled,
+	}).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -375,6 +483,45 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 	}
 	if msg != "" {
 		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// ---- Admin: subscription order management ----
+
+// AdminListSubscriptionOrders returns paginated subscription orders with optional filters.
+func AdminListSubscriptionOrders(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	keyword := c.Query("keyword")
+	status := c.Query("status")
+	orders, total, err := model.GetAllSubscriptionOrders(pageInfo, keyword, status)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(orders)
+	common.ApiSuccess(c, pageInfo)
+}
+
+type AdminCompleteSubscriptionOrderRequest struct {
+	TradeNo string `json:"trade_no"`
+}
+
+// AdminCompleteSubscriptionOrder manually completes a pending subscription order.
+func AdminCompleteSubscriptionOrder(c *gin.Context) {
+	var req AdminCompleteSubscriptionOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TradeNo == "" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	LockOrder(req.TradeNo)
+	defer UnlockOrder(req.TradeNo)
+
+	if err := model.CompleteSubscriptionOrder(req.TradeNo, ""); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, nil)

@@ -21,6 +21,9 @@ import React, { useEffect, useState } from 'react';
 import { Card, Spin } from '@douyinfe/semi-ui';
 import SettingsGeneralPayment from '../../pages/Setting/Payment/SettingsGeneralPayment';
 import SettingsPaymentGateway from '../../pages/Setting/Payment/SettingsPaymentGateway';
+import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPaymentGatewayStripe';
+import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
+import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import { API, showError, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -28,13 +31,24 @@ const PaymentSetting = () => {
   const { t } = useTranslation();
   let [inputs, setInputs] = useState({
     ServerAddress: '',
+    PayAddress: '',
+    EpayId: '',
+    EpayKey: '',
     Price: 7.3,
     MinTopUp: 1,
+    MinInvoiceAmount: 200,
     TopupGroupRatio: '',
+    CustomCallbackAddress: '',
     PayMethods: '',
     AmountOptions: '',
     AmountDiscount: '',
 
+    StripeApiSecret: '',
+    StripeWebhookSecret: '',
+    StripePriceId: '',
+    StripeUnitPrice: 8.0,
+    StripeMinTopUp: 1,
+    StripePromotionCodesEnabled: false,
   });
 
   let [loading, setLoading] = useState(false);
@@ -54,7 +68,6 @@ const PaymentSetting = () => {
                 2,
               );
             } catch (error) {
-              console.error('解析TopupGroupRatio出错:', error);
               newInputs[item.key] = item.value;
             }
             break;
@@ -66,7 +79,6 @@ const PaymentSetting = () => {
                 2,
               );
             } catch (error) {
-              console.error('解析AmountOptions出错:', error);
               newInputs['AmountOptions'] = item.value;
             }
             break;
@@ -78,12 +90,14 @@ const PaymentSetting = () => {
                 2,
               );
             } catch (error) {
-              console.error('解析AmountDiscount出错:', error);
               newInputs['AmountDiscount'] = item.value;
             }
             break;
           case 'Price':
           case 'MinTopUp':
+          case 'MinInvoiceAmount':
+          case 'StripeUnitPrice':
+          case 'StripeMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
             break;
           default:
@@ -125,6 +139,15 @@ const PaymentSetting = () => {
         </Card>
         <Card style={{ marginTop: '10px' }}>
           <SettingsPaymentGateway options={inputs} refresh={onRefresh} />
+        </Card>
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsPaymentGatewayStripe options={inputs} refresh={onRefresh} />
+        </Card>
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsPaymentGatewayCreem options={inputs} refresh={onRefresh} />
+        </Card>
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsPaymentGatewayWaffo options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

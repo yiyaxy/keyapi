@@ -75,8 +75,8 @@ export const useSubscriptionsData = () => {
     setActivePage(1);
   };
 
-  // Update plan enabled status (single endpoint)
-  const setPlanEnabled = async (planRecordOrId, enabled) => {
+  // Update plan status (single endpoint)
+  const setPlanStatus = async (planRecordOrId, status) => {
     const planId =
       typeof planRecordOrId === 'number'
         ? planRecordOrId
@@ -85,10 +85,16 @@ export const useSubscriptionsData = () => {
     setLoading(true);
     try {
       const res = await API.patch(`/api/subscription/admin/plans/${planId}`, {
-        enabled: !!enabled,
+        status,
+        enabled: status !== 'disabled',
       });
       if (res.data?.success) {
-        showSuccess(enabled ? t('已启用') : t('已禁用'));
+        const successMap = {
+          active: t('已启用'),
+          sold_out: t('已售罄'),
+          disabled: t('已禁用'),
+        };
+        showSuccess(successMap[status] || t('操作成功'));
         await loadPlans();
       } else {
         showError(res.data?.message || t('操作失败'));
@@ -154,7 +160,7 @@ export const useSubscriptionsData = () => {
 
     // Actions
     loadPlans,
-    setPlanEnabled,
+    setPlanStatus,
     refresh,
     closeEdit,
     openCreate,

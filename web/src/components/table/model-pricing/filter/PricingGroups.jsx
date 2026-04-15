@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import SelectableButtonGroup from '../../../common/ui/SelectableButtonGroup';
-import { isAdmin } from '../../../../helpers';
 
 /**
  * 分组筛选组件
@@ -65,7 +64,7 @@ const PricingGroups = ({
     return {
       value: g,
       label: g === 'all' ? t('全部分组') : g,
-      tagCount: isAdmin() ? ratioDisplay : '',
+      tagCount: ratioDisplay,
     };
   });
 

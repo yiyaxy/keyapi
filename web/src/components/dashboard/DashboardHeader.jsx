@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Button } from '@douyinfe/semi-ui';
 import { RefreshCw, Search } from 'lucide-react';
+import { renderQuota } from '../../helpers';
 
 const DashboardHeader = ({
   getGreeting,
@@ -27,6 +28,8 @@ const DashboardHeader = ({
   showSearchModal,
   refresh,
   loading,
+  cacheSavings,
+  onSmartCacheClick,
   t,
 }) => {
   const ICON_BUTTON_CLASS = 'text-white hover:bg-opacity-80 !rounded-full';
@@ -40,6 +43,18 @@ const DashboardHeader = ({
         {getGreeting}
       </h2>
       <div className='flex gap-3'>
+        {cacheSavings > 0 && (
+          <div
+            onClick={onSmartCacheClick}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full cursor-pointer shadow-md hover:shadow-lg transition-all duration-300 text-sm font-medium"
+            style={{
+              animation: 'smartcache-glow 2s ease-in-out infinite alternate',
+            }}
+          >
+            <span style={{ fontSize: 16 }}>⚡</span>
+            <span>SmartCache {t('已为您节约')} {renderQuota(cacheSavings, 3)}</span>
+          </div>
+        )}
         <Button
           type='tertiary'
           icon={<Search size={16} />}
@@ -54,6 +69,12 @@ const DashboardHeader = ({
           className={`bg-blue-500 hover:bg-blue-600 ${ICON_BUTTON_CLASS}`}
         />
       </div>
+      <style>{`
+        @keyframes smartcache-glow {
+          from { box-shadow: 0 0 5px rgba(16, 185, 129, 0.3); }
+          to { box-shadow: 0 0 20px rgba(16, 185, 129, 0.6); }
+        }
+      `}</style>
     </div>
   );
 };

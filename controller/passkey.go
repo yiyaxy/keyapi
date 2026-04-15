@@ -322,6 +322,7 @@ func PasskeyLoginFinish(c *gin.Context) {
 		return
 	}
 
+	c.Set("login_type", "passkey")
 	setupLogin(modelUser, c)
 	return
 }
@@ -467,6 +468,15 @@ func PasskeyVerifyFinish(c *gin.Context) {
 	credential.LastUsedAt = &now
 	if err := model.UpsertPasskeyCredential(credential); err != nil {
 		common.ApiError(c, err)
+		return
+	}
+
+	session := sessions.Default(c)
+	// Mark passkey as ready; /api/verify will convert this into the final secure verification session.
+	session.Set(PasskeyReadySessionKey, time.Now().Unix())
+	session.Delete(SecureVerificationSessionKey)
+	if err := session.Save(); err != nil {
+		common.ApiError(c, fmt.Errorf("保存验证状态失败: %v", err))
 		return
 	}
 

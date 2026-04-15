@@ -10,9 +10,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	InvoiceProviderManual   = "manual"
+	InvoiceProviderPiaoTong = "piaotong"
+)
+
+const (
+	InvoiceIssueModeManual = "manual"
+	InvoiceIssueModeAuto   = "auto"
+)
+
 var StartTime = time.Now().Unix() // unit: second
 var Version = "v0.0.0"            // this hard coding will be replaced automatically when building, no need to manually change
-var SystemName = "New API"
+var SystemName = "CaMeL API"
 var Footer = ""
 var Logo = ""
 var TopUpLink = ""
@@ -29,6 +39,7 @@ var DataExportEnabled = true
 var DataExportInterval = 5         // unit: minute
 var DataExportDefaultTime = "hour" // unit: minute
 var DefaultCollapseSidebar = false // default value of collapse sidebar
+var SessionVersion int = 1 // used for force-logout: bump to invalidate all sessions
 
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 
@@ -103,6 +114,14 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+var TopUpRebateCount = 0              // 充值返利次数（被邀请者前N次充值参与返利）
+var TopUpRebatePercent = 0            // 充值返利百分比（0-100）
+var SubscriptionRebateCount = 0       // 订阅返利次数（被邀请者前N次订阅购买参与返利），-1无限,0关闭
+var TranslationChannelId = 0          // 翻译渠道ID，0为关闭
+var TranslationModel = ""             // 翻译模型名称
+var SubscriptionRecommendCount = 3    // 订阅套餐推荐标签显示数量
+var InvoiceProvider = InvoiceProviderManual
+var InvoiceAutoIssueEnabled = false
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
@@ -132,6 +151,12 @@ var GeminiSafetySetting string
 
 // https://docs.cohere.com/docs/safety-modes Type; NONE/CONTEXTUAL/STRICT
 var CohereSafetySetting string
+
+var SiteLabel string // 本站标签，通过 SITE_LABEL 环境变量设置
+
+var PrometheusToken string // Bearer token for /metrics endpoint, via PROMETHEUS_TOKEN env var
+
+var AnalyticsTZOffset int // timezone offset in hours for analytics, via ANALYTICS_TZ_OFFSET env var
 
 const (
 	RequestIdKey = "X-Oneapi-Request-Id"
@@ -177,6 +202,7 @@ var (
 	DownloadRateLimitDuration int64 = 60
 
 	// Per-user search rate limit (applies after authentication, keyed by user ID)
+	SearchRateLimitEnable         = true
 	SearchRateLimitNum            = 10
 	SearchRateLimitDuration int64 = 60
 )
@@ -211,5 +237,6 @@ const (
 const (
 	TopUpStatusPending = "pending"
 	TopUpStatusSuccess = "success"
+	TopUpStatusFailed  = "failed"
 	TopUpStatusExpired = "expired"
 )

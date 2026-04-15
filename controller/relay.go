@@ -31,6 +31,110 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// RetryError records a single failed relay attempt for admin logging.
+type RetryError struct {
+	ChannelId         int    `json:"channel_id"`
+	ChannelName       string `json:"channel_name"`
+	StatusCode        int    `json:"status_code"`
+	Message           string `json:"message"`
+	UpstreamBody      string `json:"upstream_body,omitempty"`
+	ElapsedMs         int64  `json:"elapsed_ms"`
+	UpstreamRequestIds map[string]string `json:"upstream_request_ids,omitempty"`
+}
+
+func addRetryError(c *gin.Context, re RetryError) {
+	val, exists := c.Get("retry_errors")
+	var errs []RetryError
+	if exists {
+		errs, _ = val.([]RetryError)
+	}
+	errs = append(errs, re)
+	c.Set("retry_errors", errs)
+}
+
+func getRetryErrors(c *gin.Context) []RetryError {
+	val, exists := c.Get("retry_errors")
+	if !exists {
+		return nil
+	}
+	errs, _ := val.([]RetryError)
+	return errs
+}
+
+// friendlyErrorMessage converts raw upstream error into a concise, user-friendly message.
+// Users see a clean Chinese summary + status code; raw details are only in admin logs.
+func friendlyErrorMessage(err *types.NewAPIError) string {
+	if err == nil {
+		return "未知错误"
+	}
+	code := err.StatusCode
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+
+	// Map common upstream errors to friendly Chinese messages
+	switch {
+	case code == 401 || strings.Contains(lower, "unauthorized") || strings.Contains(lower, "invalid.*key"):
+		return fmt.Sprintf("请求失败(%d)：渠道认证失败", code)
+	case code == 403 || strings.Contains(lower, "forbidden") || strings.Contains(lower, "permission"):
+		return fmt.Sprintf("请求失败(%d)：访问被拒绝", code)
+	case code == 404 || strings.Contains(lower, "not found") || strings.Contains(lower, "does not exist"):
+		return fmt.Sprintf("请求失败(%d)：模型或端点不存在", code)
+	case code == 429 || strings.Contains(lower, "rate limit") || strings.Contains(lower, "too many request") || strings.Contains(lower, "quota exceeded"):
+		return fmt.Sprintf("请求失败(%d)：上游限流，请稍后重试", code)
+	case code == 500 || strings.Contains(lower, "internal server error") || strings.Contains(lower, "internal error"):
+		return fmt.Sprintf("请求失败(%d)：上游服务异常", code)
+	case code == 502 || strings.Contains(lower, "bad gateway"):
+		return fmt.Sprintf("请求失败(%d)：上游网关错误", code)
+	case code == 503 || strings.Contains(lower, "overloaded") || strings.Contains(lower, "unavailable"):
+		return fmt.Sprintf("请求失败(%d)：上游服务过载或不可用", code)
+	case code == 504 || strings.Contains(lower, "timeout") || strings.Contains(lower, "timed out"):
+		return fmt.Sprintf("请求失败(%d)：上游请求超时", code)
+	case strings.Contains(lower, "context length") || strings.Contains(lower, "maximum.*token") || strings.Contains(lower, "too long"):
+		return fmt.Sprintf("请求失败(%d)：输入内容超出模型最大长度", code)
+	case strings.Contains(lower, "content filter") || strings.Contains(lower, "safety") || strings.Contains(lower, "blocked"):
+		return fmt.Sprintf("请求失败(%d)：内容被安全过滤拦截", code)
+	case strings.Contains(lower, "empty response") || strings.Contains(lower, "empty content"):
+		return fmt.Sprintf("请求失败(%d)：上游返回空响应，已自动重试", code)
+	case code >= 400 && code < 500:
+		return fmt.Sprintf("请求失败(%d)：请求参数错误", code)
+	case code >= 500:
+		return fmt.Sprintf("请求失败(%d)：上游服务异常", code)
+	default:
+		// Fallback: mask sensitive info but keep it concise
+		masked := common.MaskSensitiveInfo(msg)
+		if len(masked) > 100 {
+			masked = masked[:100] + "..."
+		}
+		return fmt.Sprintf("请求失败(%d)：%s", code, masked)
+	}
+}
+
+// isUpstreamRelayError returns true if the error originates from an upstream
+// provider (channel), as opposed to being generated locally by our system
+// (e.g. quota checks, validation, auth). System errors have well-known error
+// codes and should keep their original messages so users see actionable info
+// like "额度不足" instead of a generic "访问被拒绝".
+func isUpstreamRelayError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeInsufficientUserQuota,
+		types.ErrorCodePreConsumeTokenQuotaFailed,
+		types.ErrorCodeInvalidRequest,
+		types.ErrorCodeReadRequestBodyFailed,
+		types.ErrorCodeCountTokenFailed,
+		types.ErrorCodeGenRelayInfoFailed,
+		types.ErrorCodeSensitiveWordsDetected,
+		types.ErrorCodeModelPriceError,
+		types.ErrorCodeUpdateDataError,
+		types.ErrorCodeQueryDataError,
+		types.ErrorCodeGetChannelFailed:
+		return false
+	}
+	return true
+}
+
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	var err *types.NewAPIError
 	switch info.RelayMode {
@@ -88,7 +192,39 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+
+			// Always record the final relay error to logs table for request tracing.
+			// This is the ONLY log entry for a normal relay request — channel retry
+			// errors are consolidated into admin_info.retry_errors, not logged separately.
+			recordRelayErrorForTrace(c, newAPIError)
+
+			// Build channel chain string (e.g., "3-5-12") from retry history
+			channelChain := ""
+			if retryErrs := getRetryErrors(c); len(retryErrs) > 0 {
+				ids := make([]string, 0, len(retryErrs))
+				for _, re := range retryErrs {
+					ids = append(ids, fmt.Sprintf("%d", re.ChannelId))
+				}
+				channelChain = strings.Join(ids, "-")
+			}
+			// Build user-facing error message.
+			// Only apply friendlyErrorMessage to upstream relay errors;
+			// system-generated errors (quota, auth, validation) keep their original message.
+			var displayMsg string
+			if isUpstreamRelayError(newAPIError) {
+				displayMsg = friendlyErrorMessage(newAPIError)
+			} else {
+				displayMsg = newAPIError.Error()
+			}
+			suffix := ""
+			if requestId != "" && channelChain != "" {
+				suffix = fmt.Sprintf(" (request id: %s, %s)", requestId, channelChain)
+			} else if requestId != "" {
+				suffix = fmt.Sprintf(" (request id: %s)", requestId)
+			} else if channelChain != "" {
+				suffix = fmt.Sprintf(" (%s)", channelChain)
+			}
+			newAPIError.SetMessage(displayMsg + suffix)
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -107,6 +243,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	request, err := helper.GetAndValidateRequest(c, relayFormat)
 	if err != nil {
+		addTraceEvent(c, "validate", fmt.Sprintf("请求验证失败: %s", err.Error()), nil)
 		// Map "request body too large" to 413 so clients can handle it correctly
 		if common.IsRequestBodyTooLargeError(err) || errors.Is(err, common.ErrRequestBodyTooLarge) {
 			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
@@ -116,11 +253,26 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
+	// Apply global prompt replacement rules (channelId=0)
+	addTraceEvent(c, "validate", "请求验证通过", map[string]interface{}{
+		"format": string(relayFormat),
+	})
+
+	if openaiReq, ok := request.(*dto.GeneralOpenAIRequest); ok {
+		service.ApplyPromptRules(openaiReq, 0)
+	}
+
 	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
+		addTraceEvent(c, "init", fmt.Sprintf("RelayInfo 初始化失败: %s", err.Error()), nil)
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	addTraceEvent(c, "init", "RelayInfo 初始化完成", map[string]interface{}{
+		"model":     relayInfo.OriginModelName,
+		"group":     relayInfo.TokenGroup,
+		"is_stream": relayInfo.IsStream,
+	})
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -135,35 +287,52 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if needSensitiveCheck && meta != nil {
 		contains, words := service.CheckSensitiveText(meta.CombineText)
 		if contains {
+			addTraceEvent(c, "sensitive_check", fmt.Sprintf("敏感词检测命中: %s", strings.Join(words, ", ")), nil)
 			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
 			return
 		}
+		addTraceEvent(c, "sensitive_check", "敏感词检测通过", nil)
 	}
 
 	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
 	if err != nil {
+		addTraceEvent(c, "token_estimate", fmt.Sprintf("Token 估算失败: %s", err.Error()), nil)
 		newAPIError = types.NewError(err, types.ErrorCodeCountTokenFailed)
 		return
 	}
+	addTraceEvent(c, "token_estimate", fmt.Sprintf("Token 估算完成: %d", tokens), map[string]interface{}{
+		"estimated_tokens": tokens,
+	})
 
 	relayInfo.SetEstimatePromptTokens(tokens)
 
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 	if err != nil {
+		addTraceEvent(c, "pricing", fmt.Sprintf("价格计算失败: %s", err.Error()), nil)
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError)
 		return
 	}
+	addTraceEvent(c, "pricing", "价格计算完成", map[string]interface{}{
+		"free_model":           priceData.FreeModel,
+		"quota_to_pre_consume": priceData.QuotaToPreConsume,
+	})
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 
 	if priceData.FreeModel {
+		addTraceEvent(c, "pre_billing", fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName), nil)
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
 	} else {
 		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
 		if newAPIError != nil {
+			addTraceEvent(c, "pre_billing", fmt.Sprintf("预扣费失败: %s", newAPIError.Error()), nil)
 			return
 		}
+		addTraceEvent(c, "pre_billing", "预扣费成功", map[string]interface{}{
+			"quota_to_pre_consume": priceData.QuotaToPreConsume,
+			"billing_source":       relayInfo.BillingSource,
+		})
 	}
 
 	defer func() {
@@ -171,6 +340,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			newAPIError = service.NormalizeViolationFeeError(newAPIError)
 			if relayInfo.Billing != nil {
+				addTraceEvent(c, "refund", "请求失败，退还预扣额度", nil)
 				relayInfo.Billing.Refund(c)
 			}
 			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
@@ -190,36 +360,95 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
+			addTraceEvent(c, "channel_select", fmt.Sprintf("渠道选择失败: %s", channelErr.Error()), map[string]interface{}{
+				"retry_index": retryParam.GetRetry(),
+			})
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
 			break
 		}
 
+		addTraceEvent(c, "channel_select", fmt.Sprintf("选中渠道 #%d %s", channel.Id, channel.Name), map[string]interface{}{
+			"channel_id":      channel.Id,
+			"channel_name":    channel.Name,
+			"channel_type":    channel.Type,
+			"channel_priority": channel.GetPriority(),
+			"channel_weight":  channel.GetWeight(),
+			"max_retry":       channel.GetMaxRetry(),
+			"retry_index":     retryParam.GetRetry(),
+		})
 		addUsedChannel(c, channel.Id)
-		bodyStorage, bodyErr := common.GetBodyStorage(c)
-		if bodyErr != nil {
-			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
-			if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
-				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
-			} else {
-				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		maxChannelRetry := channel.GetMaxRetry()
+
+		channelSuccess := false
+		for channelAttempt := 0; channelAttempt <= maxChannelRetry; channelAttempt++ {
+			attemptStart := time.Now()
+			relayInfo.UpstreamRequestIds = nil // reset for each attempt
+			bodyStorage, bodyErr := common.GetBodyStorage(c)
+			if bodyErr != nil {
+				if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
+					newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
+				} else {
+					newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+				}
+				break
 			}
-			break
-		}
-		c.Request.Body = io.NopCloser(bodyStorage)
+			c.Request.Body = io.NopCloser(bodyStorage)
 
-		switch relayFormat {
-		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(c, relayInfo)
-		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(c, relayInfo)
-		case types.RelayFormatGemini:
-			newAPIError = geminiRelayHandler(c, relayInfo)
-		default:
-			newAPIError = relayHandler(c, relayInfo)
+			switch relayFormat {
+			case types.RelayFormatOpenAIRealtime:
+				newAPIError = relay.WssHelper(c, relayInfo)
+			case types.RelayFormatClaude:
+				newAPIError = relay.ClaudeHelper(c, relayInfo)
+			case types.RelayFormatGemini:
+				newAPIError = geminiRelayHandler(c, relayInfo)
+			default:
+				newAPIError = relayHandler(c, relayInfo)
+			}
+
+			if newAPIError == nil {
+				elapsedMs := time.Since(attemptStart).Milliseconds()
+				addTraceEvent(c, "upstream", fmt.Sprintf("上游请求成功: CH#%d %dms", channel.Id, elapsedMs), map[string]interface{}{
+					"channel_id":           channel.Id,
+					"elapsed_ms":           elapsedMs,
+					"upstream_address":     relayInfo.UpstreamAddress,
+					"upstream_request_ids": relayInfo.UpstreamRequestIds,
+				})
+				channelSuccess = true
+				break
+			}
+
+			newAPIError = service.NormalizeViolationFeeError(newAPIError)
+			elapsedMs := time.Since(attemptStart).Milliseconds()
+
+			addRetryError(c, RetryError{
+				ChannelId:          channel.Id,
+				ChannelName:        channel.Name,
+				StatusCode:         newAPIError.StatusCode,
+				Message:            newAPIError.Error(),
+				UpstreamBody:       newAPIError.UpstreamResponseBody,
+				ElapsedMs:          elapsedMs,
+				UpstreamRequestIds: relayInfo.UpstreamRequestIds,
+			})
+			addTraceEvent(c, "upstream", fmt.Sprintf("上游请求失败: CH#%d HTTP %d %dms", channel.Id, newAPIError.StatusCode, elapsedMs), map[string]interface{}{
+				"channel_id":           channel.Id,
+				"status_code":          newAPIError.StatusCode,
+				"elapsed_ms":           elapsedMs,
+				"error":                newAPIError.Error(),
+				"upstream_address":     relayInfo.UpstreamAddress,
+				"upstream_request_ids": relayInfo.UpstreamRequestIds,
+			})
+
+			if types.IsSkipRetryError(newAPIError) {
+				break
+			}
+
+			if channelAttempt < maxChannelRetry {
+				logger.LogInfo(c, fmt.Sprintf("channel #%d attempt %d/%d failed, retrying same channel: %s", channel.Id, channelAttempt+1, maxChannelRetry+1, newAPIError.Error()))
+			}
 		}
 
-		if newAPIError == nil {
+		if channelSuccess {
 			relayInfo.LastError = nil
 			return
 		}
@@ -227,7 +456,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
 
-		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+		processChannelErrorNoLog(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -283,6 +512,20 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
+// userGroupChannelHint returns a user-friendly message when no channel is
+// available for the requested group+model. VIP/VVIP/SVIP are pure user-tier
+// groups with no model channels attached.
+func userGroupChannelHint(group, modelName string) string {
+	upper := strings.ToUpper(group)
+	if upper == "VIP" || upper == "VVIP" || upper == "SVIP" {
+		return fmt.Sprintf("%s 是用户等级分组，不直接提供模型渠道。请在令牌设置中切换到其他分组（如 default），对应的优惠已自动应用到您的渠道", group)
+	}
+	if strings.Contains(group, ",") {
+		return fmt.Sprintf("分组链 [%s] 中所有分组下模型 %s 的可用渠道均不存在", group, modelName)
+	}
+	return fmt.Sprintf("分组 %s 下模型 %s 的可用渠道不存在", group, modelName)
+}
+
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
 		autoBan := c.GetBool("auto_ban")
@@ -302,10 +545,10 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
 	if err != nil {
-		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		return nil, types.NewError(fmt.Errorf("%s: %s", userGroupChannelHint(selectGroup, info.OriginModelName), err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 	if channel == nil {
-		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		return nil, types.NewError(fmt.Errorf("%s", userGroupChannelHint(selectGroup, info.OriginModelName)), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
@@ -347,6 +590,90 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	return operation_setting.ShouldRetryByStatusCode(code)
 }
 
+// recordRelayErrorForTrace writes a single error log per request to the database,
+// consolidating all retry/channel-switch information into one entry.
+// This is the ONLY place that writes error logs for relay requests.
+func recordRelayErrorForTrace(c *gin.Context, err *types.NewAPIError) {
+	// Skip if the error explicitly opts out of logging
+	if !types.IsRecordErrorLog(err) {
+		return
+	}
+
+	userId := c.GetInt("id")
+	channelId := c.GetInt("channel_id")
+	modelName := c.GetString("original_model")
+	tokenName := c.GetString("token_name")
+	tokenId := c.GetInt("token_id")
+	group := c.GetString("group")
+
+	other := make(map[string]interface{})
+	if c.Request != nil && c.Request.URL != nil {
+		other["request_path"] = c.Request.URL.Path
+	}
+	other["error_type"] = err.GetErrorType()
+	other["error_code"] = err.GetErrorCode()
+	other["status_code"] = err.StatusCode
+	if channelId > 0 {
+		other["channel_id"] = channelId
+		other["channel_name"] = c.GetString("channel_name")
+		other["channel_type"] = c.GetInt("channel_type")
+	}
+	adminInfo := make(map[string]interface{})
+	if useChannel := c.GetStringSlice("use_channel"); len(useChannel) > 0 {
+		adminInfo["use_channel"] = useChannel
+	}
+	isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
+	if isMultiKey {
+		adminInfo["is_multi_key"] = true
+		adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+	}
+	if common.SiteLabel != "" {
+		adminInfo["site_label"] = common.SiteLabel
+	}
+	service.AppendChannelAffinityAdminInfo(c, adminInfo)
+	if retryErrors, exists := c.Get("retry_errors"); exists && retryErrors != nil {
+		adminInfo["retry_errors"] = retryErrors
+	}
+	if err.UpstreamResponseBody != "" {
+		adminInfo["upstream_response_body"] = err.UpstreamResponseBody
+	}
+	if err.UpstreamStatusCode > 0 {
+		adminInfo["upstream_status_code"] = err.UpstreamStatusCode
+	}
+	if len(adminInfo) > 0 {
+		other["admin_info"] = adminInfo
+	}
+	if traceEvents := getTraceEvents(c); len(traceEvents) > 0 {
+		other["trace_events"] = traceEvents
+	}
+
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	useTimeSeconds := int(time.Since(startTime).Seconds())
+
+	gopool.Go(func() {
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName,
+			err.MaskSensitiveErrorWithStatusCode(),
+			tokenId, useTimeSeconds, false, group, other)
+	})
+}
+
+func processChannelErrorNoLog(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
+	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
+	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
+	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
+	if service.ShouldDisableChannel(channelError.ChannelType, err) && channelError.AutoBan {
+		gopool.Go(func() {
+			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+		})
+	}
+	// Note: per-channel error logging removed to prevent duplicate logs.
+	// Each request now produces exactly one log entry via recordRelayErrorForTrace
+	// in the defer block, with all retry_errors included in admin_info.
+}
+
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
@@ -382,7 +709,20 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["is_multi_key"] = true
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
+		if common.SiteLabel != "" {
+			adminInfo["site_label"] = common.SiteLabel
+		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
+		if retryErrors, exists := c.Get("retry_errors"); exists && retryErrors != nil {
+			adminInfo["retry_errors"] = retryErrors
+		}
+		// Store the final error's upstream response for admin debugging
+		if err.UpstreamResponseBody != "" {
+			adminInfo["upstream_response_body"] = err.UpstreamResponseBody
+		}
+		if err.UpstreamStatusCode > 0 {
+			adminInfo["upstream_status_code"] = err.UpstreamStatusCode
+		}
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
@@ -581,7 +921,7 @@ func RelayTask(c *gin.Context) {
 			ModelRatio:      relayInfo.PriceData.ModelRatio,
 			OtherRatios:     relayInfo.PriceData.OtherRatios,
 			OriginModelName: relayInfo.OriginModelName,
-			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName),
+			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData

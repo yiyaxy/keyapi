@@ -85,6 +85,45 @@ func InitChannelCache() {
 	common.SysLog("channels synced from database")
 }
 
+// GetChannelGroupsCopy returns a copy of all group names that have at least one enabled channel.
+func GetChannelGroupsCopy() map[string]bool {
+	if !common.MemoryCacheEnabled {
+		return getChannelGroupsFromDB()
+	}
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+	result := make(map[string]bool)
+	for group := range group2model2channels {
+		result[group] = true
+	}
+	return result
+}
+
+// GroupHasChannels checks if a group has at least one enabled channel.
+// Works with both memory cache and direct DB lookup.
+func GroupHasChannels(group string) bool {
+	if !common.MemoryCacheEnabled {
+		var count int64
+		DB.Model(&Ability{}).Where("`group` = ? AND enabled = ?", group, true).Count(&count)
+		return count > 0
+	}
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+	_, ok := group2model2channels[group]
+	return ok
+}
+
+// getChannelGroupsFromDB queries distinct groups from abilities table (non-cache fallback).
+func getChannelGroupsFromDB() map[string]bool {
+	var groups []string
+	DB.Model(&Ability{}).Where("enabled = ?", true).Distinct("\"group\"").Pluck("\"group\"", &groups)
+	result := make(map[string]bool)
+	for _, g := range groups {
+		result[g] = true
+	}
+	return result
+}
+
 func SyncChannelCache(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)

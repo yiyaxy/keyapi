@@ -43,6 +43,7 @@ import {
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import CustomOAuthSetting from './CustomOAuthSetting';
+import SettingsInvoice from '../../pages/Setting/System/SettingsInvoice';
 
 const SystemSetting = () => {
   const { t } = useTranslation();
@@ -108,10 +109,38 @@ const SystemSetting = () => {
     'fetch_setting.domain_list': [],
     'fetch_setting.ip_list': [],
     'fetch_setting.allowed_ports': [],
-    'fetch_setting.apply_ip_filter_for_domain': false,
+    'fetch_setting.apply_ip_filter_for_domain': true,
+    // OSS配置
+    'ticket_storage.endpoint': '',
+    'ticket_storage.region': '',
+    'ticket_storage.bucket': '',
+    'ticket_storage.force_path_style': '',
+    'ticket_storage.presign_expire_seconds': '',
+    'ticket_storage.max_file_size_mb': '',
+    'ticket_storage.max_files_per_ticket': '',
+    'ticket_storage.allowed_mime_prefix': '',
+    'ticket_storage.prefix': '',
+    InvoiceProvider: 'manual',
+    InvoiceAutoIssueEnabled: false,
+    InvoicePiaoTongBaseURL: '',
+    InvoicePiaoTongPlatformCode: '',
+    InvoicePiaoTongPlatformAlias: '',
+    InvoicePiaoTong3DESKey: '',
+    InvoicePiaoTongPrivateKey: '',
+    InvoicePiaoTongPublicKey: '',
+    InvoiceSellerTaxpayerNum: '',
+    InvoiceSellerEnterpriseName: '',
+    InvoiceDefaultIssueKindCode: '82',
+    InvoiceDefaultTaxClassificationCode: '',
+    InvoiceDefaultGoodsName: '技术服务费',
+    InvoiceDefaultTaxRateValue: '0.06',
+    InvoiceQueryRetryIntervalSeconds: '60',
+    InvoiceQueryMaxAttempts: '60',
   });
 
   const [originInputs, setOriginInputs] = useState({});
+  const [ossAccessKey, setOssAccessKey] = useState('');
+  const [ossSecretKey, setOssSecretKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const formApiRef = useRef(null);
@@ -188,6 +217,7 @@ const SystemSetting = () => {
           case 'passkey.enabled':
           case 'passkey.allow_insecure_origin':
           case 'WorkerAllowHttpImageRequestEnabled':
+          case 'InvoiceAutoIssueEnabled':
             item.value = toBoolean(item.value);
             break;
           case 'passkey.origins':
@@ -315,6 +345,40 @@ const SystemSetting = () => {
   const submitServerAddress = async () => {
     let ServerAddress = removeTrailingSlash(inputs.ServerAddress);
     await updateOptions([{ key: 'ServerAddress', value: ServerAddress }]);
+  };
+
+  const submitOSSConfig = async () => {
+    const options = [
+      { key: 'ticket_storage.endpoint', value: inputs['ticket_storage.endpoint'] },
+      { key: 'ticket_storage.region', value: inputs['ticket_storage.region'] },
+      { key: 'ticket_storage.bucket', value: inputs['ticket_storage.bucket'] },
+      { key: 'ticket_storage.force_path_style', value: inputs['ticket_storage.force_path_style'] ? 'true' : 'false' },
+      { key: 'ticket_storage.presign_expire_seconds', value: inputs['ticket_storage.presign_expire_seconds'] },
+      { key: 'ticket_storage.max_file_size_mb', value: inputs['ticket_storage.max_file_size_mb'] },
+      { key: 'ticket_storage.max_files_per_ticket', value: inputs['ticket_storage.max_files_per_ticket'] },
+      { key: 'ticket_storage.allowed_mime_prefix', value: inputs['ticket_storage.allowed_mime_prefix'] },
+      { key: 'ticket_storage.prefix', value: inputs['ticket_storage.prefix'] },
+    ];
+    await updateOptions(options);
+
+    // Update secrets separately if provided
+    if (ossAccessKey || ossSecretKey) {
+      try {
+        const secretRes = await API.put('/api/ticket_storage/secret', {
+          access_key: ossAccessKey,
+          secret_key: ossSecretKey,
+        });
+        if (secretRes.data.success) {
+          showSuccess(t('OSS密钥已更新'));
+          setOssAccessKey('');
+          setOssSecretKey('');
+        } else {
+          showError(secretRes.data.message);
+        }
+      } catch (error) {
+        showError(t('OSS密钥更新失败'));
+      }
+    }
   };
 
   const submitSMTP = async () => {
@@ -847,7 +911,7 @@ const SystemSetting = () => {
                         }
                         style={{ marginBottom: 8 }}
                       >
-                        {t('对域名启用 IP 过滤（实验性）')}
+                        {t('对域名启用 IP 过滤（推荐开启）')}
                       </Form.Checkbox>
                       <Text strong>
                         {t(domainFilterMode ? '域名白名单' : '域名黑名单')}
@@ -978,6 +1042,136 @@ const SystemSetting = () => {
 
                   <Button onClick={submitSSRF} style={{ marginTop: 16 }}>
                     {t('更新SSRF防护设置')}
+                  </Button>
+                </Form.Section>
+              </Card>
+
+              <SettingsInvoice options={inputs} refresh={getOptions} />
+
+              <Card>
+                <Form.Section text={t('工单附件存储配置（OSS）')}>
+                  <Banner
+                    type='info'
+                    description={t('配置阿里云OSS或兼容S3的对象存储服务，用于存储工单附件图片')}
+                    style={{ marginBottom: 20, marginTop: 16 }}
+                  />
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='ticket_storage.endpoint'
+                        label={t('Endpoint')}
+                        placeholder='例如：oss-cn-hangzhou.aliyuncs.com'
+                        extraText={t('对象存储服务的访问端点')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='ticket_storage.region'
+                        label={t('Region')}
+                        placeholder='例如：oss-cn-hangzhou'
+                        extraText={t('对象存储服务的区域')}
+                      />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='ticket_storage.bucket'
+                        label={t('Bucket')}
+                        placeholder='例如：my-ticket-attachments'
+                        extraText={t('存储桶名称')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='ticket_storage.prefix'
+                        label={t('对象前缀')}
+                        placeholder='例如：tickets/tmp'
+                        extraText={t('对象存储路径前缀')}
+                      />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        label={t('Access Key')}
+                        placeholder='敏感信息不会发送到前端显示'
+                        type='password'
+                        value={ossAccessKey}
+                        onChange={(value) => setOssAccessKey(value)}
+                        extraText={t('留空则不更新')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        label={t('Secret Key')}
+                        placeholder='敏感信息不会发送到前端显示'
+                        type='password'
+                        value={ossSecretKey}
+                        onChange={(value) => setOssSecretKey(value)}
+                        extraText={t('留空则不更新')}
+                      />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        field='ticket_storage.presign_expire_seconds'
+                        label={t('预签名URL有效期（秒）')}
+                        placeholder='3600'
+                        extraText={t('默认3600秒（1小时）')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        field='ticket_storage.max_file_size_mb'
+                        label={t('单文件最大大小（MB）')}
+                        placeholder='5'
+                        extraText={t('默认5MB')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        field='ticket_storage.max_files_per_ticket'
+                        label={t('每工单最大附件数')}
+                        placeholder='5'
+                        extraText={t('默认5个')}
+                      />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='ticket_storage.allowed_mime_prefix'
+                        label={t('允许的MIME类型前缀')}
+                        placeholder='image/'
+                        extraText={t('默认仅允许图片（image/）')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Checkbox
+                        field='ticket_storage.force_path_style'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('ticket_storage.force_path_style', e)
+                        }
+                      >
+                        {t('使用路径风格访问（适用于Minio等）')}
+                      </Form.Checkbox>
+                    </Col>
+                  </Row>
+                  <Button onClick={submitOSSConfig} style={{ marginTop: 16 }}>
+                    {t('更新OSS配置')}
                   </Button>
                 </Form.Section>
               </Card>

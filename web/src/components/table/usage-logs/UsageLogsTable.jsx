@@ -41,6 +41,7 @@ const LogsTable = (logsData) => {
     copyText,
     showUserInfoFunc,
     openChannelAffinityUsageCacheModal,
+    onIpClick,
     hasExpandableRows,
     isAdminUser,
     billingDisplayMode,
@@ -56,6 +57,7 @@ const LogsTable = (logsData) => {
       copyText,
       showUserInfoFunc,
       openChannelAffinityUsageCacheModal,
+      onIpClick,
       isAdminUser,
       billingDisplayMode,
     });
@@ -65,6 +67,7 @@ const LogsTable = (logsData) => {
     copyText,
     showUserInfoFunc,
     openChannelAffinityUsageCacheModal,
+    onIpClick,
     isAdminUser,
     billingDisplayMode,
   ]);
@@ -80,8 +83,8 @@ const LogsTable = (logsData) => {
 
   const tableColumns = useMemo(() => {
     return compactMode
-        ? visibleColumnsList.map(({ fixed, ...rest }) => rest)
-        : visibleColumnsList;
+      ? visibleColumnsList.map(({ fixed, ...rest }) => rest)
+      : visibleColumnsList;
   }, [compactMode, visibleColumnsList]);
 
   const expandRowRender = (record, index) => {
@@ -89,43 +92,43 @@ const LogsTable = (logsData) => {
   };
 
   return (
-      <CardTable
-          columns={tableColumns}
-          {...(isAdminUser && hasExpandableRows() && {
-            expandedRowRender: expandRowRender,
-            expandRowByClick: true,
-            rowExpandable: (record) =>
-                expandData[record.key] && expandData[record.key].length > 0,
-          })}
-          dataSource={logs}
-          rowKey='key'
-          loading={loading}
-          scroll={compactMode ? undefined : { x: 'max-content' }}
-          className='rounded-xl overflow-hidden'
-          size='middle'
-          empty={
-            <Empty
-                image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
-                darkModeImage={
-                  <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
-                }
-                description={t('搜索无结果')}
-                style={{ padding: 30 }}
-            />
+    <CardTable
+      columns={tableColumns}
+      {...(hasExpandableRows() && {
+        expandedRowRender: expandRowRender,
+        expandRowByClick: true,
+        rowExpandable: (record) =>
+          expandData[record.key] && expandData[record.key].length > 0,
+      })}
+      dataSource={logs}
+      rowKey='key'
+      loading={loading}
+      scroll={compactMode ? undefined : { x: 'max-content' }}
+      className='rounded-xl overflow-hidden'
+      size='small'
+      empty={
+        <Empty
+          image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
+          darkModeImage={
+            <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
           }
-          pagination={{
-            currentPage: activePage,
-            pageSize: pageSize,
-            total: logCount,
-            pageSizeOptions: [10, 20, 50, 100],
-            showSizeChanger: true,
-            onPageSizeChange: (size) => {
-              handlePageSizeChange(size);
-            },
-            onPageChange: handlePageChange,
-          }}
-          hidePagination={true}
-      />
+          description={t('搜索无结果')}
+          style={{ padding: 30 }}
+        />
+      }
+      pagination={{
+        currentPage: activePage,
+        pageSize: pageSize,
+        total: logCount,
+        pageSizeOptions: [10, 20, 50, 100],
+        showSizeChanger: true,
+        onPageSizeChange: (size) => {
+          handlePageSizeChange(size);
+        },
+        onPageChange: handlePageChange,
+      }}
+      hidePagination={true}
+    />
   );
 };
 

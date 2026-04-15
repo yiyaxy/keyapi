@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -186,10 +187,14 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 }
 
 func ValidateUserToken(key string) (token *Token, err error) {
+	return ValidateUserTokenWithContext(context.Background(), key)
+}
+
+func ValidateUserTokenWithContext(ctx context.Context, key string) (token *Token, err error) {
 	if key == "" {
 		return nil, errors.New("未提供令牌")
 	}
-	token, err = GetTokenByKey(key, false)
+	token, err = GetTokenByKeyWithContext(ctx, key, false)
 	if err == nil {
 		if token.Status == common.TokenStatusExhausted {
 			keyPrefix := key[:3]
@@ -262,6 +267,10 @@ func GetTokenById(id int) (*Token, error) {
 }
 
 func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
+	return GetTokenByKeyWithContext(context.Background(), key, fromDB)
+}
+
+func GetTokenByKeyWithContext(ctx context.Context, key string, fromDB bool) (token *Token, err error) {
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
 		if shouldUpdateRedis(fromDB, err) && token != nil {
@@ -281,7 +290,11 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
-	err = DB.Where(commonKeyCol+" = ?", key).First(&token).Error
+	q := DB
+	if ctx != nil {
+		q = DB.WithContext(ctx)
+	}
+	err = q.Where(commonKeyCol+" = ?", key).First(&token).Error
 	return token, err
 }
 
@@ -480,4 +493,12 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	}
 
 	return len(tokens), nil
+}
+
+func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
+	var tokens []Token
+	err := DB.Select("id", commonKeyCol).
+		Where("user_id = ? AND id IN (?)", userId, ids).
+		Find(&tokens).Error
+	return tokens, err
 }

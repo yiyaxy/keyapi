@@ -191,6 +191,15 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 
 	quota := calculateAudioQuota(quotaInfo)
 
+	// Apply channel-specific and other ratios
+	if len(relayInfo.PriceData.OtherRatios) > 0 {
+		otherMultiplier := 1.0
+		for _, ratio := range relayInfo.PriceData.OtherRatios {
+			otherMultiplier *= ratio
+		}
+		quota = int(float64(quota) * otherMultiplier)
+	}
+
 	totalTokens := usage.TotalTokens
 	var logContent string
 	if !usePrice {
@@ -235,107 +244,6 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	})
 }
 
-func PostClaudeConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) {
-	if usage != nil {
-		ObserveChannelAffinityUsageCacheByRelayFormat(ctx, usage, relayInfo.GetFinalRequestRelayFormat())
-	}
-
-	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
-	promptTokens := usage.PromptTokens
-	completionTokens := usage.CompletionTokens
-	modelName := relayInfo.OriginModelName
-
-	tokenName := ctx.GetString("token_name")
-	completionRatio := relayInfo.PriceData.CompletionRatio
-	modelRatio := relayInfo.PriceData.ModelRatio
-	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
-	modelPrice := relayInfo.PriceData.ModelPrice
-	cacheRatio := relayInfo.PriceData.CacheRatio
-	cacheTokens := usage.PromptTokensDetails.CachedTokens
-
-	cacheCreationRatio := relayInfo.PriceData.CacheCreationRatio
-	cacheCreationRatio5m := relayInfo.PriceData.CacheCreation5mRatio
-	cacheCreationRatio1h := relayInfo.PriceData.CacheCreation1hRatio
-	cacheCreationTokens := usage.PromptTokensDetails.CachedCreationTokens
-	cacheCreationTokens5m := usage.ClaudeCacheCreation5mTokens
-	cacheCreationTokens1h := usage.ClaudeCacheCreation1hTokens
-
-	if relayInfo.ChannelType == constant.ChannelTypeOpenRouter {
-		promptTokens -= cacheTokens
-		isUsingCustomSettings := relayInfo.PriceData.UsePrice || hasCustomModelRatio(modelName, relayInfo.PriceData.ModelRatio)
-		if cacheCreationTokens == 0 && relayInfo.PriceData.CacheCreationRatio != 1 && usage.Cost != 0 && !isUsingCustomSettings {
-			maybeCacheCreationTokens := CalcOpenRouterCacheCreateTokens(*usage, relayInfo.PriceData)
-			if maybeCacheCreationTokens >= 0 && promptTokens >= maybeCacheCreationTokens {
-				cacheCreationTokens = maybeCacheCreationTokens
-			}
-		}
-		promptTokens -= cacheCreationTokens
-	}
-
-	calculateQuota := 0.0
-	if !relayInfo.PriceData.UsePrice {
-		calculateQuota = float64(promptTokens)
-		calculateQuota += float64(cacheTokens) * cacheRatio
-		calculateQuota += float64(cacheCreationTokens5m) * cacheCreationRatio5m
-		calculateQuota += float64(cacheCreationTokens1h) * cacheCreationRatio1h
-		remainingCacheCreationTokens := cacheCreationTokens - cacheCreationTokens5m - cacheCreationTokens1h
-		if remainingCacheCreationTokens > 0 {
-			calculateQuota += float64(remainingCacheCreationTokens) * cacheCreationRatio
-		}
-		calculateQuota += float64(completionTokens) * completionRatio
-		calculateQuota = calculateQuota * groupRatio * modelRatio
-	} else {
-		calculateQuota = modelPrice * common.QuotaPerUnit * groupRatio
-	}
-
-	if modelRatio != 0 && calculateQuota <= 0 {
-		calculateQuota = 1
-	}
-
-	quota := int(calculateQuota)
-
-	totalTokens := promptTokens + completionTokens
-
-	var logContent string
-	// record all the consume log even if quota is 0
-	if totalTokens == 0 {
-		// in this case, must be some error happened
-		// we cannot just return, because we may have to return the pre-consumed quota
-		quota = 0
-		logContent += fmt.Sprintf("（可能是上游出错）")
-		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
-			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, modelName, relayInfo.FinalPreConsumedQuota))
-	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
-	}
-
-	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
-		logger.LogError(ctx, "error settling billing: "+err.Error())
-	}
-
-	other := GenerateClaudeOtherInfo(ctx, relayInfo, modelRatio, groupRatio, completionRatio,
-		cacheTokens, cacheRatio,
-		cacheCreationTokens, cacheCreationRatio,
-		cacheCreationTokens5m, cacheCreationRatio5m,
-		cacheCreationTokens1h, cacheCreationRatio1h,
-		modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
-		ChannelId:        relayInfo.ChannelId,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		ModelName:        modelName,
-		TokenName:        tokenName,
-		Quota:            quota,
-		Content:          logContent,
-		TokenId:          relayInfo.TokenId,
-		UseTimeSeconds:   int(useTimeSeconds),
-		IsStream:         relayInfo.IsStream,
-		Group:            relayInfo.UsingGroup,
-		Other:            other,
-	})
-
-}
 
 func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData) int {
 	if priceData.CacheCreationRatio == 1 {
@@ -393,6 +301,15 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 
 	quota := calculateAudioQuota(quotaInfo)
+
+	// Apply channel-specific and other ratios
+	if len(relayInfo.PriceData.OtherRatios) > 0 {
+		otherMultiplier := 1.0
+		for _, ratio := range relayInfo.PriceData.OtherRatios {
+			otherMultiplier *= ratio
+		}
+		quota = int(float64(quota) * otherMultiplier)
+	}
 
 	totalTokens := usage.TotalTokens
 	var logContent string
@@ -473,6 +390,7 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 		if relayInfo.SubscriptionId == 0 {
 			return errors.New("subscription id is missing")
 		}
+
 		delta := int64(quota)
 		if delta != 0 {
 			if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta); err != nil {
@@ -548,8 +466,15 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota)}
 			} else {
 				// 默认内容格式，适用于Email和Webhook（支持HTML）
-				content = "{{value}}，当前剩余额度为 {{value}}，为了不影响您的使用，请及时充值。<br/>充值链接：<a href='{{value}}'>{{value}}</a>"
-				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota), topUpLink, topUpLink}
+				content = common.WrapEmailHTML(fmt.Sprintf(`<p style="margin:0 0 16px">您好，您的账户额度即将用尽。</p>
+<div style="margin:16px 0;padding:16px 20px;background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:0 8px 8px 0">
+<p style="margin:0;font-size:15px">当前剩余额度：<strong style="color:#dc2626">%s</strong></p>
+</div>
+<p style="margin:16px 0">为了不影响您的正常使用，请及时充值。</p>
+<div style="margin:24px 0;text-align:center">
+<a href="%s" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600">立即充值</a>
+</div>`, logger.FormatQuota(relayInfo.UserQuota), topUpLink))
+				values = nil
 			}
 
 			err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))

@@ -17,155 +17,114 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
-import { API, showError } from '../../helpers';
-import { marked } from 'marked';
-import { Empty } from '@douyinfe/semi-ui';
-import {
-  IllustrationConstruction,
-  IllustrationConstructionDark,
-} from '@douyinfe/semi-illustrations';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { Globe, Coins, Eye, Key, CreditCard, CalendarClock, BarChart3, UserPlus, Wallet, Code2 } from 'lucide-react';
 
 const About = () => {
   const { t } = useTranslation();
-  const [about, setAbout] = useState('');
-  const [aboutLoaded, setAboutLoaded] = useState(false);
-  const currentYear = new Date().getFullYear();
-
-  const displayAbout = async () => {
-    setAbout(localStorage.getItem('about') || '');
-    const res = await API.get('/api/about');
-    const { success, message, data } = res.data;
-    if (success) {
-      let aboutContent = data;
-      if (!data.startsWith('https://')) {
-        aboutContent = marked.parse(data);
-      }
-      setAbout(aboutContent);
-      localStorage.setItem('about', aboutContent);
-    } else {
-      showError(message);
-      setAbout(t('加载关于内容失败...'));
-    }
-    setAboutLoaded(true);
-  };
-
-  useEffect(() => {
-    displayAbout().then();
-  }, []);
-
-  const emptyStyle = {
-    padding: '24px',
-  };
-
-  const customDescription = (
-    <div style={{ textAlign: 'center' }}>
-      <p>{t('可在设置页面设置关于内容，支持 HTML & Markdown')}</p>
-      {t('New API项目仓库地址：')}
-      <a
-        href='https://github.com/QuantumNous/new-api'
-        target='_blank'
-        rel='noopener noreferrer'
-        className='!text-semi-color-primary'
-      >
-        https://github.com/QuantumNous/new-api
-      </a>
-      <p>
-        <a
-          href='https://github.com/QuantumNous/new-api'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          NewAPI
-        </a>{' '}
-        {t('© {{currentYear}}', { currentYear })}{' '}
-        <a
-          href='https://github.com/QuantumNous'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          QuantumNous
-        </a>{' '}
-        {t('| 基于')}{' '}
-        <a
-          href='https://github.com/songquanpeng/one-api/releases/tag/v0.5.4'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          One API v0.5.4
-        </a>{' '}
-        © 2023{' '}
-        <a
-          href='https://github.com/songquanpeng'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          JustSong
-        </a>
-      </p>
-      <p>
-        {t('本项目根据')}
-        <a
-          href='https://github.com/songquanpeng/one-api/blob/v0.5.4/LICENSE'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          {t('MIT许可证')}
-        </a>
-        {t('授权，需在遵守')}
-        <a
-          href='https://www.gnu.org/licenses/agpl-3.0.html'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          {t('AGPL v3.0协议')}
-        </a>
-        {t('的前提下使用。')}
-      </p>
-    </div>
-  );
+  const features = [
+    {
+      icon: <Globe size={28} className='text-indigo-500' />,
+      title: t('无国界连接'),
+      description: t('aboutAdvantageGlobal'),
+    },
+    {
+      icon: <Coins size={28} className='text-amber-500' />,
+      title: t('极致性价比'),
+      description: t('aboutAdvantageCost'),
+    },
+    {
+      icon: <Eye size={28} className='text-teal-500' />,
+      title: t('透明可控'),
+      description: t('aboutAdvantageTransparent'),
+    },
+  ];
 
   return (
-    <div className='mt-[60px] px-2'>
-      {aboutLoaded && about === '' ? (
-        <div className='flex justify-center items-center h-screen p-8'>
-          <Empty
-            image={
-              <IllustrationConstruction style={{ width: 150, height: 150 }} />
-            }
-            darkModeImage={
-              <IllustrationConstructionDark
-                style={{ width: 150, height: 150 }}
-              />
-            }
-            description={t('管理员暂时未设置任何关于内容')}
-            style={emptyStyle}
-          >
-            {customDescription}
-          </Empty>
+    <div className='mt-16 min-h-[calc(100vh-64px)] flex flex-col'>
+      {/* Hero Section */}
+      <div className='relative overflow-hidden'>
+        <div className='hero-mesh' />
+        <div className='max-w-4xl mx-auto px-6 py-16 text-center'>
+          <h1 className='text-3xl md:text-4xl lg:text-5xl font-bold mb-6'>
+            <span className='gradient-text'>{t('aboutHeroTitle')}</span>
+          </h1>
+          <p className='text-lg md:text-xl text-semi-color-text-2 max-w-2xl mx-auto leading-relaxed'>
+            {t('aboutDescription')}
+          </p>
         </div>
-      ) : (
-        <>
-          {about.startsWith('https://') ? (
-            <iframe
-              src={about}
-              style={{ width: '100%', height: '100vh', border: 'none' }}
-            />
-          ) : (
+      </div>
+
+      {/* Features Section */}
+      <div className='flex-1 max-w-5xl mx-auto px-6 py-12 w-full'>
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+          {features.map((feature, index) => (
             <div
-              style={{ fontSize: 'larger' }}
-              dangerouslySetInnerHTML={{ __html: about }}
-            ></div>
-          )}
-        </>
-      )}
+              key={index}
+              className='glass-card p-6 flex flex-col items-center text-center'
+            >
+              <div className='w-14 h-14 rounded-full bg-semi-color-fill-0 flex items-center justify-center mb-4'>
+                {feature.icon}
+              </div>
+              <h3 className='text-lg font-semibold text-semi-color-text-0 mb-3'>
+                {feature.title}
+              </h3>
+              <p className='text-sm text-semi-color-text-2 leading-relaxed'>
+                {feature.description}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Services Section */}
+        <div className='mt-12'>
+          <h2 className='text-xl font-semibold text-semi-color-text-0 text-center mb-6'>{t('aboutServiceTitle')}</h2>
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4'>
+            {[
+              { icon: <Key size={22} className='text-blue-500' />, text: t('aboutService1') },
+              { icon: <CreditCard size={22} className='text-green-500' />, text: t('aboutService2') },
+              { icon: <CalendarClock size={22} className='text-purple-500' />, text: t('aboutService3') },
+              { icon: <BarChart3 size={22} className='text-orange-500' />, text: t('aboutService4') },
+            ].map((item, i) => (
+              <div key={i} className='glass-card p-4 flex items-center gap-3'>
+                <div className='w-10 h-10 rounded-lg bg-semi-color-fill-0 flex items-center justify-center shrink-0'>
+                  {item.icon}
+                </div>
+                <p className='text-sm text-semi-color-text-1'>{item.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Steps Section */}
+        <div className='mt-12'>
+          <h2 className='text-xl font-semibold text-semi-color-text-0 text-center mb-6'>{t('aboutStepsTitle')}</h2>
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+            {[
+              { icon: <UserPlus size={24} className='text-blue-500' />, title: t('aboutStep1Title'), desc: t('aboutStep1Desc') },
+              { icon: <Wallet size={24} className='text-green-500' />, title: t('aboutStep2Title'), desc: t('aboutStep2Desc') },
+              { icon: <Code2 size={24} className='text-purple-500' />, title: t('aboutStep3Title'), desc: t('aboutStep3Desc') },
+            ].map((step, i) => (
+              <div key={i} className='glass-card p-5 text-center'>
+                <div className='w-12 h-12 rounded-full bg-semi-color-fill-0 flex items-center justify-center mx-auto mb-3'>
+                  {step.icon}
+                </div>
+                <h3 className='text-base font-semibold text-semi-color-text-0 mb-2'>{step.title}</h3>
+                <p className='text-sm text-semi-color-text-2'>{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Slogan */}
+        <div className='text-center mt-12'>
+          <p className='text-base text-semi-color-text-1 font-medium'>
+            {t('aboutSlogan')}
+          </p>
+        </div>
+      </div>
+
     </div>
   );
 };

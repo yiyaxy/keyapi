@@ -25,6 +25,8 @@ import LogsFilters from './UsageLogsFilters';
 import ColumnSelectorModal from './modals/ColumnSelectorModal';
 import UserInfoModal from './modals/UserInfoModal';
 import ChannelAffinityUsageCacheModal from './modals/ChannelAffinityUsageCacheModal';
+import IpDetailModal from './IpDetailModal';
+import ParamOverrideModal from './modals/ParamOverrideModal';
 import { useLogsData } from '../../../hooks/usage-logs/useUsageLogsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -39,6 +41,12 @@ const LogsPage = () => {
       <ColumnSelectorModal {...logsData} />
       <UserInfoModal {...logsData} />
       <ChannelAffinityUsageCacheModal {...logsData} />
+      <IpDetailModal
+        visible={logsData.showIpDetail}
+        ip={logsData.selectedIp}
+        onClose={() => logsData.setShowIpDetail(false)}
+      />
+      <ParamOverrideModal {...logsData} />
 
       {/* Main Content */}
       <CardPro

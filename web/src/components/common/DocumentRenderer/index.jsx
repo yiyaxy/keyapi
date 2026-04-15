@@ -72,7 +72,7 @@ const sanitizeHtml = (html) => {
  * @param {string} cacheKey - 本地存储缓存键
  * @param {string} emptyMessage - 空内容时的提示消息
  */
-const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
+const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage, defaultContent, forceDefault }) => {
   const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -80,6 +80,14 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
   const [processedHtmlContent, setProcessedHtmlContent] = useState('');
 
   const loadContent = async () => {
+    // forceDefault 模式：跳过 API，直接使用 defaultContent
+    if (forceDefault && defaultContent) {
+      setContent(defaultContent);
+      processContent(defaultContent);
+      setLoading(false);
+      return;
+    }
+
     // 先从缓存中获取
     const cachedContent = localStorage.getItem(cacheKey) || '';
     if (cachedContent) {
@@ -97,14 +105,22 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
         localStorage.setItem(cacheKey, data);
       } else {
         if (!cachedContent) {
-          showError(message || emptyMessage);
-          setContent('');
+          if (defaultContent) {
+            setContent(defaultContent);
+          } else {
+            showError(message || emptyMessage);
+            setContent('');
+          }
         }
       }
     } catch (error) {
       if (!cachedContent) {
-        showError(emptyMessage);
-        setContent('');
+        if (defaultContent) {
+          setContent(defaultContent);
+        } else {
+          showError(emptyMessage);
+          setContent('');
+        }
       }
     } finally {
       setLoading(false);

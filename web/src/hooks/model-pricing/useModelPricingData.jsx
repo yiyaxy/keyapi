@@ -19,7 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API, copy, showError, showInfo, showSuccess } from '../../helpers';
+import {
+  API,
+  copy,
+  setStatusData,
+  showError,
+  showInfo,
+  showSuccess,
+} from '../../helpers';
 import { Modal } from '@douyinfe/semi-ui';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
@@ -52,21 +59,30 @@ export const useModelPricingData = () => {
   const [endpointMap, setEndpointMap] = useState({});
   const [autoGroups, setAutoGroups] = useState([]);
 
-  const [statusState] = useContext(StatusContext);
+  const [statusState, statusDispatch] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
+
+  const toValidRate = (value, fallback = 1) => {
+    const rate = Number(value);
+    return Number.isFinite(rate) && rate > 0 ? rate : fallback;
+  };
 
   // 充值汇率（price）与美元兑人民币汇率（usd_exchange_rate）
   const priceRate = useMemo(
-    () => statusState?.status?.price ?? 1,
-    [statusState],
+    () =>
+      toValidRate(
+        statusState?.status?.price,
+        toValidRate(statusState?.status?.usd_exchange_rate, 1),
+      ),
+    [statusState?.status?.price, statusState?.status?.usd_exchange_rate],
   );
   const usdExchangeRate = useMemo(
-    () => statusState?.status?.usd_exchange_rate ?? priceRate,
-    [statusState, priceRate],
+    () => toValidRate(statusState?.status?.usd_exchange_rate, priceRate),
+    [statusState?.status?.usd_exchange_rate, priceRate],
   );
   const customExchangeRate = useMemo(
-    () => statusState?.status?.custom_currency_exchange_rate ?? 1,
-    [statusState],
+    () => toValidRate(statusState?.status?.custom_currency_exchange_rate, 1),
+    [statusState?.status?.custom_currency_exchange_rate],
   );
   const customCurrencySymbol = useMemo(
     () => statusState?.status?.custom_currency_symbol ?? '¤',
@@ -179,14 +195,17 @@ export const useModelPricingData = () => {
   );
 
   const displayPrice = (usdPrice) => {
+    // CNY 始终使用充值价格（priceRate）作为转换率，不受 showWithRecharge 影响
+    if (currency === 'CNY') {
+      return `¥${(usdPrice * priceRate).toFixed(3)}`;
+    }
+
     let priceInUSD = usdPrice;
     if (showWithRecharge) {
       priceInUSD = (usdPrice * priceRate) / usdExchangeRate;
     }
 
-    if (currency === 'CNY') {
-      return `¥${(priceInUSD * usdExchangeRate).toFixed(3)}`;
-    } else if (currency === 'CUSTOM') {
+    if (currency === 'CUSTOM') {
       return `${customCurrencySymbol}${(priceInUSD * customExchangeRate).toFixed(3)}`;
     }
     return `$${priceInUSD.toFixed(3)}`;
@@ -314,6 +333,30 @@ export const useModelPricingData = () => {
       setSelectedModel(null);
     }, 300);
   };
+
+  // 进入 /pricing 时刷新一次 status，确保使用最新充值价格（x元/美金）
+  useEffect(() => {
+    let mounted = true;
+    const refreshStatus = async () => {
+      try {
+        const res = await API.get('/api/status', {
+          disableDuplicate: true,
+          skipErrorHandler: true,
+        });
+        const { success, data } = res.data || {};
+        if (mounted && success && data) {
+          statusDispatch({ type: 'set', payload: data });
+          setStatusData(data);
+        }
+      } catch {
+        // ignore status refresh failure and use existing cache
+      }
+    };
+    refreshStatus();
+    return () => {
+      mounted = false;
+    };
+  }, [statusDispatch]);
 
   useEffect(() => {
     refresh().then();

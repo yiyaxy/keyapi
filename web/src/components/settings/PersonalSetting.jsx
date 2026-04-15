@@ -88,7 +88,6 @@ const PersonalSetting = () => {
     gotifyPriority: 5,
     upstreamModelUpdateNotifyEnabled: false,
     acceptUnsetModelRatioModel: false,
-    recordIpLog: false,
   });
 
   useEffect(() => {
@@ -163,7 +162,6 @@ const PersonalSetting = () => {
           settings.upstream_model_update_notify_enabled === true,
         acceptUnsetModelRatioModel:
           settings.accept_unset_model_ratio_model || false,
-        recordIpLog: settings.record_ip_log || false,
       });
     }
   }, [userState?.user?.setting]);
@@ -306,9 +304,9 @@ const PersonalSetting = () => {
 
   const bindWeChat = async () => {
     if (inputs.wechat_verification_code === '') return;
-    const res = await API.get(
-      `/api/oauth/wechat/bind?code=${inputs.wechat_verification_code}`,
-    );
+    const res = await API.post('/api/oauth/wechat/bind', {
+      code: inputs.wechat_verification_code,
+    });
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('微信账户绑定成功！'));
@@ -378,9 +376,10 @@ const PersonalSetting = () => {
       return;
     }
     setLoading(true);
-    const res = await API.get(
-      `/api/oauth/email/bind?email=${inputs.email}&code=${inputs.email_verification_code}`,
-    );
+    const res = await API.post('/api/oauth/email/bind', {
+      email: inputs.email,
+      code: inputs.email_verification_code,
+    });
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('邮箱账户绑定成功！'));
@@ -433,7 +432,6 @@ const PersonalSetting = () => {
           notificationSettings.upstreamModelUpdateNotifyEnabled === true,
         accept_unset_model_ratio_model:
           notificationSettings.acceptUnsetModelRatioModel,
-        record_ip_log: notificationSettings.recordIpLog,
       });
 
       if (res.data.success) {

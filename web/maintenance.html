@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统维护中</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        .container {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 60px 50px;
+            max-width: 520px;
+            width: 90%;
+            text-align: center;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+        }
+        h1 {
+            font-size: 28px;
+            color: #1a1a2e;
+            margin-bottom: 16px;
+        }
+        .desc {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.8;
+            margin-bottom: 36px;
+        }
+        .contact {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: left;
+        }
+        .contact h3 {
+            font-size: 16px;
+            color: #1a1a2e;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .contact-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            font-size: 15px;
+            color: #444;
+        }
+        .contact-item + .contact-item {
+            border-top: 1px solid #e9ecef;
+        }
+        .contact-item .label {
+            font-weight: 600;
+            min-width: 80px;
+            color: #555;
+        }
+        .contact-item .value {
+            color: #764ba2;
+            font-weight: 500;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">&#128736;</div>
+        <h1>系统维护中</h1>
+        <p class="desc">我们正在进行系统升级与维护，请稍后再试。<br>给您带来不便，敬请谅解！</p>
+        <div class="contact">
+            <h3>如需帮助，请联系客服</h3>
+            <div class="contact-item">
+                <span class="label">微信：</span>
+                <span class="value">gygzs02</span>
+            </div>
+            <div class="contact-item">
+                <span class="label">邮箱：</span>
+                <span class="value">fudan@drluo.cn</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

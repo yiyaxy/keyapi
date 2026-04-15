@@ -21,13 +21,45 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { API, isAdmin, showError, timestamp2string } from '../../helpers';
+import { fetchTranslation } from '../../helpers/translationCache';
 import { getDefaultTime, getInitialTimestamp } from '../../helpers/dashboard';
 import { TIME_OPTIONS } from '../../constants/dashboard.constants';
 import { useIsMobile } from '../common/useIsMobile';
 import { useMinimumLoadingTime } from '../common/useMinimumLoadingTime';
 
+const getTodayTimestampRange = () => {
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  return {
+    startTimestamp: Math.floor(startOfDay.getTime() / 1000),
+    endTimestamp: Math.floor(endOfDay.getTime() / 1000),
+  };
+};
+
+const parseCacheSavingsQuota = (payload) => {
+  if (payload == null) {
+    return 0;
+  }
+
+  if (typeof payload === 'number' || typeof payload === 'string') {
+    return Number(payload) || 0;
+  }
+
+  return Number(
+    payload.total_savings_quota ??
+      payload.smartcache_savings_quota ??
+      payload.totalSavingsQuota ??
+      payload.smartcacheSavingsQuota ??
+      0,
+  );
+};
+
 export const useDashboardData = (userState, userDispatch, statusState) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const initialized = useRef(false);
@@ -36,6 +68,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [loading, setLoading] = useState(false);
   const [greetingVisible, setGreetingVisible] = useState(false);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [cacheSavings, setCacheSavings] = useState(0);
   const showLoading = useMinimumLoadingTime(loading);
 
   // ========== 输入状态 ==========
@@ -80,6 +113,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [uptimeData, setUptimeData] = useState([]);
   const [uptimeLoading, setUptimeLoading] = useState(false);
   const [activeUptimeTab, setActiveUptimeTab] = useState('');
+  const [translatedConsole, setTranslatedConsole] = useState(null);
 
   // ========== 常量 ==========
   const now = new Date();
@@ -156,6 +190,22 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, []);
 
   // ========== API 调用函数 ==========
+  const loadCacheSavings = useCallback(async () => {
+    try {
+      const { startTimestamp, endTimestamp } = getTodayTimestampRange();
+      const url = `/api/log/self/cache_savings?start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}`;
+      const res = await API.get(url);
+      const { success, data } = res.data;
+      if (success && data) {
+        setCacheSavings(parseCacheSavingsQuota(data));
+      } else {
+        setCacheSavings(0);
+      }
+    } catch {
+      setCacheSavings(0);
+    }
+  }, []);
+
   const loadQuotaData = useCallback(async () => {
     setLoading(true);
     try {
@@ -172,6 +222,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
       const res = await API.get(url);
       const { success, message, data } = res.data;
+
       if (success) {
         setQuotaData(data);
         if (data.length === 0) {
@@ -196,7 +247,10 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const loadUptimeData = useCallback(async () => {
     setUptimeLoading(true);
     try {
-      const res = await API.get('/api/uptime/status');
+      const lang = i18n.language?.split('-')[0] || 'zh';
+      let uptimeUrl = '/api/uptime/status';
+      if (lang && lang !== 'zh') uptimeUrl += `?lang=${lang}`;
+      const res = await API.get(uptimeUrl);
       const { success, message, data } = res.data;
       if (success) {
         setUptimeData(data || []);
@@ -213,6 +267,22 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     }
   }, [activeUptimeTab]);
 
+  const loadTranslatedConsole = useCallback(async () => {
+    const lang = i18n.language?.split('-')[0] || 'zh';
+    if (lang === 'zh') {
+      setTranslatedConsole(null);
+      return;
+    }
+    try {
+      const data = await fetchTranslation('/api/console/translated', lang);
+      if (data) {
+        setTranslatedConsole(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [i18n.language]);
+
   const getUserData = useCallback(async () => {
     let res = await API.get(`/api/user/self`);
     const { success, message, data } = res.data;
@@ -224,10 +294,13 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [userDispatch]);
 
   const refresh = useCallback(async () => {
-    const data = await loadQuotaData();
-    await loadUptimeData();
+    const [data] = await Promise.all([
+      loadQuotaData(),
+      loadUptimeData(),
+      loadCacheSavings(),
+    ]);
     return data;
-  }, [loadQuotaData, loadUptimeData]);
+  }, [loadQuotaData, loadUptimeData, loadCacheSavings]);
 
   const handleSearchConfirm = useCallback(
     async (updateChartDataCallback) => {
@@ -255,11 +328,20 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     }
   }, [getUserData]);
 
+  // ========== 语言切换时重新加载翻译数据 ==========
+  useEffect(() => {
+    if (initialized.current) {
+      loadUptimeData();
+      loadTranslatedConsole();
+    }
+  }, [i18n.language]);
+
   return {
     // 基础状态
     loading: showLoading,
     greetingVisible,
     searchModalVisible,
+    cacheSavings,
 
     // 输入状态
     inputs,
@@ -293,6 +375,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     uptimeLoading,
     activeUptimeTab,
     setActiveUptimeTab,
+    translatedConsole,
 
     // 计算值
     timeOptions,
@@ -311,7 +394,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     showSearchModal,
     handleCloseModal,
     loadQuotaData,
+    loadCacheSavings,
     loadUptimeData,
+    loadTranslatedConsole,
     getUserData,
     refresh,
     handleSearchConfirm,

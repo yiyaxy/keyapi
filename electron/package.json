@@ -1,7 +1,7 @@
 {
-  "name": "new-api-electron",
+  "name": "camel-api-electron",
   "version": "1.0.0",
-  "description": "New API - AI Model Gateway Desktop Application",
+  "description": "CaMeL API - AI Model Gateway Desktop Application",
   "main": "main.js",
   "scripts": {
     "start-app": "electron .",
@@ -25,12 +25,12 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "35.7.5",
+    "electron": "39.8.5",
     "electron-builder": "^26.7.0"
   },
   "build": {
-    "appId": "com.newapi.desktop",
-    "productName": "New-API-App",
+    "appId": "com.camelapi.desktop",
+    "productName": "CaMeL-API-App",
     "publish": null,
     "directories": {
       "output": "dist"

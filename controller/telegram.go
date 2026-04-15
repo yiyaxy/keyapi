@@ -95,6 +95,7 @@ func TelegramLogin(c *gin.Context) {
 		})
 		return
 	}
+	c.Set("login_type", "oauth_telegram")
 	setupLogin(&user, c)
 }
 
