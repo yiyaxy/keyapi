@@ -1,20 +1,138 @@
+/**
+ * new-api 接口封装
+ * 所有方法返回 Promise，resolve 时返回 data 字段内容
+ */
 import request from './request.js'
 
-// Auth — no token needed
-export const login = (data) => request.post('/api/user/login', data, false)
+// ─── 系统 ───────────────────────────────────────────────
+/** 获取系统状态（含 quota_per_unit、system_name 等） */
+export const getStatus = () => request.get('/api/status', null, false)
 
-// User
+// ─── 认证 ───────────────────────────────────────────────
+/**
+ * 账号密码登录
+ * 注意：登录页需直接用 uni.request 才能获取 Set-Cookie 响应头，
+ * 此方法仅作补充，实际登录在页面内处理。
+ */
+export const login = (username, password) =>
+  request.post('/api/user/login', { username, password }, false)
+
+// ─── 用户 ───────────────────────────────────────────────
+/**
+ * 获取当前用户信息
+ * 返回字段：id, username, display_name, quota, used_quota, request_count,
+ *           aff_code, aff_count, aff_quota, aff_history_quota, status
+ */
 export const getSelf = () => request.get('/api/user/self')
+
+/**
+ * 兑换码充值
+ * @param {string} key 兑换码
+ * 成功时 data 为充值的额度数值
+ */
 export const redeemCode = (key) => request.post('/api/user/topup', { key })
-export const transferAff = (quota) => request.post('/api/user/aff_transfer', { quota })
 
-// API Tokens
-export const getTokens = () => request.get('/api/token/', { p: 1, size: 50 })
-export const getTokenKey = (id) => request.post(`/api/token/${id}/key`, {})
+// ─── 日志统计 ───────────────────────────────────────────
+/**
+ * 获取指定时间范围内的用量统计
+ * @param {number} startTs Unix 时间戳（秒）
+ * @param {number} endTs   Unix 时间戳（秒）
+ * 返回字段：quota（消费额度）, token（token 数量）
+ */
+export const getLogStat = (startTs, endTs) =>
+  request.get('/api/log/self/stat', {
+    type: 2,           // 2=消费日志
+    start_timestamp: startTs,
+    end_timestamp: endTs,
+    token_name: '',
+    model_name: '',
+    group: '',
+  })
 
-// Usage Logs
-export const getLogs = (p = 1, size = 20) => request.get('/api/log/self', { p, size, type: 2 })
-export const getLogStat = () => request.get('/api/log/self/stat')
+/**
+ * 获取今日统计
+ */
+export const getTodayStat = () => {
+  const now = new Date()
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(now)
+  end.setHours(23, 59, 59, 999)
+  return getLogStat(
+    Math.floor(start.getTime() / 1000),
+    Math.floor(end.getTime() / 1000),
+  )
+}
 
-// Aff Transfer
-export const getPendingAffQuota = () => request.get('/api/aff_transfer/pending_quota')
+/**
+ * 获取本月统计
+ */
+export const getMonthStat = () => {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0)
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+  return getLogStat(
+    Math.floor(start.getTime() / 1000),
+    Math.floor(end.getTime() / 1000),
+  )
+}
+
+// ─── 消费记录 ───────────────────────────────────────────
+/**
+ * 获取消费记录列表
+ * @param {number} p         页码（从 1 开始）
+ * @param {number} pageSize  每页条数
+ * 返回字段：page, page_size, total, items[]
+ * items 字段：id, created_at(Unix秒), type, model_name,
+ *             prompt_tokens, completion_tokens, quota, token_name
+ *
+ * 注意：路径末尾需要有斜杠 /api/log/self/
+ */
+export const getLogs = (p = 1, pageSize = 20) =>
+  request.get('/api/log/self/', {
+    p,
+    page_size: pageSize,
+    type: 2,             // 只查消费日志
+    token_name: '',
+    model_name: '',
+    start_timestamp: '',
+    end_timestamp: '',
+    group: '',
+    request_id: '',
+  })
+
+// ─── API Token ─────────────────────────────────────────
+/**
+ * 获取 Token 列表
+ * 注意参数是 size 不是 page_size
+ * 返回字段：page, page_size, total, items[]
+ * items 字段：id, name, status(1启用/2禁用), key(掩码), remain_quota,
+ *             used_quota, request_count, created_at(Unix秒)
+ */
+export const getTokens = (p = 1, size = 50) =>
+  request.get('/api/token/', { p, size })
+
+/**
+ * 获取 Token 完整 key
+ * @param {number} id token id
+ * 返回字段：key（完整 key，前端显示时通常需要加 sk- 前缀）
+ */
+export const getTokenKey = (id) =>
+  request.post(`/api/token/${id}/key`, {})
+
+// ─── 邀请 / 返利 ────────────────────────────────────────
+/**
+ * 提交邀请奖励转换申请（创建待审核记录）
+ * @param {number} quota 申请转换的额度数值
+ * 服务端会将 aff_quota 减少并创建 pending 记录等待管理员审核
+ */
+export const transferAff = (quota) =>
+  request.post('/api/aff_transfer/', { quota })
+
+/**
+ * 获取自己的转换记录列表
+ * 返回字段：page, page_size, total, items[]
+ * items 字段：id, quota, status(1待审/2通过/3拒绝), created_at, admin_remark
+ */
+export const getAffTransferHistory = (p = 1, size = 20) =>
+  request.get('/api/aff_transfer/self', { p, size })

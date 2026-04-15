@@ -1,251 +1,205 @@
 <template>
-  <view class="redeem-page">
-    <u-navbar title="兑换码充值" :auto-back="true" />
+  <view class="page">
+    <u-navbar title="兑换码充值" :auto-back="true" bgColor="#fff" :placeholder="true" />
 
     <view class="content">
-      <!-- Description -->
-      <view class="desc-card">
+      <!-- 说明区 -->
+      <view class="tip-card">
         <u-icon name="coupon" size="60" color="#4F6EF7" />
-        <view class="desc-text">
-          <text class="desc-title">输入兑换码</text>
-          <text class="desc-sub">兑换码充值后额度将立即到账</text>
+        <view class="tip-text-wrap">
+          <text class="tip-title">兑换码充值</text>
+          <text class="tip-desc">输入有效的兑换码，可为当前账户增加 API 调用额度</text>
         </view>
       </view>
 
-      <!-- Input area -->
-      <view class="input-card">
-        <text class="input-label">兑换码</text>
-        <u-input
-          v-model="code"
-          placeholder="请输入兑换码"
-          :border="'surround'"
-          :custom-style="inputStyle"
-          :disabled="submitting"
-          :clearable="true"
-          @confirm="doRedeem"
-        />
-
-        <u-button
-          type="primary"
-          :loading="submitting"
-          :disabled="submitting || !code.trim()"
-          :custom-style="btnStyle"
-          @click="doRedeem"
-        >
-          {{ submitting ? '兑换中...' : '立即兑换' }}
-        </u-button>
+      <!-- 兑换成功提示 -->
+      <view class="success-card" v-if="success">
+        <u-icon name="checkmark-circle" size="80" color="#18A058" />
+        <text class="success-title">兑换成功！</text>
+        <text class="success-quota">已充值 {{ q2cny(addedQuota) }}</text>
+        <text class="success-balance">当前余额：{{ q2cny(newBalance) }}</text>
+        <view class="success-btn" @click="reset">继续兑换</view>
       </view>
 
-      <!-- Success result -->
-      <view v-if="successMsg" class="success-card">
-        <u-icon name="checkmark-circle-fill" size="80" color="#18A058" />
-        <text class="success-text">{{ successMsg }}</text>
-        <u-button
-          type="success"
-          :custom-style="backBtnStyle"
-          @click="goBack"
-        >
-          返回首页
-        </u-button>
-      </view>
+      <!-- 输入区 -->
+      <template v-else>
+        <view class="input-card">
+          <text class="input-label">兑换码</text>
+          <view class="input-wrap">
+            <input
+              class="code-input"
+              v-model="code"
+              placeholder="请输入兑换码"
+              placeholder-class="ph"
+              :disabled="submitting"
+              @confirm="doRedeem"
+              maxlength="64"
+            />
+            <view class="clear-btn" v-if="code" @click="code = ''">
+              <u-icon name="close-circle-fill" size="36" color="#9ca3af" />
+            </view>
+          </view>
 
-      <!-- Tips -->
-      <view class="tips-card">
-        <text class="tips-title">使用说明</text>
-        <view class="tip-item">
-          <text class="tip-num">1</text>
-          <text class="tip-text">每个兑换码只能使用一次</text>
+          <view
+            class="submit-btn"
+            :class="{ 'btn-disabled': !code.trim() || submitting }"
+            @click="doRedeem"
+          >
+            <u-loading-icon v-if="submitting" color="#fff" size="28" />
+            <text v-else>立即兑换</text>
+          </view>
         </view>
-        <view class="tip-item">
-          <text class="tip-num">2</text>
-          <text class="tip-text">兑换成功后额度立即到账，可在首页查看</text>
+
+        <!-- 使用说明 -->
+        <view class="guide-card">
+          <text class="guide-title">使用说明</text>
+          <view class="guide-item" v-for="(g, i) in guides" :key="i">
+            <text class="guide-dot">·</text>
+            <text class="guide-txt">{{ g }}</text>
+          </view>
         </view>
-        <view class="tip-item">
-          <text class="tip-num">3</text>
-          <text class="tip-text">兑换码区分大小写，请准确输入</text>
-        </view>
-      </view>
+      </template>
     </view>
   </view>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
 import { redeemCode, getSelf } from '@/services/api.js'
+import { renderQuota } from '@/utils/quota.js'
 
 const code = ref('')
 const submitting = ref(false)
-const successMsg = ref('')
+const success = ref(false)
+const addedQuota = ref(0)
+const newBalance = ref(0)
 
-const inputStyle = {
-  fontSize: '30rpx',
-  borderRadius: '12rpx',
-  minHeight: '88rpx',
-}
+const guides = [
+  '每个兑换码只能使用一次。',
+  '兑换成功后额度立即到账，可在首页余额查看。',
+  '兑换码不区分大小写，请避免输入多余空格。',
+  '如有问题，请联系客服或管理员。',
+]
 
-const btnStyle = {
-  background: 'linear-gradient(135deg, #4F6EF7, #6C8EFF)',
-  borderRadius: '14rpx',
-  height: '88rpx',
-  fontSize: '30rpx',
-  border: 'none',
-  marginTop: '32rpx',
-  boxShadow: '0 6rpx 20rpx rgba(79, 110, 247, 0.3)',
-}
+function q2cny(quota) { return renderQuota(quota) }
 
-const backBtnStyle = {
-  borderRadius: '14rpx',
-  height: '80rpx',
-  fontSize: '28rpx',
-  marginTop: '24rpx',
+function reset() {
+  code.value = ''
+  success.value = false
+  addedQuota.value = 0
+  newBalance.value = 0
 }
 
 async function doRedeem() {
   const key = code.value.trim()
-  if (!key) {
-    uni.showToast({ title: '请输入兑换码', icon: 'none' })
-    return
-  }
+  if (!key) return uni.showToast({ title: '请输入兑换码', icon: 'none' })
+  if (submitting.value) return
 
   submitting.value = true
-  successMsg.value = ''
-
   try {
-    const res = await redeemCode(key)
-    // Refresh user info to get new balance
+    // redeemCode 成功时返回充值的额度数值
+    const quotaAdded = await redeemCode(key)
+    addedQuota.value = Number(quotaAdded) || 0
+
+    // 刷新用户余额
     try {
       const self = await getSelf()
+      newBalance.value = self?.quota || 0
       userStore.setUserInfo(self)
-    } catch (_) {}
+    } catch {
+      newBalance.value = 0
+    }
 
-    successMsg.value = res?.message || '兑换成功！额度已到账'
-    code.value = ''
-    uni.showToast({ title: '兑换成功', icon: 'success' })
-  } catch (e) {
-    // Error already shown by request.js
+    success.value = true
+  } catch {
+    // request.js 已经 toast 过错误了
   } finally {
     submitting.value = false
   }
 }
 
-function goBack() {
-  uni.switchTab({ url: '/pages/home/index' })
-}
+onLoad(() => {
+  if (!userStore.isLoggedIn) {
+    uni.redirectTo({ url: '/pages/login/index' })
+  }
+})
 </script>
 
 <style lang="scss" scoped>
-.redeem-page {
-  min-height: 100vh;
-  background: #f5f5f7;
-}
+.page { min-height: 100vh; background: #f5f5f7; }
+.content { padding: 24rpx; }
 
-.content {
-  padding: 24rpx;
-}
-
-.desc-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 36rpx;
-  display: flex;
-  align-items: center;
+/* 说明卡片 */
+.tip-card {
+  display: flex; align-items: center;
+  background: linear-gradient(135deg, #eef1ff, #f0f4ff);
+  border-radius: 20rpx; padding: 32rpx;
   margin-bottom: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
-
-  .desc-text {
-    margin-left: 24rpx;
-
-    .desc-title {
-      display: block;
-      font-size: 32rpx;
-      font-weight: 600;
-      color: #1a1a2e;
-      margin-bottom: 8rpx;
-    }
-
-    .desc-sub {
-      font-size: 24rpx;
-      color: #6b7280;
-    }
-  }
+  border: 1rpx solid rgba(79,110,247,0.12);
 }
+.tip-text-wrap { margin-left: 20rpx; flex: 1; }
+.tip-title { display: block; font-size: 30rpx; font-weight: 600; color: #4F6EF7; margin-bottom: 8rpx; }
+.tip-desc { font-size: 24rpx; color: #6b7280; line-height: 1.6; }
 
-.input-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 36rpx;
-  margin-bottom: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
-
-  .input-label {
-    display: block;
-    font-size: 26rpx;
-    font-weight: 500;
-    color: #374151;
-    margin-bottom: 16rpx;
-  }
-}
-
+/* 成功卡片 */
 .success-card {
-  background: linear-gradient(135deg, #e8faf0, #f0fdf4);
-  border-radius: 20rpx;
-  padding: 48rpx;
+  background: #fff; border-radius: 24rpx; padding: 60rpx 40rpx;
+  display: flex; flex-direction: column; align-items: center;
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
+}
+.success-title { font-size: 36rpx; font-weight: 700; color: #18A058; margin: 24rpx 0 12rpx; }
+.success-quota { font-size: 48rpx; font-weight: 700; color: #1a1a2e; margin-bottom: 12rpx; }
+.success-balance { font-size: 26rpx; color: #6b7280; margin-bottom: 40rpx; }
+.success-btn {
+  width: 100%;
+  height: 88rpx;
+  background: linear-gradient(135deg, #4F6EF7, #6C8EFF);
+  border-radius: 14rpx;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 30rpx; font-weight: 600;
+  box-shadow: 0 6rpx 20rpx rgba(79,110,247,0.3);
+}
+
+/* 输入卡片 */
+.input-card {
+  background: #fff; border-radius: 20rpx; padding: 36rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06);
   margin-bottom: 24rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border: 1rpx solid #d1fae5;
-
-  .success-text {
-    font-size: 30rpx;
-    color: #18A058;
-    font-weight: 600;
-    margin-top: 20rpx;
-    text-align: center;
-  }
 }
-
-.tips-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 36rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
-
-  .tips-title {
-    display: block;
-    font-size: 28rpx;
-    font-weight: 600;
-    color: #1a1a2e;
-    margin-bottom: 24rpx;
-  }
-
-  .tip-item {
-    display: flex;
-    align-items: flex-start;
-    margin-bottom: 16rpx;
-
-    .tip-num {
-      width: 40rpx;
-      height: 40rpx;
-      border-radius: 50%;
-      background: #eef1ff;
-      color: #4F6EF7;
-      font-size: 22rpx;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-right: 16rpx;
-      flex-shrink: 0;
-    }
-
-    .tip-text {
-      font-size: 26rpx;
-      color: #374151;
-      line-height: 1.6;
-      padding-top: 6rpx;
-    }
-  }
+.input-label {
+  display: block; font-size: 28rpx; font-weight: 600; color: #1a1a2e; margin-bottom: 20rpx;
 }
+.input-wrap {
+  position: relative; display: flex; align-items: center;
+  background: #f8f9ff; border-radius: 14rpx;
+  border: 2rpx solid #e8ecff;
+  margin-bottom: 32rpx;
+}
+.code-input {
+  flex: 1; height: 100rpx; padding: 0 24rpx;
+  font-size: 28rpx; color: #1a1a2e;
+}
+.ph { color: #9ca3af; }
+.clear-btn { padding: 20rpx 20rpx 20rpx 0; }
+.submit-btn {
+  height: 96rpx;
+  background: linear-gradient(135deg, #4F6EF7, #6C8EFF);
+  border-radius: 14rpx;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 32rpx; font-weight: 600;
+  box-shadow: 0 6rpx 20rpx rgba(79,110,247,0.3);
+}
+.btn-disabled { opacity: 0.5; }
+
+/* 使用说明 */
+.guide-card {
+  background: #fff; border-radius: 20rpx; padding: 32rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
+}
+.guide-title { display: block; font-size: 28rpx; font-weight: 600; color: #1a1a2e; margin-bottom: 20rpx; }
+.guide-item { display: flex; margin-bottom: 16rpx; }
+.guide-dot { font-size: 28rpx; color: #4F6EF7; margin-right: 12rpx; }
+.guide-txt { font-size: 26rpx; color: #4b5563; line-height: 1.6; flex: 1; }
 </style>

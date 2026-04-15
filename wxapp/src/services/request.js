@@ -17,93 +17,102 @@ function redirectToLogin() {
 }
 
 function buildHeader(withToken = true) {
-  const header = {
-    'Content-Type': 'application/json',
-  }
+  const header = { 'Content-Type': 'application/json' }
   if (withToken && userStore.token) {
     header['Cookie'] = userStore.token
+    // 后端 authHelper 要求此头与 session 中的 id 匹配
+    const userId = userStore.userInfo?.id
+    if (userId !== undefined && userId !== null) {
+      header['New-Api-User'] = String(userId)
+    }
   }
   return header
 }
 
-function handleResponse(res, resolve, reject) {
-  const { statusCode, data } = res
-
-  if (statusCode === 401) {
-    redirectToLogin()
-    return reject(new Error('Unauthorized'))
-  }
-
-  if (!data) {
-    showError('响应数据为空')
-    return reject(new Error('Empty response'))
-  }
-
-  if (data.success === false) {
-    const msg = data.message || '请求失败'
-    // auth-related failure messages
-    if (
-      msg.includes('登录') ||
-      msg.includes('未授权') ||
-      msg.includes('token') ||
-      msg.includes('session') ||
-      statusCode === 401
-    ) {
-      redirectToLogin()
-    } else {
-      showError(msg)
-    }
-    return reject(new Error(msg))
-  }
-
-  return resolve(data.data !== undefined ? data.data : data)
-}
-
+/**
+ * 核心请求方法
+ * 成功时 resolve(data.data)，不存在 data.data 时 resolve(data)
+ * 失败时 reject(Error)，并视情况 toast 或跳登录
+ */
 function request(url, method, data, withToken = true) {
   return new Promise((resolve, reject) => {
     uni.request({
       url: BASE_URL + url,
       method: method.toUpperCase(),
-      data: data,
+      data: data || undefined,
       header: buildHeader(withToken),
       success(res) {
-        handleResponse(res, resolve, reject)
+        const { statusCode, data: body } = res
+
+        // HTTP 层 401
+        if (statusCode === 401) {
+          redirectToLogin()
+          return reject(new Error('未授权，请重新登录'))
+        }
+
+        if (!body) {
+          showError('响应数据为空')
+          return reject(new Error('Empty response'))
+        }
+
+        // 业务层失败
+        if (body.success === false) {
+          const msg = body.message || '请求失败'
+          // 登录态失效判断
+          if (
+            msg.includes('登录') ||
+            msg.includes('未授权') ||
+            msg.includes('token') ||
+            msg.includes('session') ||
+            statusCode === 401
+          ) {
+            redirectToLogin()
+          } else {
+            showError(msg)
+          }
+          return reject(new Error(msg))
+        }
+
+        // 业务层成功
+        const result = body.data !== undefined ? body.data : body
+        resolve(result)
       },
       fail(err) {
-        showError('网络连接失败')
+        showError('网络连接失败，请检查网络')
         reject(err)
       },
     })
   })
 }
 
+/**
+ * 从 Set-Cookie 响应头中提取 name=value 部分
+ * 例: "session=xxxx; Path=/; HttpOnly" → "session=xxxx"
+ */
+function extractCookie(rawCookie) {
+  if (!rawCookie) return ''
+  // 微信小程序有时返回数组，有时返回字符串
+  const str = Array.isArray(rawCookie) ? rawCookie[0] : rawCookie
+  return (str || '').split(';')[0].trim()
+}
+
 export default {
-  /**
-   * GET request
-   * @param {string} url
-   * @param {object} params - query params (passed as data for GET)
-   * @param {boolean} withToken
-   */
   get(url, params, withToken = true) {
-    return request(url, 'GET', params, withToken)
+    // GET 请求将 params 对象拼到 URL query
+    let fullUrl = url
+    if (params && Object.keys(params).length > 0) {
+      const qs = Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== '')
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
+      if (qs) fullUrl += (url.includes('?') ? '&' : '?') + qs
+    }
+    return request(fullUrl, 'GET', null, withToken)
   },
 
-  /**
-   * POST request with JSON body
-   * @param {string} url
-   * @param {object} data
-   * @param {boolean} withToken
-   */
   post(url, data, withToken = true) {
     return request(url, 'POST', data, withToken)
   },
 
-  /**
-   * Extract session cookie from Set-Cookie header value
-   * Returns only the name=value part (strips Path, HttpOnly, etc.)
-   */
-  extractCookie(rawCookie) {
-    if (!rawCookie) return ''
-    return rawCookie.split(';')[0].trim()
-  },
+  extractCookie,
 }

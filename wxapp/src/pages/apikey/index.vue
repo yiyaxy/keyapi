@@ -1,143 +1,182 @@
 <template>
-  <view class="apikey-page">
-    <u-navbar title="API Key" :auto-back="true" />
+  <view class="page">
+    <u-navbar title="API Key" :auto-back="true" bgColor="#fff" :placeholder="true" />
 
-    <!-- Security notice -->
-    <view class="notice-bar">
-      <u-icon name="info-circle" size="32" color="#f59e0b" />
-      <text class="notice-text">API Key 是您访问接口的凭证，请妥善保管，勿泄露给他人</text>
-    </view>
+    <view class="content">
+      <!-- 安全提醒 -->
+      <view class="warn-card">
+        <u-icon name="warning" size="36" color="#f59e0b" />
+        <text class="warn-txt">API Key 是您访问服务的凭证，请妥善保管，不要泄露给他人</text>
+      </view>
 
-    <view v-if="loading" class="loading-wrap">
-      <u-loading-icon size="60" />
-    </view>
+      <!-- 加载中 -->
+      <view class="loading-wrap" v-if="loading">
+        <u-loading-icon size="60" color="#4F6EF7" />
+        <text class="loading-txt">加载中...</text>
+      </view>
 
-    <view v-else-if="tokens.length === 0" class="empty-state">
-      <u-empty mode="data" text="暂无 API Key" />
-    </view>
+      <!-- 空状态 -->
+      <view class="empty-wrap" v-else-if="tokens.length === 0">
+        <u-icon name="file-text" size="100" color="#9ca3af" />
+        <text class="empty-txt">暂无 API Key</text>
+        <text class="empty-sub">请联系管理员创建 Token</text>
+      </view>
 
-    <view v-else class="tokens-list">
-      <view
-        v-for="token in tokens"
-        :key="token.id"
-        class="token-card"
-      >
-        <view class="token-header">
-          <view class="token-name-row">
-            <text class="token-name">{{ token.name || '未命名' }}</text>
-            <view class="status-badge" :class="token.status === 1 ? 'active' : 'disabled'">
-              <text>{{ token.status === 1 ? '正常' : '已禁用' }}</text>
+      <!-- Token 列表 -->
+      <view class="token-list" v-else>
+        <view
+          class="token-card"
+          v-for="token in tokens"
+          :key="token.id"
+        >
+          <view class="token-header">
+            <view class="token-name-row">
+              <text class="token-name">{{ token.name || '未命名 Key' }}</text>
+              <view class="status-badge" :class="token.status === 1 ? 'badge-ok' : 'badge-err'">
+                <text>{{ token.status === 1 ? '启用' : '禁用' }}</text>
+              </view>
             </view>
+            <text class="token-meta">
+              创建：{{ formatDate(token.created_at) }}
+              <text v-if="token.remain_quota >= 0">
+                · 剩余：{{ q2cny(token.remain_quota) }}
+              </text>
+            </text>
           </view>
-          <text class="token-quota">
-            余额: {{ token.unlimited_quota ? '无限制' : quotaToUSD(token.remain_quota || 0) }}
-          </text>
-        </view>
 
-        <view class="token-key-row">
-          <text class="token-key">{{ getDisplayKey(token) }}</text>
-          <view class="key-actions">
+          <!-- Key 展示区 -->
+          <view class="key-wrap">
+            <text class="key-text" :class="{ 'key-masked': !token._revealed }">
+              {{ token._revealed ? ('sk-' + token._fullKey) : maskKey(token.key) }}
+            </text>
+          </view>
+
+          <!-- 操作按钮 -->
+          <view class="token-actions">
             <view
-              class="icon-btn"
+              class="action-btn"
               @click="toggleReveal(token)"
+              :class="{ 'btn-loading': token._revealing }"
             >
-              <u-icon
-                :name="token._revealed ? 'eye-off' : 'eye'"
-                size="36"
-                color="#4F6EF7"
-              />
+              <u-loading-icon v-if="token._revealing" color="#4F6EF7" size="24" />
+              <u-icon v-else-if="token._revealed" name="eye-off" size="30" color="#4F6EF7" />
+              <u-icon v-else name="eye" size="30" color="#4F6EF7" />
+              <text class="action-txt">{{ token._revealed ? '隐藏' : '查看' }}</text>
             </view>
-            <view
-              class="icon-btn"
-              @click="copyKey(token)"
-            >
-              <u-icon name="copy" size="36" color="#4F6EF7" />
+
+            <view class="action-btn" @click="copyKey(token)">
+              <u-icon name="copy" size="30" color="#18A058" />
+              <text class="action-txt copy-green">复制 Key</text>
             </view>
           </view>
-        </view>
-
-        <view v-if="token._loading" class="key-loading">
-          <u-loading-icon size="30" />
-          <text class="loading-text">获取中...</text>
         </view>
       </view>
+
+      <!-- 使用说明 -->
+      <view class="guide-card" v-if="tokens.length > 0">
+        <text class="guide-title">使用说明</text>
+        <view class="guide-item" v-for="(g, i) in guides" :key="i">
+          <text class="guide-dot">·</text>
+          <text class="guide-txt">{{ g }}</text>
+        </view>
+      </view>
+
+      <view style="height:48rpx;" />
     </view>
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
 import { getTokens, getTokenKey } from '@/services/api.js'
-import env from '@/config/env.js'
+import { renderQuota } from '@/utils/quota.js'
 
 const loading = ref(false)
+// token 列表，每条附加 _revealed / _fullKey / _revealing 字段
 const tokens = ref([])
 
-function quotaToUSD(quota) {
-  return '$' + (quota / env.quotaPerUnit).toFixed(2)
+const guides = [
+  '将 API Key 设置在请求头：Authorization: Bearer sk-xxxxx',
+  'API 请求地址请参考管理员提供的接入文档。',
+  '如 Key 泄露请联系管理员禁用并重新创建。',
+  '每个 Key 可设置额度限制，超出后将停止服务。',
+]
+
+function q2cny(quota) {
+  const n = Number(quota) || 0
+  if (n < 0) return '无限'
+  return renderQuota(quota)
 }
 
-function getDisplayKey(token) {
-  if (token._revealed && token._fullKey) {
-    return token._fullKey
-  }
-  const k = token.key || ''
-  if (k.length <= 8) return k
-  return k.substring(0, 8) + '••••••••••••••••'
+function maskKey(key) {
+  if (!key) return 'sk-••••••••••••••••'
+  // 后端返回的 key 已经是掩码，直接加 sk- 前缀
+  return 'sk-' + key
+}
+
+function formatDate(ts) {
+  if (!ts) return '--'
+  const d = new Date(ts * 1000)
+  const m = (d.getMonth() + 1).toString().padStart(2, '0')
+  const day = d.getDate().toString().padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
 }
 
 async function toggleReveal(token) {
+  // 已展示 → 隐藏
   if (token._revealed) {
     token._revealed = false
+    token._fullKey = ''
     return
   }
-
-  // Already fetched
+  // 已有完整 key 直接展示
   if (token._fullKey) {
     token._revealed = true
     return
   }
-
-  token._loading = true
+  // 请求完整 key
+  token._revealing = true
   try {
-    const res = await getTokenKey(token.id)
-    token._fullKey = res?.key || res
+    const data = await getTokenKey(token.id)
+    // 接口返回 {key: "完整key字符串"}
+    token._fullKey = data?.key || ''
     token._revealed = true
-  } catch (e) {
-    // error shown by request.js
+  } catch {
+    // 已 toast
   } finally {
-    token._loading = false
+    token._revealing = false
   }
 }
 
 function copyKey(token) {
-  const key = token._fullKey || token.key
-  if (!key) {
-    uni.showToast({ title: '请先点击查看完整 Key', icon: 'none' })
-    return
-  }
+  const key = token._revealed
+    ? 'sk-' + token._fullKey
+    : ('sk-' + token.key)
+
+  if (!key || key === 'sk-') return uni.showToast({ title: '请先查看 Key', icon: 'none' })
+
   uni.setClipboardData({
     data: key,
-    success() {
-      uni.showToast({ title: '已复制', icon: 'none' })
-    }
+    success: () => uni.showToast({ title: 'Key 已复制', icon: 'none' }),
   })
 }
 
 async function loadTokens() {
   loading.value = true
   try {
-    const list = await getTokens()
-    tokens.value = (Array.isArray(list) ? list : []).map(t => ({
+    // 接口返回 {page, page_size, total, items: [...]}
+    const data = await getTokens(1, 50)
+    const items = data?.items || []
+    tokens.value = items.map(t => ({
       ...t,
       _revealed: false,
       _fullKey: '',
-      _loading: false,
+      _revealing: false,
     }))
-  } catch (e) {
-    console.error(e)
+  } catch {
+    // 已 toast
   } finally {
     loading.value = false
   }
@@ -145,7 +184,7 @@ async function loadTokens() {
 
 onLoad(() => {
   if (!userStore.isLoggedIn) {
-    uni.reLaunch({ url: '/pages/login/index' })
+    uni.redirectTo({ url: '/pages/login/index' })
     return
   }
   loadTokens()
@@ -153,122 +192,72 @@ onLoad(() => {
 </script>
 
 <style lang="scss" scoped>
-.apikey-page {
-  min-height: 100vh;
-  background: #f5f5f7;
+.page { min-height: 100vh; background: #f5f5f7; }
+.content { padding: 24rpx; }
+
+/* 安全提醒 */
+.warn-card {
+  display: flex; align-items: flex-start;
+  background: #fffbeb; border-radius: 16rpx; padding: 24rpx;
+  border: 1rpx solid #fde68a; margin-bottom: 24rpx;
 }
+.warn-txt { font-size: 24rpx; color: #92400e; line-height: 1.6; margin-left: 12rpx; flex: 1; }
 
-.notice-bar {
-  display: flex;
-  align-items: flex-start;
-  background: #fffbeb;
-  border-bottom: 1rpx solid #fde68a;
-  padding: 20rpx 32rpx;
-
-  .notice-text {
-    font-size: 24rpx;
-    color: #92400e;
-    margin-left: 12rpx;
-    line-height: 1.5;
-  }
+/* 加载 / 空状态 */
+.loading-wrap, .empty-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 80rpx 0; gap: 20rpx;
 }
+.loading-txt, .empty-txt { font-size: 28rpx; color: #6b7280; }
+.empty-sub { font-size: 24rpx; color: #9ca3af; }
 
-.loading-wrap {
-  display: flex;
-  justify-content: center;
-  padding-top: 120rpx;
+/* Token 卡片 */
+.token-card {
+  background: #fff; border-radius: 20rpx; padding: 32rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06);
+  margin-bottom: 20rpx;
 }
-
-.empty-state {
-  padding-top: 120rpx;
+.token-header { margin-bottom: 20rpx; }
+.token-name-row { display: flex; align-items: center; margin-bottom: 10rpx; }
+.token-name { font-size: 30rpx; font-weight: 600; color: #1a1a2e; flex: 1; }
+.status-badge {
+  font-size: 22rpx; padding: 4rpx 14rpx; border-radius: 20rpx;
 }
+.badge-ok { background: #e8faf0; color: #18A058; }
+.badge-err { background: #fff0f0; color: #D03050; }
+.token-meta { font-size: 22rpx; color: #9ca3af; }
 
-.tokens-list {
-  padding: 24rpx;
-
-  .token-card {
-    background: #fff;
-    border-radius: 20rpx;
-    padding: 32rpx;
-    margin-bottom: 20rpx;
-    box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
-
-    .token-header {
-      margin-bottom: 20rpx;
-
-      .token-name-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8rpx;
-
-        .token-name {
-          font-size: 30rpx;
-          font-weight: 600;
-          color: #1a1a2e;
-        }
-
-        .status-badge {
-          padding: 4rpx 16rpx;
-          border-radius: 20rpx;
-          font-size: 20rpx;
-
-          &.active {
-            background: #d1fae5;
-            color: #065f46;
-          }
-
-          &.disabled {
-            background: #fee2e2;
-            color: #991b1b;
-          }
-        }
-      }
-
-      .token-quota {
-        font-size: 24rpx;
-        color: #6b7280;
-      }
-    }
-
-    .token-key-row {
-      display: flex;
-      align-items: center;
-      background: #f8f9ff;
-      border-radius: 12rpx;
-      padding: 16rpx 20rpx;
-
-      .token-key {
-        flex: 1;
-        font-size: 24rpx;
-        color: #374151;
-        font-family: 'Courier New', monospace;
-        word-break: break-all;
-      }
-
-      .key-actions {
-        display: flex;
-        align-items: center;
-        margin-left: 12rpx;
-
-        .icon-btn {
-          padding: 8rpx;
-          margin-left: 8rpx;
-        }
-      }
-    }
-
-    .key-loading {
-      display: flex;
-      align-items: center;
-      margin-top: 12rpx;
-
-      .loading-text {
-        font-size: 22rpx;
-        color: #6b7280;
-        margin-left: 10rpx;
-      }
-    }
-  }
+/* Key 展示 */
+.key-wrap {
+  background: #f8f9ff; border-radius: 12rpx;
+  padding: 20rpx 24rpx; margin-bottom: 20rpx;
 }
+.key-text {
+  font-size: 26rpx; color: #1a1a2e;
+  word-break: break-all; line-height: 1.5;
+  font-family: 'Courier New', monospace;
+}
+.key-masked { color: #9ca3af; letter-spacing: 4rpx; }
+
+/* 操作按钮 */
+.token-actions { display: flex; gap: 20rpx; }
+.action-btn {
+  flex: 1; height: 72rpx;
+  background: #f5f5f7; border-radius: 12rpx;
+  display: flex; align-items: center; justify-content: center; gap: 8rpx;
+}
+.action-txt { font-size: 26rpx; color: #4F6EF7; }
+.copy-green { color: #18A058; }
+.btn-loading { opacity: 0.7; }
+
+/* 使用说明 */
+.guide-card {
+  background: #fff; border-radius: 20rpx; padding: 32rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
+  margin-top: 4rpx;
+}
+.guide-title { display: block; font-size: 28rpx; font-weight: 600; color: #1a1a2e; margin-bottom: 20rpx; }
+.guide-item { display: flex; margin-bottom: 16rpx; }
+.guide-dot { font-size: 28rpx; color: #4F6EF7; margin-right: 12rpx; }
+.guide-txt { font-size: 26rpx; color: #4b5563; line-height: 1.6; flex: 1; }
 </style>
