@@ -652,6 +652,36 @@ func AddChannel(c *gin.Context) {
 		}
 		channels = append(channels, *localChannel)
 	}
+
+	// 租户计划级 Channel 数量校验（best-effort：Count→Compare→Insert 非原子，
+	// 高并发下可能越界 1-N 个。admin 低频操作可接受，channel_limit 告警兜底）
+	// 注意：必须用 len(channels)（清洗后的实际创建数），不是 len(keys)——
+	// 上面的循环会跳过空行。
+	{
+		tenantId := middleware.GetTenantId(c)
+		plan, err := model.GetTenantPlan(tenantId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if plan.MaxChannels > 0 {
+			currentCount, err := model.CountTenantChannels(tenantId)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			incomingCount := int64(len(channels))
+			if currentCount+incomingCount > int64(plan.MaxChannels) {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("已达到租户计划的渠道数量上限 (当前: %d, 本次: %d, 上限: %d)",
+						currentCount, incomingCount, plan.MaxChannels),
+				})
+				return
+			}
+		}
+	}
+
 	err = model.BatchInsertChannels(channels)
 	if err != nil {
 		common.ApiError(c, err)
