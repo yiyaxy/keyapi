@@ -165,19 +165,23 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 }
 
 // CheckUserExistOrDeleted check if user exist or deleted, if not exist, return false, nil, if deleted or exist, return true, nil
-func CheckUserExistOrDeleted(username string, email string) (bool, error) {
+func CheckUserExistOrDeleted(username string, email string, tenantId ...int) (bool, error) {
 	var user User
 
 	// err := DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
 	// check email if empty
 	email = strings.ToLower(email)
 	var err error
+	query := DB.Unscoped()
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
 	if email == "" {
-		err = DB.Unscoped().First(&user, "username = ?", username).Error
+		err = query.First(&user, "username = ?", username).Error
 	} else {
 		// 邮箱转小写，确保大小写不敏感
 		email = strings.ToLower(email)
-		err = DB.Unscoped().First(&user, "username = ? or LOWER(email) = ?", username, email).Error
+		err = query.First(&user, "username = ? or LOWER(email) = ?", username, email).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -189,6 +193,20 @@ func CheckUserExistOrDeleted(username string, email string) (bool, error) {
 	}
 	// exist, return true, nil
 	return true, nil
+}
+
+func fillUserByField(user *User, field string, value string, tenantId ...int) error {
+	if value == "" {
+		return errors.New(field + " is empty")
+	}
+	query := DB
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	if field == "email" {
+		return query.Where("LOWER(email) = ?", strings.ToLower(value)).First(user).Error
+	}
+	return query.Where(field+" = ?", value).First(user).Error
 }
 
 func GetMaxUserId() int {
@@ -211,7 +229,10 @@ func GetAllUsersByTenant(tenantId int, pageInfo *common.PageInfo) (users []*User
 
 	query := tx.Unscoped().Model(&User{})
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		// Query via tenant_memberships to include users who are members but have a different home tenant_id
+		query = query.Where("users.id IN (?)",
+			tx.Model(&TenantMembership{}).Select("user_id").
+				Where("tenant_id = ? AND status <> ?", tenantId, TenantMembershipStatusRemoved))
 	}
 
 	// Get total count within transaction
@@ -259,7 +280,10 @@ func SearchUsersByTenant(tenantId int, keyword string, group string, ip string, 
 	// 构建基础查询
 	query := tx.Unscoped().Model(&User{})
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		// Query via tenant_memberships to include users who are members but have a different home tenant_id
+		query = query.Where("users.id IN (?)",
+			tx.Model(&TenantMembership{}).Select("user_id").
+				Where("tenant_id = ? AND status <> ?", tenantId, TenantMembershipStatusRemoved))
 	}
 
 	// 构建搜索条件
@@ -355,18 +379,33 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 }
 
 func DeleteUserById(id int) (err error) {
+	return DeleteUserByIdWithTenant(id, 0)
+}
+
+func DeleteUserByIdWithTenant(id int, tenantId int) (err error) {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
 	user := User{Id: id}
+	if tenantId > 0 {
+		user.TenantId = tenantId
+	}
 	return user.Delete()
 }
 
 func HardDeleteUserById(id int) error {
+	return HardDeleteUserByIdWithTenant(id, 0)
+}
+
+func HardDeleteUserByIdWithTenant(id int, tenantId int) error {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(&User{}, "id = ?", id).Error
+	query := DB.Unscoped().Where("id = ?", id)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	err := query.Delete(&User{}).Error
 	return err
 }
 
@@ -550,7 +589,13 @@ func (user *User) Update(updatePassword bool) error {
 		}
 	}
 	newUser := *user
-	DB.First(&user, user.Id)
+	query := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err = query.First(user).Error; err != nil {
+		return err
+	}
 	if err = DB.Model(user).Updates(newUser).Error; err != nil {
 		return err
 	}
@@ -580,7 +625,13 @@ func (user *User) Edit(updatePassword bool) error {
 		updates["password"] = newUser.Password
 	}
 
-	DB.First(&user, user.Id)
+	query := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err = query.First(user).Error; err != nil {
+		return err
+	}
 	if err = DB.Model(user).Updates(updates).Error; err != nil {
 		return err
 	}
@@ -609,11 +660,19 @@ func (user *User) ClearBinding(bindingType string) error {
 		return errors.New("invalid binding type")
 	}
 
-	if err := DB.Model(&User{}).Where("id = ?", user.Id).Update(column, "").Error; err != nil {
+	query := DB.Model(&User{}).Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err := query.Update(column, "").Error; err != nil {
 		return err
 	}
 
-	if err := DB.Where("id = ?", user.Id).First(user).Error; err != nil {
+	refetch := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		refetch = refetch.Where("tenant_id = ?", user.TenantId)
+	}
+	if err := refetch.First(user).Error; err != nil {
 		return err
 	}
 
@@ -624,7 +683,11 @@ func (user *User) Delete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	if err := DB.Delete(user).Error; err != nil {
+	query := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err := query.Delete(user).Error; err != nil {
 		return err
 	}
 
@@ -636,7 +699,11 @@ func (user *User) HardDelete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(user).Error
+	query := DB.Unscoped().Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	err := query.Delete(user).Error
 	return err
 }
 
@@ -682,20 +749,25 @@ func (user *User) FillUserById() error {
 }
 
 func (user *User) FillUserByEmail() error {
+	return user.FillUserByEmailWithTenant(0)
+}
+
+func (user *User) FillUserByEmailWithTenant(tenantId int) error {
 	if user.Email == "" {
 		return errors.New("email 为空！")
 	}
-	// 邮箱大小写不敏感
-	DB.Where("LOWER(email) = ?", strings.ToLower(user.Email)).First(user)
-	return nil
+	return fillUserByField(user, "email", user.Email, tenantId)
 }
 
 func (user *User) FillUserByGitHubId() error {
+	return user.FillUserByGitHubIdWithTenant(0)
+}
+
+func (user *User) FillUserByGitHubIdWithTenant(tenantId int) error {
 	if user.GitHubId == "" {
 		return errors.New("GitHub id 为空！")
 	}
-	DB.Where(User{GitHubId: user.GitHubId}).First(user)
-	return nil
+	return fillUserByField(user, "github_id", user.GitHubId, tenantId)
 }
 
 // UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
@@ -707,43 +779,60 @@ func (user *User) UpdateGitHubId(newGitHubId string) error {
 }
 
 func (user *User) FillUserByDiscordId() error {
+	return user.FillUserByDiscordIdWithTenant(0)
+}
+
+func (user *User) FillUserByDiscordIdWithTenant(tenantId int) error {
 	if user.DiscordId == "" {
 		return errors.New("discord id 为空！")
 	}
-	DB.Where(User{DiscordId: user.DiscordId}).First(user)
-	return nil
+	return fillUserByField(user, "discord_id", user.DiscordId, tenantId)
 }
 
 func (user *User) FillUserByOidcId() error {
+	return user.FillUserByOidcIdWithTenant(0)
+}
+
+func (user *User) FillUserByOidcIdWithTenant(tenantId int) error {
 	if user.OidcId == "" {
 		return errors.New("oidc id 为空！")
 	}
-	DB.Where(User{OidcId: user.OidcId}).First(user)
-	return nil
+	return fillUserByField(user, "oidc_id", user.OidcId, tenantId)
 }
 
 func (user *User) FillUserByWeChatId() error {
+	return user.FillUserByWeChatIdWithTenant(0)
+}
+
+func (user *User) FillUserByWeChatIdWithTenant(tenantId int) error {
 	if user.WeChatId == "" {
 		return errors.New("WeChat id 为空！")
 	}
-	DB.Where(User{WeChatId: user.WeChatId}).First(user)
-	return nil
+	return fillUserByField(user, "wechat_id", user.WeChatId, tenantId)
 }
 
 func (user *User) FillUserByTelegramId() error {
+	return user.FillUserByTelegramIdWithTenant(0)
+}
+
+func (user *User) FillUserByTelegramIdWithTenant(tenantId int) error {
 	if user.TelegramId == "" {
 		return errors.New("Telegram id 为空！")
 	}
-	err := DB.Where(User{TelegramId: user.TelegramId}).First(user).Error
+	err := fillUserByField(user, "telegram_id", user.TelegramId, tenantId)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errors.New("该 Telegram 账户未绑定")
 	}
 	return nil
 }
 
-func IsEmailAlreadyTaken(email string) bool {
+func IsEmailAlreadyTaken(email string, tenantId ...int) bool {
 	// 邮箱大小写不敏感，使用 > 0 以处理可能存在的重复数据
-	return DB.Unscoped().Where("LOWER(email) = ?", strings.ToLower(email)).Find(&User{}).RowsAffected > 0
+	query := DB.Unscoped().Where("LOWER(email) = ?", strings.ToLower(email))
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	return query.Find(&User{}).RowsAffected > 0
 }
 
 func ResetUserPasswordByEmail(email string, password string, tenantId int) error {
@@ -960,7 +1049,11 @@ func IncreaseUserQuota(id int, quota int, db bool, tenantId ...int) (err error) 
 		}
 	})
 	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeUserQuota, resolvedTenantId, id, quota)
 		return nil
 	}
 	return increaseUserQuota(id, quota, tenantId...)
@@ -989,7 +1082,11 @@ func DecreaseUserQuota(id int, quota int, tenantId ...int) (err error) {
 		}
 	})
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeUserQuota, resolvedTenantId, id, -quota)
 		return nil
 	}
 	return decreaseUserQuota(id, quota, tenantId...)
@@ -1030,8 +1127,12 @@ func GetRootUser() (user *User) {
 
 func UpdateUserUsedQuotaAndRequestCount(id int, quota int, tenantId ...int) {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
-		addNewRecord(BatchUpdateTypeRequestCount, id, 1)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeUsedQuota, resolvedTenantId, id, quota)
+		addNewRecord(BatchUpdateTypeRequestCount, resolvedTenantId, id, 1)
 		return
 	}
 	updateUserUsedQuotaAndRequestCount(id, quota, 1, tenantId...)
@@ -1059,8 +1160,12 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int, tenantId .
 	//}
 }
 
-func updateUserUsedQuota(id int, quota int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
+func updateUserUsedQuota(id int, quota int, tenantId ...int) {
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.Updates(
 		map[string]interface{}{
 			"used_quota": gorm.Expr("used_quota + ?", quota),
 		},
@@ -1070,8 +1175,12 @@ func updateUserUsedQuota(id int, quota int) {
 	}
 }
 
-func updateUserRequestCount(id int, count int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Update("request_count", gorm.Expr("request_count + ?", count)).Error
+func updateUserRequestCount(id int, count int, tenantId ...int) {
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.Update("request_count", gorm.Expr("request_count + ?", count)).Error
 	if err != nil {
 		common.SysLog("failed to update user request count: " + err.Error())
 	}
@@ -1105,47 +1214,75 @@ func GetUsernameById(id int, fromDB bool) (username string, err error) {
 	return username, nil
 }
 
-func IsLinuxDOIdAlreadyTaken(linuxDOId string) bool {
+func IsLinuxDOIdAlreadyTaken(linuxDOId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("linux_do_id = ?", linuxDOId).First(&user).Error
+	query := DB.Unscoped().Where("linux_do_id = ?", linuxDOId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsGitHubIdAlreadyTaken(githubId string) bool {
+func IsGitHubIdAlreadyTaken(githubId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("github_id = ?", githubId).First(&user).Error
+	query := DB.Unscoped().Where("github_id = ?", githubId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsDiscordIdAlreadyTaken(discordId string) bool {
+func IsDiscordIdAlreadyTaken(discordId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("discord_id = ?", discordId).First(&user).Error
+	query := DB.Unscoped().Where("discord_id = ?", discordId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsOidcIdAlreadyTaken(oidcId string) bool {
+func IsOidcIdAlreadyTaken(oidcId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("oidc_id = ?", oidcId).First(&user).Error
+	query := DB.Unscoped().Where("oidc_id = ?", oidcId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsTelegramIdAlreadyTaken(telegramId string) bool {
+func IsTelegramIdAlreadyTaken(telegramId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("telegram_id = ?", telegramId).First(&user).Error
+	query := DB.Unscoped().Where("telegram_id = ?", telegramId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsWeChatIdAlreadyTaken(wechatId string) bool {
+func IsWeChatIdAlreadyTaken(wechatId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("wechat_id = ?", wechatId).First(&user).Error
+	query := DB.Unscoped().Where("wechat_id = ?", wechatId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
 func (user *User) FillUserByLinuxDOId() error {
+	return user.FillUserByLinuxDOIdWithTenant(0)
+}
+
+func (user *User) FillUserByLinuxDOIdWithTenant(tenantId int) error {
 	if user.LinuxDOId == "" {
 		return errors.New("linux do id is empty")
 	}
-	err := DB.Where("linux_do_id = ?", user.LinuxDOId).First(user).Error
+	err := fillUserByField(user, "linux_do_id", user.LinuxDOId, tenantId)
 	return err
 }
 
