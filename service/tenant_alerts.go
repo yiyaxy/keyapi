@@ -145,5 +145,16 @@ func CheckTenantAlerts(tenantId int) ([]TenantAlert, error) {
 		})
 	}
 
+	// Channel limit
+	if plan.MaxChannels > 0 && metrics.TotalChannels >= int64(plan.MaxChannels) {
+		alerts = append(alerts, TenantAlert{
+			TenantId:    tenantId,
+			AlertType:   "channel_limit",
+			Message:     fmt.Sprintf("渠道数已达上限（当前 %d / 限额 %d）", metrics.TotalChannels, plan.MaxChannels),
+			Severity:    "warning",
+			TriggeredAt: now,
+		})
+	}
+
 	return alerts, nil
 }
