@@ -219,10 +219,10 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 
 // tenantGuardScope enforces tenant_id scope on query/update/delete for tenant-scoped tables.
 //
-// Phase 1.5 behavior:
+// Phase 2 behavior（已从 warn-only 升级为 fail-closed）:
 //   - If WHERE clause already contains tenant_id → allow
 //   - If context *explicitly* carries tenant_id (not default fallback) → auto-inject and allow
-//   - Otherwise → log ERROR (not blocking yet, pending full caller migration)
+//   - Otherwise → **reject the operation** (db.AddError) and log ERROR
 //
 // Key design choice: uses explicitTenantIDFromContext (returns 0 when no tenant set)
 // instead of TenantIDFromContext (returns DefaultTenantId). This prevents silently
@@ -268,11 +268,22 @@ func tenantGuardScope(db *gorm.DB) {
 		}
 	}
 
-	// Phase 1.5: ERROR log (upgraded from WARNING) — will become fail-closed in Phase 2
-	// when all callers are confirmed tenant-aware.
-	common.SysError(fmt.Sprintf("[tenant-guardrail] UNSCOPED ACCESS: table=%s accessed without tenant_id in WHERE. "+
+	// Phase 2 fail-closed：记录 ERROR + 拒绝操作。
+	// 调用方需要：走 TenantDB(ctx) / 显式 .Where("tenant_id = ?", id) /
+	// 或用 WithTenantBypass() 为管理员跨租户操作明确开闸。
+	op := "QUERY"
+	switch db.Statement.BuildClauses[0] {
+	case "UPDATE":
+		op = "UPDATE"
+	case "DELETE":
+		op = "DELETE"
+	}
+	msg := fmt.Sprintf("[tenant-guardrail] UNSCOPED %s REJECTED: table=%s accessed without tenant_id in WHERE. "+
 		"Fix: use TenantDB(ctx), add .Where(\"tenant_id = ?\", id), or WithTenantBypass() for admin ops.",
-		db.Statement.Schema.Table))
+		op, db.Statement.Schema.Table)
+	common.SysError(msg)
+	_ = db.AddError(fmt.Errorf("tenant guardrail: refusing unscoped %s on %s (use WithTenantBypass to override)",
+		op, db.Statement.Schema.Table))
 }
 
 // tenantGuardCreate auto-fills tenant_id from context, then rejects the insert
