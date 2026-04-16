@@ -69,6 +69,27 @@ func GetTenantMembership(tenantId int, userId int) (*TenantMembership, error) {
 	return &membership, nil
 }
 
+// RemoveTenantMembership marks a user's membership in a tenant as removed (soft removal).
+// Does not delete the global user record.
+func RemoveTenantMembership(tenantId int, userId int) error {
+	if tenantId <= 0 || userId <= 0 {
+		return errors.New("invalid tenantId or userId")
+	}
+	result := WithTenantBypass(DB).Model(&TenantMembership{}).
+		Where("tenant_id = ? AND user_id = ?", tenantId, userId).
+		Updates(map[string]interface{}{
+			"status":     TenantMembershipStatusRemoved,
+			"updated_at": time.Now().Unix(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("membership not found")
+	}
+	return nil
+}
+
 func GetTenantMembershipUnscoped(tenantId int, userId int) (*TenantMembership, error) {
 	if tenantId <= 0 || userId <= 0 {
 		return nil, errors.New("invalid tenantId or userId")

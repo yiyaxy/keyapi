@@ -885,14 +885,27 @@ func DeleteUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	err = model.HardDeleteUserByIdWithTenant(id, middleware.GetTenantId(c))
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "",
-		})
-		return
+	tenantId := middleware.GetTenantId(c)
+	platformRole := c.GetInt("platform_role")
+	if platformRole >= common.RoleRootUser {
+		// Platform root: hard delete the user globally
+		err = model.HardDeleteUserByIdWithTenant(id, 0)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	} else {
+		// Tenant admin: remove membership, don't delete the global user
+		err = model.RemoveTenantMembership(tenantId, id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
 }
 
 func DeleteSelf(c *gin.Context) {
