@@ -140,6 +140,10 @@ func main() {
 		gopool.Go(func() {
 			service.StartTenantAlertSweepLoop(5 * time.Minute)
 		})
+		// 租户账单 & 计划状态机：每小时跑一次
+		gopool.Go(func() {
+			service.StartTenantBillingAndPlanLoop(time.Hour)
+		})
 	}
 
 	if common.IsMasterNode && constant.UpdateTask {
