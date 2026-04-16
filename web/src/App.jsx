@@ -21,7 +21,7 @@ import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
-import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers';
+import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute, TenantAdminRoute } from './helpers';
 import RegisterForm from './components/auth/RegisterForm';
 import LoginForm from './components/auth/LoginForm';
 import NotFound from './pages/NotFound';
@@ -295,57 +295,57 @@ function App() {
         <Route
           path='/console/tenant-info'
           element={
-            <AdminRoute>
+            <TenantAdminRoute>
               <Tenant />
-            </AdminRoute>
+            </TenantAdminRoute>
           }
         />
         <Route
           path='/console/tenant-members'
           element={
-            <AdminRoute>
+            <TenantAdminRoute>
               <TenantMembers />
-            </AdminRoute>
+            </TenantAdminRoute>
           }
         />
         <Route
           path='/console/tenant-plan'
           element={
-            <AdminRoute>
+            <TenantAdminRoute>
               <TenantPlan />
-            </AdminRoute>
+            </TenantAdminRoute>
           }
         />
         <Route
           path='/console/tenant-config'
           element={
-            <AdminRoute>
+            <TenantAdminRoute>
               <TenantConfig />
-            </AdminRoute>
+            </TenantAdminRoute>
           }
         />
         <Route
           path='/console/tenant-dashboard'
           element={
-            <AdminRoute>
+            <TenantAdminRoute>
               <TenantDashboardPage />
-            </AdminRoute>
+            </TenantAdminRoute>
           }
         />
         <Route
           path='/console/tenant-alerts'
           element={
-            <AdminRoute>
+            <TenantAdminRoute>
               <TenantAlerts />
-            </AdminRoute>
+            </TenantAdminRoute>
           }
         />
         <Route
           path='/console/tenant-bills'
           element={
-            <AdminRoute>
+            <TenantAdminRoute>
               <TenantBills />
-            </AdminRoute>
+            </TenantAdminRoute>
           }
         />
         <Route

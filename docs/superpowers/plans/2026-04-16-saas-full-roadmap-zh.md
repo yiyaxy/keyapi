@@ -41,15 +41,15 @@
 |------|------|----------|----------|----------|
 | Phase 0 | 预治理审计 | ✅ 已完成 | 表分类、热路径、SQL 风险、OptionMap 面 | 原始审计文档已丢失，现已补档 |
 | Phase 1 | 身份、路由、核心数据隔离 | ✅ 已完成 | TenantResolve、核心表 `tenant_id`、默认租户回填 | 无 |
-| Phase 1.5 | Guardrail 收口 | ⚠️ 85% | Create fail-closed、30 表注册、Raw SQL 已过滤 | **Query/Update/Delete 仍为 warn-only，未 fail-closed** |
+| Phase 1.5 | Guardrail 收口 | ✅ 100% | Create + Query + Update + Delete 全部 fail-closed、30+ 表注册、Raw SQL 已过滤 | FixAbility TRUNCATE 已由 RootAuth 保护 |
 | Phase 2 | 业务表租户化 | ✅ 已完成 | 金融/发票/工单/佣金/消息/分析表 tenant 化 | 无 |
 | 债务清理 | Raw SQL 与热路径修补 | ✅ 已完成 | purchase/ip/log/quota 等高风险路径清理 | 长尾查询仍需持续 review |
 | 安全修复 | 评审问题收口 | ✅ 已完成 | membership 门禁、RowsAffected 检查、缓存租户校验 | 持续回归即可 |
-| Phase 3 | 权限与成员体系 | ⚠️ 后端 85% | membership、角色中间件、租户 CRUD、邀请 | 缺成员管理/租户切换 UI、邀请邮件通知 |
+| Phase 3 | 权限与成员体系 | ✅ 95% | membership、角色中间件、租户 CRUD、邀请、前端成员管理/租户切换器、TenantAdminRoute | 邀请邮件通知复用 Phase 7 SMTP 基础（可后续接 /api/tenant/invite 触发） |
 | Phase 4 | 配置系统三层化 | ⚠️ **20%** | `tenant_options`、19 key、三层函数已实现 | **全站 197 处直读 OptionMap，`GetConfig()` 仅 4 处调用；typed schema、前端面板均缺** |
-| Phase 5 | 租户计费与套餐执行 | ⚠️ **75%** | quota/RPM/TPM/allowed_models/max_tokens/max_channels 6 项有运行时拦截 | **无账单/续费/停服体系** |
-| Phase 6 | SaaS Console 前端 | ❌ 未开始 | 只有可复用的通用后台页面 | 租户切换、成员/计划/配置/指标页面 |
-| Phase 7 | 运维、监控、审计 | ⚠️ **30%** | dashboard/trend/model usage/alerts API 已有 | **告警为无状态即时计算，无持久化；前端 0%；无审计日志导出** |
+| Phase 5 | 租户计费与套餐执行 | ✅ **95%** | 6/7 限制运行时执行 + 账单/账本持久化 + 到期状态机 | 套餐续费支付闭环（依赖外部支付集成）|
+| Phase 6 | SaaS Console 前端 | ✅ **85%** | Part A/B/C/D 全部落地（8 个租户页面 + 平台管理 + 租户切换器 + TenantAdminRoute）| 品牌配置/自定义域名的 preset UI |
+| Phase 7 | 运维、监控、审计 | ✅ **85%** | 告警持久化 + 5 分钟巡检 + 邮件推送 + 历史 + 前端 UI | 站内信/Webhook 推送扩展、审计日志导出、异常检测时序 |
 
 ---
 

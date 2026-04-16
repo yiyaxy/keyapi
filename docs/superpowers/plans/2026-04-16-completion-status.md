@@ -12,15 +12,15 @@
 |------|------|------|--------|
 | Phase 0 | 预备治理 | **已完成** | 100% |
 | Phase 1 | 身份、路由与核心数据隔离 | **已完成** | 100% |
-| Phase 1.5 | Guardrail 升级 | **基础设施完成，Query/Update/Delete 仍为 warn-only** | 85% |
+| Phase 1.5 | Guardrail 升级 | **已完成** | 100% |
 | Phase 2 | 剩余业务表租户化 | **已完成** | 100% |
 | 遗留债务 | Raw SQL + Quota 热路径 | **已完成** | 100% |
 | 安全修复 | 评审问题修复 | **已完成** | 100% |
-| Phase 3 | 权限与成员体系 | **后端基本完成，前端 0%** | 85% |
-| Phase 4 | 配置系统重构 | **管道已通，全站采用率极低** | 20% |
-| Phase 5 | 计费与商业化 | **6/7 限制有运行时执行，无账单体系** | 75% |
-| Phase 6 | 前端 SaaS 后台 | **Part A 已完成（租户信息 + 成员管理）** | 15% |
-| Phase 7 | 运维、监控与审计 | **指标/告警 API 已有，告警无持久化，前端 0%** | 30% |
+| Phase 3 | 权限与成员体系 | **后端完成 + 前端接入成员管理** | 95% |
+| Phase 4 | 配置系统重构 | **管道已通 + 前端配置 UI 完成，全站采用率按需** | 40% |
+| Phase 5 | 计费与商业化 | **6/7 限制执行 + 账单/账本 + 到期状态机** | 95% |
+| Phase 6 | 前端 SaaS 后台 | **Part A/B/C/D 完成（租户切换器 + 7 个管理页）** | 85% |
+| Phase 7 | 运维、监控与审计 | **告警持久化 + 定时巡检 + 邮件推送 + UI** | 85% |
 
 ---
 
@@ -49,13 +49,13 @@
 
 ---
 
-## Phase 1.5：Guardrail 升级 ⚠️ 85%
-**Commit**: `b1813af`
+## Phase 1.5：Guardrail 升级 ✅ 100%
+**Commits**: `b1813af`、`94fc6b7`（Phase 2 fail-closed 升级）
 
 ### 已完成
 - `ExplicitTenantIDFromContext()` — background context 返回 0
 - Create callback: **fail-closed**（TenantId=0 拒绝写入）✅
-- Query/Update/Delete callback: ERROR 日志 + context 自动注入
+- Query/Update/Delete callback: **fail-closed** — 未带 tenant_id 且 context 无显式 tenant 时 AddError 拒绝 + ERROR 日志（升级自 warn-only）
 - `WithTenantBypass(DB)` 用于迁移/bootstrap/超管操作（42 处使用，均为合理跨租户场景）
 - `GetUserTenantId(userId)` model 层辅助函数
 - Log 读写路径全面租户隔离
@@ -63,16 +63,8 @@
 - Raw SQL（7 处 `DB.Raw()`、19 处 `DB.Table()`）均已手动加 tenant_id 过滤
 - 6 个单元测试
 
-### ⚠️ 关键偏差：Query/Update/Delete 仍为 warn-only
-- Create 是真正的 fail-closed（tenant_id=0 拒绝写入）
-- **Query/Update/Delete 仅记录 ERROR 日志，但允许操作继续执行**
-- 代码注释标注 "Phase 2 will become fail-closed when all callers are confirmed tenant-aware"
-- 实际含义：未加 tenant_id 的查询/更新/删除不会被拦截，只会被记录
-- 风险等级：MEDIUM — 依赖开发者不犯错，而非框架强制防护
-
 ### 未完成
-- Query/Update/Delete 升级为 fail-closed
-- `ability.go` 中 `FixAbility()` 的 TRUNCATE 操作缺少显式 PlatformAdmin 校验（依赖路由层保护）
+- 无（FixAbility 的 TRUNCATE 已由路由层 `RootAuth()` 保护，等级比 PlatformAdmin 更严格）
 
 ---
 
@@ -171,8 +163,8 @@
 
 ---
 
-## Phase 5：计费与商业化 ⚠️ 75%
-**Commit**: `0a44d2f`
+## Phase 5：计费与商业化 ✅ 95%
+**Commits**: `0a44d2f`、`ab2029f`…`685987c`（Plan 1）、`4d7a63e`（review 修复）、`fae665c`（账单/状态机）
 
 ### 已完成
 - `TenantPlan` 模型已落地：quota_limit、rpm_limit、tpm_limit、max_members、max_tokens、max_channels、allowed_models、status、expires_at
@@ -193,34 +185,45 @@
 | max_channels | ✅ | ✅ | AddChannel 内校验（单+批量），配 CountTenantChannels |
 | max_members | ✅ | ⚠️ | 仅在邀请流程检查，告警用于 80% 阈值 |
 
+### 已完成（续）
+- 租户级账单 / 账本（`tenant_bills` / `tenant_ledgers` 表）+ 月度周期 upsert + 账单结转生成 consume 账本流水
+- 到期停服状态机（plan expires_at 到达自动设 status=disabled + 告警）
+- `StartTenantBillingAndPlanLoop` 定时巡检（master 节点 1 小时一次）
+- 前端：`/console/tenant-bills`（账单 + 账本流水双 Tab）+ `/console/tenant-plan`（计划详情）
+
 ### 未完成
-- 租户级账单/账本（无 tenant_bills / tenant_ledgers 表）
-- 套餐续费/升级/降级逻辑
-- 到期停服/宽限期/自动恢复状态机
-- 计划变更与告警联动
+- 套餐续费/升级/降级的支付闭环（依赖外部支付集成）
+- 宽限期（grace period）字段 —— 当前状态机是到期立即停服，若需宽限需要给 TenantPlan 加 `grace_period_seconds` 字段
+- 计划变更与告警联动（已有告警持久化，`plan_expired_disabled` 告警已在状态机中写入）
 
 ---
 
-## Phase 6：前端 SaaS 后台 ⚠️ 15%
+## Phase 6：前端 SaaS 后台 ✅ 85%
 
 ### 已完成（Part A — 2026-04-17）
 - 前端 TS 类型：`web/src/types/tenant.ts`（Tenant / TenantMembership / TenantMemberListItem / 常量）
 - `X-Tenant-Id` 请求头注入：`web/src/helpers/api.js` 加请求拦截器，登录/登出 header 自动同步
-- 租户信息页：`/console/tenant-info`（view/edit name/status，GET /api/tenant/info + PUT /api/tenant/）
-- 成员管理页：`/console/tenant-members`（list + invite + 角色/状态编辑 + 移除；走 /api/tenant/members CRUD + /api/tenant/invite）
-- 侧边栏：`admin` 分组新增 `tenantInfo` / `tenantMembers` 两个入口
+- 租户信息页：`/console/tenant-info`（view/edit name，GET /api/tenant/info + PUT /api/tenant/）
+- 成员管理页：`/console/tenant-members`（list + invite + 角色/状态编辑 + 移除）
+
+### 已完成（Part B/C/D — 2026-04-17）
+- 租户计划详情页：`/console/tenant-plan`（只读计划展示）
+- 租户配置编辑器：`/console/tenant-config`（key-value 编辑）
+- 租户仪表盘：`/console/tenant-dashboard`（summary 卡 + VChart 趋势 + 模型使用排行）
+- 租户告警管理：`/console/tenant-alerts`（活跃 + 历史双 Tab + ack/resolve）
+- 租户账单/账本：`/console/tenant-bills`（账单 + 账本流水双 Tab）
+- 平台级租户管理：`/console/platform-tenants`（CRUD + 编辑计划）
+- 租户切换器：Header 右上角 Dropdown（仅多租户用户显示），走 `/api/user/tenants` + `/api/user/tenant/switch`
+- 前端路由守卫：`TenantAdminRoute`（允许 tenant_role=10 或平台 admin）
 
 ### 未完成
-- Part B：租户计划页（/api/tenant/plan）、租户配置页（/api/tenant/config）、平台级租户管理（/api/platform/tenants）、品牌配置、自定义域名
-- Part C：监控前端（dashboard/trend/models/alerts 已有 API，UI 未做）
-- Part D：跨租户浏览器切换（多 membership 用户选 tenant）、`TenantAdminRoute`（tenant-only admin 的前端路由守卫）
-- 邀请邮件/站内通知投递（阶段 A 独立 plan）
-- 现有 `/console/topup`、`/console/site-rpm`、`InvoiceAdmin`、`RebateSettings` 仍是通用后台页面，未 Console 化
+- 品牌配置 / 自定义域名页面（后端已有 `tenant_options` 配置机制，前端可在 Config 页基础上做 preset 卡片）
+- 现有 `/console/topup`、`/console/site-rpm`、`InvoiceAdmin`、`RebateSettings` 未 Console 化（不影响功能）
 
 ---
 
-## Phase 7：运维、监控与审计 ⚠️ 30%
-**Commits**: `4fbe038`, `0a44d2f`
+## Phase 7：运维、监控与审计 ✅ 85%
+**Commits**: `4fbe038`, `0a44d2f`, `7749030`（持久化 + 巡检 + 邮件推送）, `3b41fca`（前端）
 
 ### 已完成
 - 租户 dashboard 汇总已落地：成员、令牌、渠道、累计/当日 quota 与 request
@@ -230,18 +233,17 @@
 - `TenantAPIRateLimit()` 已挂到 `apiRouter`（600/60s，Redis 后端）
 - 4 个 API 端点已注册：`GET /api/tenant/dashboard`、`/usage/trend`、`/usage/models`、`/alerts`
 
-### ⚠️ 关键偏差：告警为无状态即时计算，非持久化事件
-- `CheckTenantAlerts()` 每次 API 调用时实时计算，**无数据库表存储告警历史**
-- 不存在告警确认/解除/去重机制
-- 不存在定时告警巡检任务
-- 告警仅在调用 API 时触发，无主动推送能力
+### 已完成（续）
+- 告警持久化：`tenant_alert_records` 表 + active/acknowledged/resolved 状态机 + upsert 去重
+- 告警运维 API：`GET /api/tenant/alerts/history`、`POST /api/tenant/alerts/:id/ack`、`POST /api/tenant/alerts/:id/resolve`
+- 告警推送：SMTP 邮件通知到租户全部 active 管理员（自上次 sweep 起的新告警）
+- 定时巡检：`StartTenantAlertSweepLoop`（master 节点 5 分钟一次）
+- 前端：`/console/tenant-alerts`（活跃 + 历史双 Tab + ack/resolve 操作）、`/console/tenant-dashboard`（summary + 趋势 + 模型排行）
 
 ### 未完成
-- 告警持久化（需 `tenant_alerts` 表存储状态、时间戳、确认状态）
-- 告警推送渠道（邮件/站内信/Webhook）
 - 租户级审计日志导出（无专用审计日志表）
-- 异常检测与长期时序存储
-- 面向租户的监控前端页面（API 已有，UI 为 0%）
+- 异常检测与长期时序存储（可复用 site_rpm_snapshots 架构）
+- 告警推送扩展渠道（站内信/Webhook）
 
 ---
 
