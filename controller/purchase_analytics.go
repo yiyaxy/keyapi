@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -11,7 +12,7 @@ import (
 func GetPurchaseOverview(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
 	orderType := c.DefaultQuery("order_type", "all")
-	result, err := model.GetPurchaseOverview(startTs, endTs, orderType)
+	result, err := model.GetPurchaseOverview(middleware.GetTenantId(c), startTs, endTs, orderType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -23,7 +24,7 @@ func GetPurchaseTrend(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
 	orderType := c.DefaultQuery("order_type", "all")
-	result, err := model.GetPurchaseTrend(startTs, endTs, granularity, orderType)
+	result, err := model.GetPurchaseTrend(middleware.GetTenantId(c), startTs, endTs, granularity, orderType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -34,7 +35,7 @@ func GetPurchaseTrend(c *gin.Context) {
 func GetPurchasePaymentMethod(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
 	orderType := c.DefaultQuery("order_type", "all")
-	result, err := model.GetPaymentMethodDistribution(startTs, endTs, orderType)
+	result, err := model.GetPaymentMethodDistribution(middleware.GetTenantId(c), startTs, endTs, orderType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -44,7 +45,7 @@ func GetPurchasePaymentMethod(c *gin.Context) {
 
 func GetPurchaseOrderType(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.GetOrderTypeDistribution(startTs, endTs)
+	result, err := model.GetOrderTypeDistribution(middleware.GetTenantId(c), startTs, endTs)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -56,7 +57,7 @@ func GetPurchaseTopSpenders(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
 	pageInfo := common.GetPageQuery(c)
 	orderType := c.DefaultQuery("order_type", "all")
-	items, total, err := model.GetTopSpenders(startTs, endTs, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), orderType)
+	items, total, err := model.GetTopSpenders(middleware.GetTenantId(c), startTs, endTs, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), orderType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -67,7 +68,7 @@ func GetPurchaseTopSpenders(c *gin.Context) {
 }
 
 func GetPurchaseRedemptionStats(c *gin.Context) {
-	result, err := model.GetRedemptionStats()
+	result, err := model.GetRedemptionStats(middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -77,7 +78,7 @@ func GetPurchaseRedemptionStats(c *gin.Context) {
 
 func GetSubscriptionOverview(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.GetSubscriptionAnalyticsOverview(startTs, endTs)
+	result, err := model.GetSubscriptionAnalyticsOverview(middleware.GetTenantId(c), startTs, endTs)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -87,7 +88,7 @@ func GetSubscriptionOverview(c *gin.Context) {
 
 func GetSubscriptionPlanBreakdown(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.GetSubscriptionPlanBreakdown(startTs, endTs)
+	result, err := model.GetSubscriptionPlanBreakdown(middleware.GetTenantId(c), startTs, endTs)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -97,7 +98,7 @@ func GetSubscriptionPlanBreakdown(c *gin.Context) {
 
 func GetTopUpOverview(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.GetTopUpAnalyticsOverview(startTs, endTs)
+	result, err := model.GetTopUpAnalyticsOverview(middleware.GetTenantId(c), startTs, endTs)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -108,7 +109,7 @@ func GetTopUpOverview(c *gin.Context) {
 func GetSubscriptionHeatmap(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
 	planID, _ := strconv.Atoi(c.DefaultQuery("plan_id", "0"))
-	result, err := model.GetSubscriptionHeatmap(startTs, endTs, planID)
+	result, err := model.GetSubscriptionHeatmap(middleware.GetTenantId(c), startTs, endTs, planID)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -119,7 +120,7 @@ func GetSubscriptionHeatmap(c *gin.Context) {
 func GetPurchaseDAUTrend(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
-	result, err := model.GetDAUTrend(startTs, endTs, granularity)
+	result, err := model.GetDAUTrend(middleware.GetTenantId(c), startTs, endTs, granularity)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -130,7 +131,7 @@ func GetPurchaseDAUTrend(c *gin.Context) {
 func GetPurchaseRegistrationTrend(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
-	result, err := model.GetRegistrationTrend(startTs, endTs, granularity)
+	result, err := model.GetRegistrationTrend(middleware.GetTenantId(c), startTs, endTs, granularity)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -140,7 +141,7 @@ func GetPurchaseRegistrationTrend(c *gin.Context) {
 
 func GetPurchaseConversionFunnel(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.GetConversionFunnel(startTs, endTs)
+	result, err := model.GetConversionFunnel(middleware.GetTenantId(c), startTs, endTs)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -154,7 +155,7 @@ func GetPurchaseReferralAnalytics(c *gin.Context) {
 	if limit <= 0 {
 		limit = 20
 	}
-	result, err := model.GetReferralAnalytics(startTs, endTs, limit)
+	result, err := model.GetReferralAnalytics(middleware.GetTenantId(c), startTs, endTs, limit)
 	if err != nil {
 		common.ApiError(c, err)
 		return

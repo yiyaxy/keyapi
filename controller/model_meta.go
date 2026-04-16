@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -23,7 +24,7 @@ func GetAllModelsMeta(c *gin.Context) {
 		return
 	}
 	// 批量填充附加字段，提升列表接口性能
-	enrichModels(modelsMeta)
+	enrichModels(modelsMeta, middleware.GetTenantId(c))
 	var total int64
 	model.DB.Model(&model.Model{}).Count(&total)
 
@@ -54,7 +55,7 @@ func SearchModelsMeta(c *gin.Context) {
 		return
 	}
 	// 批量填充附加字段，提升列表接口性能
-	enrichModels(modelsMeta)
+	enrichModels(modelsMeta, middleware.GetTenantId(c))
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(modelsMeta)
 	common.ApiSuccess(c, pageInfo)
@@ -73,7 +74,7 @@ func GetModelMeta(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	enrichModels([]*model.Model{&m})
+	enrichModels([]*model.Model{&m}, middleware.GetTenantId(c))
 	common.ApiSuccess(c, &m)
 }
 
@@ -161,7 +162,7 @@ func DeleteModelMeta(c *gin.Context) {
 }
 
 // enrichModels 批量填充附加信息：端点、渠道、分组、计费类型，避免 N+1 查询
-func enrichModels(models []*model.Model) {
+func enrichModels(models []*model.Model, tenantId int) {
 	if len(models) == 0 {
 		return
 	}
@@ -183,7 +184,7 @@ func enrichModels(models []*model.Model) {
 	}
 
 	// 2) 批量查询精确模型的绑定渠道
-	channelsByModel, _ := model.GetBoundChannelsByModelsMap(exactNames)
+	channelsByModel, _ := model.GetBoundChannelsByModelsMap(exactNames, tenantId)
 
 	// 3) 精确模型：端点从缓存、渠道批量映射、分组/计费类型从缓存
 	for name, indices := range exactIdx {
@@ -270,7 +271,7 @@ func enrichModels(models []*model.Model) {
 	for n := range allMatchedSet {
 		allMatched = append(allMatched, n)
 	}
-	matchedChannelsByModel, _ := model.GetBoundChannelsByModelsMap(allMatched)
+	matchedChannelsByModel, _ := model.GetBoundChannelsByModelsMap(allMatched, tenantId)
 
 	// 6) 回填每个规则模型的并集信息
 	for _, idx := range ruleIndices {

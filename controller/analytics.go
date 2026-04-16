@@ -92,7 +92,7 @@ func GetSiteRPMHistory(c *gin.Context) {
 }
 
 func GetChannelMonitor(c *gin.Context) {
-	data, err := model.GetChannelMonitorData()
+	data, err := model.GetChannelMonitorData(middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return

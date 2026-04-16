@@ -38,7 +38,9 @@ func TenantIDFromContext(ctx context.Context) int {
 		return DefaultTenantId
 	}
 	// Path 1: gin.Context (when passed directly)
-	if ginCtx, ok := ctx.(interface{ Get(string) (interface{}, bool) }); ok {
+	if ginCtx, ok := ctx.(interface {
+		Get(string) (interface{}, bool)
+	}); ok {
 		if tid, exists := ginCtx.Get(string(constant.ContextKeyTenantId)); exists {
 			if id, ok := tid.(int); ok && id > 0 {
 				return id
@@ -111,7 +113,9 @@ func ExplicitTenantIDFromContext(ctx context.Context) int {
 		return 0
 	}
 	// Path 1: gin.Context (when passed directly)
-	if ginCtx, ok := ctx.(interface{ Get(string) (interface{}, bool) }); ok {
+	if ginCtx, ok := ctx.(interface {
+		Get(string) (interface{}, bool)
+	}); ok {
 		if tid, exists := ginCtx.Get(string(constant.ContextKeyTenantId)); exists {
 			if id, ok := tid.(int); ok && id > 0 {
 				return id
@@ -200,6 +204,9 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 	RegisterTenantScopedTable("quota_data")
 	RegisterTenantScopedTable("agent_logs")
 	RegisterTenantScopedTable("agent_reports")
+
+	// Phase 3 tables — membership
+	RegisterTenantScopedTable("tenant_memberships")
 
 	// Create: fail-closed (reject if tenant_id missing)
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)

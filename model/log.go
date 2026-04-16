@@ -356,7 +356,11 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 			}
 		} else {
 			// Bulk query channels from DB
-			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+			chQuery := DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items())
+			if tenantId > 0 {
+				chQuery = chQuery.Where("tenant_id = ?", tenantId)
+			}
+			if err = chQuery.Find(&channels).Error; err != nil {
 				return logs, total, err
 			}
 		}
@@ -543,8 +547,11 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return stat, nil
 }
 
-func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
+func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, tenantId int) (token int) {
 	tx := LOG_DB.Table("logs").Select("ifnull(sum(prompt_tokens),0) + ifnull(sum(completion_tokens),0)")
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
 	if username != "" {
 		tx = tx.Where("username = ?", username)
 	}
@@ -609,7 +616,7 @@ type AnalyticsResult struct {
 	Summary AnalyticsSummary `json:"summary"`
 }
 
-func buildAnalyticsSummary(items []AnalyticsItem, startTs, endTs int64) AnalyticsSummary {
+func buildAnalyticsSummary(items []AnalyticsItem, startTs, endTs int64, tenantId int) AnalyticsSummary {
 	var summary AnalyticsSummary
 	for _, item := range items {
 		summary.TotalQuota += item.Quota
@@ -622,10 +629,13 @@ func buildAnalyticsSummary(items []AnalyticsItem, startTs, endTs int64) Analytic
 		TPM int64 `gorm:"column:tpm"`
 	}
 	since60s := time.Now().Add(-60 * time.Second).Unix()
-	if err := LOG_DB.Table("logs").
+	rpmTpmQuery := LOG_DB.Table("logs").
 		Select("count(*) as rpm, COALESCE(sum(prompt_tokens),0) + COALESCE(sum(completion_tokens),0) as tpm").
-		Where("type = ? AND created_at >= ?", LogTypeConsume, since60s).
-		Scan(&rpmTpm).Error; err == nil {
+		Where("type = ? AND created_at >= ?", LogTypeConsume, since60s)
+	if tenantId > 0 {
+		rpmTpmQuery = rpmTpmQuery.Where("tenant_id = ?", tenantId)
+	}
+	if err := rpmTpmQuery.Scan(&rpmTpm).Error; err == nil {
 		summary.RPM = rpmTpm.RPM
 		summary.TPM = rpmTpm.TPM
 	}
@@ -672,7 +682,11 @@ func SumQuotaByChannel(startTs, endTs int64, tenantId int) (*AnalyticsResult, er
 			Id   int    `gorm:"column:id"`
 			Name string `gorm:"column:name"`
 		}
-		DB.Table("channels").Select("id, name").Where("id IN ?", channelIds).Find(&channels)
+		chQuery := DB.Table("channels").Select("id, name").Where("id IN ?", channelIds)
+		if tenantId > 0 {
+			chQuery = chQuery.Where("tenant_id = ?", tenantId)
+		}
+		chQuery.Find(&channels)
 		for _, ch := range channels {
 			channelNameMap[ch.Id] = ch.Name
 		}
@@ -686,7 +700,7 @@ func SumQuotaByChannel(startTs, endTs int64, tenantId int) (*AnalyticsResult, er
 		items = append(items, AnalyticsItem{Name: name, Quota: r.Quota, Count: r.Count, Tokens: r.Tokens})
 	}
 
-	summary := buildAnalyticsSummary(items, startTs, endTs)
+	summary := buildAnalyticsSummary(items, startTs, endTs, tenantId)
 	return &AnalyticsResult{Items: items, Summary: summary}, nil
 }
 
@@ -708,7 +722,7 @@ func SumQuotaByModel(startTs, endTs int64, tenantId int) (*AnalyticsResult, erro
 	if err := tx.Scan(&items).Error; err != nil {
 		return nil, err
 	}
-	summary := buildAnalyticsSummary(items, startTs, endTs)
+	summary := buildAnalyticsSummary(items, startTs, endTs, tenantId)
 	return &AnalyticsResult{Items: items, Summary: summary}, nil
 }
 
@@ -752,7 +766,11 @@ func SumQuotaByUser(startTs, endTs int64, tenantId int) (*AnalyticsResult, error
 			Id       int    `gorm:"column:id"`
 			Username string `gorm:"column:username"`
 		}
-		DB.Table("users").Select("id, username").Where("id IN ?", userIds).Find(&users)
+		uQuery := DB.Table("users").Select("id, username").Where("id IN ?", userIds)
+		if tenantId > 0 {
+			uQuery = uQuery.Where("tenant_id = ?", tenantId)
+		}
+		uQuery.Find(&users)
 		for _, u := range users {
 			userNameMap[u.Id] = u.Username
 		}
@@ -766,7 +784,7 @@ func SumQuotaByUser(startTs, endTs int64, tenantId int) (*AnalyticsResult, error
 		items = append(items, AnalyticsItem{Name: name, Quota: r.Quota, Count: r.Count, Tokens: r.Tokens})
 	}
 
-	summary := buildAnalyticsSummary(items, startTs, endTs)
+	summary := buildAnalyticsSummary(items, startTs, endTs, tenantId)
 	return &AnalyticsResult{Items: items, Summary: summary}, nil
 }
 

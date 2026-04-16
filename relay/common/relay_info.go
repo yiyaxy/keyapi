@@ -83,6 +83,7 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
+	TenantId          int
 	TokenId           int
 	TokenKey          string
 	TokenGroup        string
@@ -456,6 +457,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		Request: request,
 
 		RequestId:  reqId,
+		TenantId:   common.GetContextKeyInt(c, constant.ContextKeyTenantId),
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
 		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),

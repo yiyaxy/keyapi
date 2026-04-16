@@ -145,35 +145,88 @@ func ipLocationForIp(ip string) string {
 
 // ========== 1. Overview ==========
 
-func GetIpAnalyticsOverviewV2(startTs, endTs int64) (*IpAnalyticsOverview, error) {
+func GetIpAnalyticsOverviewV2(tenantId int, startTs, endTs int64) (*IpAnalyticsOverview, error) {
 	r := &IpAnalyticsOverview{}
 
 	// Login metrics from user_ip_records
-	DB.Model(&UserIpRecord{}).Where("created_at >= ? AND created_at <= ?", startTs, endTs).Count(&r.LoginRecords)
-	DB.Model(&UserIpRecord{}).Where("created_at >= ? AND created_at <= ?", startTs, endTs).Select("COUNT(DISTINCT ip)").Scan(&r.LoginDistinctIps)
-	DB.Model(&UserIpRecord{}).Where("created_at >= ? AND created_at <= ?", startTs, endTs).Select("COUNT(DISTINCT user_id)").Scan(&r.LoginDistinctUsers)
+	q := DB.Model(&UserIpRecord{}).Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	q.Count(&r.LoginRecords)
+
+	q2 := DB.Model(&UserIpRecord{}).Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		q2 = q2.Where("tenant_id = ?", tenantId)
+	}
+	q2.Select("COUNT(DISTINCT ip)").Scan(&r.LoginDistinctIps)
+
+	q3 := DB.Model(&UserIpRecord{}).Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		q3 = q3.Where("tenant_id = ?", tenantId)
+	}
+	q3.Select("COUNT(DISTINCT user_id)").Scan(&r.LoginDistinctUsers)
 
 	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
-	DB.Model(&UserIpRecord{}).Where("created_at >= ?", todayStart).Count(&r.TodayLogins)
+	q4 := DB.Model(&UserIpRecord{}).Where("created_at >= ?", todayStart)
+	if tenantId > 0 {
+		q4 = q4.Where("tenant_id = ?", tenantId)
+	}
+	q4.Count(&r.TodayLogins)
 
 	// API metrics from logs
-	LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs).Count(&r.ApiCallCount)
-	LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs).Select("COUNT(DISTINCT ip)").Scan(&r.ApiDistinctIps)
-	LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs).Select("COUNT(DISTINCT user_id)").Scan(&r.ApiDistinctUsers)
-	LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs).Select("COALESCE(SUM(quota),0)").Scan(&r.ApiQuotaConsumed)
+	lq := LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		lq = lq.Where("tenant_id = ?", tenantId)
+	}
+	lq.Count(&r.ApiCallCount)
+
+	lq2 := LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		lq2 = lq2.Where("tenant_id = ?", tenantId)
+	}
+	lq2.Select("COUNT(DISTINCT ip)").Scan(&r.ApiDistinctIps)
+
+	lq3 := LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		lq3 = lq3.Where("tenant_id = ?", tenantId)
+	}
+	lq3.Select("COUNT(DISTINCT user_id)").Scan(&r.ApiDistinctUsers)
+
+	lq4 := LOG_DB.Model(&Log{}).Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		lq4 = lq4.Where("tenant_id = ?", tenantId)
+	}
+	lq4.Select("COALESCE(SUM(quota),0)").Scan(&r.ApiQuotaConsumed)
 
 	// Alert: new IPs (IPs in current range that don't appear before startTs)
-	DB.Raw(`SELECT COUNT(DISTINCT ip) FROM user_ip_records
+	newIpSql := `SELECT COUNT(DISTINCT ip) FROM user_ip_records
 		WHERE created_at >= ? AND created_at <= ?
-		AND ip NOT IN (SELECT DISTINCT ip FROM user_ip_records WHERE created_at < ?)`,
-		startTs, endTs, startTs).Scan(&r.NewIpCount)
+		AND ip NOT IN (SELECT DISTINCT ip FROM user_ip_records WHERE created_at < ?`
+	newIpArgs := []interface{}{startTs, endTs, startTs}
+	if tenantId > 0 {
+		newIpSql += " AND tenant_id = ?"
+		newIpArgs = append(newIpArgs, tenantId)
+	}
+	newIpSql += ")"
+	if tenantId > 0 {
+		newIpSql += " AND tenant_id = ?"
+		newIpArgs = append(newIpArgs, tenantId)
+	}
+	DB.Raw(newIpSql, newIpArgs...).Scan(&r.NewIpCount)
 
 	// Alert: multi-account IPs (IPs used by 2+ users in range)
-	DB.Raw(`SELECT COUNT(*) FROM (
+	multiSql := `SELECT COUNT(*) FROM (
 		SELECT ip FROM user_ip_records
-		WHERE created_at >= ? AND created_at <= ?
-		GROUP BY ip HAVING COUNT(DISTINCT user_id) >= 2
-	) t`, startTs, endTs).Scan(&r.MultiAccountIps)
+		WHERE created_at >= ? AND created_at <= ?`
+	multiArgs := []interface{}{startTs, endTs}
+	if tenantId > 0 {
+		multiSql += " AND tenant_id = ?"
+		multiArgs = append(multiArgs, tenantId)
+	}
+	multiSql += ` GROUP BY ip HAVING COUNT(DISTINCT user_id) >= 2
+	) t`
+	DB.Raw(multiSql, multiArgs...).Scan(&r.MultiAccountIps)
 
 	// Alert: high-freq IPs (IPs with >100 API calls per hour on average)
 	durationHours := float64(endTs-startTs) / 3600.0
@@ -181,22 +234,33 @@ func GetIpAnalyticsOverviewV2(startTs, endTs int64) (*IpAnalyticsOverview, error
 		durationHours = 1
 	}
 	threshold := int64(100 * durationHours)
-	LOG_DB.Raw(`SELECT COUNT(*) FROM (
+	highFreqSql := `SELECT COUNT(*) FROM (
 		SELECT ip FROM logs
-		WHERE type = ? AND created_at >= ? AND created_at <= ? AND ip != ''
-		GROUP BY ip HAVING COUNT(*) > ?
-	) t`, LogTypeConsume, startTs, endTs, threshold).Scan(&r.HighFreqIps)
+		WHERE type = ? AND created_at >= ? AND created_at <= ? AND ip != ''`
+	highFreqArgs := []interface{}{LogTypeConsume, startTs, endTs}
+	if tenantId > 0 {
+		highFreqSql += " AND tenant_id = ?"
+		highFreqArgs = append(highFreqArgs, tenantId)
+	}
+	highFreqSql += ` GROUP BY ip HAVING COUNT(*) > ?
+	) t`
+	highFreqArgs = append(highFreqArgs, threshold)
+	LOG_DB.Raw(highFreqSql, highFreqArgs...).Scan(&r.HighFreqIps)
 
 	return r, nil
 }
 
 // ========== 2. Login Geo Distribution ==========
 
-func GetLoginGeoDist(startTs, endTs int64) ([]LoginGeoItem, error) {
+func GetLoginGeoDist(tenantId int, startTs, endTs int64) ([]LoginGeoItem, error) {
 	var items []LoginGeoItem
-	err := DB.Model(&UserIpRecord{}).
+	tx := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ? AND ip_location IS NOT NULL AND ip_location != ''", startTs, endTs)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.
 		Select("ip_location as location, COUNT(*) as count, COUNT(DISTINCT user_id) as users, MAX(created_at) as last_seen").
-		Where("created_at >= ? AND created_at <= ? AND ip_location IS NOT NULL AND ip_location != ''", startTs, endTs).
 		Group("ip_location").
 		Order("count DESC").
 		Limit(100).
@@ -206,7 +270,7 @@ func GetLoginGeoDist(startTs, endTs int64) ([]LoginGeoItem, error) {
 
 // ========== 3. Login Time Pattern ==========
 
-func GetLoginTimePattern(startTs, endTs int64) (*TimePatternResult, error) {
+func GetLoginTimePattern(tenantId int, startTs, endTs int64) (*TimePatternResult, error) {
 	result := &TimePatternResult{}
 
 	// Hourly distribution (0-23)
@@ -214,10 +278,12 @@ func GetLoginTimePattern(startTs, endTs int64) (*TimePatternResult, error) {
 	var hourlyRaw []struct {
 		CreatedAt int64 `gorm:"column:created_at"`
 	}
-	DB.Model(&UserIpRecord{}).
-		Select("created_at").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
-		Find(&hourlyRaw)
+	hq := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		hq = hq.Where("tenant_id = ?", tenantId)
+	}
+	hq.Select("created_at").Find(&hourlyRaw)
 
 	hourCounts := make(map[int]int64)
 	for _, r := range hourlyRaw {
@@ -232,10 +298,12 @@ func GetLoginTimePattern(startTs, endTs int64) (*TimePatternResult, error) {
 	var dailyRaw []struct {
 		CreatedAt int64 `gorm:"column:created_at"`
 	}
-	DB.Model(&UserIpRecord{}).
-		Select("created_at").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
-		Find(&dailyRaw)
+	dq := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		dq = dq.Where("tenant_id = ?", tenantId)
+	}
+	dq.Select("created_at").Find(&dailyRaw)
 
 	dayCounts := make(map[string]int64)
 	for _, r := range dailyRaw {
@@ -252,11 +320,15 @@ func GetLoginTimePattern(startTs, endTs int64) (*TimePatternResult, error) {
 
 // ========== 4. Login Type Detail ==========
 
-func GetLoginTypeDetail(startTs, endTs int64) ([]LoginTypeDetailItem, error) {
+func GetLoginTypeDetail(tenantId int, startTs, endTs int64) ([]LoginTypeDetailItem, error) {
 	var items []LoginTypeDetailItem
-	err := DB.Model(&UserIpRecord{}).
+	tx := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.
 		Select("login_type, COUNT(*) as count, COUNT(DISTINCT ip) as distinct_ips, COUNT(DISTINCT user_id) as distinct_users, MAX(created_at) as last_seen").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
 		Group("login_type").
 		Order("count DESC").
 		Limit(50).
@@ -266,16 +338,23 @@ func GetLoginTypeDetail(startTs, endTs int64) ([]LoginTypeDetailItem, error) {
 
 // ========== 5. Multi-Account IPs ==========
 
-func GetMultiAccountIps(startTs, endTs int64, minUsers int, page, pageSize int) ([]MultiAccountIpItem, int64, error) {
+func GetMultiAccountIps(tenantId int, startTs, endTs int64, minUsers int, page, pageSize int) ([]MultiAccountIpItem, int64, error) {
 	if minUsers < 2 {
 		minUsers = 2
 	}
 	var total int64
-	DB.Raw(`SELECT COUNT(*) FROM (
+	totalSql := `SELECT COUNT(*) FROM (
 		SELECT ip FROM user_ip_records
-		WHERE created_at >= ? AND created_at <= ?
-		GROUP BY ip HAVING COUNT(DISTINCT user_id) >= ?
-	) t`, startTs, endTs, minUsers).Scan(&total)
+		WHERE created_at >= ? AND created_at <= ?`
+	totalArgs := []interface{}{startTs, endTs}
+	if tenantId > 0 {
+		totalSql += " AND tenant_id = ?"
+		totalArgs = append(totalArgs, tenantId)
+	}
+	totalSql += ` GROUP BY ip HAVING COUNT(DISTINCT user_id) >= ?
+	) t`
+	totalArgs = append(totalArgs, minUsers)
+	DB.Raw(totalSql, totalArgs...).Scan(&total)
 
 	offset := (page - 1) * pageSize
 	var groupConcatExpr string
@@ -285,9 +364,13 @@ func GetMultiAccountIps(startTs, endTs int64, minUsers int, page, pageSize int) 
 		groupConcatExpr = "GROUP_CONCAT(DISTINCT username)"
 	}
 	var items []MultiAccountIpItem
-	err := DB.Model(&UserIpRecord{}).
+	tx := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.
 		Select("ip, COUNT(DISTINCT user_id) as user_count, COUNT(*) as login_count, MAX(created_at) as last_seen, MAX(ip_location) as location, "+groupConcatExpr+" as users").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
 		Group("ip").
 		Having("COUNT(DISTINCT user_id) >= ?", minUsers).
 		Order("user_count DESC").
@@ -304,11 +387,15 @@ func GetMultiAccountIps(startTs, endTs int64, minUsers int, page, pageSize int) 
 
 // ========== 6. API Top IPs ==========
 
-func GetApiTopIps(startTs, endTs int64) ([]ApiTopIpItem, error) {
+func GetApiTopIps(tenantId int, startTs, endTs int64) ([]ApiTopIpItem, error) {
 	var items []ApiTopIpItem
-	err := LOG_DB.Model(&Log{}).
+	tx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.
 		Select("ip, COUNT(*) as call_count, COALESCE(SUM(quota),0) as quota, COUNT(DISTINCT user_id) as users, COUNT(DISTINCT model_name) as models, MAX(created_at) as last_seen").
-		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs).
 		Group("ip").
 		Order("call_count DESC").
 		Limit(100).
@@ -318,9 +405,12 @@ func GetApiTopIps(startTs, endTs int64) ([]ApiTopIpItem, error) {
 	for i := range items {
 		// Top model for this IP
 		var topModel string
-		LOG_DB.Model(&Log{}).
-			Select("model_name").
-			Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, items[i].Ip, startTs, endTs).
+		tmTx := LOG_DB.Model(&Log{}).
+			Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, items[i].Ip, startTs, endTs)
+		if tenantId > 0 {
+			tmTx = tmTx.Where("tenant_id = ?", tenantId)
+		}
+		tmTx.Select("model_name").
 			Group("model_name").
 			Order("COUNT(*) DESC").
 			Limit(1).
@@ -334,7 +424,7 @@ func GetApiTopIps(startTs, endTs int64) ([]ApiTopIpItem, error) {
 
 // ========== 7. API Geo Distribution ==========
 
-func GetApiGeoDist(startTs, endTs int64) ([]ApiGeoItem, error) {
+func GetApiGeoDist(tenantId int, startTs, endTs int64) ([]ApiGeoItem, error) {
 	// Get distinct IPs from logs, then lookup location from user_ip_records
 	var ipData []struct {
 		Ip        string `gorm:"column:ip"`
@@ -342,9 +432,12 @@ func GetApiGeoDist(startTs, endTs int64) ([]ApiGeoItem, error) {
 		Quota     int64  `gorm:"column:quota"`
 		Users     int64  `gorm:"column:users"`
 	}
-	LOG_DB.Model(&Log{}).
-		Select("ip, COUNT(*) as call_count, COALESCE(SUM(quota),0) as quota, COUNT(DISTINCT user_id) as users").
-		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs).
+	geoTx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		geoTx = geoTx.Where("tenant_id = ?", tenantId)
+	}
+	geoTx.Select("ip, COUNT(*) as call_count, COALESCE(SUM(quota),0) as quota, COUNT(DISTINCT user_id) as users").
 		Group("ip").
 		Find(&ipData)
 
@@ -372,16 +465,18 @@ func GetApiGeoDist(startTs, endTs int64) ([]ApiGeoItem, error) {
 
 // ========== 8. API Time Pattern ==========
 
-func GetApiTimePattern(startTs, endTs int64) (*TimePatternResult, error) {
+func GetApiTimePattern(tenantId int, startTs, endTs int64) (*TimePatternResult, error) {
 	result := &TimePatternResult{}
 
 	var raw []struct {
 		CreatedAt int64 `gorm:"column:created_at"`
 	}
-	LOG_DB.Model(&Log{}).
-		Select("created_at").
-		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs).
-		Find(&raw)
+	atpTx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		atpTx = atpTx.Where("tenant_id = ?", tenantId)
+	}
+	atpTx.Select("created_at").Find(&raw)
 
 	hourCounts := make(map[int]int64)
 	dayCounts := make(map[string]int64)
@@ -403,7 +498,7 @@ func GetApiTimePattern(startTs, endTs int64) (*TimePatternResult, error) {
 
 // ========== 9. High Frequency IPs ==========
 
-func GetHighFreqIps(startTs, endTs int64, threshold int) ([]HighFreqIpItem, error) {
+func GetHighFreqIps(tenantId int, startTs, endTs int64, threshold int) ([]HighFreqIpItem, error) {
 	if threshold <= 0 {
 		threshold = 100 // default: 100 calls per hour
 	}
@@ -414,9 +509,13 @@ func GetHighFreqIps(startTs, endTs int64, threshold int) ([]HighFreqIpItem, erro
 	minCalls := int64(float64(threshold) * durationHours)
 
 	var items []HighFreqIpItem
-	err := LOG_DB.Model(&Log{}).
+	hfTx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		hfTx = hfTx.Where("tenant_id = ?", tenantId)
+	}
+	err := hfTx.
 		Select("ip, COUNT(*) as call_count, COALESCE(SUM(quota),0) as quota, COUNT(DISTINCT user_id) as users").
-		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs).
 		Group("ip").
 		Having("COUNT(*) >= ?", minCalls).
 		Order("call_count DESC").
@@ -433,10 +532,12 @@ func GetHighFreqIps(startTs, endTs int64, threshold int) ([]HighFreqIpItem, erro
 		var rawLogs []struct {
 			CreatedAt int64 `gorm:"column:created_at"`
 		}
-		LOG_DB.Model(&Log{}).
-			Select("created_at").
-			Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, items[i].Ip, startTs, endTs).
-			Find(&rawLogs)
+		phTx := LOG_DB.Model(&Log{}).
+			Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, items[i].Ip, startTs, endTs)
+		if tenantId > 0 {
+			phTx = phTx.Where("tenant_id = ?", tenantId)
+		}
+		phTx.Select("created_at").Find(&rawLogs)
 
 		hourMap := make(map[int]int64)
 		for _, r := range rawLogs {
@@ -459,11 +560,15 @@ func GetHighFreqIps(startTs, endTs int64, threshold int) ([]HighFreqIpItem, erro
 
 // ========== 10. IP Model Usage (Drill-down) ==========
 
-func GetApiIpModelUsage(ip string, startTs, endTs int64) ([]IpModelUsageItem, error) {
+func GetApiIpModelUsage(tenantId int, ip string, startTs, endTs int64) ([]IpModelUsageItem, error) {
 	var items []IpModelUsageItem
-	err := LOG_DB.Model(&Log{}).
+	tx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, ip, startTs, endTs)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.
 		Select("model_name, COUNT(*) as call_count, COALESCE(SUM(quota),0) as quota, COALESCE(SUM(prompt_tokens),0)+COALESCE(SUM(completion_tokens),0) as tokens, MAX(created_at) as last_seen").
-		Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, ip, startTs, endTs).
 		Group("model_name").
 		Order("call_count DESC").
 		Find(&items).Error
@@ -472,29 +577,35 @@ func GetApiIpModelUsage(ip string, startTs, endTs int64) ([]IpModelUsageItem, er
 
 // ========== 11. IP Mismatch Detection ==========
 
-func GetIpMismatch(startTs, endTs int64) ([]IpMismatchItem, error) {
+func GetIpMismatch(tenantId int, startTs, endTs int64) ([]IpMismatchItem, error) {
 	// Get users who have both login and API records in the time range
 	var userIds []int
-	DB.Model(&UserIpRecord{}).
-		Select("DISTINCT user_id").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
-		Find(&userIds)
+	uidTx := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		uidTx = uidTx.Where("tenant_id = ?", tenantId)
+	}
+	uidTx.Select("DISTINCT user_id").Find(&userIds)
 
 	var results []IpMismatchItem
 	for _, uid := range userIds {
 		// Get login IPs
 		var loginIps []string
-		DB.Model(&UserIpRecord{}).
-			Select("DISTINCT ip").
-			Where("user_id = ? AND created_at >= ? AND created_at <= ?", uid, startTs, endTs).
-			Find(&loginIps)
+		lipTx := DB.Model(&UserIpRecord{}).
+			Where("user_id = ? AND created_at >= ? AND created_at <= ?", uid, startTs, endTs)
+		if tenantId > 0 {
+			lipTx = lipTx.Where("tenant_id = ?", tenantId)
+		}
+		lipTx.Select("DISTINCT ip").Find(&loginIps)
 
 		// Get API IPs
 		var apiIps []string
-		LOG_DB.Model(&Log{}).
-			Select("DISTINCT ip").
-			Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", uid, LogTypeConsume, startTs, endTs).
-			Find(&apiIps)
+		aipTx := LOG_DB.Model(&Log{}).
+			Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", uid, LogTypeConsume, startTs, endTs)
+		if tenantId > 0 {
+			aipTx = aipTx.Where("tenant_id = ?", tenantId)
+		}
+		aipTx.Select("DISTINCT ip").Find(&apiIps)
 
 		if len(loginIps) == 0 || len(apiIps) == 0 {
 			continue
@@ -535,24 +646,28 @@ func GetIpMismatch(startTs, endTs int64) ([]IpMismatchItem, error) {
 
 // ========== 12. IP Risk Scores ==========
 
-func GetIpRiskScores(startTs, endTs int64) ([]IpRiskItem, error) {
+func GetIpRiskScores(tenantId int, startTs, endTs int64) ([]IpRiskItem, error) {
 	// Collect all unique IPs from both login and API
 	ipSet := make(map[string]bool)
 
 	var loginIps []string
-	DB.Model(&UserIpRecord{}).
-		Select("DISTINCT ip").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
-		Find(&loginIps)
+	rLipTx := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		rLipTx = rLipTx.Where("tenant_id = ?", tenantId)
+	}
+	rLipTx.Select("DISTINCT ip").Find(&loginIps)
 	for _, ip := range loginIps {
 		ipSet[ip] = true
 	}
 
 	var apiIps []string
-	LOG_DB.Model(&Log{}).
-		Select("DISTINCT ip").
-		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs).
-		Find(&apiIps)
+	rAipTx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		rAipTx = rAipTx.Where("tenant_id = ?", tenantId)
+	}
+	rAipTx.Select("DISTINCT ip").Find(&apiIps)
 	for _, ip := range apiIps {
 		ipSet[ip] = true
 	}
@@ -567,20 +682,28 @@ func GetIpRiskScores(startTs, endTs int64) ([]IpRiskItem, error) {
 		item := IpRiskItem{Ip: ip}
 
 		// User count (login)
-		DB.Model(&UserIpRecord{}).
-			Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs).
-			Select("COUNT(DISTINCT user_id)").
-			Scan(&item.UserCount)
+		rUcTx := DB.Model(&UserIpRecord{}).
+			Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs)
+		if tenantId > 0 {
+			rUcTx = rUcTx.Where("tenant_id = ?", tenantId)
+		}
+		rUcTx.Select("COUNT(DISTINCT user_id)").Scan(&item.UserCount)
 
 		// Login count
-		DB.Model(&UserIpRecord{}).
-			Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs).
-			Count(&item.LoginCount)
+		rLcTx := DB.Model(&UserIpRecord{}).
+			Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs)
+		if tenantId > 0 {
+			rLcTx = rLcTx.Where("tenant_id = ?", tenantId)
+		}
+		rLcTx.Count(&item.LoginCount)
 
 		// API call count
-		LOG_DB.Model(&Log{}).
-			Where("ip = ? AND type = ? AND created_at >= ? AND created_at <= ?", ip, LogTypeConsume, startTs, endTs).
-			Count(&item.ApiCallCount)
+		rAcTx := LOG_DB.Model(&Log{}).
+			Where("ip = ? AND type = ? AND created_at >= ? AND created_at <= ?", ip, LogTypeConsume, startTs, endTs)
+		if tenantId > 0 {
+			rAcTx = rAcTx.Where("tenant_id = ?", tenantId)
+		}
+		rAcTx.Count(&item.ApiCallCount)
 
 		item.CallsPerMin = float64(item.ApiCallCount) / (durationHours * 60)
 		item.Location = ipLocationForIp(ip)
@@ -607,10 +730,12 @@ func GetIpRiskScores(startTs, endTs int64) ([]IpRiskItem, error) {
 		var rawLogs []struct {
 			CreatedAt int64 `gorm:"column:created_at"`
 		}
-		DB.Model(&UserIpRecord{}).
-			Select("created_at").
-			Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs).
-			Find(&rawLogs)
+		rAbTx := DB.Model(&UserIpRecord{}).
+			Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs)
+		if tenantId > 0 {
+			rAbTx = rAbTx.Where("tenant_id = ?", tenantId)
+		}
+		rAbTx.Select("created_at").Find(&rawLogs)
 		for _, r := range rawLogs {
 			h := time.Unix(r.CreatedAt, 0).Hour()
 			if h >= 2 && h <= 5 {
@@ -650,7 +775,7 @@ func GetIpRiskScores(startTs, endTs int64) ([]IpRiskItem, error) {
 
 // ========== 13. New IPs ==========
 
-func GetNewIps(startTs, endTs int64) ([]NewIpItem, error) {
+func GetNewIps(tenantId int, startTs, endTs int64) ([]NewIpItem, error) {
 	var results []NewIpItem
 
 	// New login IPs
@@ -661,11 +786,22 @@ func GetNewIps(startTs, endTs int64) ([]NewIpItem, error) {
 		Location  string `gorm:"column:location"`
 		FirstSeen int64  `gorm:"column:first_seen"`
 	}
-	DB.Raw(`SELECT ip, MIN(user_id) as user_id, MIN(username) as username, MAX(ip_location) as location, MIN(created_at) as first_seen
+	newLoginSql := `SELECT ip, MIN(user_id) as user_id, MIN(username) as username, MAX(ip_location) as location, MIN(created_at) as first_seen
 		FROM user_ip_records
 		WHERE created_at >= ? AND created_at <= ?
-		AND ip NOT IN (SELECT DISTINCT ip FROM user_ip_records WHERE created_at < ?)
-		GROUP BY ip`, startTs, endTs, startTs).Scan(&newLoginIps)
+		AND ip NOT IN (SELECT DISTINCT ip FROM user_ip_records WHERE created_at < ?`
+	newLoginArgs := []interface{}{startTs, endTs, startTs}
+	if tenantId > 0 {
+		newLoginSql += " AND tenant_id = ?"
+		newLoginArgs = append(newLoginArgs, tenantId)
+	}
+	newLoginSql += ")"
+	if tenantId > 0 {
+		newLoginSql += " AND tenant_id = ?"
+		newLoginArgs = append(newLoginArgs, tenantId)
+	}
+	newLoginSql += " GROUP BY ip"
+	DB.Raw(newLoginSql, newLoginArgs...).Scan(&newLoginIps)
 
 	for _, r := range newLoginIps {
 		banned, _ := IsIpBanned(r.Ip)
@@ -686,11 +822,22 @@ func GetNewIps(startTs, endTs int64) ([]NewIpItem, error) {
 		Username  string `gorm:"column:username"`
 		FirstSeen int64  `gorm:"column:first_seen"`
 	}
-	LOG_DB.Raw(`SELECT ip, MIN(user_id) as user_id, MIN(username) as username, MIN(created_at) as first_seen
+	newApiSql := `SELECT ip, MIN(user_id) as user_id, MIN(username) as username, MIN(created_at) as first_seen
 		FROM logs
 		WHERE type = ? AND created_at >= ? AND created_at <= ? AND ip != ''
-		AND ip NOT IN (SELECT DISTINCT ip FROM logs WHERE type = ? AND created_at < ? AND ip != '')
-		GROUP BY ip`, LogTypeConsume, startTs, endTs, LogTypeConsume, startTs).Scan(&newApiIps)
+		AND ip NOT IN (SELECT DISTINCT ip FROM logs WHERE type = ? AND created_at < ? AND ip != ''`
+	newApiArgs := []interface{}{LogTypeConsume, startTs, endTs, LogTypeConsume, startTs}
+	if tenantId > 0 {
+		newApiSql += " AND tenant_id = ?"
+		newApiArgs = append(newApiArgs, tenantId)
+	}
+	newApiSql += ")"
+	if tenantId > 0 {
+		newApiSql += " AND tenant_id = ?"
+		newApiArgs = append(newApiArgs, tenantId)
+	}
+	newApiSql += " GROUP BY ip"
+	LOG_DB.Raw(newApiSql, newApiArgs...).Scan(&newApiIps)
 
 	for _, r := range newApiIps {
 		banned, _ := IsIpBanned(r.Ip)
@@ -723,7 +870,7 @@ type UserIpSummaryItem struct {
 	IsBanned     bool   `json:"is_banned"`
 }
 
-func GetUserIpSummary(startTs, endTs int64) ([]UserIpSummaryItem, error) {
+func GetUserIpSummary(tenantId int, startTs, endTs int64) ([]UserIpSummaryItem, error) {
 	var stringAggExpr string
 	if common.UsingPostgreSQL {
 		stringAggExpr = "STRING_AGG(DISTINCT ip, ',')"
@@ -739,9 +886,12 @@ func GetUserIpSummary(startTs, endTs int64) ([]UserIpSummaryItem, error) {
 		LoginIps     string `gorm:"column:login_ips"`
 	}
 	var loginRows []loginRow
-	DB.Model(&UserIpRecord{}).
-		Select("user_id, MAX(username) as username, COUNT(DISTINCT ip) as login_ip_count, "+stringAggExpr+" as login_ips").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
+	usTx := DB.Model(&UserIpRecord{}).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+	if tenantId > 0 {
+		usTx = usTx.Where("tenant_id = ?", tenantId)
+	}
+	usTx.Select("user_id, MAX(username) as username, COUNT(DISTINCT ip) as login_ip_count, "+stringAggExpr+" as login_ips").
 		Group("user_id").
 		Find(&loginRows)
 
@@ -753,9 +903,12 @@ func GetUserIpSummary(startTs, endTs int64) ([]UserIpSummaryItem, error) {
 		ApiIps     string `gorm:"column:api_ips"`
 	}
 	var apiRows []apiRow
-	LOG_DB.Model(&Log{}).
-		Select("user_id, MAX(username) as username, COUNT(DISTINCT ip) as api_ip_count, "+stringAggExpr+" as api_ips").
-		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs).
+	usaTx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND created_at >= ? AND created_at <= ? AND ip != ''", LogTypeConsume, startTs, endTs)
+	if tenantId > 0 {
+		usaTx = usaTx.Where("tenant_id = ?", tenantId)
+	}
+	usaTx.Select("user_id, MAX(username) as username, COUNT(DISTINCT ip) as api_ip_count, "+stringAggExpr+" as api_ips").
 		Group("user_id").
 		Find(&apiRows)
 

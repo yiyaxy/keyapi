@@ -30,7 +30,7 @@ func IpOverviewV2(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetIpAnalyticsOverviewV2(start, end)
+	data, err := model.GetIpAnalyticsOverviewV2(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -44,7 +44,7 @@ func LoginGeoDist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetLoginGeoDist(start, end)
+	data, err := model.GetLoginGeoDist(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -58,7 +58,7 @@ func LoginTimePattern(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetLoginTimePattern(start, end)
+	data, err := model.GetLoginTimePattern(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -72,7 +72,7 @@ func LoginTypeDetail(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetLoginTypeDetail(start, end)
+	data, err := model.GetLoginTypeDetail(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -98,7 +98,7 @@ func MultiAccountIps(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	items, total, err := model.GetMultiAccountIps(start, end, minUsers, page, pageSize)
+	items, total, err := model.GetMultiAccountIps(middleware.GetTenantId(c), start, end, minUsers, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -115,7 +115,7 @@ func ApiTopIps(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetApiTopIps(start, end)
+	data, err := model.GetApiTopIps(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -132,7 +132,7 @@ func ApiGeoDist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetApiGeoDist(start, end)
+	data, err := model.GetApiGeoDist(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -146,7 +146,7 @@ func ApiTimePattern(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetApiTimePattern(start, end)
+	data, err := model.GetApiTimePattern(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -164,7 +164,7 @@ func HighFreqIps(c *gin.Context) {
 	if threshold < 1 {
 		threshold = 100
 	}
-	data, err := model.GetHighFreqIps(start, end, threshold)
+	data, err := model.GetHighFreqIps(middleware.GetTenantId(c), start, end, threshold)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -186,7 +186,7 @@ func ApiIpModelUsage(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetApiIpModelUsage(ip, start, end)
+	data, err := model.GetApiIpModelUsage(middleware.GetTenantId(c), ip, start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -200,7 +200,7 @@ func IpMismatch(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetIpMismatch(start, end)
+	data, err := model.GetIpMismatch(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -217,7 +217,7 @@ func IpRiskScores(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetIpRiskScores(start, end)
+	data, err := model.GetIpRiskScores(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -234,7 +234,7 @@ func UserIpSummary(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetUserIpSummary(start, end)
+	data, err := model.GetUserIpSummary(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -251,7 +251,7 @@ func NewIps(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetNewIps(start, end)
+	data, err := model.GetNewIps(middleware.GetTenantId(c), start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -410,21 +410,21 @@ func DisableMultiAccountUsersByIp(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"ip":                  req.Ip,
-				"start_timestamp":      start,
-				"end_timestamp":        end,
-				"distinct_user_count":  distinctUsers,
-				"min_users":            minUsers,
-				"dry_run":              true,
-				"also_ban_ip":          req.AlsoBanIp,
-				"reason":               reason,
-				"items":                preview,
-				"targets":              preview,
+				"ip":                    req.Ip,
+				"start_timestamp":       start,
+				"end_timestamp":         end,
+				"distinct_user_count":   distinctUsers,
+				"min_users":             minUsers,
+				"dry_run":               true,
+				"also_ban_ip":           req.AlsoBanIp,
+				"reason":                reason,
+				"items":                 preview,
+				"targets":               preview,
 				"will_disable_user_ids": disableTargets,
 				"summary": gin.H{
-					"will_disable_count":    len(disableTargets),
-					"already_disabled":      countSkipReason(preview, "already disabled"),
-					"skipped":               len(preview) - len(disableTargets),
+					"will_disable_count": len(disableTargets),
+					"already_disabled":   countSkipReason(preview, "already disabled"),
+					"skipped":            len(preview) - len(disableTargets),
 				},
 			},
 		})
@@ -478,7 +478,7 @@ func DisableMultiAccountUsersByIp(c *gin.Context) {
 		"success": true,
 		"message": "已禁用 " + strconv.Itoa(len(disabled)) + " 个账号",
 		"data": gin.H{
-			"ip":                  req.Ip,
+			"ip":                   req.Ip,
 			"start_timestamp":      start,
 			"end_timestamp":        end,
 			"distinct_user_count":  distinctUsers,
@@ -486,16 +486,16 @@ func DisableMultiAccountUsersByIp(c *gin.Context) {
 			"dry_run":              false,
 			"also_ban_ip":          req.AlsoBanIp,
 			"reason":               reason,
-			"disabled_user_ids":     disabled,
-			"skipped_user_ids":      skipped,
+			"disabled_user_ids":    disabled,
+			"skipped_user_ids":     skipped,
 			"summary": gin.H{
 				"will_disable_count": len(disabled),
 				"already_disabled":   countSkipReason(preview, "already disabled"),
 				"skipped":            len(skipped),
 			},
-			"ip_ban_before":         banBefore,
-			"ip_ban_before_reason":  banReason,
-			"ip_ban_after":          banAfter,
+			"ip_ban_before":        banBefore,
+			"ip_ban_before_reason": banReason,
+			"ip_ban_after":         banAfter,
 		},
 	})
 }
