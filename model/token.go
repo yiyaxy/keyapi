@@ -487,6 +487,17 @@ func CountUserTokens(userId int) (int64, error) {
 	return total, err
 }
 
+// CountTenantTokens returns the number of non-deleted tokens owned by the tenant.
+// Used to enforce TenantPlan.MaxTokens at token-creation time.
+func CountTenantTokens(tenantId int) (int64, error) {
+	if tenantId <= 0 {
+		return 0, fmt.Errorf("invalid tenantId: %d", tenantId)
+	}
+	var count int64
+	err := DB.Model(&Token{}).Where("tenant_id = ?", tenantId).Count(&count).Error
+	return count, err
+}
+
 // BatchDeleteTokens 删除指定用户的一组令牌，返回成功删除数量
 func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if len(ids) == 0 {
