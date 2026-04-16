@@ -153,6 +153,62 @@ func checkTenantRPMMemory(tenantId int, limit int) error {
 	return nil
 }
 
+// CheckTenantTPM verifies that the tenant's accumulated token-per-minute usage
+// hasn't exceeded the plan's TPMLimit. Returns nil if OK or unlimited.
+// Note: this is a reactive check — it rejects only when the counter already
+// exceeds the limit. Burst requests that individually exceed the limit are
+// permitted (matches RPM semantics).
+func CheckTenantTPM(tenantId int) error {
+	if tenantId <= 0 {
+		return nil
+	}
+
+	plan, err := model.GetTenantPlan(tenantId)
+	if err != nil {
+		return fmt.Errorf("获取租户计划失败: %w", err)
+	}
+
+	// TPMLimit <= 0 means unlimited
+	if plan.TPMLimit <= 0 {
+		return nil
+	}
+
+	if common.RedisEnabled && common.RDB != nil {
+		return checkTenantTPMRedis(tenantId, plan.TPMLimit)
+	}
+	return checkTenantTPMMemory(tenantId, plan.TPMLimit)
+}
+
+func checkTenantTPMRedis(tenantId int, limit int) error {
+	ctx := context.Background()
+	key := fmt.Sprintf("tenant_tpm:%d", tenantId)
+	count, err := common.RDB.Get(ctx, key).Int64()
+	if err != nil {
+		// Key missing or Redis error — fail open
+		return nil
+	}
+	if count >= int64(limit) {
+		return fmt.Errorf("租户每分钟 Token 数已达上限 (%d TPM)", limit)
+	}
+	return nil
+}
+
+func checkTenantTPMMemory(tenantId int, limit int) error {
+	entry := getTPMEntry(tenantId)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	now := time.Now()
+	if now.After(entry.resetAt) {
+		// Window rolled — counter is effectively 0 for this minute
+		return nil
+	}
+	if entry.tokens >= int64(limit) {
+		return fmt.Errorf("租户每分钟 Token 数已达上限 (%d TPM)", limit)
+	}
+	return nil
+}
+
 // CheckTenantModelAccess checks if the model is allowed by the tenant plan.
 // Returns nil if allowed, error if the model is restricted.
 func CheckTenantModelAccess(tenantId int, modelName string) error {
