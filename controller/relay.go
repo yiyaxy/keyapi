@@ -289,6 +289,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeTenantRPMExceeded, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
 			return
 		}
+		if err := service.CheckTenantTPM(relayInfo.TenantId); err != nil {
+			addTraceEvent(c, "tenant_check", fmt.Sprintf("租户TPM检查失败: %s", err.Error()), nil)
+			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeTenantTPMExceeded, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+			return
+		}
 		if err := service.CheckTenantModelAccess(relayInfo.TenantId, relayInfo.OriginModelName); err != nil {
 			addTraceEvent(c, "tenant_check", fmt.Sprintf("租户模型访问检查失败: %s", err.Error()), nil)
 			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeTenantModelForbidden, http.StatusForbidden, types.ErrOptionWithSkipRetry())
