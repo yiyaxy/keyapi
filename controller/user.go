@@ -696,6 +696,12 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), id, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
 	user, err := model.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
@@ -712,7 +718,8 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
-	user.TenantId = middleware.GetTenantId(c)
+	// Use user's actual TenantId (not current tenant) for the DB update,
+	// since guest members have a different home tenant_id
 	if err := user.ClearBinding(bindingType); err != nil {
 		common.ApiError(c, err)
 		return
