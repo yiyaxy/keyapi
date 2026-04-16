@@ -638,6 +638,10 @@ func AddChannel(c *gin.Context) {
 
 	channels := make([]model.Channel, 0, len(keys))
 	for _, key := range keys {
+		// Trim 后再判空：batch 模式下上游直接按 \n 切分（见 L627），未做清理，
+		// 纯空白行（"   " / "\t"）若不过滤会既参与 incomingCount 又插入无效 key。
+		// 与 multi_to_single 模式（L608 TrimSpace）保持一致。
+		key = strings.TrimSpace(key)
 		if key == "" {
 			continue
 		}

@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/go-redis/redis/v8"
 )
 
 // ---------- in-memory RPM counter (fallback when Redis is unavailable) ----------
@@ -28,7 +30,11 @@ func getRPMEntry(tenantId int) *rpmEntry {
 	return entry
 }
 
-// ---------- in-memory TPM counter (fallback when Redis is unavailable) ----------
+// ---------- in-memory TPM counter ----------
+// 选用时机：启动时 Redis 未启用 (!common.RedisEnabled || common.RDB == nil)。
+// 注意：不是"运行时 Redis 出错回退"——Redis 已配置但运行时 GET/INCRBY 错误时，
+// 只会打 SysError 并 fail-open（check）或丢弃计数（increment），不切到内存。
+// 与 CheckTenantRPM / IncrementTenantRPM 当前实现保持一致的取舍。
 
 type tpmEntry struct {
 	mu      sync.Mutex
@@ -155,9 +161,13 @@ func checkTenantRPMMemory(tenantId int, limit int) error {
 
 // CheckTenantTPM verifies that the tenant's accumulated token-per-minute usage
 // hasn't exceeded the plan's TPMLimit. Returns nil if OK or unlimited.
-// Note: this is a reactive check — it rejects only when the counter already
-// exceeds the limit. Burst requests that individually exceed the limit are
-// permitted (matches RPM semantics).
+//
+// 语义说明：
+//   - 反应式检查：仅当计数器已达上限时拒绝。单次突发请求不做预算预留。
+//   - 双后端选择是启动时决策（RedisEnabled 为准），不是运行时回退：
+//     Redis 配了但 GET 运行时失败时，记录 SysError 然后 fail-open——
+//     不会切到 in-memory 计数器（与 CheckTenantRPM 一致）。
+//   - redis.Nil（key 缺失，当前分钟首个请求尚未 INCRBY）视为 0 计数，返回 nil。
 func CheckTenantTPM(tenantId int) error {
 	if tenantId <= 0 {
 		return nil
@@ -184,7 +194,12 @@ func checkTenantTPMRedis(tenantId int, limit int) error {
 	key := fmt.Sprintf("tenant_tpm:%d", tenantId)
 	count, err := common.RDB.Get(ctx, key).Int64()
 	if err != nil {
-		// Key missing or Redis error — fail open
+		if errors.Is(err, redis.Nil) {
+			// 当前分钟尚无 INCRBY，视为 0 计数
+			return nil
+		}
+		// 真实 Redis 错误：升级为 SysError 让运维可见，继续 fail-open
+		common.SysError(fmt.Sprintf("CheckTenantTPM redis GET error tenant=%d: %s (fail-open)", tenantId, err.Error()))
 		return nil
 	}
 	if count >= int64(limit) {
@@ -263,7 +278,11 @@ func IncrementTenantRPM(tenantId int) {
 
 // IncrementTenantTPM adds `tokens` to the tenant's current-minute TPM counter.
 // Called after a relay request completes with known prompt+completion token usage.
-// Redis path uses INCRBY; in-memory path uses atomic add with a 60s rolling window.
+//
+// 后端选择与 CheckTenantTPM 对称：启动时 Redis 启用则独走 Redis，
+// 运行时 INCRBY 出错会记录 SysError 并**丢弃本次计数**——不切到 in-memory。
+// 副作用：Redis 抖动窗口内，少数请求不被累计，CheckTenantTPM 实测值会偏低。
+// 接受此偏差以保持单一事实源（避免与 Redis 恢复后发生计数器发散）。
 func IncrementTenantTPM(tenantId int, tokens int) {
 	if tenantId <= 0 || tokens <= 0 {
 		return
@@ -274,7 +293,7 @@ func IncrementTenantTPM(tenantId int, tokens int) {
 		key := fmt.Sprintf("tenant_tpm:%d", tenantId)
 		newCount, err := common.RDB.IncrBy(ctx, key, int64(tokens)).Result()
 		if err != nil {
-			common.SysError(fmt.Sprintf("IncrementTenantTPM redis error tenant=%d: %s", tenantId, err.Error()))
+			common.SysError(fmt.Sprintf("IncrementTenantTPM redis INCRBY error tenant=%d tokens=%d: %s (count dropped, no in-memory fallback)", tenantId, tokens, err.Error()))
 			return
 		}
 		if newCount == int64(tokens) {
