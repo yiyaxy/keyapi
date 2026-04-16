@@ -917,11 +917,27 @@ func DeleteSelf(c *gin.Context) {
 		return
 	}
 
-	err := model.DeleteUserByIdWithTenant(id, middleware.GetTenantId(c))
-	if err != nil {
-		common.ApiError(c, err)
-		return
+	tenantId := middleware.GetTenantId(c)
+	// Check if user's home tenant matches current tenant
+	if user.TenantId == tenantId {
+		// Home tenant — actually delete the user
+		err := model.DeleteUserByIdWithTenant(id, tenantId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	} else {
+		// Guest membership — just remove from current tenant
+		err := model.RemoveTenantMembership(tenantId, id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
+	// Clear session
+	session := sessions.Default(c)
+	session.Clear()
+	_ = session.Save()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

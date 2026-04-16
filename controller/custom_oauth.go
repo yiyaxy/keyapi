@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/gin-gonic/gin"
@@ -494,6 +495,12 @@ func GetUserOAuthBindingsByAdmin(c *gin.Context) {
 		return
 	}
 
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), userId, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
 	targetUser, err := model.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
@@ -550,6 +557,12 @@ func UnbindCustomOAuthByAdmin(c *gin.Context) {
 	userId, err := strconv.Atoi(userIdStr)
 	if err != nil {
 		common.ApiErrorMsg(c, "invalid user id")
+		return
+	}
+
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), userId, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 
