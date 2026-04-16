@@ -55,6 +55,8 @@ export const DEFAULT_ADMIN_CONFIG = {
     deployment: true,
     redemption: true,
     user: true,
+    tenantInfo: true,
+    tenantMembers: true,
     subscription: true,
     analytics: true,
     purchase: true,

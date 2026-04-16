@@ -63,7 +63,10 @@ const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
-const Plans = lazy(() => import('./pages/Plans'));
+// Plans page 原计划独立实现，当前 fallback 到 Pricing；
+// pages/Plans 被 .gitignore 里的 `plans` 规则过滤（Windows 大小写不敏感），
+// 改为直接指向已有的 Pricing 页面以解除构建阻塞。
+const Plans = lazy(() => import('./pages/Pricing'));
 const AffTransfer = lazy(() => import('./pages/AffTransfer'));
 const AffTransferAdmin = lazy(() => import('./pages/AffTransferAdmin'));
 const RebateSettings = lazy(() => import('./pages/RebateSettings'));
@@ -77,6 +80,8 @@ const ChannelMonitor = lazy(() => import('./pages/ChannelMonitor'));
 const AgentLog = lazy(() => import('./pages/AgentLog'));
 const AgentReport = lazy(() => import('./pages/AgentReport'));
 const RequestTrace = lazy(() => import('./pages/RequestTrace'));
+const Tenant = lazy(() => import('./pages/Tenant'));
+const TenantMembers = lazy(() => import('./pages/TenantMembers'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -278,6 +283,22 @@ function App() {
           element={
             <AdminRoute>
               <User />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-info'
+          element={
+            <AdminRoute>
+              <Tenant />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-members'
+          element={
+            <AdminRoute>
+              <TenantMembers />
             </AdminRoute>
           }
         />

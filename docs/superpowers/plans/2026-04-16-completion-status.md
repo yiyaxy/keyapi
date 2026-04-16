@@ -19,7 +19,7 @@
 | Phase 3 | 权限与成员体系 | **后端基本完成，前端 0%** | 85% |
 | Phase 4 | 配置系统重构 | **管道已通，全站采用率极低** | 20% |
 | Phase 5 | 计费与商业化 | **6/7 限制有运行时执行，无账单体系** | 75% |
-| Phase 6 | 前端 SaaS 后台 | 未开始 | 0% |
+| Phase 6 | 前端 SaaS 后台 | **Part A 已完成（租户信息 + 成员管理）** | 15% |
 | Phase 7 | 运维、监控与审计 | **指标/告警 API 已有，告警无持久化，前端 0%** | 30% |
 
 ---
@@ -201,11 +201,21 @@
 
 ---
 
-## Phase 6：前端 SaaS 后台 — 未开始
+## Phase 6：前端 SaaS 后台 ⚠️ 15%
 
-- Session 中有 tenant_id，但前端无租户切换 UI
-- 缺：成员管理页面、租户级管理视图、品牌配置、自定义域名
-- 现有 `/console/topup`、`/console/site-rpm`、`InvoiceAdmin`、`RebateSettings` 等页面仍是通用后台页面，尚未接成租户 Console
+### 已完成（Part A — 2026-04-17）
+- 前端 TS 类型：`web/src/types/tenant.ts`（Tenant / TenantMembership / TenantMemberListItem / 常量）
+- `X-Tenant-Id` 请求头注入：`web/src/helpers/api.js` 加请求拦截器，登录/登出 header 自动同步
+- 租户信息页：`/console/tenant-info`（view/edit name/status，GET /api/tenant/info + PUT /api/tenant/）
+- 成员管理页：`/console/tenant-members`（list + invite + 角色/状态编辑 + 移除；走 /api/tenant/members CRUD + /api/tenant/invite）
+- 侧边栏：`admin` 分组新增 `tenantInfo` / `tenantMembers` 两个入口
+
+### 未完成
+- Part B：租户计划页（/api/tenant/plan）、租户配置页（/api/tenant/config）、平台级租户管理（/api/platform/tenants）、品牌配置、自定义域名
+- Part C：监控前端（dashboard/trend/models/alerts 已有 API，UI 未做）
+- Part D：跨租户浏览器切换（多 membership 用户选 tenant）、`TenantAdminRoute`（tenant-only admin 的前端路由守卫）
+- 邀请邮件/站内通知投递（阶段 A 独立 plan）
+- 现有 `/console/topup`、`/console/site-rpm`、`InvoiceAdmin`、`RebateSettings` 仍是通用后台页面，未 Console 化
 
 ---
 
