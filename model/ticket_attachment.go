@@ -8,6 +8,7 @@ import (
 
 type TicketAttachment struct {
 	Id               int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId         int    `json:"tenant_id" gorm:"index;default:1"`
 	TicketId         int    `json:"ticket_id" gorm:"index"`
 	ReplyId          int    `json:"reply_id" gorm:"index"`
 	UploaderId       int    `json:"uploader_id" gorm:"index"`

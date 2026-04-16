@@ -335,7 +335,23 @@ func migrateDB() error {
 // backfillTenantId sets tenant_id = DefaultTenantId for any existing rows that have tenant_id = 0.
 // Idempotent: only updates rows where tenant_id = 0.
 func backfillTenantId() {
-	tables := []string{"users", "channels", "tokens", "abilities", "logs"}
+	tables := []string{
+		// Phase 1
+		"users", "channels", "tokens", "abilities", "logs",
+		// Phase 2 — financial
+		"top_ups", "redemptions", "subscription_plans", "subscription_orders",
+		"user_subscriptions", "subscription_pre_consume_records",
+		// Phase 2 — invoicing
+		"invoice_applications", "invoice_items", "invoice_uploads", "invoice_files",
+		// Phase 2 — tickets
+		"tickets", "ticket_replies", "ticket_attachments", "ticket_uploads",
+		// Phase 2 — affiliate
+		"aff_rebate_logs", "aff_transfer_requests",
+		// Phase 2 — messaging
+		"messages", "message_read_statuses",
+		// Phase 2 — analytics & audit
+		"user_ip_records", "quota_data", "agent_logs", "agent_reports",
+	}
 	for _, table := range tables {
 		result := DB.Exec(fmt.Sprintf("UPDATE %s SET tenant_id = ? WHERE tenant_id = 0", table), DefaultTenantId)
 		if result.Error != nil {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -178,6 +179,7 @@ func RequestWaffoPay(c *gin.Context) {
 
 	// 创建本地订单
 	topUp := &model.TopUp{
+		TenantId:      middleware.GetTenantId(c),
 		UserId:        id,
 		Amount:        amount,
 		Money:         payMoney,
@@ -342,7 +344,8 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 		log.Printf("Waffo 订单状态非成功: %s, 订单: %s", result.OrderStatus, result.MerchantOrderID)
 		// 终态失败订单标记为 failed，避免永远停在 pending
 		if result.MerchantOrderID != "" {
-			if topUp := model.GetTopUpByTradeNo(result.MerchantOrderID); topUp != nil &&
+			// Payment callback: trade_no is globally unique; pass tenantId=0 (no filter).
+			if topUp := model.GetTopUpByTradeNo(0, result.MerchantOrderID); topUp != nil &&
 				topUp.Status == common.TopUpStatusPending {
 				topUp.Status = common.TopUpStatusFailed
 				_ = topUp.Update()

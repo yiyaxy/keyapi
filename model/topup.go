@@ -14,6 +14,7 @@ import (
 
 type TopUp struct {
 	Id            int     `json:"id"`
+	TenantId      int     `json:"tenant_id" gorm:"index;default:1"`
 	UserId        int     `json:"user_id" gorm:"index"`
 	Amount        int64   `json:"amount"`
 	Money         float64 `json:"money"`
@@ -52,20 +53,30 @@ func (topUp *TopUp) Update() error {
 	return err
 }
 
-func GetTopUpById(id int) *TopUp {
+func GetTopUpById(tenantId int, id int) *TopUp {
 	var topUp *TopUp
 	var err error
-	err = DB.Where("id = ?", id).First(&topUp).Error
+	query := DB.Where("id = ?", id)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	err = query.First(&topUp).Error
 	if err != nil {
 		return nil
 	}
 	return topUp
 }
 
-func GetTopUpByTradeNo(tradeNo string) *TopUp {
+// GetTopUpByTradeNo fetches a topup by trade_no. trade_no is globally unique,
+// so the tenant filter is not strictly required, but we add it for defense-in-depth.
+func GetTopUpByTradeNo(tenantId int, tradeNo string) *TopUp {
 	var topUp *TopUp
 	var err error
-	err = DB.Where("trade_no = ?", tradeNo).First(&topUp).Error
+	query := DB.Where("trade_no = ?", tradeNo)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	err = query.First(&topUp).Error
 	if err != nil {
 		return nil
 	}
@@ -124,7 +135,7 @@ func Recharge(referenceId string, customerId string) (err error) {
 	return nil
 }
 
-func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+func GetUserTopUps(tenantId int, userId int, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -137,14 +148,22 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 	}()
 
 	// Get total count within transaction
-	err = tx.Model(&TopUp{}).Where("user_id = ?", userId).Count(&total).Error
+	query := tx.Model(&TopUp{}).Where("user_id = ?", userId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated topups within same transaction
-	err = tx.Where("user_id = ?", userId).Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
+	dataQuery := tx.Where("user_id = ?", userId)
+	if tenantId > 0 {
+		dataQuery = dataQuery.Where("tenant_id = ?", tenantId)
+	}
+	err = dataQuery.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -158,8 +177,8 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 	return topups, total, nil
 }
 
-// GetAllTopUps 获取全平台的充值记录（管理员使用）
-func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+// GetAllTopUps 获取全平台的充值记录（管理员使用，tenantId>0 时按租户过滤）
+func GetAllTopUps(tenantId int, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -170,12 +189,20 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 		}
 	}()
 
-	if err = tx.Model(&TopUp{}).Count(&total).Error; err != nil {
+	query := tx.Model(&TopUp{})
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	if err = query.Count(&total).Error; err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
-	if err = tx.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	dataQuery := tx.Model(&TopUp{})
+	if tenantId > 0 {
+		dataQuery = dataQuery.Where("tenant_id = ?", tenantId)
+	}
+	if err = dataQuery.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -188,7 +215,7 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 }
 
 // SearchUserTopUps 按订单号搜索某用户的充值记录
-func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+func SearchUserTopUps(tenantId int, userId int, keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -200,6 +227,9 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 	}()
 
 	query := tx.Model(&TopUp{}).Where("user_id = ?", userId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		like := "%%" + keyword + "%%"
 		query = query.Where("trade_no LIKE ?", like)
@@ -221,8 +251,8 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 	return topups, total, nil
 }
 
-// SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用）
-func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+// SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用，tenantId>0 时按租户过滤）
+func SearchAllTopUps(tenantId int, keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -234,6 +264,9 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 	}()
 
 	query := tx.Model(&TopUp{})
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		like := "%%" + keyword + "%%"
 		query = query.Where("trade_no LIKE ?", like)
@@ -387,6 +420,7 @@ func ProcessTopUpRebate(userId int, quotaAdded int) {
 
 	// 记录返利日志
 	CreateAffRebateLog(&AffRebateLog{
+		TenantId:    user.TenantId,
 		UserId:      user.InviterId,
 		InviteeId:   userId,
 		InviteeName: user.Username,
@@ -547,7 +581,8 @@ func RechargeWaffo(tradeNo string) (err error) {
 }
 
 // GetAllTopUpsWithUser returns paginated TopUp records with LEFT JOIN to get username.
-func GetAllTopUpsWithUser(pageInfo *common.PageInfo, keyword string, status string) ([]TopUpWithUser, int64, error) {
+// tenantId>0 时按租户过滤。
+func GetAllTopUpsWithUser(tenantId int, pageInfo *common.PageInfo, keyword string, status string) ([]TopUpWithUser, int64, error) {
 	var results []TopUpWithUser
 	var total int64
 
@@ -563,6 +598,10 @@ func GetAllTopUpsWithUser(pageInfo *common.PageInfo, keyword string, status stri
 
 	// Exclude subscription orders (trade_no starts with "SUB" or "sub_ref_")
 	query = query.Where(tradeNoCol+" NOT LIKE 'SUB%' AND "+tradeNoCol+" NOT LIKE 'sub_ref_%'")
+
+	if tenantId > 0 {
+		query = query.Where("top_ups.tenant_id = ?", tenantId)
+	}
 
 	if keyword != "" {
 		like := "%" + keyword + "%"

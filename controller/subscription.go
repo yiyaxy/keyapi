@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -27,7 +28,12 @@ type BillingPreferenceRequest struct {
 
 func GetSubscriptionPlans(c *gin.Context) {
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Where("status IN ?", []string{model.SubscriptionPlanStatusActive, model.SubscriptionPlanStatusSoldOut}).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	tenantId := middleware.GetTenantId(c)
+	query := model.DB.Where("status IN ?", []string{model.SubscriptionPlanStatusActive, model.SubscriptionPlanStatusSoldOut})
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	if err := query.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -55,17 +61,18 @@ func GetSubscriptionPlans(c *gin.Context) {
 
 func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	settingMap, _ := model.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
 
 	// Get all subscriptions (including expired)
-	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
+	allSubscriptions, err := model.GetAllUserSubscriptions(tenantId, userId)
 	if err != nil {
 		allSubscriptions = []model.SubscriptionSummary{}
 	}
 
 	// Get active subscriptions for backward compatibility
-	activeSubscriptions, err := model.GetAllActiveUserSubscriptions(userId)
+	activeSubscriptions, err := model.GetAllActiveUserSubscriptions(tenantId, userId)
 	if err != nil {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
@@ -80,12 +87,13 @@ func GetSubscriptionSelf(c *gin.Context) {
 
 func ActivateSubscription(c *gin.Context) {
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	subId, err := strconv.Atoi(c.Param("id"))
 	if err != nil || subId <= 0 {
 		common.ApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	if err := model.ActivateUserSubscription(userId, subId); err != nil {
+	if err := model.ActivateUserSubscription(tenantId, userId, subId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -126,7 +134,12 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 
 func AdminListSubscriptionPlans(c *gin.Context) {
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	tenantId := middleware.GetTenantId(c)
+	query := model.DB.Model(&model.SubscriptionPlan{})
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	if err := query.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -162,6 +175,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = 0
+	req.Plan.TenantId = middleware.GetTenantId(c) // 强制覆盖，防止客户端伪造
 	normalizeSubscriptionPlanStatusAndEnabled(&req.Plan)
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
@@ -330,7 +344,11 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
 			"updated_at":                 common.GetTimestamp(),
 		}
-		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
+		tenantQuery := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id)
+		if tid := middleware.GetTenantId(c); tid > 0 {
+			tenantQuery = tenantQuery.Where("tenant_id = ?", tid)
+		}
+		if err := tenantQuery.Updates(updateMap).Error; err != nil {
 			return err
 		}
 		return nil
@@ -372,7 +390,11 @@ func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
 		}
 	}
 	enabled := model.SubscriptionPlanStatusAllowsPublicList(status)
-	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(map[string]interface{}{
+	statusQuery := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id)
+	if tid := middleware.GetTenantId(c); tid > 0 {
+		statusQuery = statusQuery.Where("tenant_id = ?", tid)
+	}
+	if err := statusQuery.Updates(map[string]interface{}{
 		"status":  status,
 		"enabled": enabled,
 	}).Error; err != nil {
@@ -394,7 +416,8 @@ func AdminBindSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscription(req.UserId, req.PlanId, "")
+	tenantId := middleware.GetTenantId(c)
+	msg, err := model.AdminBindSubscription(tenantId, req.UserId, req.PlanId, "")
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -414,7 +437,8 @@ func AdminListUserSubscriptions(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的用户ID")
 		return
 	}
-	subs, err := model.GetAllUserSubscriptions(userId)
+	tenantId := middleware.GetTenantId(c)
+	subs, err := model.GetAllUserSubscriptions(tenantId, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -438,7 +462,8 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscription(userId, req.PlanId, "")
+	tenantId := middleware.GetTenantId(c)
+	msg, err := model.AdminBindSubscription(tenantId, userId, req.PlanId, "")
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -457,7 +482,8 @@ func AdminInvalidateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	msg, err := model.AdminInvalidateUserSubscription(subId)
+	tenantId := middleware.GetTenantId(c)
+	msg, err := model.AdminInvalidateUserSubscription(tenantId, subId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -476,7 +502,8 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	msg, err := model.AdminDeleteUserSubscription(subId)
+	tenantId := middleware.GetTenantId(c)
+	msg, err := model.AdminDeleteUserSubscription(tenantId, subId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -495,7 +522,8 @@ func AdminListSubscriptionOrders(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
 	status := c.Query("status")
-	orders, total, err := model.GetAllSubscriptionOrders(pageInfo, keyword, status)
+	tenantId := middleware.GetTenantId(c)
+	orders, total, err := model.GetAllSubscriptionOrders(tenantId, pageInfo, keyword, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return

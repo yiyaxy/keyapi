@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 
@@ -27,7 +28,7 @@ func InvoiceSelfInvoiceableOrders(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := strings.TrimSpace(c.Query("keyword"))
 
-	items, total, err := service.ListInvoiceableOrdersForUser(c.Request.Context(), userId, keyword, pageInfo)
+	items, total, err := service.ListInvoiceableOrdersForUser(c.Request.Context(), middleware.GetTenantId(c), userId, keyword, pageInfo)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -54,7 +55,7 @@ func InvoiceSelfCreateApplication(c *gin.Context) {
 		})
 	}
 
-	app, createdItems, err := service.CreateInvoiceApplication(c.Request.Context(), service.CreateInvoiceApplicationParams{
+	app, createdItems, err := service.CreateInvoiceApplication(c.Request.Context(), middleware.GetTenantId(c), service.CreateInvoiceApplicationParams{
 		UserId:                userId,
 		InvoiceType:           strings.TrimSpace(req.InvoiceType),
 		Title:                 strings.TrimSpace(req.Title),
@@ -88,7 +89,7 @@ func InvoiceSelfCancelApplication(c *gin.Context) {
 		return
 	}
 
-	app, err := service.CancelInvoiceApplication(c.Request.Context(), userId, id)
+	app, err := service.CancelInvoiceApplication(c.Request.Context(), middleware.GetTenantId(c), userId, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -196,7 +197,7 @@ func InvoiceSelfListApplications(c *gin.Context) {
 	status := strings.TrimSpace(c.Query("status"))
 	keyword := strings.TrimSpace(c.Query("keyword"))
 
-	apps, total, err := service.ListInvoiceApplicationsForUser(c.Request.Context(), userId, status, keyword, pageInfo)
+	apps, total, err := service.ListInvoiceApplicationsForUser(c.Request.Context(), middleware.GetTenantId(c), userId, status, keyword, pageInfo)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -225,7 +226,7 @@ func InvoiceSelfGetApplicationDetail(c *gin.Context) {
 		return
 	}
 
-	app, appItems, appFiles, err := service.GetInvoiceApplicationDetailForUser(c.Request.Context(), userId, id)
+	app, appItems, appFiles, err := service.GetInvoiceApplicationDetailForUser(c.Request.Context(), middleware.GetTenantId(c), userId, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -249,7 +250,7 @@ func InvoiceSelfPresignFile(c *gin.Context) {
 		disposition = "inline"
 	}
 
-	url, expiresAt, err := service.PresignInvoiceFileForUser(c.Request.Context(), userId, fileId, disposition)
+	url, expiresAt, err := service.PresignInvoiceFileForUser(c.Request.Context(), middleware.GetTenantId(c), userId, fileId, disposition)
 	if err != nil {
 		common.ApiError(c, err)
 		return

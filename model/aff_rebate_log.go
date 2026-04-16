@@ -18,6 +18,7 @@ const (
 
 type AffRebateLog struct {
 	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId    int    `json:"tenant_id" gorm:"index;default:1"`
 	UserId      int    `json:"user_id" gorm:"index"`
 	InviteeId   int    `json:"invitee_id"`
 	InviteeName string `json:"invitee_name"`
@@ -31,11 +32,14 @@ func CreateAffRebateLog(log *AffRebateLog) error {
 	return DB.Create(log).Error
 }
 
-func GetAffRebateLogsByUserId(userId int, page *common.PageInfo, rebateType int) ([]*AffRebateLog, int64, error) {
+func GetAffRebateLogsByUserId(tenantId int, userId int, page *common.PageInfo, rebateType int) ([]*AffRebateLog, int64, error) {
 	var logs []*AffRebateLog
 	var total int64
 
 	tx := DB.Model(&AffRebateLog{}).Where("user_id = ?", userId)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
 	if rebateType > 0 {
 		tx = tx.Where("type = ?", rebateType)
 	}

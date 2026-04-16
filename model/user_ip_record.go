@@ -10,6 +10,7 @@ import (
 
 type UserIpRecord struct {
 	Id         int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId   int    `json:"tenant_id" gorm:"index;default:1"`
 	UserId     int    `json:"user_id" gorm:"index;not null"`
 	Username   string `json:"username" gorm:"index;default:''"`
 	Ip         string `json:"ip" gorm:"index;type:varchar(64);not null"`
@@ -27,8 +28,9 @@ func (r *UserIpRecord) BeforeCreate(tx *gorm.DB) (err error) {
 }
 
 // RecordLoginIp inserts a login IP record. Geolocation is resolved asynchronously by the caller.
-func RecordLoginIp(userId int, username, ip, loginType, userAgent string) {
+func RecordLoginIp(tenantId int, userId int, username, ip, loginType, userAgent string) {
 	record := &UserIpRecord{
+		TenantId:  tenantId,
 		UserId:    userId,
 		Username:  username,
 		Ip:        ip,
@@ -54,11 +56,14 @@ func UpdateIpLocation(ip string, location string) {
 }
 
 // GetIpRecordsByUserId returns paginated login IP records for a specific user.
-func GetIpRecordsByUserId(userId int, page, pageSize int) ([]*UserIpRecord, int64, error) {
+func GetIpRecordsByUserId(tenantId int, userId int, page, pageSize int) ([]*UserIpRecord, int64, error) {
 	var records []*UserIpRecord
 	var total int64
 
 	tx := DB.Model(&UserIpRecord{}).Where("user_id = ?", userId)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
 	tx.Count(&total)
 
 	offset := (page - 1) * pageSize
@@ -67,11 +72,14 @@ func GetIpRecordsByUserId(userId int, page, pageSize int) ([]*UserIpRecord, int6
 }
 
 // GetIpRecordsByIp returns paginated login records for a specific IP.
-func GetIpRecordsByIp(ip string, page, pageSize int) ([]*UserIpRecord, int64, error) {
+func GetIpRecordsByIp(tenantId int, ip string, page, pageSize int) ([]*UserIpRecord, int64, error) {
 	var records []*UserIpRecord
 	var total int64
 
 	tx := DB.Model(&UserIpRecord{}).Where("ip = ?", ip)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
 	tx.Count(&total)
 
 	offset := (page - 1) * pageSize
@@ -89,11 +97,14 @@ type IpUserInfo struct {
 }
 
 // GetDistinctUsersByIp returns distinct users who logged in from a given IP.
-func GetDistinctUsersByIp(ip string) ([]*IpUserInfo, error) {
+func GetDistinctUsersByIp(tenantId int, ip string) ([]*IpUserInfo, error) {
 	var results []*IpUserInfo
-	err := DB.Model(&UserIpRecord{}).
+	tx := DB.Model(&UserIpRecord{}).Where("ip = ?", ip)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.
 		Select("user_id, username, COUNT(*) as count, MAX(created_at) as last_login").
-		Where("ip = ?", ip).
 		Group("user_id, username").
 		Order("count DESC").
 		Find(&results).Error
@@ -107,11 +118,14 @@ func GetDistinctUsersByIp(ip string) ([]*IpUserInfo, error) {
 }
 
 // GetUsersFromLogsByIp returns distinct users who made API calls from a given IP.
-func GetUsersFromLogsByIp(ip string) ([]*IpUserInfo, error) {
+func GetUsersFromLogsByIp(tenantId int, ip string) ([]*IpUserInfo, error) {
 	var results []*IpUserInfo
-	err := LOG_DB.Model(&Log{}).
+	tx := LOG_DB.Model(&Log{}).Where("ip = ?", ip)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.
 		Select("user_id, username, COUNT(*) as count, MAX(created_at) as last_login").
-		Where("ip = ?", ip).
 		Group("user_id, username").
 		Order("count DESC").
 		Find(&results).Error
@@ -138,7 +152,7 @@ type IpUserActivityV2 struct {
 // GetIpUserActivityV2 aggregates login + API activity for a single IP within [startTs, endTs].
 // - Login data source: user_ip_records
 // - API data source: logs (LOG_DB) with type = LogTypeConsume
-func GetIpUserActivityV2(ip string, startTs, endTs int64) (map[int]*IpUserActivityV2, error) {
+func GetIpUserActivityV2(tenantId int, ip string, startTs, endTs int64) (map[int]*IpUserActivityV2, error) {
 	activity := make(map[int]*IpUserActivityV2)
 
 	// 1) Login side
@@ -148,9 +162,13 @@ func GetIpUserActivityV2(ip string, startTs, endTs int64) (map[int]*IpUserActivi
 		Count     int64  `gorm:"column:count"`
 		LastLogin int64  `gorm:"column:last_login"`
 	}
-	err := DB.Model(&UserIpRecord{}).
+	loginTx := DB.Model(&UserIpRecord{}).
+		Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs)
+	if tenantId > 0 {
+		loginTx = loginTx.Where("tenant_id = ?", tenantId)
+	}
+	err := loginTx.
 		Select("user_id, username, COUNT(*) as count, MAX(created_at) as last_login").
-		Where("ip = ? AND created_at >= ? AND created_at <= ?", ip, startTs, endTs).
 		Group("user_id, username").
 		Scan(&loginRows).Error
 	if err != nil {
@@ -179,9 +197,13 @@ func GetIpUserActivityV2(ip string, startTs, endTs int64) (map[int]*IpUserActivi
 		Count    int64  `gorm:"column:count"`
 		LastApi  int64  `gorm:"column:last_api"`
 	}
-	err = LOG_DB.Model(&Log{}).
+	apiTx := LOG_DB.Model(&Log{}).
+		Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, ip, startTs, endTs)
+	if tenantId > 0 {
+		apiTx = apiTx.Where("tenant_id = ?", tenantId)
+	}
+	err = apiTx.
 		Select("user_id, username, COUNT(*) as count, MAX(created_at) as last_api").
-		Where("type = ? AND ip = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, ip, startTs, endTs).
 		Group("user_id, username").
 		Scan(&apiRows).Error
 	if err != nil {
@@ -243,20 +265,24 @@ type UserApiIpRecord struct {
 }
 
 // GetApiIpRecordsByUserId returns paginated API usage IP records for a specific user.
-func GetApiIpRecordsByUserId(userId int, page, pageSize int) ([]*UserApiIpRecord, int64, error) {
+func GetApiIpRecordsByUserId(tenantId int, userId int, page, pageSize int) ([]*UserApiIpRecord, int64, error) {
 	var results []*UserApiIpRecord
 	var total int64
 
 	// Count distinct IPs
-	LOG_DB.Model(&Log{}).
-		Where("user_id = ? AND ip != ''", userId).
-		Select("COUNT(DISTINCT ip)").
-		Scan(&total)
+	countTx := LOG_DB.Model(&Log{}).Where("user_id = ? AND ip != ''", userId)
+	if tenantId > 0 {
+		countTx = countTx.Where("tenant_id = ?", tenantId)
+	}
+	countTx.Select("COUNT(DISTINCT ip)").Scan(&total)
 
+	dataTx := LOG_DB.Model(&Log{}).Where("user_id = ? AND ip != ''", userId)
+	if tenantId > 0 {
+		dataTx = dataTx.Where("tenant_id = ?", tenantId)
+	}
 	offset := (page - 1) * pageSize
-	err := LOG_DB.Model(&Log{}).
+	err := dataTx.
 		Select("ip, COUNT(*) as count, MAX(created_at) as last_used, MAX(model_name) as model_name").
-		Where("user_id = ? AND ip != ''", userId).
 		Group("ip").
 		Order("last_used DESC").
 		Offset(offset).
@@ -267,52 +293,56 @@ func GetApiIpRecordsByUserId(userId int, page, pageSize int) ([]*UserApiIpRecord
 }
 
 // GetIpAnalytics returns aggregated IP analytics within a time range.
-func GetIpAnalytics(startTs, endTs int64) (*IpAnalyticsResult, error) {
+func GetIpAnalytics(tenantId int, startTs, endTs int64) (*IpAnalyticsResult, error) {
 	result := &IpAnalyticsResult{}
-	tx := DB.Model(&UserIpRecord{}).Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+
+	baseCond := func(tx *gorm.DB) *gorm.DB {
+		tx = tx.Where("created_at >= ? AND created_at <= ?", startTs, endTs)
+		if tenantId > 0 {
+			tx = tx.Where("tenant_id = ?", tenantId)
+		}
+		return tx
+	}
 
 	// Total records
-	tx.Count(&result.TotalRecords)
+	baseCond(DB.Model(&UserIpRecord{})).Count(&result.TotalRecords)
 
 	// Distinct IPs
-	DB.Model(&UserIpRecord{}).
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
+	baseCond(DB.Model(&UserIpRecord{})).
 		Select("COUNT(DISTINCT ip)").
 		Scan(&result.DistinctIps)
 
 	// Distinct users
-	DB.Model(&UserIpRecord{}).
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
+	baseCond(DB.Model(&UserIpRecord{})).
 		Select("COUNT(DISTINCT user_id)").
 		Scan(&result.DistinctUsers)
 
 	// Today logins
 	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
-	DB.Model(&UserIpRecord{}).
-		Where("created_at >= ?", todayStart).
-		Count(&result.TodayLogins)
+	todayTx := DB.Model(&UserIpRecord{}).Where("created_at >= ?", todayStart)
+	if tenantId > 0 {
+		todayTx = todayTx.Where("tenant_id = ?", tenantId)
+	}
+	todayTx.Count(&result.TodayLogins)
 
 	// Top IPs
-	DB.Model(&UserIpRecord{}).
+	baseCond(DB.Model(&UserIpRecord{})).
 		Select("ip, COUNT(*) as count").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
 		Group("ip").
 		Order("count DESC").
 		Limit(20).
 		Find(&result.TopIps)
 
 	// Login type distribution
-	DB.Model(&UserIpRecord{}).
+	baseCond(DB.Model(&UserIpRecord{})).
 		Select("login_type as name, COUNT(*) as count").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
 		Group("login_type").
 		Order("count DESC").
 		Find(&result.LoginTypeDist)
 
 	// Top users by distinct IP count
-	DB.Model(&UserIpRecord{}).
+	baseCond(DB.Model(&UserIpRecord{})).
 		Select("user_id, username, COUNT(DISTINCT ip) as ip_count").
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
 		Group("user_id, username").
 		Order("ip_count DESC").
 		Limit(20).

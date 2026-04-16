@@ -115,8 +115,9 @@ func setupLogin(user *model.User, c *gin.Context) {
 	loginType := c.GetString("login_type")
 	userId := user.Id
 	username := user.Username
+	tenantId := middleware.GetTenantId(c)
 	gopool.Go(func() {
-		model.RecordLoginIp(userId, username, ip, loginType, userAgent)
+		model.RecordLoginIp(tenantId, userId, username, ip, loginType, userAgent)
 		service.LookupIPAsync(ip)
 	})
 
@@ -368,6 +369,7 @@ func TransferAffQuota(c *gin.Context) {
 		return
 	}
 	transferReq := &model.AffTransferRequest{
+		TenantId: middleware.GetTenantId(c),
 		UserId:   id,
 		Username: user.Username,
 		Quota:    tran.Quota,

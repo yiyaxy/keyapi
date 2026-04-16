@@ -16,6 +16,7 @@ const (
 
 type AffTransferRequest struct {
 	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId    int    `json:"tenant_id" gorm:"index;default:1"`
 	UserId      int    `json:"user_id" gorm:"index"`
 	Username    string `json:"username" gorm:"type:varchar(64)"`
 	Quota       int    `json:"quota"`
@@ -31,20 +32,26 @@ func CreateAffTransferRequest(req *AffTransferRequest) error {
 }
 
 // GetPendingQuotaByUserId returns the total quota in pending transfer requests for a user
-func GetPendingQuotaByUserId(userId int) (int, error) {
+func GetPendingQuotaByUserId(tenantId int, userId int) (int, error) {
 	var result struct{ Total int64 }
-	err := DB.Model(&AffTransferRequest{}).
+	tx := DB.Model(&AffTransferRequest{}).
 		Select("COALESCE(SUM(quota), 0) as total").
-		Where("user_id = ? AND status = ?", userId, AffTransferStatusPending).
-		Scan(&result).Error
+		Where("user_id = ? AND status = ?", userId, AffTransferStatusPending)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.Scan(&result).Error
 	return int(result.Total), err
 }
 
-func GetAffTransferRequestsByUserId(userId int, page *common.PageInfo, status int) ([]AffTransferRequest, int64, error) {
+func GetAffTransferRequestsByUserId(tenantId int, userId int, page *common.PageInfo, status int) ([]AffTransferRequest, int64, error) {
 	var requests []AffTransferRequest
 	var total int64
 
 	query := DB.Model(&AffTransferRequest{}).Where("user_id = ?", userId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if status > 0 {
 		query = query.Where("status = ?", status)
 	}
@@ -60,11 +67,14 @@ func GetAffTransferRequestsByUserId(userId int, page *common.PageInfo, status in
 	return requests, total, nil
 }
 
-func GetAllAffTransferRequests(page *common.PageInfo, keyword string, status int) ([]AffTransferRequest, int64, error) {
+func GetAllAffTransferRequests(tenantId int, page *common.PageInfo, keyword string, status int) ([]AffTransferRequest, int64, error) {
 	var requests []AffTransferRequest
 	var total int64
 
 	query := DB.Model(&AffTransferRequest{})
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		query = query.Where("username LIKE ?", "%"+keyword+"%")
 	}
@@ -83,12 +93,16 @@ func GetAllAffTransferRequests(page *common.PageInfo, keyword string, status int
 	return requests, total, nil
 }
 
-func ApproveAffTransferRequest(id int, adminId int, remark string) error {
+func ApproveAffTransferRequest(tenantId int, id int, adminId int, remark string) error {
 	tx := DB.Begin()
 	defer tx.Rollback()
 
 	var req AffTransferRequest
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&req, id).Error; err != nil {
+	reqQuery := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", id)
+	if tenantId > 0 {
+		reqQuery = reqQuery.Where("tenant_id = ?", tenantId)
+	}
+	if err := reqQuery.First(&req).Error; err != nil {
 		return err
 	}
 	if req.Status != AffTransferStatusPending {
@@ -119,8 +133,12 @@ func ApproveAffTransferRequest(id int, adminId int, remark string) error {
 	return tx.Commit().Error
 }
 
-func RejectAffTransferRequest(id int, adminId int, remark string) error {
-	result := DB.Model(&AffTransferRequest{}).Where("id = ? AND status = ?", id, AffTransferStatusPending).Updates(map[string]interface{}{
+func RejectAffTransferRequest(tenantId int, id int, adminId int, remark string) error {
+	rejectQuery := DB.Model(&AffTransferRequest{}).Where("id = ? AND status = ?", id, AffTransferStatusPending)
+	if tenantId > 0 {
+		rejectQuery = rejectQuery.Where("tenant_id = ?", tenantId)
+	}
+	result := rejectQuery.Updates(map[string]interface{}{
 		"status":       AffTransferStatusRejected,
 		"admin_id":     adminId,
 		"admin_remark": remark,
@@ -134,19 +152,31 @@ func RejectAffTransferRequest(id int, adminId int, remark string) error {
 	return nil
 }
 
-func GetAffTransferStats() (map[string]interface{}, error) {
+func GetAffTransferStats(tenantId int) (map[string]interface{}, error) {
 	var pendingCount int64
-	if err := DB.Model(&AffTransferRequest{}).Where("status = ?", AffTransferStatusPending).Count(&pendingCount).Error; err != nil {
+	pendingTx := DB.Model(&AffTransferRequest{}).Where("status = ?", AffTransferStatusPending)
+	if tenantId > 0 {
+		pendingTx = pendingTx.Where("tenant_id = ?", tenantId)
+	}
+	if err := pendingTx.Count(&pendingCount).Error; err != nil {
 		return nil, err
 	}
 
 	var approvedCount int64
-	if err := DB.Model(&AffTransferRequest{}).Where("status = ?", AffTransferStatusApproved).Count(&approvedCount).Error; err != nil {
+	approvedTx := DB.Model(&AffTransferRequest{}).Where("status = ?", AffTransferStatusApproved)
+	if tenantId > 0 {
+		approvedTx = approvedTx.Where("tenant_id = ?", tenantId)
+	}
+	if err := approvedTx.Count(&approvedCount).Error; err != nil {
 		return nil, err
 	}
 
 	var result struct{ Total int64 }
-	if err := DB.Model(&AffTransferRequest{}).Select("COALESCE(SUM(quota), 0) as total").Where("status = ?", AffTransferStatusApproved).Scan(&result).Error; err != nil {
+	quotaTx := DB.Model(&AffTransferRequest{}).Select("COALESCE(SUM(quota), 0) as total").Where("status = ?", AffTransferStatusApproved)
+	if tenantId > 0 {
+		quotaTx = quotaTx.Where("tenant_id = ?", tenantId)
+	}
+	if err := quotaTx.Scan(&result).Error; err != nil {
 		return nil, err
 	}
 
@@ -158,12 +188,16 @@ func GetAffTransferStats() (map[string]interface{}, error) {
 }
 
 // BatchApproveAllPendingRequests approves all pending transfer requests
-func BatchApproveAllPendingRequests(adminId int, remark string) (int, error) {
+func BatchApproveAllPendingRequests(tenantId int, adminId int, remark string) (int, error) {
 	tx := DB.Begin()
 	defer tx.Rollback()
 
+	batchQuery := tx.Where("status = ?", AffTransferStatusPending)
+	if tenantId > 0 {
+		batchQuery = batchQuery.Where("tenant_id = ?", tenantId)
+	}
 	var pendingRequests []AffTransferRequest
-	if err := tx.Where("status = ?", AffTransferStatusPending).Order("id ASC").Find(&pendingRequests).Error; err != nil {
+	if err := batchQuery.Order("id ASC").Find(&pendingRequests).Error; err != nil {
 		return 0, err
 	}
 

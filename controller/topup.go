@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -228,6 +229,7 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
+		TenantId:      middleware.GetTenantId(c),
 		UserId:        id,
 		Amount:        amount,
 		Money:         payMoney,
@@ -342,7 +344,8 @@ func EpayNotify(c *gin.Context) {
 		log.Println(verifyInfo)
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
+		// Payment callback: trade_no is globally unique; pass tenantId=0 (no filter).
+		topUp := model.GetTopUpByTradeNo(0, verifyInfo.ServiceTradeNo)
 		if topUp == nil {
 			log.Printf("易支付回调未找到订单: %v", verifyInfo)
 			return
@@ -431,10 +434,11 @@ func GetUserTopUps(c *gin.Context) {
 		total  int64
 		err    error
 	)
+	tenantId := middleware.GetTenantId(c)
 	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
+		topups, total, err = model.SearchUserTopUps(tenantId, userId, keyword, pageInfo)
 	} else {
-		topups, total, err = model.GetUserTopUps(userId, pageInfo)
+		topups, total, err = model.GetUserTopUps(tenantId, userId, pageInfo)
 	}
 	if err != nil {
 		common.ApiError(c, err)
@@ -461,10 +465,11 @@ func GetAllTopUps(c *gin.Context) {
 		total  int64
 		err    error
 	)
+	tenantId := middleware.GetTenantId(c)
 	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
+		topups, total, err = model.SearchAllTopUps(tenantId, keyword, pageInfo)
 	} else {
-		topups, total, err = model.GetAllTopUps(pageInfo)
+		topups, total, err = model.GetAllTopUps(tenantId, pageInfo)
 	}
 	if err != nil {
 		common.ApiError(c, err)

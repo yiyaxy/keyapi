@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 
@@ -25,7 +26,8 @@ func InvoiceAdminListApplications(c *gin.Context) {
 		}
 	}
 
-	apps, total, err := service.ListInvoiceApplicationsForAdmin(c.Request.Context(), status, userId, keyword, pageInfo)
+	tenantId := middleware.GetTenantId(c)
+	apps, total, err := service.ListInvoiceApplicationsForAdmin(c.Request.Context(), tenantId, status, userId, keyword, pageInfo)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -36,7 +38,7 @@ func InvoiceAdminListApplications(c *gin.Context) {
 	for _, a := range apps {
 		userIds = append(userIds, a.UserId)
 	}
-	usernameMap := service.BatchLoadUsernamesForInvoice(userIds)
+	usernameMap := service.BatchLoadUsernamesForInvoice(tenantId, userIds)
 
 	items := make([]dto.InvoiceApplicationListItem, 0, len(apps))
 	for _, a := range apps {
@@ -59,7 +61,7 @@ func InvoiceAdminGetApplicationDetail(c *gin.Context) {
 		return
 	}
 
-	app, appItems, appFiles, err := service.GetInvoiceApplicationDetailForAdmin(c.Request.Context(), id)
+	app, appItems, appFiles, err := service.GetInvoiceApplicationDetailForAdmin(c.Request.Context(), middleware.GetTenantId(c), id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -88,6 +90,7 @@ func InvoiceAdminUpdateApplicationStatus(c *gin.Context) {
 
 	app, err := service.AdminUpdateInvoiceApplicationStatus(
 		c.Request.Context(),
+		middleware.GetTenantId(c),
 		adminId,
 		id,
 		strings.TrimSpace(req.Status),
@@ -115,7 +118,7 @@ func InvoiceAdminPresignUpload(c *gin.Context) {
 		return
 	}
 
-	out, err := service.AdminPresignInvoiceUpload(c.Request.Context(), service.AdminPresignInvoiceUploadParams{
+	out, err := service.AdminPresignInvoiceUpload(c.Request.Context(), middleware.GetTenantId(c), service.AdminPresignInvoiceUploadParams{
 		AdminId:     adminId,
 		InvoiceId:   req.InvoiceId,
 		Filename:    strings.TrimSpace(req.Filename),
@@ -146,7 +149,7 @@ func InvoiceAdminFinalizeInvoiceFiles(c *gin.Context) {
 		return
 	}
 
-	files, err := service.AdminFinalizeInvoiceFiles(c.Request.Context(), service.AdminFinalizeInvoiceFilesParams{
+	files, err := service.AdminFinalizeInvoiceFiles(c.Request.Context(), middleware.GetTenantId(c), service.AdminFinalizeInvoiceFilesParams{
 		AdminId:    adminId,
 		InvoiceId:  invoiceId,
 		ObjectKeys: req.ObjectKeys,
@@ -182,7 +185,7 @@ func InvoiceAdminUpdateFileVisibility(c *gin.Context) {
 		return
 	}
 
-	file, err := service.AdminUpdateInvoiceFileVisibility(c.Request.Context(), service.AdminUpdateInvoiceFileVisibilityParams{
+	file, err := service.AdminUpdateInvoiceFileVisibility(c.Request.Context(), middleware.GetTenantId(c), service.AdminUpdateInvoiceFileVisibilityParams{
 		AdminId:       adminId,
 		InvoiceId:     invoiceId,
 		FileId:        fileId,
@@ -209,7 +212,7 @@ func InvoiceAdminPresignFile(c *gin.Context) {
 		disposition = "inline"
 	}
 
-	url, expiresAt, err := service.PresignInvoiceFileForAdmin(c.Request.Context(), fileId, disposition)
+	url, expiresAt, err := service.PresignInvoiceFileForAdmin(c.Request.Context(), middleware.GetTenantId(c), fileId, disposition)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -311,7 +314,7 @@ func InvoiceAdminSetItemPaymentInfo(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := service.SetInvoiceItemPaymentInfo(itemId, req); err != nil {
+	if err := service.SetInvoiceItemPaymentInfo(middleware.GetTenantId(c), itemId, req); err != nil {
 		common.ApiError(c, err)
 		return
 	}

@@ -35,6 +35,7 @@ const (
 
 type InvoiceApplication struct {
 	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId    int    `json:"tenant_id" gorm:"index;default:1"`
 	UserId      int    `json:"user_id" gorm:"index"`
 	InvoiceType string `json:"invoice_type" gorm:"type:varchar(32);index;not null"`
 	Title       string `json:"title" gorm:"type:varchar(255);not null"`

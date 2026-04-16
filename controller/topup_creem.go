@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"io"
@@ -108,6 +109,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 
 	// 先创建订单记录，使用产品配置的金额和充值额度
 	topUp := &model.TopUp{
+		TenantId:   middleware.GetTenantId(c),
 		UserId:     id,
 		Amount:     selectedProduct.Quota, // 充值额度
 		Money:      selectedProduct.Price, // 支付金额
@@ -328,7 +330,8 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 		event.Object.Product.Name)
 
 	// 查询本地订单确认存在
-	topUp := model.GetTopUpByTradeNo(referenceId)
+	// Payment callback: trade_no is globally unique; pass tenantId=0 (no filter).
+	topUp := model.GetTopUpByTradeNo(0, referenceId)
 	if topUp == nil {
 		log.Printf("Creem充值订单不存在: %s", referenceId)
 		c.AbortWithStatus(http.StatusBadRequest)

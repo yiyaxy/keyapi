@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -104,6 +105,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	}
 
 	topUp := &model.TopUp{
+		TenantId:      middleware.GetTenantId(c),
 		UserId:        id,
 		Amount:        req.Amount,
 		Money:         chargedMoney,
@@ -237,7 +239,8 @@ func sessionExpired(event stripe.Event) {
 		return
 	}
 
-	topUp := model.GetTopUpByTradeNo(referenceId)
+	// Payment callback: trade_no is globally unique; pass tenantId=0 (no filter).
+	topUp := model.GetTopUpByTradeNo(0, referenceId)
 	if topUp == nil {
 		log.Println("充值订单不存在", referenceId)
 		return

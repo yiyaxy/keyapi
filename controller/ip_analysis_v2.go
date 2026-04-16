@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -326,7 +327,8 @@ func DisableMultiAccountUsersByIp(c *gin.Context) {
 		reason = "disable users sharing IP " + req.Ip + " within [" + strconv.FormatInt(start, 10) + "," + strconv.FormatInt(end, 10) + "]"
 	}
 
-	activity, err := model.GetIpUserActivityV2(req.Ip, start, end)
+	tenantId := middleware.GetTenantId(c)
+	activity, err := model.GetIpUserActivityV2(tenantId, req.Ip, start, end)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return

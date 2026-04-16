@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -25,7 +26,8 @@ func GetAgentLogs(c *gin.Context) {
 	status := strings.TrimSpace(c.Query("status"))
 	keyword := strings.TrimSpace(c.Query("keyword"))
 
-	logs, total, err := model.GetAgentLogs(page, pageSize, agentName, category, status, keyword)
+	tenantId := middleware.GetTenantId(c)
+	logs, total, err := model.GetAgentLogs(tenantId, page, pageSize, agentName, category, status, keyword)
 	if err != nil {
 		common.ApiErrorMsg(c, "获取日志失败")
 		return
@@ -63,6 +65,7 @@ func CreateAgentLog(c *gin.Context) {
 	}
 
 	log := &model.AgentLog{
+		TenantId:    middleware.GetTenantId(c),
 		AdminId:     adminId,
 		AgentName:   strings.TrimSpace(req.AgentName),
 		Category:    strings.TrimSpace(req.Category),
@@ -111,7 +114,8 @@ func UpdateAgentLog(c *gin.Context) {
 		return
 	}
 
-	if err := model.UpdateAgentLog(id, updates); err != nil {
+	tenantId := middleware.GetTenantId(c)
+	if err := model.UpdateAgentLog(tenantId, id, updates); err != nil {
 		common.ApiErrorMsg(c, "更新失败")
 		return
 	}
@@ -126,7 +130,8 @@ func DeleteAgentLog(c *gin.Context) {
 		return
 	}
 
-	if err := model.DeleteAgentLog(id); err != nil {
+	tenantId := middleware.GetTenantId(c)
+	if err := model.DeleteAgentLog(tenantId, id); err != nil {
 		common.ApiErrorMsg(c, "删除失败")
 		return
 	}

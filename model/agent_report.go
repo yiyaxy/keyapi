@@ -21,6 +21,7 @@ const (
 
 type AgentReport struct {
 	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId    int    `json:"tenant_id" gorm:"index;default:1"`
 	Title       string `json:"title" gorm:"type:varchar(255);not null"`
 	ReportType  string `json:"report_type" gorm:"type:varchar(32);index;not null;default:'manual'"`
 	Summary     string `json:"summary" gorm:"type:text"`
@@ -47,17 +48,24 @@ func CreateAgentReport(report *AgentReport) error {
 	return DB.Create(report).Error
 }
 
-func UpdateAgentReport(id int, updates map[string]interface{}) error {
+func UpdateAgentReport(tenantId int, id int, updates map[string]interface{}) error {
 	updates["updated_at"] = common.GetTimestamp()
-	return DB.Model(&AgentReport{}).Where("id = ?", id).Updates(updates).Error
+	tx := DB.Model(&AgentReport{}).Where("id = ?", id)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	return tx.Updates(updates).Error
 }
 
 // GetAgentReports returns list WITHOUT html_content (too large for list view)
-func GetAgentReports(page, pageSize int, reportType, keyword string) ([]AgentReport, int64, error) {
+func GetAgentReports(tenantId int, page, pageSize int, reportType, keyword string) ([]AgentReport, int64, error) {
 	var reports []AgentReport
 	var total int64
 
 	q := DB.Model(&AgentReport{})
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	if reportType != "" {
 		q = q.Where("report_type = ?", reportType)
 	}
@@ -79,14 +87,22 @@ func GetAgentReports(page, pageSize int, reportType, keyword string) ([]AgentRep
 }
 
 // GetAgentReportById returns full report INCLUDING html_content
-func GetAgentReportById(id int) (*AgentReport, error) {
+func GetAgentReportById(tenantId int, id int) (*AgentReport, error) {
 	var report AgentReport
-	if err := DB.Where("id = ?", id).First(&report).Error; err != nil {
+	tx := DB.Where("id = ?", id)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	if err := tx.First(&report).Error; err != nil {
 		return nil, err
 	}
 	return &report, nil
 }
 
-func DeleteAgentReport(id int) error {
-	return DB.Where("id = ?", id).Delete(&AgentReport{}).Error
+func DeleteAgentReport(tenantId int, id int) error {
+	tx := DB.Where("id = ?", id)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	return tx.Delete(&AgentReport{}).Error
 }

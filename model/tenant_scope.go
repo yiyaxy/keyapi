@@ -160,11 +160,46 @@ func isTenantBypassed(db *gorm.DB) bool {
 //   - Query/Update/Delete: fail-closed — reject if tenant_id missing in WHERE clause
 //   - Does not cover Raw/Exec or DB.Table() paths — those must use explicit tenant helpers
 func RegisterTenantCallbacks(db *gorm.DB) {
+	// Phase 1 tables
 	RegisterTenantScopedTable("users")
 	RegisterTenantScopedTable("channels")
 	RegisterTenantScopedTable("tokens")
 	RegisterTenantScopedTable("logs")
 	RegisterTenantScopedTable("abilities")
+
+	// Phase 2 tables — financial
+	RegisterTenantScopedTable("top_ups")
+	RegisterTenantScopedTable("redemptions")
+	RegisterTenantScopedTable("subscription_plans")
+	RegisterTenantScopedTable("subscription_orders")
+	RegisterTenantScopedTable("user_subscriptions")
+	RegisterTenantScopedTable("subscription_pre_consume_records")
+
+	// Phase 2 tables — invoicing
+	RegisterTenantScopedTable("invoice_applications")
+	RegisterTenantScopedTable("invoice_items")
+	RegisterTenantScopedTable("invoice_uploads")
+	RegisterTenantScopedTable("invoice_files")
+
+	// Phase 2 tables — tickets
+	RegisterTenantScopedTable("tickets")
+	RegisterTenantScopedTable("ticket_replies")
+	RegisterTenantScopedTable("ticket_attachments")
+	RegisterTenantScopedTable("ticket_uploads")
+
+	// Phase 2 tables — affiliate
+	RegisterTenantScopedTable("aff_rebate_logs")
+	RegisterTenantScopedTable("aff_transfer_requests")
+
+	// Phase 2 tables — messaging
+	RegisterTenantScopedTable("messages")
+	RegisterTenantScopedTable("message_read_statuses")
+
+	// Phase 2 tables — analytics & audit
+	RegisterTenantScopedTable("user_ip_records")
+	RegisterTenantScopedTable("quota_data")
+	RegisterTenantScopedTable("agent_logs")
+	RegisterTenantScopedTable("agent_reports")
 
 	// Create: fail-closed (reject if tenant_id missing)
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)
