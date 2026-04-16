@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -348,8 +349,12 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		if tid := middleware.GetTenantId(c); tid > 0 {
 			tenantQuery = tenantQuery.Where("tenant_id = ?", tid)
 		}
-		if err := tenantQuery.Updates(updateMap).Error; err != nil {
-			return err
+		result := tenantQuery.Updates(updateMap)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errors.New("subscription plan not found")
 		}
 		return nil
 	})
@@ -394,11 +399,16 @@ func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
 	if tid := middleware.GetTenantId(c); tid > 0 {
 		statusQuery = statusQuery.Where("tenant_id = ?", tid)
 	}
-	if err := statusQuery.Updates(map[string]interface{}{
+	result := statusQuery.Updates(map[string]interface{}{
 		"status":  status,
 		"enabled": enabled,
-	}).Error; err != nil {
-		common.ApiError(c, err)
+	})
+	if result.Error != nil {
+		common.ApiError(c, result.Error)
+		return
+	}
+	if result.RowsAffected == 0 {
+		common.ApiErrorMsg(c, "subscription plan not found")
 		return
 	}
 	model.InvalidateSubscriptionPlanCache(id)

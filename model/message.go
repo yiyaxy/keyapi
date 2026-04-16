@@ -100,26 +100,28 @@ func GetMessageById(tenantId int, id int) (*Message, error) {
 	return &msg, nil
 }
 
-func UpdateMessage(tenantId int, id int, updates map[string]interface{}) error {
+func UpdateMessage(tenantId int, id int, updates map[string]interface{}) (int64, error) {
 	updates["updated_at"] = time.Now().Unix()
 	tx := DB.Model(&Message{}).Where("id = ?", id)
 	if tenantId > 0 {
 		tx = tx.Where("tenant_id = ?", tenantId)
 	}
-	return tx.Updates(updates).Error
+	result := tx.Updates(updates)
+	return result.RowsAffected, result.Error
 }
 
-func RecallMessage(tenantId int, id int) error {
+func RecallMessage(tenantId int, id int) (int64, error) {
 	now := time.Now().Unix()
 	tx := DB.Model(&Message{}).Where("id = ?", id)
 	if tenantId > 0 {
 		tx = tx.Where("tenant_id = ?", tenantId)
 	}
-	return tx.Updates(map[string]interface{}{
+	result := tx.Updates(map[string]interface{}{
 		"status":     MessageStatusRecalled,
 		"updated_at": now,
 		"deleted_at": time.Now(),
-	}).Error
+	})
+	return result.RowsAffected, result.Error
 }
 
 func GetUserInbox(tenantId int, userId int, page *common.PageInfo) ([]InboxMessage, int64, error) {

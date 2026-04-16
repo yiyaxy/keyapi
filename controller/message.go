@@ -109,8 +109,13 @@ func AdminEditMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "no fields to update")
 		return
 	}
-	if err := model.UpdateMessage(middleware.GetTenantId(c), id, updates); err != nil {
+	rows, err := model.UpdateMessage(middleware.GetTenantId(c), id, updates)
+	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if rows == 0 {
+		common.ApiErrorMsg(c, "message not found")
 		return
 	}
 	_ = model.DeleteTranslationsByMessageId(id)
@@ -124,8 +129,13 @@ func AdminRecallMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid message ID")
 		return
 	}
-	if err := model.RecallMessage(middleware.GetTenantId(c), id); err != nil {
+	rows, err := model.RecallMessage(middleware.GetTenantId(c), id)
+	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if rows == 0 {
+		common.ApiErrorMsg(c, "message not found")
 		return
 	}
 	_ = model.DeleteTranslationsByMessageId(id)
