@@ -20,7 +20,8 @@ export default function TenantInfoCard() {
       formApiRef.current.setValues({
         name: tenant.name,
         slug: tenant.slug,
-        status: tenant.status,
+        status_label:
+          tenant.status === 1 ? '启用' : tenant.status === 2 ? '已停用' : '已删除',
       });
     }
   }, [tenant]);
@@ -42,7 +43,8 @@ export default function TenantInfoCard() {
   }
 
   const handleSubmit = async (values) => {
-    await update({ name: values.name, status: Number(values.status) });
+    // status 不可在本页修改，只提交 name
+    await update({ name: values.name });
   };
 
   return (
@@ -59,10 +61,24 @@ export default function TenantInfoCard() {
           rules={[{ required: true, message: t('名称必填') }]}
         />
         <Form.Input field='slug' label={t('唯一标识')} disabled />
-        <Form.Select field='status' label={t('状态')}>
-          <Form.Select.Option value={1}>{t('启用')}</Form.Select.Option>
-          <Form.Select.Option value={2}>{t('停用')}</Form.Select.Option>
-        </Form.Select>
+        {/*
+          故意不暴露 status 编辑：后端 GetTenantById 只返回 active 状态（见
+          model/tenant.go），一旦把当前租户改成 Suspended，UpdateTenant 成功响应
+          里 data=nil，前端会把页面打空，且后续 TenantResolve 会回退到默认租户。
+          租户停用是平台管理员操作，应走 /api/platform/tenants/:id/... 接口。
+        */}
+        <Form.Input
+          field='status_label'
+          label={t('状态')}
+          disabled
+          initValue={
+            tenant.status === 1
+              ? t('启用')
+              : tenant.status === 2
+                ? t('已停用')
+                : t('已删除')
+          }
+        />
         <div style={{ marginBottom: 12 }}>
           <Typography.Text type='tertiary'>
             ID: {tenant.id} · {t('创建于')} {new Date(tenant.created_at * 1000).toLocaleString()}

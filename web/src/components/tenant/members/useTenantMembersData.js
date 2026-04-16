@@ -111,6 +111,16 @@ export function useTenantMembersData() {
     load();
   }, [load]);
 
+  // 筛选变化时自动回到第 1 页，避免"当前 page 超出过滤后总页数"造成的空表假象。
+  const setKeywordAndReset = useCallback((v) => {
+    setKeyword(v);
+    setPage(1);
+  }, []);
+  const setStatusFilterAndReset = useCallback((v) => {
+    setStatusFilter(v);
+    setPage(1);
+  }, []);
+
   return {
     items,
     total,
@@ -121,8 +131,8 @@ export function useTenantMembersData() {
     loading,
     setPage,
     setPageSize,
-    setKeyword,
-    setStatusFilter,
+    setKeyword: setKeywordAndReset,
+    setStatusFilter: setStatusFilterAndReset,
     reload: load,
     invite,
     updateRoleOrStatus,
