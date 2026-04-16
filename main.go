@@ -135,6 +135,13 @@ func main() {
 	// Channel upstream model update check task
 	controller.StartChannelUpstreamModelUpdateTask()
 
+	// 租户告警巡检任务：master 节点每 5 分钟全量刷新一次，同时触发新告警邮件推送
+	if common.IsMasterNode {
+		gopool.Go(func() {
+			service.StartTenantAlertSweepLoop(5 * time.Minute)
+		})
+	}
+
 	if common.IsMasterNode && constant.UpdateTask {
 		gopool.Go(func() {
 			controller.UpdateMidjourneyTaskBulk()

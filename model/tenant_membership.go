@@ -247,6 +247,22 @@ func CountTenantAdmins(tenantId int) (int64, error) {
 	return count, err
 }
 
+// ListTenantAdminEmails 返回租户所有 active 管理员的邮箱，用于告警推送等通知场景。
+// 平台级 admin 不纳入（他们不一定关心该租户）。跨租户 bypass 查询 users 表。
+func ListTenantAdminEmails(tenantId int) ([]string, error) {
+	if tenantId <= 0 {
+		return nil, errors.New("invalid tenantId")
+	}
+	var emails []string
+	err := WithTenantBypass(DB).Table("tenant_memberships AS tm").
+		Select("u.email").
+		Joins("JOIN users u ON u.id = tm.user_id").
+		Where("tm.tenant_id = ? AND tm.role = ? AND tm.status = ? AND u.email <> ''",
+			tenantId, TenantRoleAdmin, TenantMembershipStatusActive).
+		Scan(&emails).Error
+	return emails, err
+}
+
 // CountActiveTenantMembers returns the number of active (non-removed) members in a tenant.
 func CountActiveTenantMembers(tenantId int) (int64, error) {
 	var count int64

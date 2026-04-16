@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
-// TenantAlert represents a single active alert for a tenant.
+// TenantAlert 是告警运行时快照（不带 DB id / status 等字段）。
 type TenantAlert struct {
 	TenantId    int    `json:"tenant_id"`
-	AlertType   string `json:"alert_type"`   // "quota_80", "quota_100", "rpm_high", "member_limit"
+	AlertType   string `json:"alert_type"` // "quota_80", "quota_100", "rpm_high", "member_limit", ...
 	Message     string `json:"message"`
-	Severity    string `json:"severity"`     // "warning", "critical"
+	Severity    string `json:"severity"` // "warning", "critical"
 	TriggeredAt int64  `json:"triggered_at"`
 }
 
@@ -157,4 +158,89 @@ func CheckTenantAlerts(tenantId int) ([]TenantAlert, error) {
 	}
 
 	return alerts, nil
+}
+
+// RefreshTenantAlerts 实时计算告警并同步到持久化表：
+//   - 对每条当前产出的告警做 upsert（已存在同类型未解除则刷新，否则新建 active）
+//   - 对 DB 里 active/acknowledged 但本次不再触发的类型标记为 resolved
+//   - 返回数据库里当前 active/acknowledged 记录（带 id/status/acknowledged_at 等字段）
+func RefreshTenantAlerts(tenantId int) ([]model.TenantAlertRecord, error) {
+	snapshot, err := CheckTenantAlerts(tenantId)
+	if err != nil {
+		return nil, err
+	}
+	currentTypes := make(map[string]bool, len(snapshot))
+	for _, a := range snapshot {
+		currentTypes[a.AlertType] = true
+		if _, err := model.UpsertTenantAlert(a.TenantId, a.AlertType, a.Severity, a.Message, a.TriggeredAt); err != nil {
+			common.SysError(fmt.Sprintf("RefreshTenantAlerts upsert failed tenant=%d type=%s: %s",
+				tenantId, a.AlertType, err.Error()))
+		}
+	}
+	if err := model.ResolveStaleTenantAlerts(tenantId, currentTypes); err != nil {
+		common.SysError(fmt.Sprintf("RefreshTenantAlerts resolve-stale failed tenant=%d: %s",
+			tenantId, err.Error()))
+	}
+	return model.ListActiveTenantAlerts(tenantId)
+}
+
+// StartTenantAlertSweepLoop 启动定时巡检循环：每 interval 触发一次全量 sweep。
+// 由 main.go 在 master 节点启动；通过 gopool.Go 包裹。
+func StartTenantAlertSweepLoop(interval time.Duration) {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	// 启动时先初始化 sweepStartAt，保证第一次循环能正常推送新告警
+	sweepStartAt = time.Now().Unix()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	// 启动后立即跑一次，不等 interval
+	RunTenantAlertSweep()
+	for range ticker.C {
+		RunTenantAlertSweep()
+	}
+}
+
+// RunTenantAlertSweep 对所有活跃租户刷新一次告警。用于定时巡检任务（cron）。
+// 失败不阻断整体流程；单租户错误只记录日志。
+func RunTenantAlertSweep() {
+	tenants, err := model.ListActiveTenantsForSweep()
+	if err != nil {
+		common.SysError(fmt.Sprintf("RunTenantAlertSweep list tenants failed: %s", err.Error()))
+		return
+	}
+	successCount := 0
+	for _, t := range tenants {
+		if _, err := RefreshTenantAlerts(t.Id); err != nil {
+			common.SysError(fmt.Sprintf("RunTenantAlertSweep tenant=%d failed: %s", t.Id, err.Error()))
+			continue
+		}
+		successCount++
+	}
+	common.SysLog(fmt.Sprintf("RunTenantAlertSweep completed: %d/%d tenants refreshed",
+		successCount, len(tenants)))
+	// 触发告警推送（对新产生的 active 告警发邮件等）
+	notifyPendingAlerts()
+}
+
+// sweepStartAt 用于"变化检测"：只推送本次 sweep 过程中新建/刷新的告警。
+var sweepStartAt int64
+
+// notifyPendingAlerts 查找自上次 sweep 起新增的 active 告警并推送。
+// 推送渠道实现见 tenant_alert_notifier.go。
+func notifyPendingAlerts() {
+	since := sweepStartAt
+	sweepStartAt = time.Now().Unix()
+	if since == 0 {
+		// 第一次启动不推送历史，避免一次性大量邮件
+		return
+	}
+	records, err := model.ListAlertsCreatedSince(since)
+	if err != nil {
+		common.SysError(fmt.Sprintf("notifyPendingAlerts list failed: %s", err.Error()))
+		return
+	}
+	for _, r := range records {
+		dispatchTenantAlertNotification(r)
+	}
 }

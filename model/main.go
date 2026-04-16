@@ -311,6 +311,7 @@ func migrateDB() error {
 		&AgentLog{},
 		&AgentReport{},
 		&TenantPlan{},
+		&TenantAlertRecord{},
 	)
 	if err != nil {
 		return err
