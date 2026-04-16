@@ -180,9 +180,8 @@ func GetStatus(c *gin.Context) {
 }
 
 func GetNotice(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	notice := common.OptionMap["Notice"]
-	common.OptionMapRWMutex.RUnlock()
+	tenantId := middleware.GetTenantId(c)
+	notice := service.GetConfig(tenantId, "Notice", "")
 
 	lang := c.Query("lang")
 	if lang != "" && lang != "zh" && notice != "" {
@@ -201,12 +200,11 @@ func GetNotice(c *gin.Context) {
 }
 
 func GetAbout(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
+	tenantId := middleware.GetTenantId(c)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    common.OptionMap["About"],
+		"data":    service.GetConfig(tenantId, "About", ""),
 	})
 	return
 }
@@ -250,12 +248,11 @@ func GetMidjourney(c *gin.Context) {
 }
 
 func GetHomePageContent(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
+	tenantId := middleware.GetTenantId(c)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    common.OptionMap["HomePageContent"],
+		"data":    service.GetConfig(tenantId, "HomePageContent", ""),
 	})
 	return
 }

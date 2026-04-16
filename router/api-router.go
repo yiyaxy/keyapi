@@ -18,6 +18,7 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
+	apiRouter.Use(middleware.TenantAPIRateLimit())
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", controller.PostSetup)
@@ -612,6 +613,8 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.GET("/dashboard", controller.GetTenantDashboard)
 			tenantRoute.GET("/usage/trend", controller.GetTenantUsageTrend)
 			tenantRoute.GET("/usage/models", controller.GetTenantModelUsage)
+			tenantRoute.GET("/alerts", controller.GetTenantAlerts)
+			tenantRoute.GET("/plan", controller.GetTenantPlanInfo)
 		}
 
 		platformTenantRoute := apiRouter.Group("/platform/tenants")
@@ -619,6 +622,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			platformTenantRoute.POST("/", controller.CreateTenant)
 			platformTenantRoute.DELETE("/:id", controller.DeleteTenant)
+			platformTenantRoute.GET("/plans", controller.ListTenantPlans)
+			platformTenantRoute.PUT("/:id/plan", controller.UpdateTenantPlanHandler)
 		}
 
 		tenantInviteRoute := apiRouter.Group("/tenant/invite")

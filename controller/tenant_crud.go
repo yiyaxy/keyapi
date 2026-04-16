@@ -45,6 +45,11 @@ func CreateTenant(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Auto-create a default free plan for the new tenant
+	if _, err := model.GetTenantPlan(tenant.Id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	operatorId := c.GetInt("id")
 	if err := model.EnsureTenantMembership(operatorId, tenant.Id, model.TenantRoleAdmin, 0); err != nil {
 		common.ApiError(c, err)
@@ -101,7 +106,13 @@ func DeleteTenant(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Remove all memberships for the deleted tenant
+	if err := model.RemoveAllTenantMemberships(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	model.ClearTenantCache()
+	model.InvalidateTenantPlanCache(id)
 	common.ApiSuccess(c, nil)
 }
 

@@ -41,9 +41,27 @@ func InviteMember(c *gin.Context) {
 		role = model.TenantRoleMember
 	}
 
+	// Check member limit from tenant plan
+	plan, err := model.GetTenantPlan(tenantId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if plan.MaxMembers > 0 {
+		currentCount, err := model.CountActiveTenantMembers(tenantId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if currentCount >= int64(plan.MaxMembers) {
+			common.ApiErrorMsg(c, "已达到租户计划的成员数量上限")
+			return
+		}
+	}
+
 	// Try to find existing user by email
 	user := &model.User{Email: req.Email}
-	err := user.FillUserByEmail()
+	err = user.FillUserByEmail()
 	if err == nil && user.Id > 0 {
 		// User exists, directly add membership
 		if err := model.EnsureTenantMembership(user.Id, tenantId, role, operatorId); err != nil {
@@ -106,6 +124,23 @@ func AcceptInvite(c *gin.Context) {
 	if userId <= 0 {
 		common.ApiErrorMsg(c, "请先登录")
 		return
+	}
+	// Re-check member limit at acceptance time
+	plan, planErr := model.GetTenantPlan(invite.TenantId)
+	if planErr != nil {
+		common.ApiError(c, planErr)
+		return
+	}
+	if plan.MaxMembers > 0 {
+		currentCount, countErr := model.CountActiveTenantMembers(invite.TenantId)
+		if countErr != nil {
+			common.ApiError(c, countErr)
+			return
+		}
+		if currentCount >= int64(plan.MaxMembers) {
+			common.ApiErrorMsg(c, "该租户已达到成员数量上限，无法接受邀请")
+			return
+		}
 	}
 	if err := model.EnsureTenantMembership(userId, invite.TenantId, invite.Role, invite.InvitedBy); err != nil {
 		common.ApiError(c, err)

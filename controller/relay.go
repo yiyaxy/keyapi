@@ -129,7 +129,10 @@ func isUpstreamRelayError(err *types.NewAPIError) bool {
 		types.ErrorCodeModelPriceError,
 		types.ErrorCodeUpdateDataError,
 		types.ErrorCodeQueryDataError,
-		types.ErrorCodeGetChannelFailed:
+		types.ErrorCodeGetChannelFailed,
+		types.ErrorCodeTenantQuotaExceeded,
+		types.ErrorCodeTenantRPMExceeded,
+		types.ErrorCodeTenantModelForbidden:
 		return false
 	}
 	return true
@@ -273,6 +276,26 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		"group":     relayInfo.TokenGroup,
 		"is_stream": relayInfo.IsStream,
 	})
+
+	// ── Tenant-level enforcement: quota / RPM / model access ──
+	if relayInfo.TenantId > 0 {
+		if err := service.CheckTenantQuota(relayInfo.TenantId); err != nil {
+			addTraceEvent(c, "tenant_check", fmt.Sprintf("租户额度检查失败: %s", err.Error()), nil)
+			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeTenantQuotaExceeded, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+			return
+		}
+		if err := service.CheckTenantRPM(relayInfo.TenantId); err != nil {
+			addTraceEvent(c, "tenant_check", fmt.Sprintf("租户RPM检查失败: %s", err.Error()), nil)
+			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeTenantRPMExceeded, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+			return
+		}
+		if err := service.CheckTenantModelAccess(relayInfo.TenantId, relayInfo.OriginModelName); err != nil {
+			addTraceEvent(c, "tenant_check", fmt.Sprintf("租户模型访问检查失败: %s", err.Error()), nil)
+			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeTenantModelForbidden, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+			return
+		}
+		addTraceEvent(c, "tenant_check", "租户配额检查通过", nil)
+	}
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -450,6 +473,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if channelSuccess {
 			relayInfo.LastError = nil
+			// Increment tenant RPM counter after successful relay (in-memory path only;
+			// Redis path auto-increments inside CheckTenantRPM).
+			service.IncrementTenantRPM(relayInfo.TenantId)
 			return
 		}
 

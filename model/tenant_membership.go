@@ -247,6 +247,28 @@ func CountTenantAdmins(tenantId int) (int64, error) {
 	return count, err
 }
 
+// CountActiveTenantMembers returns the number of active (non-removed) members in a tenant.
+func CountActiveTenantMembers(tenantId int) (int64, error) {
+	var count int64
+	err := WithTenantBypass(DB).Model(&TenantMembership{}).
+		Where("tenant_id = ? AND status <> ?", tenantId, TenantMembershipStatusRemoved).
+		Count(&count).Error
+	return count, err
+}
+
+// RemoveAllTenantMemberships marks all memberships in a tenant as removed (soft removal).
+func RemoveAllTenantMemberships(tenantId int) error {
+	if tenantId <= 0 {
+		return errors.New("invalid tenantId")
+	}
+	return WithTenantBypass(DB).Model(&TenantMembership{}).
+		Where("tenant_id = ? AND status <> ?", tenantId, TenantMembershipStatusRemoved).
+		Updates(map[string]interface{}{
+			"status":     TenantMembershipStatusRemoved,
+			"updated_at": time.Now().Unix(),
+		}).Error
+}
+
 func NormalizeTenantMemberKeyword(keyword string) string {
 	return strings.TrimSpace(keyword)
 }

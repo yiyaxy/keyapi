@@ -310,6 +310,7 @@ func migrateDB() error {
 		&SiteRPMSnapshot{},
 		&AgentLog{},
 		&AgentReport{},
+		&TenantPlan{},
 	)
 	if err != nil {
 		return err
@@ -356,6 +357,8 @@ func backfillTenantId() {
 		"messages", "message_read_statuses",
 		// Phase 2 — analytics & audit
 		"user_ip_records", "quota_data", "agent_logs", "agent_reports",
+		// Phase 5 — billing
+		"tenant_plans",
 	}
 	for _, table := range tables {
 		result := DB.Exec(fmt.Sprintf("UPDATE %s SET tenant_id = ? WHERE tenant_id = 0", table), DefaultTenantId)
@@ -476,6 +479,7 @@ func migrateDBFast() error {
 		{&SiteRPMSnapshot{}, "SiteRPMSnapshot"},
 		{&AgentLog{}, "AgentLog"},
 		{&AgentReport{}, "AgentReport"},
+		{&TenantPlan{}, "TenantPlan"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
