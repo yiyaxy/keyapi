@@ -429,7 +429,7 @@ func (user *User) Insert(inviterId int) error {
 	// 用户创建成功后，根据角色初始化边栏配置
 	// 需要重新获取用户以确保有正确的ID和Role
 	var createdUser User
-	if err := DB.Where("username = ?", user.Username).First(&createdUser).Error; err == nil {
+	if err := WithTenantBypass(DB).Where("username = ?", user.Username).First(&createdUser).Error; err == nil {
 		// 生成基于角色的默认边栏配置
 		defaultSidebarConfig := generateDefaultSidebarConfigForRole(createdUser.Role)
 		if defaultSidebarConfig != "" {
@@ -499,7 +499,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	// 用户创建成功后，根据角色初始化边栏配置
 	var createdUser User
-	if err := DB.Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
+	if err := WithTenantBypass(DB).Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
 		defaultSidebarConfig := generateDefaultSidebarConfigForRole(createdUser.Role)
 		if defaultSidebarConfig != "" {
 			currentSetting := createdUser.GetSetting()
@@ -982,7 +982,7 @@ func DeltaUpdateUserQuota(id int, delta int) (err error) {
 //}
 
 func GetRootUser() (user *User) {
-	DB.Where("role = ?", common.RoleRootUser).First(&user)
+	WithTenantBypass(DB).Where("role = ?", common.RoleRootUser).First(&user)
 	return user
 }
 
@@ -1140,7 +1140,7 @@ func AddIpToUserSet(userId int, ip string) {
 
 func RootUserExists() bool {
 	var user User
-	err := DB.Where("role = ?", common.RoleRootUser).First(&user).Error
+	err := WithTenantBypass(DB).Where("role = ?", common.RoleRootUser).First(&user).Error
 	if err != nil {
 		return false
 	}

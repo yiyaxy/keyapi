@@ -76,6 +76,7 @@ func createRootAccountIfNeed() error {
 			return err
 		}
 		rootUser := User{
+			TenantId:    DefaultTenantId,
 			Username:    "root",
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
@@ -84,7 +85,7 @@ func createRootAccountIfNeed() error {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
+		WithTenantBypass(DB).Create(&rootUser)
 	}
 	return nil
 }

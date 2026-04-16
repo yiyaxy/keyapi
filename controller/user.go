@@ -193,6 +193,7 @@ func Register(c *gin.Context) {
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
 	cleanUser := model.User{
+		TenantId:    middleware.GetTenantId(c),
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
@@ -210,7 +211,7 @@ func Register(c *gin.Context) {
 
 	// 获取插入后的用户ID
 	var insertedUser model.User
-	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
+	if err := model.DB.Where("username = ? AND tenant_id = ?", cleanUser.Username, middleware.GetTenantId(c)).First(&insertedUser).Error; err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
@@ -224,6 +225,7 @@ func Register(c *gin.Context) {
 		}
 		// 生成默认令牌
 		token := model.Token{
+			TenantId:           middleware.GetTenantId(c),
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
 			Key:                key,
@@ -868,6 +870,7 @@ func CreateUser(c *gin.Context) {
 	}
 	// Even for admin users, we cannot fully trust them!
 	cleanUser := model.User{
+		TenantId:    middleware.GetTenantId(c),
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,

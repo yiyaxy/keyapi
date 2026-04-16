@@ -182,6 +182,7 @@ func UpdateMidjourneyTaskBulk() {
 						logger.LogError(ctx, "fail to increase user quota: "+err.Error())
 					}
 					model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+						TenantId:  model.GetUserTenantId(task.UserId),
 						UserId:    task.UserId,
 						LogType:   model.LogTypeRefund,
 						Content:   "",

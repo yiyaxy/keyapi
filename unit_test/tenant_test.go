@@ -187,3 +187,79 @@ func TestLogHasTenantId(t *testing.T) {
 		t.Error("Log struct missing TenantId field")
 	}
 }
+
+// ---------- explicitTenantIDFromContext tests ----------
+// These test the guardrail-safe extraction that returns 0 (not DefaultTenantId)
+// when no tenant key is set in context.
+
+func TestExplicitTenantID_BackgroundContext_ReturnsZero(t *testing.T) {
+	// context.Background() has no tenant key set.
+	// explicitTenantIDFromContext must return 0 (not DefaultTenantId=1).
+	// This prevents the guardrail callback from silently injecting tenant_id=1
+	// on queries that use DB directly (no request context).
+	tid := model.ExplicitTenantIDFromContext(context.Background())
+	if tid != 0 {
+		t.Errorf("context.Background() should yield 0 from ExplicitTenantIDFromContext, got %d (would silently rewrite non-default tenant queries)", tid)
+	}
+}
+
+func TestExplicitTenantID_NilContext_ReturnsZero(t *testing.T) {
+	tid := model.ExplicitTenantIDFromContext(nil)
+	if tid != 0 {
+		t.Errorf("nil context should yield 0 from ExplicitTenantIDFromContext, got %d", tid)
+	}
+}
+
+func TestExplicitTenantID_WithTenantSet_ReturnsTenant(t *testing.T) {
+	ctx := context.WithValue(context.Background(), constant.ContextKeyTenantId, 42)
+	tid := model.ExplicitTenantIDFromContext(ctx)
+	if tid != 42 {
+		t.Errorf("expected 42 from ExplicitTenantIDFromContext, got %d", tid)
+	}
+}
+
+func TestExplicitTenantID_GinContext_WithTenant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/test", nil)
+	c.Set("tenant_id", 7)
+
+	tid := model.ExplicitTenantIDFromContext(c)
+	if tid != 7 {
+		t.Errorf("expected 7 from gin.Context with tenant_id=7, got %d", tid)
+	}
+}
+
+func TestExplicitTenantID_GinContext_WithoutTenant_ReturnsZero(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/test", nil)
+	// No tenant_id set on gin.Context
+
+	tid := model.ExplicitTenantIDFromContext(c)
+	if tid != 0 {
+		t.Errorf("gin.Context without tenant_id should yield 0, got %d", tid)
+	}
+}
+
+// ---------- TenantIDFromContext vs ExplicitTenantIDFromContext contrast ----------
+
+func TestFallbackDifference_Background(t *testing.T) {
+	ctx := context.Background()
+	// TenantIDFromContext returns DefaultTenantId (safe for business logic)
+	withFallback := model.TenantIDFromContext(ctx)
+	// ExplicitTenantIDFromContext returns 0 (safe for guardrails)
+	withoutFallback := model.ExplicitTenantIDFromContext(ctx)
+
+	if withFallback != model.DefaultTenantId {
+		t.Errorf("TenantIDFromContext(Background) should return DefaultTenantId=%d, got %d", model.DefaultTenantId, withFallback)
+	}
+	if withoutFallback != 0 {
+		t.Errorf("ExplicitTenantIDFromContext(Background) should return 0, got %d", withoutFallback)
+	}
+	if withFallback == withoutFallback {
+		t.Error("the two functions should return different values for context.Background() — that's the whole point")
+	}
+}

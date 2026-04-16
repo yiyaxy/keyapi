@@ -661,7 +661,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	// Group upgrade is deferred to activation
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s（待激活）", logPlanTitle, logMoney, logPaymentMethod)
-		RecordTopUpLog(logUserId, 0, msg)
+		RecordTopUpLogWithTenant(GetUserTenantId(logUserId), logUserId, 0, msg)
 	}
 	if logRewardAmount > 0 && logUserId > 0 {
 		go ProcessSubscriptionRebate(logUserId, logRewardAmount, logPlanTitle)
@@ -754,7 +754,7 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 	// Group upgrade is deferred to activation
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s（待激活）", logPlanTitle, logMoney, logPaymentMethod)
-		RecordTopUpLog(logUserId, 0, msg)
+		RecordTopUpLogWithTenant(GetUserTenantId(logUserId), logUserId, 0, msg)
 	}
 	if logRewardAmount > 0 && logUserId > 0 {
 		go ProcessSubscriptionRebate(logUserId, logRewardAmount, logPlanTitle)

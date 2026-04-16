@@ -111,6 +111,7 @@ func PostSetup(c *gin.Context) {
 			return
 		}
 		rootUser := model.User{
+			TenantId:    model.DefaultTenantId,
 			Username:    req.Username,
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
@@ -119,7 +120,7 @@ func PostSetup(c *gin.Context) {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		err = model.DB.Create(&rootUser).Error
+		err = model.WithTenantBypass(model.DB).Create(&rootUser).Error
 		if err != nil {
 			c.JSON(200, gin.H{
 				"success": false,

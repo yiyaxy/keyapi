@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -71,6 +72,7 @@ func WeChatAuth(c *gin.Context) {
 		return
 	}
 	user := model.User{
+		TenantId: middleware.GetTenantId(c),
 		WeChatId: wechatId,
 	}
 	if model.IsWeChatIdAlreadyTaken(wechatId) {

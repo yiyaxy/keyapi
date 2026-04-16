@@ -116,7 +116,7 @@ func Recharge(referenceId string, customerId string) (err error) {
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopUpLog(topUp.UserId, int(quota), fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
+	RecordTopUpLogWithTenant(GetUserTenantId(topUp.UserId), topUp.UserId, int(quota), fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
 
 	// 处理充值返利
 	ProcessTopUpRebate(topUp.UserId, int(quota))
@@ -328,7 +328,7 @@ func ManualCompleteTopUp(tradeNo string) error {
 	}
 
 	// 事务外记录日志，避免阻塞
-	RecordTopUpLog(userId, quotaToAdd, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
+	RecordTopUpLogWithTenant(GetUserTenantId(userId), userId, quotaToAdd, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
 
 	// 处理充值返利
 	ProcessTopUpRebate(userId, quotaToAdd)
@@ -479,7 +479,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopUpLog(topUp.UserId, int(quota), fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
+	RecordTopUpLogWithTenant(GetUserTenantId(topUp.UserId), topUp.UserId, int(quota), fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
 
 	// 处理充值返利
 	ProcessTopUpRebate(topUp.UserId, int(quota))
@@ -540,7 +540,7 @@ func RechargeWaffo(tradeNo string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordLogWithTenant(DefaultTenantId, topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money)) // TODO: Phase 2 — TopUp needs TenantId
+		RecordLogWithTenant(GetUserTenantId(topUp.UserId), topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
 	}
 
 	return nil
