@@ -202,6 +202,28 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
+	// 租户计划级令牌数量校验（best-effort：Count→Compare→Insert 非原子，
+	// 高并发下可能越界 1-N 个。admin 低频操作可接受，token_limit 告警兜底）
+	tenantId := middleware.GetTenantId(c)
+	plan, err := model.GetTenantPlan(tenantId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if plan.MaxTokens > 0 {
+		tenantTokenCount, err := model.CountTenantTokens(tenantId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if int(tenantTokenCount) >= plan.MaxTokens {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("已达到租户计划的令牌数量上限 (%d)", plan.MaxTokens),
+			})
+			return
+		}
+	}
 	key, err := common.GenerateKey()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
