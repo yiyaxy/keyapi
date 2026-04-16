@@ -1,5 +1,9 @@
 # 第一阶段：前端构建 (Bun)
-FROM oven/bun:latest AS builder
+# 注意：docker.io/oven/bun 在中国大陆 ECS 上拉取经常超时被包装成 not found。
+# 如果系统已配 registry-mirrors，下面两行可以二选一：
+#   FROM oven/bun:latest AS builder
+# 默认走 1ms.run 公共加速前缀，避免 BuildKit 直连 docker.io
+FROM docker.1ms.run/oven/bun:latest AS builder
 
 # 替换 Bun/Node 相关的源 (可选，如果 bun install 慢可以加)
 WORKDIR /build
@@ -13,7 +17,7 @@ COPY ./VERSION .
 RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat VERSION) bun run build
 
 # 第二阶段：后端构建 (Golang)
-FROM golang:alpine AS builder2
+FROM docker.1ms.run/library/golang:alpine AS builder2
 
 # 设置 Go 代理加速依赖下载 (非常关键)
 ENV GO111MODULE=on \
@@ -35,7 +39,7 @@ COPY --from=builder /build/dist ./web/dist
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
 # 第三阶段：最终运行镜像 (Debian)
-FROM debian:bookworm-slim
+FROM docker.1ms.run/library/debian:bookworm-slim
 
 # 关键改动：在 apt-get update 之前更换为国内镜像源
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources || \
