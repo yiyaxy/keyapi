@@ -14,6 +14,7 @@ import (
 
 type Token struct {
 	Id                 int            `json:"id"`
+	TenantId           int            `json:"tenant_id" gorm:"index;not null;default:1"`
 	UserId             int            `json:"user_id" gorm:"index"`
 	Key                string         `json:"key" gorm:"type:char(48);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`
@@ -293,6 +294,10 @@ func GetTokenByKeyWithContext(ctx context.Context, key string, fromDB bool) (tok
 	q := DB
 	if ctx != nil {
 		q = DB.WithContext(ctx)
+	}
+	// Multi-tenant: scope by tenant when context carries tenant_id
+	if tenantId := TenantIDFromContext(ctx); tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
 	}
 	err = q.Where(commonKeyCol+" = ?", key).First(&token).Error
 	return token, err

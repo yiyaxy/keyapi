@@ -18,6 +18,7 @@ import (
 
 type Log struct {
 	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2"`
+	TenantId         int    `json:"tenant_id" gorm:"index;not null;default:1"`
 	UserId           int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
 	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
@@ -72,12 +73,37 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	return logs, err
 }
 
+// tenantIdFromGinContext extracts tenant_id from gin.Context without importing middleware.
+func tenantIdFromGinContext(c *gin.Context) int {
+	if c == nil {
+		return DefaultTenantId
+	}
+	if tid, exists := c.Get("tenant_id"); exists {
+		if id, ok := tid.(int); ok && id > 0 {
+			return id
+		}
+	}
+	return DefaultTenantId
+}
+
 func RecordLog(userId int, logType int, content string) {
+	RecordLogWithTenant(DefaultTenantId, userId, logType, content)
+}
+
+// RecordLogCtx records a log entry with tenant_id extracted from gin.Context.
+// Use this instead of RecordLog in all controller/handler code.
+func RecordLogCtx(c *gin.Context, userId int, logType int, content string) {
+	RecordLogWithTenant(tenantIdFromGinContext(c), userId, logType, content)
+}
+
+// RecordLogWithTenant records a log entry with explicit tenant_id.
+func RecordLogWithTenant(tenantId int, userId int, logType int, content string) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
 	username, _ := GetUsernameById(userId, false)
 	log := &Log{
+		TenantId:  tenantId,
 		UserId:    userId,
 		Username:  username,
 		CreatedAt: common.GetTimestamp(),
@@ -93,8 +119,14 @@ func RecordLog(userId int, logType int, content string) {
 // RecordTopUpLog records a topup log with quota amount.
 // This ensures the quota field is properly set for topup records.
 func RecordTopUpLog(userId int, quota int, content string) {
+	RecordTopUpLogWithTenant(DefaultTenantId, userId, quota, content)
+}
+
+// RecordTopUpLogWithTenant records a topup log entry with explicit tenant_id.
+func RecordTopUpLogWithTenant(tenantId int, userId int, quota int, content string) {
 	username, _ := GetUsernameById(userId, false)
 	log := &Log{
+		TenantId:  tenantId,
 		UserId:    userId,
 		Username:  username,
 		CreatedAt: common.GetTimestamp(),
@@ -115,6 +147,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(other)
 	log := &Log{
+		TenantId:         tenantIdFromGinContext(c),
 		UserId:           userId,
 		Username:         username,
 		CreatedAt:        common.GetTimestamp(),
@@ -164,6 +197,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(params.Other)
 	log := &Log{
+		TenantId:         tenantIdFromGinContext(c),
 		UserId:           userId,
 		Username:         username,
 		CreatedAt:        common.GetTimestamp(),
@@ -380,14 +414,19 @@ type Stat struct {
 	SmartCacheSavingsQuota int64 `json:"smartcache_savings_quota"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, tenantId int) (stat Stat, err error) {
 	_ = logType
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) as quota")
-
-	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) as rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) as tpm")
 	totalUsageQuery := LOG_DB.Table("logs").Select("count(*) as total_requests, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) as total_tokens")
 	savingsQuery := LOG_DB.Table("logs").Select("quota, prompt_tokens, completion_tokens, other")
+
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+		rpmTpmQuery = rpmTpmQuery.Where("tenant_id = ?", tenantId)
+		totalUsageQuery = totalUsageQuery.Where("tenant_id = ?", tenantId)
+		savingsQuery = savingsQuery.Where("tenant_id = ?", tenantId)
+	}
 
 	if username != "" {
 		tx = tx.Where("username = ?", username)
@@ -576,12 +615,15 @@ func buildAnalyticsSummary(items []AnalyticsItem, startTs, endTs int64) Analytic
 	return summary
 }
 
-func SumQuotaByChannel(startTs, endTs int64) (*AnalyticsResult, error) {
+func SumQuotaByChannel(startTs, endTs int64, tenantId int) (*AnalyticsResult, error) {
 	var items []AnalyticsItem
 	tx := LOG_DB.Table("logs").
 		Select("logs.channel_id as cid, COALESCE(sum(logs.quota),0) as quota, count(*) as count, COALESCE(sum(logs.prompt_tokens),0) + COALESCE(sum(logs.completion_tokens),0) as tokens").
 		Where("logs.type = ?", LogTypeConsume).
 		Group("logs.channel_id")
+	if tenantId > 0 {
+		tx = tx.Where("logs.tenant_id = ?", tenantId)
+	}
 	if startTs != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTs)
 	}
@@ -631,12 +673,15 @@ func SumQuotaByChannel(startTs, endTs int64) (*AnalyticsResult, error) {
 	return &AnalyticsResult{Items: items, Summary: summary}, nil
 }
 
-func SumQuotaByModel(startTs, endTs int64) (*AnalyticsResult, error) {
+func SumQuotaByModel(startTs, endTs int64, tenantId int) (*AnalyticsResult, error) {
 	var items []AnalyticsItem
 	tx := LOG_DB.Table("logs").
 		Select("model_name as name, COALESCE(sum(quota),0) as quota, count(*) as count, COALESCE(sum(prompt_tokens),0) + COALESCE(sum(completion_tokens),0) as tokens").
 		Where("type = ?", LogTypeConsume).
 		Group("model_name")
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
 	if startTs != 0 {
 		tx = tx.Where("created_at >= ?", startTs)
 	}
@@ -650,12 +695,15 @@ func SumQuotaByModel(startTs, endTs int64) (*AnalyticsResult, error) {
 	return &AnalyticsResult{Items: items, Summary: summary}, nil
 }
 
-func SumQuotaByUser(startTs, endTs int64) (*AnalyticsResult, error) {
+func SumQuotaByUser(startTs, endTs int64, tenantId int) (*AnalyticsResult, error) {
 	var items []AnalyticsItem
 	tx := LOG_DB.Table("logs").
 		Select("logs.user_id as uid, COALESCE(sum(logs.quota),0) as quota, count(*) as count, COALESCE(sum(logs.prompt_tokens),0) + COALESCE(sum(logs.completion_tokens),0) as tokens").
 		Where("logs.type = ?", LogTypeConsume).
 		Group("logs.user_id")
+	if tenantId > 0 {
+		tx = tx.Where("logs.tenant_id = ?", tenantId)
+	}
 	if startTs != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTs)
 	}

@@ -24,6 +24,7 @@ const UserNameMaxLength = 20
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
 	Id               int            `json:"id"`
+	TenantId         int            `json:"tenant_id" gorm:"index;not null;default:1"`
 	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
 	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
 	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
@@ -315,6 +316,10 @@ func GetUserByIdWithContext(ctx context.Context, id int, selectAll bool) (*User,
 	if ctx != nil {
 		q = DB.WithContext(ctx)
 	}
+	// Multi-tenant: scope by tenant when context carries tenant_id
+	if tenantId := TenantIDFromContext(ctx); tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	var err error
 	if selectAll {
 		err = q.First(&user, "id = ?", id).Error
@@ -437,16 +442,16 @@ func (user *User) Insert(inviterId int) error {
 	}
 
 	if common.QuotaForNewUser > 0 {
-		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
 		rebateSetting := GetEffectiveRebateSetting(inviterId)
 		if rebateSetting.InviteeReward > 0 {
 			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
+			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
 		if rebateSetting.RegisterReward > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
+			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
 			_ = inviteUser(inviterId, rebateSetting.RegisterReward)
 			CreateAffRebateLog(&AffRebateLog{
 				UserId:      inviterId,
@@ -506,15 +511,15 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	}
 
 	if common.QuotaForNewUser > 0 {
-		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
 		if common.QuotaForInvitee > 0 {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId, common.QuotaForInviter)
 		}
 	}
@@ -711,14 +716,17 @@ func IsEmailAlreadyTaken(email string) bool {
 	return DB.Unscoped().Where("LOWER(email) = ?", strings.ToLower(email)).Find(&User{}).RowsAffected > 0
 }
 
-func ResetUserPasswordByEmail(email string, password string) error {
+func ResetUserPasswordByEmail(email string, password string, tenantId int) error {
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}
-	// 邮箱大小写不敏感，先检查匹配的用户数量
 	normalizedEmail := strings.ToLower(email)
+	q := DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	var count int64
-	if err := DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail).Count(&count).Error; err != nil {
+	if err := q.Count(&count).Error; err != nil {
 		return fmt.Errorf("查询邮箱失败: %w", err)
 	}
 	if count == 0 {
@@ -731,8 +739,11 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail).Update("password", hashedPassword).Error
-	return err
+	uq := DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail)
+	if tenantId > 0 {
+		uq = uq.Where("tenant_id = ?", tenantId)
+	}
+	return uq.Update("password", hashedPassword).Error
 }
 
 func IsAdmin(userId int) bool {
@@ -779,12 +790,22 @@ func IsAdmin(userId int) bool {
 //}
 
 func ValidateAccessToken(token string) (user *User) {
+	return ValidateAccessTokenWithTenant(token, 0)
+}
+
+// ValidateAccessTokenWithTenant validates an access token, optionally scoped to a tenant.
+// tenantId=0 means no tenant filtering (backward compatible).
+func ValidateAccessTokenWithTenant(token string, tenantId int) (user *User) {
 	if token == "" {
 		return nil
 	}
 	token = strings.Replace(token, "Bearer ", "", 1)
 	user = &User{}
-	if DB.Where("access_token = ?", token).First(user).RowsAffected == 1 {
+	q := DB.Where("access_token = ?", token)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	if q.First(user).RowsAffected == 1 {
 		return user
 	}
 	return nil

@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -96,6 +97,12 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
 	session.Set("session_version", common.SessionVersion)
+	// Multi-tenant: persist tenant in session (read from TenantResolve middleware)
+	if tid, exists := c.Get(string(constant.ContextKeyTenantId)); exists {
+		session.Set("tenant_id", tid)
+	} else {
+		session.Set("tenant_id", model.DefaultTenantId)
+	}
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
@@ -560,7 +567,7 @@ func GetUserModels(c *gin.Context) {
 	groups := service.GetUserUsableGroups(user.Group)
 	var models []string
 	for group := range groups {
-		for _, g := range model.GetGroupEnabledModels(group) {
+		for _, g := range model.GetGroupEnabledModels(group, middleware.GetTenantId(c)) {
 			if !common.StringsContains(models, g) {
 				models = append(models, g)
 			}
@@ -611,7 +618,7 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	if originUser.Quota != updatedUser.Quota {
-		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
+		model.RecordLogCtx(c, originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -650,7 +657,7 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
-	model.RecordLog(user.Id, model.LogTypeManage, fmt.Sprintf("admin cleared %s binding for user %s", bindingType, user.Username))
+	model.RecordLogCtx(c, user.Id, model.LogTypeManage, fmt.Sprintf("admin cleared %s binding for user %s", bindingType, user.Username))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

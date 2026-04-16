@@ -86,6 +86,13 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	// Multi-tenant: extract tenant_id from request context
+	tenantId := model.DefaultTenantId
+	if tid, exists := common.GetContextKey(param.Ctx, constant.ContextKeyTenantId); exists {
+		if id, ok := tid.(int); ok && id > 0 {
+			tenantId = id
+		}
+	}
 
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
@@ -101,7 +108,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		}
 		channel, selectGroup = selectFromGroupChain(param, chainGroups)
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())
+		channel, err = model.GetRandomSatisfiedChannel(tenantId, param.TokenGroup, param.ModelName, param.GetRetry())
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
@@ -128,6 +135,13 @@ func ParseGroupChain(groupChain string, userGroup string) []string {
 
 // selectFromGroupChain iterates through a group chain (auto or custom) to find an available channel.
 func selectFromGroupChain(param *RetryParam, groups []string) (*model.Channel, string) {
+	// Multi-tenant: extract tenant_id from request context
+	tenantId := model.DefaultTenantId
+	if tid, exists := common.GetContextKey(param.Ctx, constant.ContextKeyTenantId); exists {
+		if id, ok := tid.(int); ok && id > 0 {
+			tenantId = id
+		}
+	}
 	startGroupIndex := 0
 	crossGroupRetry := common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
 
@@ -148,7 +162,7 @@ func selectFromGroupChain(param *RetryParam, groups []string) (*model.Channel, s
 		}
 		logger.LogDebug(param.Ctx, "Chain selecting group: %s, priorityRetry: %d", group, priorityRetry)
 
-		channel, _ = model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry)
+		channel, _ = model.GetRandomSatisfiedChannel(tenantId, group, param.ModelName, priorityRetry)
 		if channel == nil {
 			logger.LogDebug(param.Ctx, "No available channel in group %s for model %s at priorityRetry %d, trying next group", group, param.ModelName, priorityRetry)
 			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)

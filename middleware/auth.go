@@ -48,7 +48,7 @@ func authHelper(c *gin.Context, minRole int) {
 			c.Abort()
 			return
 		}
-		user := model.ValidateAccessToken(accessToken)
+		user := model.ValidateAccessTokenWithTenant(accessToken, GetTenantId(c))
 		if user != nil && user.Username != "" {
 			if !validUserInfo(user.Username, user.Role) {
 				c.JSON(http.StatusOK, gin.H{
@@ -137,6 +137,24 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
+	// Multi-tenant: validate tenant match
+	// Access token auth: already tenant-scoped at query time (ValidateAccessTokenWithTenant).
+	// Session auth: validate session tenant matches request tenant.
+	if !useAccessToken {
+		requestTenantId := GetTenantId(c)
+		sessionTenantId := session.Get("tenant_id")
+		if sessionTenantId != nil {
+			if stid, ok := sessionTenantId.(int); ok && stid != 0 && stid != requestTenantId {
+				c.JSON(http.StatusForbidden, gin.H{
+					"success": false,
+					"message": "session does not belong to this tenant",
+				})
+				c.Abort()
+				return
+			}
+		}
+	}
+
 	// 防止不同newapi版本冲突，导致数据不通用
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
 	c.Set("username", username)
@@ -325,6 +343,13 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 
+		// Multi-tenant: reject token if it doesn't belong to the resolved tenant
+		requestTenantId := GetTenantId(c)
+		if token.TenantId != 0 && token.TenantId != requestTenantId {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "token does not belong to this tenant")
+			return
+		}
+
 		allowIps := token.GetIpLimits()
 		if len(allowIps) > 0 {
 			clientIp := c.ClientIP()
@@ -359,7 +384,7 @@ func TokenAuth() func(c *gin.Context) {
 		// When token has no group set, check if the user's group has channels.
 		// If not (e.g. VIP/SVIP are pure billing tiers), fall back to "default".
 		if tokenGroup == "" {
-			if !model.GroupHasChannels(userGroup) {
+			if !model.GroupHasChannels(userGroup, GetTenantId(c)) {
 				userGroup = "default"
 			}
 		}

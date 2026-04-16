@@ -832,7 +832,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	if rebateSetting.SubscriptionRebateCount == -1 {
 		countDisplay = fmt.Sprintf("%d/∞", user.SubscriptionPurchaseCount+1)
 	}
-	RecordLog(user.InviterId, LogTypeSystem, fmt.Sprintf("邀请用户订阅返利「%s」 %s（订阅次数: %s）",
+	RecordLogWithTenant(user.TenantId, user.InviterId, LogTypeSystem, fmt.Sprintf("邀请用户订阅返利「%s」 %s（订阅次数: %s）",
 		planTitle, logger.LogQuota(rewardQuota), countDisplay))
 	common.SysLog(fmt.Sprintf("ProcessSubscriptionRebate: 返利成功 inviterId=%d, userId=%d, rewardQuota=%d, planTitle=%s, count=%s",
 		user.InviterId, userId, rewardQuota, planTitle, countDisplay))

@@ -183,7 +183,7 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 		group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if group == "" {
 			userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-			if model.GroupHasChannels(userGroup) {
+			if model.GroupHasChannels(userGroup, GetTenantId(c)) {
 				group = userGroup
 			} else {
 				group = "default"

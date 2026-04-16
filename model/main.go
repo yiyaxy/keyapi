@@ -183,6 +183,7 @@ func InitDB() (err error) {
 		}
 		DB = db
 		relaymetrics.RegisterGormCallbacks(DB)
+		RegisterTenantCallbacks(DB)
 		// MySQL charset/collation startup check: ensure Chinese-capable charset
 		if common.UsingMySQL {
 			if err := checkMySQLChineseSupport(DB); err != nil {
@@ -223,6 +224,7 @@ func InitLogDB() (err error) {
 			db = db.Debug()
 		}
 		LOG_DB = db
+		RegisterTenantCallbacks(LOG_DB)
 		// If log DB is MySQL, also ensure Chinese-capable charset
 		if common.LogSqlType == common.DatabaseTypeMySQL {
 			if err := checkMySQLChineseSupport(LOG_DB); err != nil {
@@ -258,6 +260,7 @@ func migrateDB() error {
 	}
 
 	err := DB.AutoMigrate(
+		&Tenant{},
 		&Channel{},
 		&Token{},
 		&User{},
@@ -319,7 +322,36 @@ func migrateDB() error {
 		}
 	}
 
+	// Bootstrap default tenant and backfill existing data
+	if err := EnsureDefaultTenant(); err != nil {
+		log.Printf("Warning: failed to bootstrap default tenant: %v", err)
+	}
+	backfillTenantId()
+
 	return nil
+}
+
+// backfillTenantId sets tenant_id = DefaultTenantId for any existing rows that have tenant_id = 0.
+// Idempotent: only updates rows where tenant_id = 0.
+func backfillTenantId() {
+	tables := []string{"users", "channels", "tokens", "abilities", "logs"}
+	for _, table := range tables {
+		result := DB.Exec(fmt.Sprintf("UPDATE %s SET tenant_id = ? WHERE tenant_id = 0", table), DefaultTenantId)
+		if result.Error != nil {
+			log.Printf("Warning: tenant_id backfill for %s: %v", table, result.Error)
+		} else if result.RowsAffected > 0 {
+			log.Printf("Backfilled tenant_id=%d for %d rows in %s", DefaultTenantId, result.RowsAffected, table)
+		}
+	}
+	// Handle LOG_DB if separate
+	if LOG_DB != DB {
+		result := LOG_DB.Exec("UPDATE logs SET tenant_id = ? WHERE tenant_id = 0", DefaultTenantId)
+		if result.Error != nil {
+			log.Printf("Warning: tenant_id backfill for LOG_DB logs: %v", result.Error)
+		} else if result.RowsAffected > 0 {
+			log.Printf("Backfilled tenant_id=%d for %d rows in LOG_DB logs", DefaultTenantId, result.RowsAffected)
+		}
+	}
 }
 
 func migrateDBFast() error {
@@ -330,6 +362,7 @@ func migrateDBFast() error {
 		model interface{}
 		name  string
 	}{
+		{&Tenant{}, "Tenant"},
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},

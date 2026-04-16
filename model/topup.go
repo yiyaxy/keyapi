@@ -407,7 +407,7 @@ func ProcessTopUpRebate(userId int, quotaAdded int) {
 	if rebateSetting.TopUpRebateCount == -1 {
 		countDisplay = fmt.Sprintf("%d/∞", user.TopUpCount+1)
 	}
-	RecordLog(user.InviterId, LogTypeSystem, fmt.Sprintf("邀请用户充值返利 %s（充值次数: %s）",
+	RecordLogWithTenant(user.TenantId, user.InviterId, LogTypeSystem, fmt.Sprintf("邀请用户充值返利 %s（充值次数: %s）",
 		logger.LogQuota(rebateQuota), countDisplay))
 	common.SysLog(fmt.Sprintf("ProcessTopUpRebate: 返利成功 inviterId=%d, userId=%d, rebateQuota=%d, topUpCount=%s",
 		user.InviterId, userId, rebateQuota, countDisplay))
@@ -540,7 +540,7 @@ func RechargeWaffo(tradeNo string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
+		RecordLogWithTenant(DefaultTenantId, topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money)) // TODO: Phase 2 — TopUp needs TenantId
 	}
 
 	return nil

@@ -470,7 +470,7 @@ func DisableMultiAccountUsersByIp(c *gin.Context) {
 
 	// audit/manage log
 	auditSummary := "disable multi-account users by ip=" + req.Ip + ", window=[" + strconv.FormatInt(start, 10) + "," + strconv.FormatInt(end, 10) + "]" + ", disabled=" + strconv.Itoa(len(disabled)) + ", skipped=" + strconv.Itoa(len(skipped))
-	model.RecordLog(operatorId, model.LogTypeManage, auditSummary)
+	model.RecordLogCtx(c, operatorId, model.LogTypeManage, auditSummary)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

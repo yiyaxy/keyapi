@@ -396,7 +396,7 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	password := common.GenerateVerificationCode(12)
-	err = model.ResetUserPasswordByEmail(req.Email, password)
+	err = model.ResetUserPasswordByEmail(req.Email, password, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
