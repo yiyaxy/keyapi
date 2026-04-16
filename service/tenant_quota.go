@@ -28,6 +28,24 @@ func getRPMEntry(tenantId int) *rpmEntry {
 	return entry
 }
 
+// ---------- in-memory TPM counter (fallback when Redis is unavailable) ----------
+
+type tpmEntry struct {
+	mu      sync.Mutex
+	tokens  int64
+	resetAt time.Time
+}
+
+var (
+	tpmCounters sync.Map // tenantId -> *tpmEntry
+)
+
+func getTPMEntry(tenantId int) *tpmEntry {
+	val, _ := tpmCounters.LoadOrStore(tenantId, &tpmEntry{})
+	entry := val.(*tpmEntry)
+	return entry
+}
+
 // ---------- public enforcement API ----------
 
 // CheckTenantQuota verifies that a tenant hasn't exceeded their plan's total quota limit.
@@ -185,4 +203,41 @@ func IncrementTenantRPM(tenantId int) {
 		return
 	}
 	entry.count++
+}
+
+// IncrementTenantTPM adds `tokens` to the tenant's current-minute TPM counter.
+// Called after a relay request completes with known prompt+completion token usage.
+// Redis path uses INCRBY; in-memory path uses atomic add with a 60s rolling window.
+func IncrementTenantTPM(tenantId int, tokens int) {
+	if tenantId <= 0 || tokens <= 0 {
+		return
+	}
+
+	if common.RedisEnabled && common.RDB != nil {
+		ctx := context.Background()
+		key := fmt.Sprintf("tenant_tpm:%d", tenantId)
+		newCount, err := common.RDB.IncrBy(ctx, key, int64(tokens)).Result()
+		if err != nil {
+			common.SysError(fmt.Sprintf("IncrementTenantTPM redis error tenant=%d: %s", tenantId, err.Error()))
+			return
+		}
+		if newCount == int64(tokens) {
+			// First increment in this minute — set TTL
+			common.RDB.Expire(ctx, key, 60*time.Second)
+		}
+		return
+	}
+
+	// In-memory counter
+	entry := getTPMEntry(tenantId)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	now := time.Now()
+	if now.After(entry.resetAt) {
+		entry.tokens = int64(tokens)
+		entry.resetAt = now.Add(60 * time.Second)
+		return
+	}
+	entry.tokens += int64(tokens)
 }
