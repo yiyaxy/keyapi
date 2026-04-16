@@ -239,6 +239,14 @@ func RequireTenantMembership(tenantId int, userId int, callerPlatformRole int) e
 	return nil
 }
 
+func CountTenantAdmins(tenantId int) (int64, error) {
+	var count int64
+	err := WithTenantBypass(DB).Model(&TenantMembership{}).
+		Where("tenant_id = ? AND role = ? AND status = ?", tenantId, TenantRoleAdmin, TenantMembershipStatusActive).
+		Count(&count).Error
+	return count, err
+}
+
 func NormalizeTenantMemberKeyword(keyword string) string {
 	return strings.TrimSpace(keyword)
 }

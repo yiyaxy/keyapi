@@ -75,6 +75,21 @@ func CreateTenant(tenant *Tenant) error {
 	return DB.Create(tenant).Error
 }
 
+// UpdateTenant updates specified fields for a tenant by ID.
+func UpdateTenant(id int, updates map[string]interface{}) error {
+	if id <= 0 {
+		return errors.New("invalid tenant id")
+	}
+	result := DB.Model(&Tenant{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("tenant not found")
+	}
+	return nil
+}
+
 // EnsureDefaultTenant creates the default tenant (id=1) if it doesn't exist.
 func EnsureDefaultTenant() error {
 	var count int64

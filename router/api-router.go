@@ -600,8 +600,31 @@ func SetApiRouter(router *gin.Engine) {
 		tenantRoute := apiRouter.Group("/tenant")
 		tenantRoute.Use(middleware.TenantAdminAuth())
 		{
+			tenantRoute.GET("/info", controller.GetTenant)
+			tenantRoute.PUT("/", controller.UpdateTenant)
 			tenantRoute.GET("/members", controller.ListTenantMembers)
 			tenantRoute.PUT("/members", controller.UpdateTenantMember)
+			tenantRoute.POST("/invite", controller.InviteMember)
+			tenantRoute.DELETE("/members", controller.RemoveMember)
+			tenantRoute.GET("/config", controller.GetTenantConfig)
+			tenantRoute.PUT("/config", controller.UpdateTenantConfig)
+			tenantRoute.DELETE("/config", controller.DeleteTenantConfig)
+			tenantRoute.GET("/dashboard", controller.GetTenantDashboard)
+			tenantRoute.GET("/usage/trend", controller.GetTenantUsageTrend)
+			tenantRoute.GET("/usage/models", controller.GetTenantModelUsage)
+		}
+
+		platformTenantRoute := apiRouter.Group("/platform/tenants")
+		platformTenantRoute.Use(middleware.PlatformAdminAuth())
+		{
+			platformTenantRoute.POST("/", controller.CreateTenant)
+			platformTenantRoute.DELETE("/:id", controller.DeleteTenant)
+		}
+
+		tenantInviteRoute := apiRouter.Group("/tenant/invite")
+		tenantInviteRoute.Use(middleware.UserAuth())
+		{
+			tenantInviteRoute.GET("/accept", controller.AcceptInvite)
 		}
 	}
 }

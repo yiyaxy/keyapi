@@ -263,6 +263,8 @@ func migrateDB() error {
 	err := DB.AutoMigrate(
 		&Tenant{},
 		&TenantMembership{},
+		&TenantInvite{},
+		&TenantOption{},
 		&Channel{},
 		&Token{},
 		&User{},
@@ -430,6 +432,7 @@ func migrateDBFast() error {
 	}{
 		{&Tenant{}, "Tenant"},
 		{&TenantMembership{}, "TenantMembership"},
+		{&TenantInvite{}, "TenantInvite"},
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
