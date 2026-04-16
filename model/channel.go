@@ -1016,6 +1016,19 @@ func CountAllChannels() (int64, error) {
 	return total, err
 }
 
+// CountTenantChannels returns the number of channels owned by the tenant.
+// Channel uses hard-delete (no DeletedAt column), so this counts all rows
+// present in the channels table for this tenant.
+// Used to enforce TenantPlan.MaxChannels at channel-creation time.
+func CountTenantChannels(tenantId int) (int64, error) {
+	if tenantId <= 0 {
+		return 0, fmt.Errorf("invalid tenantId: %d", tenantId)
+	}
+	var count int64
+	err := DB.Model(&Channel{}).Where("tenant_id = ?", tenantId).Count(&count).Error
+	return count, err
+}
+
 // CountAllTags returns number of non-empty distinct tags
 func CountAllTags() (int64, error) {
 	var total int64
