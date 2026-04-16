@@ -413,6 +413,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		other["input_tokens_total"] = usage.InputTokens
 	}
 
+	// Tenant TPM counter: accumulate real prompt+completion tokens for this minute.
+	IncrementTenantTPM(relayInfo.TenantId, summary.PromptTokens+summary.CompletionTokens)
+
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
