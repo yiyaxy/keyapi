@@ -23,6 +23,9 @@ tiktoken_cache
 .cache
 web/bun.lock
 plans
+!docs/superpowers/
+!docs/superpowers/plans/
+!docs/superpowers/plans/*.md
 .claude
 
 electron/node_modules
@@ -31,6 +34,7 @@ data/
 .gomodcache/
 .gocache-temp
 .gopath
+.gotmp/
 worktree/
 deploy/
 *.tar.gz
