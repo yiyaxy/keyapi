@@ -23,10 +23,10 @@ type Provider interface {
 	GetUserInfo(ctx context.Context, token *OAuthToken) (*OAuthUser, error)
 
 	// IsUserIDTaken checks if the provider user ID is already associated with an account
-	IsUserIDTaken(providerUserID string) bool
+	IsUserIDTaken(providerUserID string, tenantId int) bool
 
 	// FillUserByProviderID fills the user model by provider user ID
-	FillUserByProviderID(user *model.User, providerUserID string) error
+	FillUserByProviderID(user *model.User, providerUserID string, tenantId int) error
 
 	// SetProviderUserID sets the provider user ID on the user model
 	SetProviderUserID(user *model.User, providerUserID string)

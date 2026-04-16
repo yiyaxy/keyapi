@@ -47,7 +47,7 @@ func GetAnalyticsByUser(c *gin.Context) {
 
 func GetSiteRPM(c *gin.Context) {
 	windowSeconds, _ := strconv.ParseInt(c.DefaultQuery("window_seconds", "60"), 10, 64)
-	result, err := model.GetSiteRPM(windowSeconds)
+	result, err := model.GetSiteRPM(windowSeconds, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -99,4 +99,3 @@ func GetChannelMonitor(c *gin.Context) {
 	}
 	common.ApiSuccess(c, data)
 }
-

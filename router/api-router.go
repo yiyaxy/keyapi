@@ -68,7 +68,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		ticketAdminRoute := apiRouter.Group("/ticket/admin")
-		ticketAdminRoute.Use(middleware.AdminAuth())
+		ticketAdminRoute.Use(middleware.TenantAdminAuth())
 		{
 			ticketAdminRoute.GET("", controller.TicketAdminList)
 			ticketAdminRoute.GET("/:id", controller.TicketAdminDetail)
@@ -78,7 +78,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		ticketStorageRoute := apiRouter.Group("/ticket_storage")
-		ticketStorageRoute.Use(middleware.AdminAuth())
+		ticketStorageRoute.Use(middleware.PlatformAdminAuth())
 		{
 			ticketStorageRoute.PUT("/secret", controller.UpsertTicketStorageSecret)
 		}
@@ -95,7 +95,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		invoiceAdminRoute := apiRouter.Group("/invoice/admin")
-		invoiceAdminRoute.Use(middleware.AdminAuth())
+		invoiceAdminRoute.Use(middleware.TenantAdminAuth())
 		{
 			invoiceAdminRoute.GET("/applications", controller.InvoiceAdminListApplications)
 			invoiceAdminRoute.GET("/applications/:id", controller.InvoiceAdminGetApplicationDetail)
@@ -128,7 +128,7 @@ func SetApiRouter(router *gin.Engine) {
 			selfRoute.Use(middleware.UserAuth())
 			{
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
-			selfRoute.GET("/self/channel-groups", controller.GetChannelGroups)
+				selfRoute.GET("/self/channel-groups", controller.GetChannelGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", controller.UpdateSelf)
@@ -170,7 +170,7 @@ func SetApiRouter(router *gin.Engine) {
 			}
 
 			adminRoute := userRoute.Group("/")
-			adminRoute.Use(middleware.AdminAuth())
+			adminRoute.Use(middleware.TenantAdminAuth())
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
@@ -208,7 +208,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
-		subscriptionAdminRoute.Use(middleware.AdminAuth())
+		subscriptionAdminRoute.Use(middleware.TenantAdminAuth())
 		{
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
@@ -339,7 +339,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")
-		redemptionRoute.Use(middleware.AdminAuth())
+		redemptionRoute.Use(middleware.TenantAdminAuth())
 		{
 			redemptionRoute.GET("/", controller.GetAllRedemptions)
 			redemptionRoute.GET("/search", controller.SearchRedemptions)
@@ -350,24 +350,24 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
 		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
-		logRoute.DELETE("/", middleware.AdminAuth(), controller.DeleteHistoryLogs)
-		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
+		logRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllLogs)
+		logRoute.DELETE("/", middleware.TenantAdminAuth(), controller.DeleteHistoryLogs)
+		logRoute.GET("/stat", middleware.TenantAdminAuth(), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
-		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
-		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
+		logRoute.GET("/channel_affinity_usage_cache", middleware.TenantAdminAuth(), controller.GetChannelAffinityUsageCacheStats)
+		logRoute.GET("/search", middleware.TenantAdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 		logRoute.GET("/self/cache_savings", middleware.UserAuth(), controller.GetCacheSavingsSelf)
-		logRoute.GET("/cache_savings", middleware.AdminAuth(), controller.GetCacheSavingsStat)
-		logRoute.GET("/request/:request_id", middleware.AdminAuth(), controller.GetRequestTrace)
+		logRoute.GET("/cache_savings", middleware.TenantAdminAuth(), controller.GetCacheSavingsStat)
+		logRoute.GET("/request/:request_id", middleware.TenantAdminAuth(), controller.GetRequestTrace)
 
 		dataRoute := apiRouter.Group("/data")
-		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
+		dataRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllQuotaDates)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 
 		analyticsRoute := apiRouter.Group("/analytics")
-		analyticsRoute.Use(middleware.AdminAuth())
+		analyticsRoute.Use(middleware.TenantAdminAuth())
 		{
 			analyticsRoute.GET("/channel", controller.GetAnalyticsByChannel)
 			analyticsRoute.GET("/model", controller.GetAnalyticsByModel)
@@ -396,7 +396,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		agentLogRoute := apiRouter.Group("/agent-logs")
-		agentLogRoute.Use(middleware.AdminAuth())
+		agentLogRoute.Use(middleware.TenantAdminAuth())
 		{
 			agentLogRoute.GET("", controller.GetAgentLogs)
 			agentLogRoute.POST("", controller.CreateAgentLog)
@@ -405,7 +405,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		agentReportRoute := apiRouter.Group("/agent-reports")
-		agentReportRoute.Use(middleware.AdminAuth())
+		agentReportRoute.Use(middleware.TenantAdminAuth())
 		{
 			agentReportRoute.GET("", controller.GetAgentReports)
 			agentReportRoute.GET("/:id", controller.GetAgentReportDetail)
@@ -415,7 +415,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		purchaseRoute := apiRouter.Group("/purchase")
-		purchaseRoute.Use(middleware.AdminAuth())
+		purchaseRoute.Use(middleware.TenantAdminAuth())
 		{
 			purchaseRoute.GET("/topup", controller.AdminListTopUpOrders)
 			purchaseRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
@@ -432,16 +432,16 @@ func SetApiRouter(router *gin.Engine) {
 			affTransferRoute.POST("/", middleware.UserAuth(), controller.UserCreateAffTransfer)
 			affTransferRoute.GET("/self", middleware.UserAuth(), controller.UserGetAffTransferHistory)
 			affTransferRoute.GET("/pending_quota", middleware.UserAuth(), controller.UserGetPendingQuota)
-			affTransferRoute.GET("/", middleware.AdminAuth(), controller.AdminGetAllAffTransfers)
-			affTransferRoute.POST("/process", middleware.AdminAuth(), controller.AdminProcessAffTransfer)
-			affTransferRoute.POST("/batch_approve", middleware.AdminAuth(), controller.AdminBatchApproveAllPending)
-			affTransferRoute.GET("/stats", middleware.AdminAuth(), controller.AdminGetAffTransferStats)
+			affTransferRoute.GET("/", middleware.TenantAdminAuth(), controller.AdminGetAllAffTransfers)
+			affTransferRoute.POST("/process", middleware.TenantAdminAuth(), controller.AdminProcessAffTransfer)
+			affTransferRoute.POST("/batch_approve", middleware.TenantAdminAuth(), controller.AdminBatchApproveAllPending)
+			affTransferRoute.GET("/stats", middleware.TenantAdminAuth(), controller.AdminGetAffTransferStats)
 			affTransferRoute.GET("/rebate_logs", middleware.UserAuth(), controller.UserGetAffRebateLogs)
 		}
 
 		// Prompt rule routes (admin)
 		promptRuleRoute := apiRouter.Group("/prompt_rule")
-		promptRuleRoute.Use(middleware.AdminAuth())
+		promptRuleRoute.Use(middleware.TenantAdminAuth())
 		{
 			promptRuleRoute.GET("/", controller.GetAllPromptRules)
 			promptRuleRoute.POST("/", controller.CreatePromptRule)
@@ -451,7 +451,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		// User rebate setting routes (admin)
 		rebateSettingRoute := apiRouter.Group("/user_rebate_setting")
-		rebateSettingRoute.Use(middleware.AdminAuth())
+		rebateSettingRoute.Use(middleware.TenantAdminAuth())
 		{
 			rebateSettingRoute.GET("/", controller.GetAllUserRebateSettings)
 			rebateSettingRoute.GET("/:id", controller.GetUserRebateSetting)
@@ -462,7 +462,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		// Message routes (admin)
 		messageAdminRoute := apiRouter.Group("/message/admin")
-		messageAdminRoute.Use(middleware.AdminAuth())
+		messageAdminRoute.Use(middleware.TenantAdminAuth())
 		{
 			messageAdminRoute.POST("/", controller.AdminCreateMessage)
 			messageAdminRoute.GET("/", controller.AdminListMessages)
@@ -486,7 +486,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		ipRoute := apiRouter.Group("/ip")
-		ipRoute.Use(middleware.AdminAuth())
+		ipRoute.Use(middleware.TenantAdminAuth())
 		{
 			ipRoute.GET("/lookup", controller.IpLookup)
 			ipRoute.GET("/users", controller.IpUsers)
@@ -522,13 +522,13 @@ func SetApiRouter(router *gin.Engine) {
 			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)
 		}
 		groupRoute := apiRouter.Group("/group")
-		groupRoute.Use(middleware.AdminAuth())
+		groupRoute.Use(middleware.TenantAdminAuth())
 		{
 			groupRoute.GET("/", controller.GetGroups)
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
-		prefillGroupRoute.Use(middleware.AdminAuth())
+		prefillGroupRoute.Use(middleware.TenantAdminAuth())
 		{
 			prefillGroupRoute.GET("/", controller.GetPrefillGroups)
 			prefillGroupRoute.POST("/", controller.CreatePrefillGroup)
@@ -538,16 +538,16 @@ func SetApiRouter(router *gin.Engine) {
 
 		mjRoute := apiRouter.Group("/mj")
 		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
-		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
+		mjRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllMidjourney)
 
 		taskRoute := apiRouter.Group("/task")
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
-			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
+			taskRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllTask)
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")
-		vendorRoute.Use(middleware.AdminAuth())
+		vendorRoute.Use(middleware.PlatformAdminAuth())
 		{
 			vendorRoute.GET("/", controller.GetAllVendors)
 			vendorRoute.GET("/search", controller.SearchVendors)
@@ -558,7 +558,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		modelsRoute := apiRouter.Group("/models")
-		modelsRoute.Use(middleware.AdminAuth())
+		modelsRoute.Use(middleware.PlatformAdminAuth())
 		{
 			modelsRoute.GET("/sync_upstream/preview", controller.SyncUpstreamPreview)
 			modelsRoute.POST("/sync_upstream", controller.SyncUpstreamModels)
@@ -573,7 +573,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		// Deployments (model deployment management)
 		deploymentsRoute := apiRouter.Group("/deployments")
-		deploymentsRoute.Use(middleware.AdminAuth())
+		deploymentsRoute.Use(middleware.PlatformAdminAuth())
 		{
 			deploymentsRoute.GET("/settings", controller.GetModelDeploymentSettings)
 			deploymentsRoute.POST("/settings/test-connection", controller.TestIoNetConnection)
@@ -595,6 +595,13 @@ func SetApiRouter(router *gin.Engine) {
 			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
 			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+		}
+
+		tenantRoute := apiRouter.Group("/tenant")
+		tenantRoute.Use(middleware.TenantAdminAuth())
+		{
+			tenantRoute.GET("/members", controller.ListTenantMembers)
+			tenantRoute.PUT("/members", controller.UpdateTenantMember)
 		}
 	}
 }

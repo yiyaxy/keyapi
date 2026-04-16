@@ -202,7 +202,7 @@ func GetCacheSavingsSelf(c *gin.Context) {
 	userId := c.GetInt("id")
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	result, err := model.GetUserCacheSavings(userId, startTimestamp, endTimestamp)
+	result, err := model.GetUserCacheSavings(userId, startTimestamp, endTimestamp, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -213,7 +213,7 @@ func GetCacheSavingsSelf(c *gin.Context) {
 func GetCacheSavingsStat(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	result, err := model.GetAllCacheSavings(startTimestamp, endTimestamp)
+	result, err := model.GetAllCacheSavings(startTimestamp, endTimestamp, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return

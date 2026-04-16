@@ -269,19 +269,27 @@ func (channel *Channel) SaveWithoutKey() error {
 	return DB.Omit("key").Save(channel).Error
 }
 
-func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
+func GetAllChannelsByTenant(tenantId int, startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
 	var channels []*Channel
 	var err error
 	order := "priority desc"
 	if idSort {
 		order = "id desc"
 	}
+	query := DB
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if selectAll {
-		err = DB.Order(order).Find(&channels).Error
+		err = query.Order(order).Find(&channels).Error
 	} else {
-		err = DB.Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+		err = query.Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
 	}
 	return channels, err
+}
+
+func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
+	return GetAllChannelsByTenant(0, startIdx, num, selectAll, idSort)
 }
 
 func GetChannelsByTag(tag string, idSort bool, selectAll bool) ([]*Channel, error) {
@@ -298,7 +306,7 @@ func GetChannelsByTag(tag string, idSort bool, selectAll bool) ([]*Channel, erro
 	return channels, err
 }
 
-func SearchChannels(keyword string, group string, model string, idSort bool) ([]*Channel, error) {
+func SearchChannelsByTenant(tenantId int, keyword string, group string, model string, idSort bool) ([]*Channel, error) {
 	var channels []*Channel
 	modelsCol := "`models`"
 
@@ -320,6 +328,9 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 
 	// 构造基础查询
 	baseQuery := DB.Model(&Channel{}).Omit("key")
+	if tenantId > 0 {
+		baseQuery = baseQuery.Where("tenant_id = ?", tenantId)
+	}
 
 	// 构造WHERE子句
 	var whereClause string
@@ -347,13 +358,21 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 	return channels, nil
 }
 
-func GetChannelById(id int, selectAll bool) (*Channel, error) {
+func SearchChannels(keyword string, group string, model string, idSort bool) ([]*Channel, error) {
+	return SearchChannelsByTenant(0, keyword, group, model, idSort)
+}
+
+func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil
+	query := DB.Where("id = ?", id)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if selectAll {
-		err = DB.First(channel, "id = ?", id).Error
+		err = query.First(channel).Error
 	} else {
-		err = DB.Omit("key").First(channel, "id = ?", id).Error
+		err = query.Omit("key").First(channel).Error
 	}
 	if err != nil {
 		return nil, err
@@ -362,6 +381,10 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 		return nil, errors.New("channel not found")
 	}
 	return channel, nil
+}
+
+func GetChannelById(id int, selectAll bool) (*Channel, error) {
+	return GetChannelByIdWithTenant(id, 0, selectAll)
 }
 
 func BatchInsertChannels(channels []Channel) error {
@@ -774,16 +797,24 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
-func UpdateChannelUsedQuota(id int, quota int) {
+func UpdateChannelUsedQuota(id int, quota int, tenantId ...int) {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeChannelUsedQuota, resolvedTenantId, id, quota)
 		return
 	}
-	updateChannelUsedQuota(id, quota)
+	updateChannelUsedQuota(id, quota, tenantId...)
 }
 
-func updateChannelUsedQuota(id int, quota int) {
-	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+func updateChannelUsedQuota(id int, quota int, tenantId ...int) {
+	query := DB.Model(&Channel{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}

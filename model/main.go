@@ -262,6 +262,7 @@ func migrateDB() error {
 
 	err := DB.AutoMigrate(
 		&Tenant{},
+		&TenantMembership{},
 		&Channel{},
 		&Token{},
 		&User{},
@@ -328,6 +329,7 @@ func migrateDB() error {
 		log.Printf("Warning: failed to bootstrap default tenant: %v", err)
 	}
 	backfillTenantId()
+	backfillTenantMemberships()
 
 	return nil
 }
@@ -336,6 +338,7 @@ func migrateDB() error {
 // Idempotent: only updates rows where tenant_id = 0.
 func backfillTenantId() {
 	tables := []string{
+		"tenant_memberships",
 		// Phase 1
 		"users", "channels", "tokens", "abilities", "logs",
 		// Phase 2 — financial
@@ -371,6 +374,52 @@ func backfillTenantId() {
 	}
 }
 
+func backfillTenantMemberships() {
+	if DB == nil {
+		return
+	}
+	type userSeed struct {
+		Id       int
+		TenantId int
+		Role     int
+		Status   int
+	}
+	var users []userSeed
+	err := WithTenantBypass(DB).Model(&User{}).
+		Select("id", "tenant_id", "role", "status").
+		Find(&users).Error
+	if err != nil {
+		log.Printf("Warning: tenant membership backfill query failed: %v", err)
+		return
+	}
+	for _, user := range users {
+		if user.Id <= 0 {
+			continue
+		}
+		tenantId := user.TenantId
+		if tenantId <= 0 {
+			tenantId = DefaultTenantId
+		}
+		role := TenantRoleMember
+		if user.Role >= common.RoleAdminUser {
+			role = TenantRoleAdmin
+		}
+		status := TenantMembershipStatusActive
+		if user.Status != common.UserStatusEnabled {
+			status = TenantMembershipStatusDisabled
+		}
+		result := WithTenantBypass(DB).Where("tenant_id = ? AND user_id = ?", tenantId, user.Id).
+			Assign(map[string]interface{}{
+				"role":   role,
+				"status": status,
+			}).
+			FirstOrCreate(&TenantMembership{TenantId: tenantId, UserId: user.Id})
+		if result.Error != nil {
+			log.Printf("Warning: tenant membership backfill for user %d failed: %v", user.Id, result.Error)
+		}
+	}
+}
+
 func migrateDBFast() error {
 
 	var wg sync.WaitGroup
@@ -380,6 +429,7 @@ func migrateDBFast() error {
 		name  string
 	}{
 		{&Tenant{}, "Tenant"},
+		{&TenantMembership{}, "TenantMembership"},
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},

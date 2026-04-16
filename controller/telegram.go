@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -32,7 +33,7 @@ func TelegramBind(c *gin.Context) {
 		return
 	}
 	telegramId := params["id"][0]
-	if model.IsTelegramIdAlreadyTaken(telegramId) {
+	if model.IsTelegramIdAlreadyTaken(telegramId, middleware.GetTenantId(c)) {
 		c.JSON(200, gin.H{
 			"message": "该 Telegram 账户已被绑定",
 			"success": false,
@@ -88,9 +89,16 @@ func TelegramLogin(c *gin.Context) {
 
 	telegramId := params["id"][0]
 	user := model.User{TelegramId: telegramId}
-	if err := user.FillUserByTelegramId(); err != nil {
+	if err := user.FillUserByTelegramIdWithTenant(middleware.GetTenantId(c)); err != nil {
 		c.JSON(200, gin.H{
 			"message": err.Error(),
+			"success": false,
+		})
+		return
+	}
+	if !model.TenantMembershipAllowsAccess(&user, middleware.GetTenantId(c)) {
+		c.JSON(200, gin.H{
+			"message": "用户不属于当前租户或成员已被禁用",
 			"success": false,
 		})
 		return

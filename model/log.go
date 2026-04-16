@@ -796,14 +796,21 @@ type CacheSavingsResult struct {
 	CacheHitCount     int64 `json:"cache_hit_count"`
 }
 
-func GetUserCacheSavings(userId int, startTimestamp, endTimestamp int64) (*CacheSavingsResult, error) {
+func GetUserCacheSavings(userId int, startTimestamp, endTimestamp int64, tenantId ...int) (*CacheSavingsResult, error) {
 	return getCacheSavings(func(tx *gorm.DB) *gorm.DB {
-		return tx.Where("user_id = ?", userId)
+		tx = tx.Where("user_id = ?", userId)
+		if len(tenantId) > 0 && tenantId[0] > 0 {
+			tx = tx.Where("tenant_id = ?", tenantId[0])
+		}
+		return tx
 	}, startTimestamp, endTimestamp)
 }
 
-func GetAllCacheSavings(startTimestamp, endTimestamp int64) (*CacheSavingsResult, error) {
+func GetAllCacheSavings(startTimestamp, endTimestamp int64, tenantId ...int) (*CacheSavingsResult, error) {
 	return getCacheSavings(func(tx *gorm.DB) *gorm.DB {
+		if len(tenantId) > 0 && tenantId[0] > 0 {
+			tx = tx.Where("tenant_id = ?", tenantId[0])
+		}
 		return tx
 	}, startTimestamp, endTimestamp)
 }
@@ -929,7 +936,7 @@ type SiteRPMEntry struct {
 }
 
 type SiteRPMResult struct {
-	WindowSeconds int64          `json:"window_seconds"`
+	WindowSeconds int64 `json:"window_seconds"`
 	All           struct {
 		RPM float64 `json:"rpm"`
 	} `json:"all"`
@@ -939,7 +946,7 @@ type SiteRPMResult struct {
 // GetSiteRPM fetches consume logs within window_seconds and groups by site_label from other.admin_info.
 // It selects only (other, created_at) to keep the scan lightweight.
 // We cap at 50 000 rows to bound memory usage for very high-traffic deployments.
-func GetSiteRPM(windowSeconds int64) (*SiteRPMResult, error) {
+func GetSiteRPM(windowSeconds int64, tenantId ...int) (*SiteRPMResult, error) {
 	if windowSeconds <= 0 {
 		windowSeconds = 60
 	}
@@ -950,11 +957,13 @@ func GetSiteRPM(windowSeconds int64) (*SiteRPMResult, error) {
 		CreatedAt int64  `gorm:"column:created_at"`
 	}
 	var rows []row
-	if err := LOG_DB.Table("logs").
+	query := LOG_DB.Table("logs").
 		Select("other, created_at").
-		Where("type = ? AND created_at >= ?", LogTypeConsume, since).
-		Limit(50000).
-		Scan(&rows).Error; err != nil {
+		Where("type = ? AND created_at >= ?", LogTypeConsume, since)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	if err := query.Limit(50000).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 

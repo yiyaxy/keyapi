@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -261,5 +262,29 @@ func TestFallbackDifference_Background(t *testing.T) {
 	}
 	if withFallback == withoutFallback {
 		t.Error("the two functions should return different values for context.Background() — that's the whole point")
+	}
+}
+
+func TestTenantMembershipRoleValidation(t *testing.T) {
+	if !model.IsValidTenantRole(model.TenantRoleMember) {
+		t.Fatal("tenant member role should be valid")
+	}
+	if !model.IsValidTenantRole(model.TenantRoleAdmin) {
+		t.Fatal("tenant admin role should be valid")
+	}
+	if model.IsValidTenantRole(common.RoleRootUser) {
+		t.Fatal("root role should not be accepted as tenant membership role")
+	}
+}
+
+func TestEffectiveRoleMapping(t *testing.T) {
+	if got := model.EffectiveRole(common.RoleCommonUser, model.TenantRoleMember); got != common.RoleCommonUser {
+		t.Fatalf("expected member effective role=%d, got %d", common.RoleCommonUser, got)
+	}
+	if got := model.EffectiveRole(common.RoleCommonUser, model.TenantRoleAdmin); got != common.RoleAdminUser {
+		t.Fatalf("expected tenant admin effective role=%d, got %d", common.RoleAdminUser, got)
+	}
+	if got := model.EffectiveRole(common.RoleRootUser, model.TenantRoleMember); got != common.RoleRootUser {
+		t.Fatalf("expected platform root effective role=%d, got %d", common.RoleRootUser, got)
 	}
 }

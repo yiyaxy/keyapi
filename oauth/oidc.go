@@ -159,13 +159,13 @@ func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAu
 	}, nil
 }
 
-func (p *OIDCProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsOidcIdAlreadyTaken(providerUserID)
+func (p *OIDCProvider) IsUserIDTaken(providerUserID string, tenantId int) bool {
+	return model.IsOidcIdAlreadyTaken(providerUserID, tenantId)
 }
 
-func (p *OIDCProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *OIDCProvider) FillUserByProviderID(user *model.User, providerUserID string, tenantId int) error {
 	user.OidcId = providerUserID
-	return user.FillUserByOidcId()
+	return user.FillUserByOidcIdWithTenant(tenantId)
 }
 
 func (p *OIDCProvider) SetProviderUserID(user *model.User, providerUserID string) {

@@ -120,7 +120,7 @@ func GetAllChannels(c *gin.Context) {
 		}
 		total, _ = model.CountAllTags()
 	} else {
-		baseQuery := model.DB.Model(&model.Channel{})
+		baseQuery := model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
 		if typeFilter >= 0 {
 			baseQuery = baseQuery.Where("type = ?", typeFilter)
 		}
@@ -149,7 +149,7 @@ func GetAllChannels(c *gin.Context) {
 		clearChannelInfo(datum)
 	}
 
-	countQuery := model.DB.Model(&model.Channel{})
+	countQuery := model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
 	if statusFilter == common.ChannelStatusEnabled {
 		countQuery = countQuery.Where("status = ?", common.ChannelStatusEnabled)
 	} else if statusFilter == 0 {
@@ -208,7 +208,7 @@ func FetchUpstreamModels(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelById(id, true)
+	channel, err := model.GetChannelByIdWithTenant(id, middleware.GetTenantId(c), true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -273,7 +273,7 @@ func SearchChannels(c *gin.Context) {
 			}
 		}
 	} else {
-		channels, err := model.SearchChannels(keyword, group, modelKeyword, idSort)
+		channels, err := model.SearchChannelsByTenant(middleware.GetTenantId(c), keyword, group, modelKeyword, idSort)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,

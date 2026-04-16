@@ -170,9 +170,9 @@ type SubscriptionPlan struct {
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
 	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
-	Status  string `json:"status" gorm:"type:varchar(16);not null;default:'active';index"`
-	Enabled bool   `json:"enabled" gorm:"default:true"`
-	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
+	Status    string `json:"status" gorm:"type:varchar(16);not null;default:'active';index"`
+	Enabled   bool   `json:"enabled" gorm:"default:true"`
+	SortOrder int    `json:"sort_order" gorm:"type:int;default:0"`
 
 	StripePriceId  string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
 	CreemProductId string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
@@ -218,8 +218,8 @@ type SubscriptionOrder struct {
 	Id       int     `json:"id"`
 	TenantId int     `json:"tenant_id" gorm:"index;default:1"`
 	UserId   int     `json:"user_id" gorm:"index"`
-	PlanId int     `json:"plan_id" gorm:"index"`
-	Money  float64 `json:"money"`
+	PlanId   int     `json:"plan_id" gorm:"index"`
+	Money    float64 `json:"money"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -257,12 +257,16 @@ func (o *SubscriptionOrder) Update() error {
 	return DB.Save(o).Error
 }
 
-func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
+func GetSubscriptionOrderByTradeNo(tradeNo string, tenantId ...int) *SubscriptionOrder {
 	if tradeNo == "" {
 		return nil
 	}
 	var order SubscriptionOrder
-	if err := DB.Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
+	query := DB.Where("trade_no = ?", tradeNo)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	if err := query.First(&order).Error; err != nil {
 		return nil
 	}
 	return &order
@@ -280,7 +284,7 @@ type UserSubscription struct {
 	Id       int `json:"id"`
 	TenantId int `json:"tenant_id" gorm:"index;default:1"`
 	UserId   int `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
-	PlanId int `json:"plan_id" gorm:"index"`
+	PlanId   int `json:"plan_id" gorm:"index"`
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
@@ -719,13 +723,13 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 		}
 		// Always persist epay snapshot (even if already success, idempotent update of snapshot fields)
 		snapUpdates := map[string]interface{}{
-			"epay_trade_no":        snap.TradeNo,
-			"epay_order_id_wx_al":  snap.OrderIdWxAl,
-			"epay_type":            snap.Type,
-			"epay_tdid":            snap.Tdid,
-			"epay_pid":             snap.Pid,
-			"epay_trade_status":    snap.TradeStatus,
-			"epay_notify_payload":  snap.NotifyPayload,
+			"epay_trade_no":       snap.TradeNo,
+			"epay_order_id_wx_al": snap.OrderIdWxAl,
+			"epay_type":           snap.Type,
+			"epay_tdid":           snap.Tdid,
+			"epay_pid":            snap.Pid,
+			"epay_trade_status":   snap.TradeStatus,
+			"epay_notify_payload": snap.NotifyPayload,
 		}
 		if err := tx.Model(&order).Updates(snapUpdates).Error; err != nil {
 			return err
@@ -815,7 +819,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	}
 
 	// 给邀请者增加 AffQuota 和 AffHistoryQuota
-	err = DB.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]interface{}{
+	err = DB.Model(&User{}).Where("id = ? AND tenant_id = ?", user.InviterId, user.TenantId).Updates(map[string]interface{}{
 		"aff_quota":   gorm.Expr("aff_quota + ?", rewardQuota),
 		"aff_history": gorm.Expr("aff_history + ?", rewardQuota),
 	}).Error
@@ -836,7 +840,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	})
 
 	// 被邀请人 subscription_purchase_count +1
-	err = DB.Model(&User{}).Where("id = ?", userId).Update("subscription_purchase_count", gorm.Expr("subscription_purchase_count + ?", 1)).Error
+	err = DB.Model(&User{}).Where("id = ? AND tenant_id = ?", userId, user.TenantId).Update("subscription_purchase_count", gorm.Expr("subscription_purchase_count + ?", 1)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("ProcessSubscriptionRebate: 更新用户订阅购买次数失败 userId=%d, err=%v", userId, err))
 		return

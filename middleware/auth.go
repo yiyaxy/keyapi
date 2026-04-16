@@ -30,13 +30,14 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
-func authHelper(c *gin.Context, minRole int) {
+func authHelper(c *gin.Context, minRole int) bool {
 	session := sessions.Default(c)
 	username := session.Get("username")
-	role := session.Get("role")
 	id := session.Get("id")
 	status := session.Get("status")
 	useAccessToken := false
+	var userRecord *model.User
+	var err error
 	if username == nil {
 		// Check access token
 		accessToken := c.Request.Header.Get("Authorization")
@@ -46,21 +47,21 @@ func authHelper(c *gin.Context, minRole int) {
 				"message": "无权进行此操作，未登录且未提供 access token",
 			})
 			c.Abort()
-			return
+			return false
 		}
 		user := model.ValidateAccessTokenWithTenant(accessToken, GetTenantId(c))
 		if user != nil && user.Username != "" {
+			userRecord = user
 			if !validUserInfo(user.Username, user.Role) {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
 					"message": "无权进行此操作，用户信息无效",
 				})
 				c.Abort()
-				return
+				return false
 			}
 			// Token is valid
 			username = user.Username
-			role = user.Role
 			id = user.Id
 			status = user.Status
 			useAccessToken = true
@@ -70,7 +71,18 @@ func authHelper(c *gin.Context, minRole int) {
 				"message": "无权进行此操作，access token 无效",
 			})
 			c.Abort()
-			return
+			return false
+		}
+	}
+	if userRecord == nil {
+		userRecord, err = model.GetUserByIdWithContext(c.Request.Context(), id.(int), false)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "无权进行此操作，用户不存在",
+			})
+			c.Abort()
+			return false
 		}
 	}
 	// Check session version (only for cookie sessions, skip for access tokens)
@@ -82,7 +94,7 @@ func authHelper(c *gin.Context, minRole int) {
 				"message": "会话已过期，请重新登录",
 			})
 			c.Abort()
-			return
+			return false
 		}
 	}
 	// get header New-Api-User
@@ -93,7 +105,7 @@ func authHelper(c *gin.Context, minRole int) {
 			"message": "无权进行此操作，未提供 New-Api-User",
 		})
 		c.Abort()
-		return
+		return false
 	}
 	apiUserId, err := strconv.Atoi(apiUserIdStr)
 	if err != nil {
@@ -102,7 +114,7 @@ func authHelper(c *gin.Context, minRole int) {
 			"message": "无权进行此操作，New-Api-User 格式错误",
 		})
 		c.Abort()
-		return
+		return false
 
 	}
 	if id != apiUserId {
@@ -111,7 +123,7 @@ func authHelper(c *gin.Context, minRole int) {
 			"message": "无权进行此操作，New-Api-User 与登录用户不匹配",
 		})
 		c.Abort()
-		return
+		return false
 	}
 	if status.(int) == common.UserStatusDisabled {
 		c.JSON(http.StatusOK, gin.H{
@@ -119,23 +131,41 @@ func authHelper(c *gin.Context, minRole int) {
 			"message": "用户已被封禁",
 		})
 		c.Abort()
-		return
+		return false
 	}
-	if role.(int) < minRole {
+	info, err := model.GetTenantMembershipAuthInfo(GetTenantId(c), userRecord)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "无权进行此操作，当前租户成员状态无效",
+		})
+		c.Abort()
+		return false
+	}
+	if info.TenantStatus != model.TenantMembershipStatusActive && info.PlatformRole < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "无权进行此操作，当前租户成员状态无效",
+		})
+		c.Abort()
+		return false
+	}
+	effectiveRole := info.EffectiveRole
+	if effectiveRole < minRole {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无权进行此操作，权限不足",
 		})
 		c.Abort()
-		return
+		return false
 	}
-	if !validUserInfo(username.(string), role.(int)) {
+	if !validUserInfo(username.(string), effectiveRole) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无权进行此操作，用户信息无效",
 		})
 		c.Abort()
-		return
+		return false
 	}
 	// Multi-tenant: validate tenant match
 	// Access token auth: already tenant-scoped at query time (ValidateAccessTokenWithTenant).
@@ -150,7 +180,7 @@ func authHelper(c *gin.Context, minRole int) {
 					"message": "session does not belong to this tenant",
 				})
 				c.Abort()
-				return
+				return false
 			}
 		}
 	}
@@ -158,13 +188,14 @@ func authHelper(c *gin.Context, minRole int) {
 	// 防止不同newapi版本冲突，导致数据不通用
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
 	c.Set("username", username)
-	c.Set("role", role)
+	c.Set("role", effectiveRole)
+	c.Set("platform_role", info.PlatformRole)
+	c.Set("tenant_role", info.TenantRole)
 	c.Set("id", id)
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
-
-	c.Next()
+	return true
 }
 
 func TryUserAuth() func(c *gin.Context) {
@@ -180,19 +211,28 @@ func TryUserAuth() func(c *gin.Context) {
 
 func UserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		authHelper(c, common.RoleCommonUser)
+		if !authHelper(c, common.RoleCommonUser) {
+			return
+		}
+		c.Next()
 	}
 }
 
 func AdminAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		authHelper(c, common.RoleAdminUser)
+		if !authHelper(c, common.RoleAdminUser) {
+			return
+		}
+		c.Next()
 	}
 }
 
 func RootAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		authHelper(c, common.RoleRootUser)
+		if !authHelper(c, common.RoleRootUser) {
+			return
+		}
+		c.Next()
 	}
 }
 

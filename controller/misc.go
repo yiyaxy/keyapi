@@ -90,14 +90,14 @@ func GetStatus(c *gin.Context) {
 		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
 
-		"usd_exchange_rate": operation_setting.USDExchangeRate,
-		"price":             operation_setting.Price,
-		"min_invoice_amount": operation_setting.MinInvoiceAmount,
-		"invoice_provider": common.InvoiceProvider,
-		"invoice_auto_issue_enabled": common.InvoiceAutoIssueEnabled,
+		"usd_exchange_rate":               operation_setting.USDExchangeRate,
+		"price":                           operation_setting.Price,
+		"min_invoice_amount":              operation_setting.MinInvoiceAmount,
+		"invoice_provider":                common.InvoiceProvider,
+		"invoice_auto_issue_enabled":      common.InvoiceAutoIssueEnabled,
 		"invoice_default_issue_kind_code": strings.TrimSpace(common.OptionMap["InvoiceDefaultIssueKindCode"]),
-		"invoice_default_goods_name": strings.TrimSpace(common.OptionMap["InvoiceDefaultGoodsName"]),
-		"stripe_unit_price": setting.StripeUnitPrice,
+		"invoice_default_goods_name":      strings.TrimSpace(common.OptionMap["InvoiceDefaultGoodsName"]),
+		"stripe_unit_price":               setting.StripeUnitPrice,
 
 		// 面板启用开关
 		"api_info_enabled":      cs.ApiInfoEnabled,
@@ -109,27 +109,27 @@ func GetStatus(c *gin.Context) {
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
-		"oidc_enabled":                system_setting.GetOIDCSettings().Enabled,
-		"oidc_client_id":              system_setting.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint": system_setting.GetOIDCSettings().AuthorizationEndpoint,
-		"passkey_login":               passkeySetting.Enabled,
-		"passkey_display_name":        passkeySetting.RPDisplayName,
-		"passkey_rp_id":               passkeySetting.RPID,
-		"passkey_origins":             passkeySetting.Origins,
-		"passkey_allow_insecure":      passkeySetting.AllowInsecureOrigin,
-		"passkey_user_verification":   passkeySetting.UserVerification,
-		"passkey_attachment":          passkeySetting.AttachmentPreference,
-		"setup":                       constant.Setup,
-		"user_agreement_enabled":      legalSetting.UserAgreement != "",
-		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"refund_policy_enabled":       legalSetting.RefundPolicy != "",
-		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
-		"top_up_rebate_count":         common.TopUpRebateCount,
-		"top_up_rebate_percent":       common.TopUpRebatePercent,
-		"quota_for_inviter":           common.QuotaForInviter,
-		"quota_for_invitee":           common.QuotaForInvitee,
+		"oidc_enabled":                 system_setting.GetOIDCSettings().Enabled,
+		"oidc_client_id":               system_setting.GetOIDCSettings().ClientId,
+		"oidc_authorization_endpoint":  system_setting.GetOIDCSettings().AuthorizationEndpoint,
+		"passkey_login":                passkeySetting.Enabled,
+		"passkey_display_name":         passkeySetting.RPDisplayName,
+		"passkey_rp_id":                passkeySetting.RPID,
+		"passkey_origins":              passkeySetting.Origins,
+		"passkey_allow_insecure":       passkeySetting.AllowInsecureOrigin,
+		"passkey_user_verification":    passkeySetting.UserVerification,
+		"passkey_attachment":           passkeySetting.AttachmentPreference,
+		"setup":                        constant.Setup,
+		"user_agreement_enabled":       legalSetting.UserAgreement != "",
+		"privacy_policy_enabled":       legalSetting.PrivacyPolicy != "",
+		"refund_policy_enabled":        legalSetting.RefundPolicy != "",
+		"checkin_enabled":              operation_setting.GetCheckinSetting().Enabled,
+		"top_up_rebate_count":          common.TopUpRebateCount,
+		"top_up_rebate_percent":        common.TopUpRebatePercent,
+		"quota_for_inviter":            common.QuotaForInviter,
+		"quota_for_invitee":            common.QuotaForInvitee,
 		"subscription_recommend_count": common.SubscriptionRecommendCount,
-		"_qn":                         "new-api",
+		"_qn":                          "new-api",
 	}
 
 	// 根据启用状态注入可选内容
@@ -306,7 +306,7 @@ func SendEmailVerification(c *gin.Context) {
 		}
 	}
 
-	if model.IsEmailAlreadyTaken(email) {
+	if model.IsEmailAlreadyTaken(email, middleware.GetTenantId(c)) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "邮箱地址已被占用",
@@ -343,7 +343,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 		})
 		return
 	}
-	if !model.IsEmailAlreadyTaken(email) {
+	if !model.IsEmailAlreadyTaken(email, middleware.GetTenantId(c)) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该邮箱地址未注册",

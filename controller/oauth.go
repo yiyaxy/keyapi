@@ -152,13 +152,14 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 	}
 
 	// Check if this OAuth account is already bound (check both new ID and legacy ID)
-	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
+	tenantId := middleware.GetTenantId(c)
+	if provider.IsUserIDTaken(oauthUser.ProviderUserID, tenantId) {
 		common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 		return
 	}
 	// Also check legacy ID to prevent duplicate bindings during migration period
 	if legacyID, ok := oauthUser.Extra["legacy_id"].(string); ok && legacyID != "" {
-		if provider.IsUserIDTaken(legacyID) {
+		if provider.IsUserIDTaken(legacyID, tenantId) {
 			common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 			return
 		}
@@ -200,10 +201,11 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 // findOrCreateOAuthUser finds existing user or creates new user
 func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, session sessions.Session) (*model.User, error) {
 	user := &model.User{}
+	tenantId := middleware.GetTenantId(c)
 
 	// Check if user already exists with new ID
-	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
-		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID)
+	if provider.IsUserIDTaken(oauthUser.ProviderUserID, tenantId) {
+		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID, tenantId)
 		if err != nil {
 			return nil, err
 		}
@@ -216,8 +218,8 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 	// Try to find user with legacy ID (for GitHub migration from login to numeric ID)
 	if legacyID, ok := oauthUser.Extra["legacy_id"].(string); ok && legacyID != "" {
-		if provider.IsUserIDTaken(legacyID) {
-			err := provider.FillUserByProviderID(user, legacyID)
+		if provider.IsUserIDTaken(legacyID, tenantId) {
+			err := provider.FillUserByProviderID(user, legacyID, tenantId)
 			if err != nil {
 				return nil, err
 			}
@@ -243,7 +245,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
 
 	if oauthUser.Username != "" {
-		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
+		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, "", middleware.GetTenantId(c)); err == nil && !exists {
 			// 防止索引退化
 			if len(oauthUser.Username) <= model.UserNameMaxLength {
 				user.Username = oauthUser.Username
@@ -263,7 +265,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 
 	if oauthUser.Username != "" {
-		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
+		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, "", middleware.GetTenantId(c)); err == nil && !exists {
 			if len(oauthUser.Username) <= model.UserNameMaxLength {
 				user.Username = oauthUser.Username
 			}
@@ -308,6 +310,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
 		user.FinalizeOAuthUserCreation(inviterId)
+		if err := model.EnsureTenantMembership(user.Id, user.TenantId, model.TenantRoleMember, inviterId); err != nil {
+			return nil, err
+		}
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -337,6 +342,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 		// Perform post-transaction tasks
 		user.FinalizeOAuthUserCreation(inviterId)
+		if err := model.EnsureTenantMembership(user.Id, user.TenantId, model.TenantRoleMember, inviterId); err != nil {
+			return nil, err
+		}
 	}
 
 	return user, nil

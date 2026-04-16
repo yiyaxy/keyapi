@@ -43,7 +43,9 @@ const (
 	ContextKeyAutoGroupRetryIndex ContextKey = "auto_group_retry_index"
 
 	/* tenant related keys */
-	ContextKeyTenantId ContextKey = "tenant_id"
+	ContextKeyTenantId     ContextKey = "tenant_id"
+	ContextKeyTenantRole   ContextKey = "tenant_role"
+	ContextKeyPlatformRole ContextKey = "platform_role"
 
 	/* user related keys */
 	ContextKeyUserId      ContextKey = "id"

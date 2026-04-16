@@ -167,13 +167,13 @@ func (p *LinuxDOProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 	}, nil
 }
 
-func (p *LinuxDOProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsLinuxDOIdAlreadyTaken(providerUserID)
+func (p *LinuxDOProvider) IsUserIDTaken(providerUserID string, tenantId int) bool {
+	return model.IsLinuxDOIdAlreadyTaken(providerUserID, tenantId)
 }
 
-func (p *LinuxDOProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *LinuxDOProvider) FillUserByProviderID(user *model.User, providerUserID string, tenantId int) error {
 	user.LinuxDOId = providerUserID
-	return user.FillUserByLinuxDOId()
+	return user.FillUserByLinuxDOIdWithTenant(tenantId)
 }
 
 func (p *LinuxDOProvider) SetProviderUserID(user *model.User, providerUserID string) {

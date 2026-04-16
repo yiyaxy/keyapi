@@ -290,12 +290,12 @@ func (p *GenericOAuthProvider) GetUserInfo(ctx context.Context, token *OAuthToke
 	}, nil
 }
 
-func (p *GenericOAuthProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsProviderUserIdTaken(p.config.Id, providerUserID)
+func (p *GenericOAuthProvider) IsUserIDTaken(providerUserID string, tenantId int) bool {
+	return model.IsProviderUserIdTaken(p.config.Id, providerUserID, tenantId)
 }
 
-func (p *GenericOAuthProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
-	foundUser, err := model.GetUserByOAuthBinding(p.config.Id, providerUserID)
+func (p *GenericOAuthProvider) FillUserByProviderID(user *model.User, providerUserID string, tenantId int) error {
+	foundUser, err := model.GetUserByOAuthBinding(p.config.Id, providerUserID, tenantId)
 	if err != nil {
 		return err
 	}
