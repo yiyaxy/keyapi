@@ -409,7 +409,7 @@ func ProcessTopUpRebate(userId int, quotaAdded int) {
 	}
 
 	// 给邀请者增加 AffQuota 和 AffHistoryQuota
-	err = DB.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]interface{}{
+	err = DB.Model(&User{}).Where("id = ? AND tenant_id = ?", user.InviterId, user.TenantId).Updates(map[string]interface{}{
 		"aff_quota":   gorm.Expr("aff_quota + ?", rebateQuota),
 		"aff_history": gorm.Expr("aff_history + ?", rebateQuota),
 	}).Error
@@ -430,7 +430,7 @@ func ProcessTopUpRebate(userId int, quotaAdded int) {
 	})
 
 	// 用户 TopUpCount +1
-	err = DB.Model(&User{}).Where("id = ?", userId).Update("top_up_count", gorm.Expr("top_up_count + ?", 1)).Error
+	err = DB.Model(&User{}).Where("id = ? AND tenant_id = ?", userId, user.TenantId).Update("top_up_count", gorm.Expr("top_up_count + ?", 1)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("ProcessTopUpRebate: 更新用户充值次数失败 userId=%d, err=%v", userId, err))
 		return

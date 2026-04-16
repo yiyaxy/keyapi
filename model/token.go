@@ -286,7 +286,12 @@ func GetTokenByKeyWithContext(ctx context.Context, key string, fromDB bool) (tok
 		// Try Redis first
 		token, err := cacheGetTokenByKey(key)
 		if err == nil {
-			return token, nil
+			// Verify cached token belongs to the requesting tenant
+			if tenantId := ExplicitTenantIDFromContext(ctx); tenantId > 0 && token.TenantId != tenantId {
+				// Tenant mismatch — treat as cache miss, fall through to DB
+			} else {
+				return token, nil
+			}
 		}
 		// Don't return error - fall through to DB
 	}
@@ -412,7 +417,11 @@ func IncreaseTokenQuota(tokenId int, key string, quota int, tenantId ...int) (er
 		})
 	}
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeTokenQuota, resolvedTenantId, tokenId, quota)
 		return nil
 	}
 	return increaseTokenQuota(tokenId, quota, tenantId...)
@@ -446,7 +455,11 @@ func DecreaseTokenQuota(id int, key string, quota int, tenantId ...int) (err err
 		})
 	}
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeTokenQuota, resolvedTenantId, id, -quota)
 		return nil
 	}
 	return decreaseTokenQuota(id, quota, tenantId...)
