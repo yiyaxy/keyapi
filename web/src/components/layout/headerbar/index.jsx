@@ -26,6 +26,7 @@ import MobileMenuButton from './MobileMenuButton';
 import HeaderLogo from './HeaderLogo';
 import Navigation from './Navigation';
 import ActionButtons from './ActionButtons';
+import TenantSwitcher from './TenantSwitcher';
 
 const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const {
@@ -106,6 +107,10 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             userState={userState}
             pricingRequireAuth={pricingRequireAuth}
           />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {userState?.user ? <TenantSwitcher /> : null}
+          </div>
 
           <ActionButtons
             isNewYear={isNewYear}

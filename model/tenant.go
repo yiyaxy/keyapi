@@ -68,6 +68,13 @@ func GetTenantById(id int) *Tenant {
 	return &t
 }
 
+// ListAllTenants 返回所有租户（不含已删除），按 id 升序。供平台级管理 UI 使用。
+func ListAllTenants() ([]Tenant, error) {
+	var items []Tenant
+	err := DB.Where("status <> ?", TenantStatusDeleted).Order("id ASC").Find(&items).Error
+	return items, err
+}
+
 func CreateTenant(tenant *Tenant) error {
 	if tenant.Slug == "" {
 		return errors.New("tenant slug is required")

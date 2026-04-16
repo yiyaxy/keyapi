@@ -22,6 +22,17 @@ type UpdateTenantRequest struct {
 	Status int    `json:"status"`
 }
 
+// ListAllTenantsHandler 平台级：列出所有租户（不含已删除）。
+// 路由：GET /api/platform/tenants
+func ListAllTenantsHandler(c *gin.Context) {
+	items, err := model.ListAllTenants()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, items)
+}
+
 func CreateTenant(c *gin.Context) {
 	var req CreateTenantRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

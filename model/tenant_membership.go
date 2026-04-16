@@ -247,6 +247,45 @@ func CountTenantAdmins(tenantId int) (int64, error) {
 	return count, err
 }
 
+// UserTenantSummary 是用户可访问的一个租户的精简信息（租户切换器使用）。
+type UserTenantSummary struct {
+	TenantId   int    `json:"tenant_id"`
+	TenantName string `json:"tenant_name"`
+	TenantSlug string `json:"tenant_slug"`
+	TenantRole int    `json:"tenant_role"`
+	Status     int    `json:"status"`
+}
+
+// ListUserAccessibleTenants 返回指定用户有 active 成员身份的所有租户。
+// 用于前端租户切换器。
+func ListUserAccessibleTenants(userId int) ([]UserTenantSummary, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var items []UserTenantSummary
+	err := WithTenantBypass(DB).Table("tenant_memberships AS tm").
+		Select("tm.tenant_id, t.name AS tenant_name, t.slug AS tenant_slug, tm.role AS tenant_role, tm.status AS status").
+		Joins("JOIN tenants t ON t.id = tm.tenant_id").
+		Where("tm.user_id = ? AND tm.status = ? AND t.status = ?",
+			userId, TenantMembershipStatusActive, TenantStatusActive).
+		Order("tm.tenant_id ASC").
+		Scan(&items).Error
+	return items, err
+}
+
+// IsUserTenantMember 检查用户是否是某租户 active 成员。租户切换接口鉴权用。
+func IsUserTenantMember(userId, tenantId int) (bool, error) {
+	if userId <= 0 || tenantId <= 0 {
+		return false, nil
+	}
+	var count int64
+	err := WithTenantBypass(DB).Model(&TenantMembership{}).
+		Where("user_id = ? AND tenant_id = ? AND status = ?",
+			userId, tenantId, TenantMembershipStatusActive).
+		Count(&count).Error
+	return count > 0, err
+}
+
 // ListTenantAdminEmails 返回租户所有 active 管理员的邮箱，用于告警推送等通知场景。
 // 平台级 admin 不纳入（他们不一定关心该租户）。跨租户 bypass 查询 users 表。
 func ListTenantAdminEmails(tenantId int) ([]string, error) {

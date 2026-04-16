@@ -82,6 +82,12 @@ const AgentReport = lazy(() => import('./pages/AgentReport'));
 const RequestTrace = lazy(() => import('./pages/RequestTrace'));
 const Tenant = lazy(() => import('./pages/Tenant'));
 const TenantMembers = lazy(() => import('./pages/TenantMembers'));
+const TenantPlan = lazy(() => import('./pages/TenantPlan'));
+const TenantConfig = lazy(() => import('./pages/TenantConfig'));
+const TenantDashboardPage = lazy(() => import('./pages/TenantDashboard'));
+const TenantAlerts = lazy(() => import('./pages/TenantAlerts'));
+const TenantBills = lazy(() => import('./pages/TenantBills'));
+const PlatformTenants = lazy(() => import('./pages/PlatformTenants'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -299,6 +305,54 @@ function App() {
           element={
             <AdminRoute>
               <TenantMembers />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-plan'
+          element={
+            <AdminRoute>
+              <TenantPlan />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-config'
+          element={
+            <AdminRoute>
+              <TenantConfig />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-dashboard'
+          element={
+            <AdminRoute>
+              <TenantDashboardPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-alerts'
+          element={
+            <AdminRoute>
+              <TenantAlerts />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-bills'
+          element={
+            <AdminRoute>
+              <TenantBills />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/platform-tenants'
+          element={
+            <AdminRoute>
+              <PlatformTenants />
             </AdminRoute>
           }
         />

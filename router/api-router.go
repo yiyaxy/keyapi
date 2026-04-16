@@ -131,6 +131,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
 				selfRoute.GET("/self/channel-groups", controller.GetChannelGroups)
 				selfRoute.GET("/self", controller.GetSelf)
+				selfRoute.GET("/tenants", controller.ListCurrentUserTenants)
+				selfRoute.POST("/tenant/switch", controller.SwitchTenant)
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
@@ -626,6 +628,7 @@ func SetApiRouter(router *gin.Engine) {
 		platformTenantRoute := apiRouter.Group("/platform/tenants")
 		platformTenantRoute.Use(middleware.PlatformAdminAuth())
 		{
+			platformTenantRoute.GET("/", controller.ListAllTenantsHandler)
 			platformTenantRoute.POST("/", controller.CreateTenant)
 			platformTenantRoute.DELETE("/:id", controller.DeleteTenant)
 			platformTenantRoute.GET("/plans", controller.ListTenantPlans)
