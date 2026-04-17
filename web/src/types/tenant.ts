@@ -281,3 +281,49 @@ export interface UpdateWechatConfigRequest {
   apiv3_key?: string;
   private_key?: string;
 }
+
+// ---------- Payment Orders (S2) ----------
+
+export type PaymentOrderStatus =
+  | 'pending'
+  | 'paid'
+  | 'partial_refunded'
+  | 'fully_refunded'
+  | 'closed'
+  | 'expired';
+
+export type PaymentOrderType = 'topup' | 'sub';
+export type PaymentProductForm = 'native' | 'h5' | 'jsapi';
+
+export interface PaymentOrderView {
+  id: number;
+  out_trade_no: string;
+  transaction_id?: string;
+  provider: 'wechat';
+  order_type: PaymentOrderType;
+  product_form: PaymentProductForm;
+  amount: number;            // 单位: 分
+  refunded_amount: number;
+  currency: string;
+  status: PaymentOrderStatus;
+  paid_at: number;
+  expires_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CreateOrderResponse {
+  code_url?: string;
+  h5_url?: string;
+  prepay_id?: string;
+  package?: string;
+  nonce_str?: string;
+  timestamp?: string;
+  sign_type?: string;
+  pay_sign?: string;
+}
+
+export interface CreateOrderEnvelope {
+  order: { out_trade_no: string; amount: number };
+  response: CreateOrderResponse;
+}
