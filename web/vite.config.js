@@ -74,12 +74,6 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // @lobehub/icons v2 has internal `ProviderCombine` component that imports
-      // `antd` as a peer dep. We never use `ProviderCombine` in src/ — it's only
-      // pulled in via the wildcard `import * as LobeIcons from '@lobehub/icons'`.
-      // Externalize antd so Rollup stops trying to resolve it; if anyone uses
-      // ProviderCombine in the future they'll need to add antd themselves.
-      external: ['antd'],
       output: {
         manualChunks: {
           'react-core': ['react', 'react-dom', 'react-router-dom'],
