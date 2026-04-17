@@ -250,3 +250,34 @@ export interface TenantAuditLogListResponse {
   limit: number;
   offset: number;
 }
+
+// ---------- Payment Configs ----------
+
+export interface TenantPaymentConfigView {
+  id: number;
+  provider: 'wechat';
+  enabled: boolean;
+  platform_locked: boolean;
+  app_id: string;
+  mchid: string;
+  serial_no: string;
+  app_secret_set: boolean;
+  apiv3_key_set: boolean;
+  private_key_set: boolean;
+  last_test_at: number;
+  last_test_ok: boolean;
+  last_test_error: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface UpdateWechatConfigRequest {
+  enabled?: boolean;
+  app_id?: string;
+  mchid?: string;
+  serial_no?: string;
+  // Empty string means "leave existing ciphertext alone".
+  app_secret?: string;
+  apiv3_key?: string;
+  private_key?: string;
+}
