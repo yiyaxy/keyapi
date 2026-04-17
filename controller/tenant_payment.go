@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -124,7 +126,11 @@ func UpdateTenantWechatConfig(c *gin.Context) {
 
 	// Only (re-)encrypt the fields actually provided. Empty => keep existing.
 	if req.AppSecret != "" || req.Apiv3Key != "" || req.PrivateKey != "" {
-		existing, _ := cfg.DecryptSensitive()
+		existing, err := cfg.DecryptSensitive()
+		if err != nil {
+			common.ApiErrorMsg(c, "现有凭据无法解密（可能已损坏或主密钥已轮换），请重新录入全部三个敏感字段")
+			return
+		}
 		plain := model.TenantPaymentPlaintext{
 			AppSecret:  ifNonEmpty(req.AppSecret, existing.AppSecret),
 			Apiv3Key:   ifNonEmpty(req.Apiv3Key, existing.Apiv3Key),
@@ -181,16 +187,16 @@ func TestTenantWechatConfig(c *gin.Context) {
 	testErr := provider.TestCredentials(ctx, cfg)
 	cfg.LastTestAt = time.Now().Unix()
 	cfg.LastTestOk = testErr == nil
+	cfg.LastTestError = sanitizeTestError(testErr)
+	// Log full raw error server-side for debugging — do NOT return it to the client.
 	if testErr != nil {
-		cfg.LastTestError = testErr.Error()
-	} else {
-		cfg.LastTestError = ""
+		common.SysError(fmt.Sprintf("wechat TestCredentials failed for tenant %d: %v", tid, testErr))
 	}
 	_ = model.UpsertTenantPaymentConfig(cfg)
 	wechat.InvalidateCache(tid)
 
 	if testErr != nil {
-		c.JSON(200, gin.H{"success": false, "message": testErr.Error()})
+		c.JSON(200, gin.H{"success": false, "message": cfg.LastTestError})
 		return
 	}
 	common.ApiSuccess(c, toView(cfg))
@@ -201,6 +207,17 @@ func DeleteTenantWechatConfig(c *gin.Context) {
 	tid := middleware.GetTenantId(c)
 	if tid <= 0 {
 		common.ApiErrorMsg(c, "无法解析当前租户")
+		return
+	}
+	// Mirror Update/Test: if platform has locked this tenant, even a delete
+	// would let the tenant "reset" their locked state. Block here too.
+	existing, err := model.GetTenantPaymentConfig(tid, "wechat")
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		common.ApiError(c, err)
+		return
+	}
+	if existing != nil && existing.PlatformLocked {
+		common.ApiErrorMsg(c, "平台已禁用该租户的支付能力，无法清除配置")
 		return
 	}
 	if err := model.DeleteTenantPaymentConfig(tid, "wechat"); err != nil {
@@ -216,4 +233,26 @@ func ifNonEmpty(override, existing string) string {
 		return override
 	}
 	return existing
+}
+
+// sanitizeTestError truncates and normalizes an error string so it is safe
+// to store in DB (LastTestError is varchar(500)) and surface to the UI
+// without leaking raw SDK response payloads or multi-line artifacts.
+func sanitizeTestError(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	// Collapse newlines/tabs to spaces so logs stay single-line.
+	s = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == '\t' {
+			return ' '
+		}
+		return r
+	}, s)
+	const maxLen = 300
+	if len(s) > maxLen {
+		s = s[:maxLen] + "...(truncated)"
+	}
+	return s
 }
