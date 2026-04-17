@@ -1,37 +1,74 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Dropdown, Button, Typography, Spin } from '@douyinfe/semi-ui';
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Select, Spin } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, updateAPI } from '../../../helpers';
 
-/**
- * 租户切换器：显示当前租户名 + 下拉列出用户可访问的所有租户。
- * 切换成功后会刷新页面让所有数据重新拉取。
- *
- * 对于只有一个租户的用户直接隐藏（不占 header 空间）。
- */
+const RECENT_STORAGE_KEY = 'keyapi.recentTenantIds';
+const RECENT_MAX = 3;
+
+function readCurrentTenantId() {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    return u?.tenant_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readRecentIds() {
+  try {
+    const raw = localStorage.getItem(RECENT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentId(tenantId) {
+  const prev = readRecentIds().filter((id) => id !== tenantId);
+  const next = [tenantId, ...prev].slice(0, RECENT_MAX);
+  try {
+    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function TenantSwitcher() {
   const { t } = useTranslation();
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const currentTenantId = (() => {
-    try {
-      const raw = localStorage.getItem('user');
-      if (!raw) return null;
-      const u = JSON.parse(raw);
-      return u?.tenant_id ?? null;
-    } catch (e) {
-      return null;
-    }
-  })();
+  const currentTenantId = readCurrentTenantId();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await API.get('/api/user/tenants');
       if (res?.data?.success) setTenants(res.data.data || []);
-    } catch (e) {
-      // ignore — 未登录时忽略
+    } catch {
+      // ignore — unauthenticated or network error
     } finally {
       setLoading(false);
     }
@@ -41,12 +78,12 @@ export default function TenantSwitcher() {
     load();
   }, [load]);
 
-  const handleSwitch = async (tenantId) => {
-    if (tenantId === currentTenantId) return;
+  const handleChange = async (value) => {
+    if (value === currentTenantId) return;
     try {
-      const res = await API.post('/api/user/tenant/switch', { tenant_id: tenantId });
+      const res = await API.post('/api/user/tenant/switch', { tenant_id: value });
       if (res?.data?.success) {
-        // 更新 localStorage.user 中的 tenant_id 等字段
+        // Persist updated fields into localStorage user payload
         try {
           const raw = localStorage.getItem('user');
           if (raw) {
@@ -56,12 +93,12 @@ export default function TenantSwitcher() {
             u.role = res.data.data?.role;
             localStorage.setItem('user', JSON.stringify(u));
           }
-        } catch (e) {
-          // ignore
+        } catch {
+          /* ignore */
         }
+        pushRecentId(value);
         updateAPI();
         showSuccess(t('已切换到租户：{{name}}', { name: res.data.data?.tenant_name || '' }));
-        // 刷新页面以让所有 API 调用走新租户
         window.location.reload();
       } else {
         showError(res?.data?.message || t('切换失败'));
@@ -71,36 +108,60 @@ export default function TenantSwitcher() {
     }
   };
 
+  const options = useMemo(() => {
+    if (!tenants.length) return [];
+
+    const recentIds = readRecentIds();
+    const recentSet = new Set(recentIds.slice(0, RECENT_MAX));
+    const recent = recentIds
+      .slice(0, RECENT_MAX)
+      .map((id) => tenants.find((tnt) => tnt.tenant_id === id))
+      .filter(Boolean);
+    const rest = tenants.filter((tnt) => !recentSet.has(tnt.tenant_id));
+
+    const opts = [];
+    if (recent.length) {
+      opts.push({
+        label: t('header.tenantSwitcher.recent'),
+        value: '__recent__',
+        disabled: true,
+      });
+      opts.push(
+        ...recent.map((x) => ({
+          label: x.tenant_name,
+          value: x.tenant_id,
+        })),
+      );
+    }
+    if (rest.length) {
+      opts.push({
+        label: t('header.tenantSwitcher.all'),
+        value: '__all__',
+        disabled: true,
+      });
+      opts.push(
+        ...rest.map((x) => ({
+          label: x.tenant_name,
+          value: x.tenant_id,
+        })),
+      );
+    }
+    return opts;
+  }, [tenants, t]);
+
   if (loading && tenants.length === 0) return <Spin size='small' />;
-  if (!tenants || tenants.length <= 1) return null; // 只有一个租户就不显示切换器
-
-  const current = tenants.find((x) => x.tenant_id === currentTenantId) || tenants[0];
-
-  const menu = (
-    <Dropdown.Menu>
-      {tenants.map((tt) => (
-        <Dropdown.Item
-          key={tt.tenant_id}
-          active={tt.tenant_id === currentTenantId}
-          onClick={() => handleSwitch(tt.tenant_id)}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 160 }}>
-            <span>{tt.tenant_name}</span>
-            <Typography.Text type='tertiary' size='small'>
-              {tt.tenant_slug}
-              {tt.tenant_role === 10 ? ` · ${t('管理员')}` : ''}
-            </Typography.Text>
-          </div>
-        </Dropdown.Item>
-      ))}
-    </Dropdown.Menu>
-  );
+  if (!Array.isArray(tenants) || tenants.length < 2) return null;
 
   return (
-    <Dropdown trigger='click' render={menu}>
-      <Button size='small'>
-        {t('租户')}: {current?.tenant_name || t('未知')}
-      </Button>
-    </Dropdown>
+    <Select
+      value={currentTenantId}
+      onChange={handleChange}
+      placeholder={t('header.tenantSwitcher.placeholder')}
+      optionList={options}
+      filter
+      style={{ minWidth: 160 }}
+      size='default'
+      aria-label={t('header.tenantSwitcher.placeholder')}
+    />
   );
 }
