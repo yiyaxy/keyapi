@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"gorm.io/gorm"
 )
 
 type TenantMetricsSummary struct {
@@ -24,10 +25,16 @@ type TenantMetricsSummary struct {
 func GetTenantMetrics(tenantId int) (*TenantMetricsSummary, error) {
 	summary := &TenantMetricsSummary{TenantId: tenantId}
 
-	db := model.WithTenantBypass(model.DB)
+	// 每次查询都从 WithTenantBypass(DB) 重新开始一条独立链路，
+	// 不能复用同一个 *gorm.DB —— 否则 Where/Table 会在同一 Statement 上累积，
+	// 下一次调用继承上次遗留的 WHERE 条件，导致类似
+	// "column deleted_at does not exist" 这种跨表污染的怪异报错。
+	freshDB := func() *gorm.DB {
+		return model.WithTenantBypass(model.DB)
+	}
 
 	// Total members (not removed)
-	if err := db.Table("tenant_memberships").
+	if err := freshDB().Table("tenant_memberships").
 		Where("tenant_id = ? AND status <> ?", tenantId, model.TenantMembershipStatusRemoved).
 		Where("deleted_at IS NULL").
 		Count(&summary.TotalMembers).Error; err != nil {
@@ -35,7 +42,7 @@ func GetTenantMetrics(tenantId int) (*TenantMetricsSummary, error) {
 	}
 
 	// Active members
-	if err := db.Table("tenant_memberships").
+	if err := freshDB().Table("tenant_memberships").
 		Where("tenant_id = ? AND status = ?", tenantId, model.TenantMembershipStatusActive).
 		Where("deleted_at IS NULL").
 		Count(&summary.ActiveMembers).Error; err != nil {
@@ -43,28 +50,28 @@ func GetTenantMetrics(tenantId int) (*TenantMetricsSummary, error) {
 	}
 
 	// Total tokens
-	if err := db.Table("tokens").
+	if err := freshDB().Table("tokens").
 		Where("tenant_id = ? AND deleted_at IS NULL", tenantId).
 		Count(&summary.TotalTokens).Error; err != nil {
 		return nil, err
 	}
 
 	// Active tokens (status = enabled)
-	if err := db.Table("tokens").
+	if err := freshDB().Table("tokens").
 		Where("tenant_id = ? AND status = ? AND deleted_at IS NULL", tenantId, common.TokenStatusEnabled).
 		Count(&summary.ActiveTokens).Error; err != nil {
 		return nil, err
 	}
 
-	// Total channels
-	if err := db.Table("channels").
+	// Total channels（channels 表走硬删除，无 deleted_at 列）
+	if err := freshDB().Table("channels").
 		Where("tenant_id = ?", tenantId).
 		Count(&summary.TotalChannels).Error; err != nil {
 		return nil, err
 	}
 
 	// Active channels (status = enabled)
-	if err := db.Table("channels").
+	if err := freshDB().Table("channels").
 		Where("tenant_id = ? AND status = ?", tenantId, common.ChannelStatusEnabled).
 		Count(&summary.ActiveChannels).Error; err != nil {
 		return nil, err
