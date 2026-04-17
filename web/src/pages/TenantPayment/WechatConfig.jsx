@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Card, Form, Button, Banner, Typography, Space, Toast,
+  Card, Button, Banner, Typography, Space, Toast,
+  Input, Switch,
 } from '@douyinfe/semi-ui';
 import {
   getTenantPaymentConfigs,
@@ -9,7 +10,22 @@ import {
   deleteWechatConfig,
 } from '../../helpers/payment';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+const { TextArea } = Input;
+
+// Row renders a single labeled field; plain flex to keep state fully
+// controlled by the parent (avoids Semi UI Form's internal state which
+// ignores post-mount value changes and only honors initValue).
+function Row({ label, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 16 }}>
+      <div style={{ width: 180, paddingTop: 6, flexShrink: 0 }}>
+        <Text>{label}</Text>
+      </div>
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  );
+}
 
 export default function WechatConfig() {
   const [loading, setLoading] = useState(true);
@@ -106,71 +122,87 @@ export default function WechatConfig() {
   if (loading) return <Card loading />;
 
   const locked = cfg?.platform_locked;
+  const inputsDisabled = locked || saving || testing;
+  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
     <Card>
-      <Title heading={5}>微信支付（WeChat Pay v3）</Title>
+      <Title heading={5} style={{ marginBottom: 16 }}>微信支付（WeChat Pay v3）</Title>
+
       {locked && (
-        <Banner type="danger" description="平台管理员已禁用该租户的支付能力" />
+        <Banner
+          type="danger"
+          description="平台管理员已禁用该租户的支付能力"
+          style={{ marginBottom: 16 }}
+        />
       )}
       {cfg?.last_test_at > 0 && !cfg.last_test_ok && (
         <Banner
           type="warning"
           description={`上次凭据测试失败：${cfg.last_test_error || '未知原因'}`}
+          style={{ marginBottom: 16 }}
         />
       )}
 
-      <Form labelPosition="left" labelWidth={160} disabled={locked || saving || testing}>
-        <Form.Switch
-          field="enabled"
-          label="启用"
+      <Row label="启用">
+        <Switch
           checked={form.enabled}
-          onChange={(v) => setForm({ ...form, enabled: v })}
+          onChange={set('enabled')}
+          disabled={inputsDisabled}
         />
-        <Form.Input
-          field="app_id"
-          label="AppID"
-          initValue={form.app_id}
-          onChange={(v) => setForm({ ...form, app_id: v })}
+      </Row>
+      <Row label="AppID">
+        <Input
+          value={form.app_id}
+          onChange={set('app_id')}
           placeholder="wx1234567890abcdef"
+          disabled={inputsDisabled}
         />
-        <Form.Input
-          field="mchid"
-          label="商户号 MCHID"
-          initValue={form.mchid}
-          onChange={(v) => setForm({ ...form, mchid: v })}
+      </Row>
+      <Row label="商户号 MCHID">
+        <Input
+          value={form.mchid}
+          onChange={set('mchid')}
           placeholder="1700000000"
+          disabled={inputsDisabled}
         />
-        <Form.Input
-          field="serial_no"
-          label="商户 API 证书序列号"
-          initValue={form.serial_no}
-          onChange={(v) => setForm({ ...form, serial_no: v })}
+      </Row>
+      <Row label="商户 API 证书序列号">
+        <Input
+          value={form.serial_no}
+          onChange={set('serial_no')}
+          disabled={inputsDisabled}
         />
-        <Form.Input
-          field="app_secret"
-          label="AppSecret（小程序）"
+      </Row>
+      <Row label="AppSecret（小程序）">
+        <Input
           mode="password"
+          value={form.app_secret}
+          onChange={set('app_secret')}
           placeholder={cfg?.app_secret_set ? '已设置（留空表示不修改）' : '请输入'}
-          onChange={(v) => setForm({ ...form, app_secret: v })}
+          disabled={inputsDisabled}
         />
-        <Form.Input
-          field="apiv3_key"
-          label="APIv3 密钥"
+      </Row>
+      <Row label="APIv3 密钥">
+        <Input
           mode="password"
+          value={form.apiv3_key}
+          onChange={set('apiv3_key')}
           placeholder={cfg?.apiv3_key_set ? '已设置（留空表示不修改）' : '请输入（32 字节）'}
-          onChange={(v) => setForm({ ...form, apiv3_key: v })}
+          disabled={inputsDisabled}
         />
-        <Form.TextArea
-          field="private_key"
-          label="商户 API 证书私钥 PEM"
+      </Row>
+      <Row label="商户 API 证书私钥 PEM">
+        <TextArea
+          value={form.private_key}
+          onChange={set('private_key')}
           rows={8}
           placeholder={cfg?.private_key_set
             ? '已设置（留空表示不修改）'
             : '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----'}
-          onChange={(v) => setForm({ ...form, private_key: v })}
+          disabled={inputsDisabled}
         />
-      </Form>
+      </Row>
 
       <Space style={{ marginTop: 24 }}>
         <Button theme="solid" loading={saving} onClick={onSave} disabled={locked}>
