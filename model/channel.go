@@ -269,6 +269,9 @@ func (channel *Channel) SaveWithoutKey() error {
 	return DB.Omit("key").Save(channel).Error
 }
 
+// GetAllChannelsByTenant 取租户内渠道；tenantId<=0 表示平台级全量扫描
+// （定时任务：余额更新 / 连通性测试 / 上游模型同步 / 平台同步器等），
+// 此时显式 WithTenantBypass 放行 guardrail。
 func GetAllChannelsByTenant(tenantId int, startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
 	var channels []*Channel
 	var err error
@@ -276,9 +279,11 @@ func GetAllChannelsByTenant(tenantId int, startIdx int, num int, selectAll bool,
 	if idSort {
 		order = "id desc"
 	}
-	query := DB
+	var query *gorm.DB
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		query = DB.Where("tenant_id = ?", tenantId)
+	} else {
+		query = WithTenantBypass(DB)
 	}
 	if selectAll {
 		err = query.Order(order).Find(&channels).Error

@@ -1071,8 +1071,10 @@ func InvoiceQueryWorker() {
 
 		now := common.GetTimestamp()
 		var apps []model.InvoiceApplication
-		err := model.DB.Where("issue_status = ? AND next_query_at > 0 AND next_query_at <= ?",
-			model.InvoiceIssueStatusQuerying, now).
+		// 定时轮询跨租户扫描待查询发票，显式 bypass 放行 guardrail。
+		err := model.WithTenantBypass(model.DB).
+			Where("issue_status = ? AND next_query_at > 0 AND next_query_at <= ?",
+				model.InvoiceIssueStatusQuerying, now).
 			Limit(10).
 			Find(&apps).Error
 		if err != nil {
