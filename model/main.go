@@ -16,7 +16,32 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+// newGormLogger 返回一个精简的 GORM 日志器。
+// 默认级别 Warn —— 只打 "慢查询" 和 "错误"，不再刷屏所有成功 SQL。
+// 设 DEBUG=true 时恢复 Info 级别，完整 SQL 回显，便于定位疑难。
+//
+// 其它细节：
+//   - SlowThreshold=500ms，慢查询才单独高亮
+//   - IgnoreRecordNotFoundError=true，避免 .First() 空结果被当成 error 刷屏
+//   - Colorful=true，让错误行颜色凸显
+func newGormLogger() logger.Interface {
+	level := logger.Warn
+	if common.DebugEnabled {
+		level = logger.Info
+	}
+	return logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             500 * time.Millisecond,
+			LogLevel:                  level,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  true,
+		},
+	)
+}
 
 var commonGroupCol string
 var commonKeyCol string
@@ -148,6 +173,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 				PreferSimpleProtocol: true, // disables implicit prepared statement usage
 			}), &gorm.Config{
 				PrepareStmt: true, // precompile SQL
+				Logger:      newGormLogger(),
 			})
 		}
 		if strings.HasPrefix(dsn, "local") {
@@ -159,6 +185,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 			}
 			return gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 				PrepareStmt: true, // precompile SQL
+				Logger:      newGormLogger(),
 			})
 		}
 		// Use MySQL
@@ -178,6 +205,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 		}
 		return gorm.Open(mysql.Open(dsn), &gorm.Config{
 			PrepareStmt: true, // precompile SQL
+			Logger:      newGormLogger(),
 		})
 	}
 	// Use SQLite
@@ -185,6 +213,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 	common.UsingSQLite = true
 	return gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
+		Logger:      newGormLogger(),
 	})
 }
 
