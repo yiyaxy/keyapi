@@ -18,32 +18,51 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { useTranslation } from 'react-i18next';
+import { useHeaderBar } from '../../../hooks/common/useHeaderBar';
 import HeaderLogo from './HeaderLogo';
 import TenantSwitcher from './TenantSwitcher';
 import UserMenu from './UserMenu';
 import MobileMenuButton from './MobileMenuButton';
 
-export default function Header({ mode, onOpenDrawer, onToggleCollapse }) {
-  const { t } = useTranslation();
-  const isMobile = mode === 'drawer';
+export default function Header({
+  mode,
+  drawerOpen = false,
+  onOpenDrawer,
+  onToggleCollapse,
+}) {
+  // isMobile from the hook is viewport-based (useIsMobile / media query).
+  // mode === 'drawer' is a layout-state signal from PageLayout — the two can
+  // momentarily differ during a resize. We rely on the hook's isMobile for
+  // rendering decisions because it reflects actual viewport truth; mode is
+  // kept on the signature for UserMenu and future consumers.
+  const hb = useHeaderBar({ onMobileMenuToggle: onOpenDrawer, drawerOpen });
 
   return (
     <header
       className='flex items-center h-14 px-4 bg-semi-color-bg-0 border-b border-semi-color-border'
       role='banner'
     >
-      {isMobile && (
+      {hb.isMobile && hb.isConsoleRoute && (
         <MobileMenuButton
-          isConsoleRoute={true}
-          isMobile={true}
-          drawerOpen={false}
-          collapsed={false}
+          isConsoleRoute={hb.isConsoleRoute}
+          isMobile={hb.isMobile}
+          drawerOpen={drawerOpen}
+          collapsed={hb.collapsed}
           onToggle={onOpenDrawer}
-          t={t}
+          t={hb.t}
         />
       )}
-      <HeaderLogo />
+      <HeaderLogo
+        logo={hb.logo}
+        logoLoaded={hb.logoLoaded}
+        isLoading={hb.isLoading}
+        systemName={hb.systemName}
+        isSelfUseMode={hb.isSelfUseMode}
+        isDemoSiteMode={hb.isDemoSiteMode}
+        isMobile={hb.isMobile}
+        isConsoleRoute={hb.isConsoleRoute}
+        t={hb.t}
+      />
       <div className='ml-3'>
         <TenantSwitcher />
       </div>
