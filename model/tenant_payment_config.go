@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -37,9 +38,10 @@ type TenantPaymentConfig struct {
 	LastTestOk    bool   `json:"last_test_ok"`
 	LastTestError string `json:"last_test_error" gorm:"type:varchar(500)"`
 
-	CreatedAt int64          `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt int64          `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	CreatedAt int64 `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt int64 `json:"updated_at" gorm:"autoUpdateTime"`
+	// Note: no DeletedAt. Credentials are hard-deleted by
+	// DeleteTenantPaymentConfig to avoid lingering ciphertext on disk.
 }
 
 // TenantPaymentPlaintext holds the plaintext form of sensitive fields.
@@ -50,22 +52,35 @@ type TenantPaymentPlaintext struct {
 	PrivateKey string
 }
 
-// derivePaymentKey is an injection seam for tests; replaced by a helper
-// that calls service/payment.paymentMasterKey() via a small registration.
-var derivePaymentKey = func() []byte {
-	// Default: HKDF(CryptoSecret, "wechat-pay-keys-v1").
-	// Mirrors service/payment.paymentMasterKey default path. The env override
-	// lives in the service layer to avoid a model→service import cycle; in
-	// production that override is installed at startup (see InitPaymentCrypto).
-	return common.DeriveKey([]byte(common.CryptoSecret), "wechat-pay-keys-v1")
+// paymentKeyResolver is swapped in at startup by service/payment via
+// InitPaymentCrypto. Stored in an atomic.Value to avoid data races between
+// the (startup-time) install and the (request-time) reads in encField/decField.
+//
+// Default path: HKDF(CryptoSecret, "wechat-pay-keys-v1"), mirroring
+// service/payment.paymentMasterKey. The env override (PAYMENT_MASTER_KEY)
+// lives in the service layer to avoid a model→service import cycle.
+var paymentKeyResolver atomic.Value // holds func() []byte
+
+func init() {
+	paymentKeyResolver.Store(func() []byte {
+		return common.DeriveKey([]byte(common.CryptoSecret), "wechat-pay-keys-v1")
+	})
 }
 
-// InitPaymentCrypto lets service/payment install its master-key resolver,
-// enabling the PAYMENT_MASTER_KEY env override without model→service imports.
+// InitPaymentCrypto lets service/payment install its master-key resolver at
+// startup. Safe to call once during init; later writes are permitted but
+// must be ordered by the caller (the controller layer does not expect the
+// resolver to change after service start).
 func InitPaymentCrypto(resolver func() []byte) {
 	if resolver != nil {
-		derivePaymentKey = resolver
+		paymentKeyResolver.Store(resolver)
 	}
+}
+
+// derivePaymentKey reads the current resolver and invokes it.
+func derivePaymentKey() []byte {
+	fn := paymentKeyResolver.Load().(func() []byte)
+	return fn()
 }
 
 func encField(plain string) (string, error) {
@@ -86,9 +101,26 @@ func decField(cipher string) (string, error) {
 	return string(out), nil
 }
 
-// EncryptAndSetSensitive encrypts the plaintext fields and writes them onto
-// the config. Empty plaintext fields are preserved as empty ciphertext
-// (keeps semantics: "unchanged" must be handled explicitly by callers).
+// EncryptAndSetSensitive encrypts all three sensitive fields and writes
+// their ciphertext onto the config.
+//
+// CRITICAL — this overwrites AppSecretEnc / Apiv3KeyEnc / PrivateKeyEnc
+// UNCONDITIONALLY. An empty plaintext field yields empty ciphertext,
+// i.e. passing TenantPaymentPlaintext{AppSecret: "new"} will ERASE the
+// existing Apiv3KeyEnc and PrivateKeyEnc columns.
+//
+// The controller layer MUST call DecryptSensitive first, merge the
+// caller-supplied non-empty fields over the existing plaintext, and
+// only then pass the merged struct here. See controller/tenant_payment.go
+// UpdateTenantWechatConfig for the canonical pattern:
+//
+//	existing, _ := cfg.DecryptSensitive()
+//	plain := TenantPaymentPlaintext{
+//	    AppSecret:  ifNonEmpty(req.AppSecret, existing.AppSecret),
+//	    Apiv3Key:   ifNonEmpty(req.Apiv3Key, existing.Apiv3Key),
+//	    PrivateKey: ifNonEmpty(req.PrivateKey, existing.PrivateKey),
+//	}
+//	cfg.EncryptAndSetSensitive(plain)
 func (c *TenantPaymentConfig) EncryptAndSetSensitive(p TenantPaymentPlaintext) error {
 	a, err := encField(p.AppSecret)
 	if err != nil {
@@ -160,7 +192,7 @@ func UpsertTenantPaymentConfig(cfg *TenantPaymentConfig) error {
 	err := WithTenantBypass(DB).
 		Where("tenant_id = ? AND provider = ?", cfg.TenantId, cfg.Provider).
 		First(&existing).Error
-	if err == gorm.ErrRecordNotFound {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		cfg.CreatedAt = now
 		cfg.UpdatedAt = now
 		return WithTenantBypass(DB).Create(cfg).Error
@@ -176,12 +208,16 @@ func UpsertTenantPaymentConfig(cfg *TenantPaymentConfig) error {
 		Save(cfg).Error
 }
 
-// DeleteTenantPaymentConfig clears the row (and therefore disables the provider).
+// DeleteTenantPaymentConfig permanently removes the row. Uses Unscoped()
+// for HARD delete so encrypted credential material does not linger on
+// disk after a tenant disables the provider. The row has an audit trail
+// via tenant_audit_logs written by the controller layer.
 func DeleteTenantPaymentConfig(tenantId int, provider string) error {
 	if tenantId <= 0 || provider == "" {
 		return errors.New("invalid tenantId or provider")
 	}
 	return WithTenantBypass(DB).
+		Unscoped().
 		Where("tenant_id = ? AND provider = ?", tenantId, provider).
 		Delete(&TenantPaymentConfig{}).Error
 }
