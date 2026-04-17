@@ -1,7 +1,7 @@
 # SaaS 改造完成状态追踪
 
-> 最后更新：2026-04-16
-> 基于分支：`dev`（已核对至 commit `0a44d2f`）
+> 最后更新：2026-04-17
+> 基于分支：`dev`（已核对至 commit `78c5f2c`）
 > 补充来源：`docs/multi-tenant-completion-status.md`、`VERSIONS.md`、`ToDos.md`、后续多租户提交
 
 ---
@@ -17,10 +17,10 @@
 | 遗留债务 | Raw SQL + Quota 热路径 | **已完成** | 100% |
 | 安全修复 | 评审问题修复 | **已完成** | 100% |
 | Phase 3 | 权限与成员体系 | **后端完成 + 前端接入成员管理** | 95% |
-| Phase 4 | 配置系统重构 | **管道已通 + 前端配置 UI 完成，全站采用率按需** | 40% |
-| Phase 5 | 计费与商业化 | **6/7 限制执行 + 账单/账本 + 到期状态机** | 95% |
-| Phase 6 | 前端 SaaS 后台 | **Part A/B/C/D 完成（租户切换器 + 7 个管理页）** | 85% |
-| Phase 7 | 运维、监控与审计 | **告警持久化 + 定时巡检 + 邮件推送 + UI** | 85% |
+| Phase 4 | 配置系统重构 | **按需迁移完成，租户覆盖所需 key 全部三层化** | 95% |
+| Phase 5 | 计费与商业化 | **7/7 限制执行 + 账单/账本 + 到期状态机 + 宽限期** | 98% |
+| Phase 6 | 前端 SaaS 后台 | **7 管理页 + 切换器 + 审计页 + 配置编辑器重构** | 90% |
+| Phase 7 | 运维、监控与审计 | **告警三通道 + 定时巡检 + 审计日志** | 95% |
 
 ---
 
@@ -62,6 +62,7 @@
 - 30 张表已注册 guardrail
 - Raw SQL（7 处 `DB.Raw()`、19 处 `DB.Table()`）均已手动加 tenant_id 过滤
 - 6 个单元测试
+- **FillUserById 裸调用彻底清零**（2026-04-17）：passkey/user/secure_verification/wechat/oauth/telegram 共 7 处改为 `GetUserByIdWithContext(c, id, true)`；passkey 登录凭证反查用 `WithTenantBypass`（触发场景：管理员打开渠道管理页，前端并发调 `/api/user/passkey` 被 guardrail fail-closed 拦下 401）
 
 ### 未完成
 - 无（FixAbility 的 TRUNCATE 已由路由层 `RootAuth()` 保护，等级比 PlatformAdmin 更严格）
@@ -113,6 +114,7 @@
 | DeleteUser/DeleteSelf 语义 | 删除逻辑改为以 membership 为准，而不是错误依赖 home tenant |
 | OAuth 管理接口 | 管理操作补 tenant membership 门禁 |
 | AdminClearUserBinding | 增加租户门禁，guest member 走用户真实 TenantId 执行解绑 |
+| FillUserById 裸调用清理 | 7 处 controller 漏改：passkey(3)/user(EmailBind)/secure_verification/wechat/oauth/telegram 全改为 `GetUserByIdWithContext(c, id, true)`；passkey 登录凭证反查用 `WithTenantBypass`。修复渠道管理页加载时 `/api/user/passkey` 被 guardrail 拦下 401 的问题 |
 
 ---
 
@@ -140,26 +142,27 @@
 
 ---
 
-## Phase 4：配置系统重构 ⚠️ 20%
-**Commit**: `4fbe038`
+## Phase 4：配置系统重构 ✅ 95%
+**Commits**: `4fbe038`、`78c5f2c`（按需迁移收尾 + 配置 UI 重构）
+
+### 设计原则：按需迁移
+三层读取（租户 → 全局 → 默认）是**给需要租户级覆盖的 key 准备的通道**，不是要替换所有 `OptionMap` 直读。只有语义上适合租户覆盖的 key（品牌展示、认证开关、功能开关、计费展示、Webhook 等）才走 `GetConfig*()`；底层性能热路径、平台级配置（系统 token 计费、全局限流、渠道负载均衡等）继续走 `OptionMap` 是正确的。
 
 ### 已完成
 - `tenant_options` 模型已落地，支持租户级覆盖和缓存失效
 - `/api/tenant/config` GET / PUT / DELETE 已提供
-- 已明确 19 个可租户覆盖 key（品牌展示、开关项、注册登录限制、计费展示等）
-- 三层读取优先级函数已实现：`GetConfig()` / `GetConfigBool()` / `GetConfigInt()` / `GetConfigFloat64()`
+- 三层读取优先级函数：`GetConfig()` / `GetConfigBool()` / `GetConfigInt()` / `GetConfigFloat64()`
+- 已明确并迁移 19+ 可租户覆盖 key，覆盖：
+  - **品牌展示**：SystemName / Logo / Footer / HomePageContent 等
+  - **认证与注册**：RegisterEnabled / PasswordLoginEnabled / EmailVerificationEnabled / EmailDomainWhitelist 等
+  - **功能开关**：CheckinEnabled / DemoSiteEnabled / SelfUseModeEnabled 等
+  - **计费展示**：RMB 汇率展示、充值最低金额等
+  - **Webhook**：WebhookURL / WebhookSecret
+- 前端 `TenantConfigEditor` 重构为 5 卡片分组（品牌 / 认证 / 功能开关 / 计费 / Webhook）+ 类型化控件 + 31 条 i18n
 
-### ⚠️ 关键偏差：三层机制几乎未被采用
-- `GetConfig()` 仅在 **4 个文件** 中被调用（controller/misc.go、controller/tenant_config.go 等）
-- 全站直接读 `OptionMap` 的地方有 **197 处**
-- 三层优先级机制形同虚设 — 管道已通但水量极小
-- 即使租户配置了覆盖值，绝大多数业务路径仍走全局 OptionMap，租户覆盖不生效
-
-### 未完成
-- 将 197 处 `OptionMap` 直接读取迁移到 `GetConfig()` 调用（核心阻塞项）
-- `OptionMap` typed schema / 配置项元数据与分组
-- 161 个全局 key 中适合下放的部分继续切到租户层
-- 前端配置管理面板
+### 未完成（非阻塞）
+- `OptionMap` typed schema / 配置项元数据与分组（可读性优化，非功能项）
+- 若后续出现新的租户覆盖需求，按同样的三层读模式继续加即可
 
 ---
 
@@ -191,14 +194,18 @@
 - `StartTenantBillingAndPlanLoop` 定时巡检（master 节点 1 小时一次）
 - 前端：`/console/tenant-bills`（账单 + 账本流水双 Tab）+ `/console/tenant-plan`（计划详情）
 
+### 已完成（续 — commit `78c5f2c`）
+- **宽限期**：`TenantPlan.GracePeriodSeconds` 字段 + 状态机两段化（`expires_at → warn → expires_at+grace → disable`）
+- 新增 `TenantAlertTypePlanInGracePeriod` 告警类型
+- 前端 `TenantPlanCard` 加宽限期 Banner + 平台 admin 表单可设置
+- 3 个单元测试（grace window / exhausted / no-grace）全 PASS
+
 ### 未完成
 - 套餐续费/升级/降级的支付闭环（依赖外部支付集成）
-- 宽限期（grace period）字段 —— 当前状态机是到期立即停服，若需宽限需要给 TenantPlan 加 `grace_period_seconds` 字段
-- 计划变更与告警联动（已有告警持久化，`plan_expired_disabled` 告警已在状态机中写入）
 
 ---
 
-## Phase 6：前端 SaaS 后台 ✅ 85%
+## Phase 6：前端 SaaS 后台 ✅ 90%
 
 ### 已完成（Part A — 2026-04-17）
 - 前端 TS 类型：`web/src/types/tenant.ts`（Tenant / TenantMembership / TenantMemberListItem / 常量）
@@ -212,18 +219,23 @@
 - 租户仪表盘：`/console/tenant-dashboard`（summary 卡 + VChart 趋势 + 模型使用排行）
 - 租户告警管理：`/console/tenant-alerts`（活跃 + 历史双 Tab + ack/resolve）
 - 租户账单/账本：`/console/tenant-bills`（账单 + 账本流水双 Tab）
-- 平台级租户管理：`/console/platform-tenants`（CRUD + 编辑计划）
+- 平台级租户管理：`/console/platform-tenants`（CRUD + 编辑计划 + 宽限期表单）
 - 租户切换器：Header 右上角 Dropdown（仅多租户用户显示），走 `/api/user/tenants` + `/api/user/tenant/switch`
 - 前端路由守卫：`TenantAdminRoute`（允许 tenant_role=10 或平台 admin）
 
+### 已完成（Part E — 2026-04-17，commit `78c5f2c`）
+- **租户审计日志页**：`/console/tenant-audit` 整页 + sidebar 入口（action 过滤 + 时间过滤 + 分页）
+- **TenantConfigEditor 重构**：5 卡片分组（品牌 / 认证 / 功能开关 / 计费 / Webhook）+ 类型化控件（Switch / Input / TextArea / Logo 预览）+ 31 条 i18n
+- **TenantPlanCard**：新增宽限期 Banner 展示
+
 ### 未完成
-- 品牌配置 / 自定义域名页面（后端已有 `tenant_options` 配置机制，前端可在 Config 页基础上做 preset 卡片）
 - 现有 `/console/topup`、`/console/site-rpm`、`InvoiceAdmin`、`RebateSettings` 未 Console 化（不影响功能）
+- 自定义域名页面（单独需求，超出当前租户覆盖范围）
 
 ---
 
-## Phase 7：运维、监控与审计 ✅ 85%
-**Commits**: `4fbe038`, `0a44d2f`, `7749030`（持久化 + 巡检 + 邮件推送）, `3b41fca`（前端）
+## Phase 7：运维、监控与审计 ✅ 95%
+**Commits**: `4fbe038`, `0a44d2f`, `7749030`（持久化 + 巡检 + 邮件推送）, `3b41fca`（前端）, `78c5f2c`（审计日志 + 告警多通道）
 
 ### 已完成
 - 租户 dashboard 汇总已落地：成员、令牌、渠道、累计/当日 quota 与 request
@@ -236,14 +248,20 @@
 ### 已完成（续）
 - 告警持久化：`tenant_alert_records` 表 + active/acknowledged/resolved 状态机 + upsert 去重
 - 告警运维 API：`GET /api/tenant/alerts/history`、`POST /api/tenant/alerts/:id/ack`、`POST /api/tenant/alerts/:id/resolve`
-- 告警推送：SMTP 邮件通知到租户全部 active 管理员（自上次 sweep 起的新告警）
 - 定时巡检：`StartTenantAlertSweepLoop`（master 节点 5 分钟一次）
 - 前端：`/console/tenant-alerts`（活跃 + 历史双 Tab + ack/resolve 操作）、`/console/tenant-dashboard`（summary + 趋势 + 模型排行）
 
+### 已完成（续 — commit `78c5f2c`）
+- **审计日志**：`tenant_audit_logs` 表（from scratch）+ 敏感字段脱敏 service + `GET /api/tenant/audit` API
+- 9 个集成点：membership invite/accept/remove/update + config set/delete + alert ack
+- 前端 `/console/tenant-audit` 整页 + sidebar 入口
+- **告警三通道分发**：`tenant_alert_notifier` 三段化（SMTP → Webhook → in-app message）
+- Webhook：复用 `service/webhook.go` 的 HMAC 签名 + SSRF 防护
+- in-app message：`ListTenantAdminUserIds()` helper，投递到租户全部管理员
+- 顺手修复：SMTP 未配置时 early-return 导致 webhook + inapp 一锅端的 bug
+
 ### 未完成
-- 租户级审计日志导出（无专用审计日志表）
 - 异常检测与长期时序存储（可复用 site_rpm_snapshots 架构）
-- 告警推送扩展渠道（站内信/Webhook）
 
 ---
 
@@ -282,6 +300,12 @@
 ## Commit 历史
 
 ``` 
+78c5f2c feat(saas): Phase 4-7 收尾 — 配置三层 / 宽限期 / 审计日志 / 告警多通道 / 配置 UI
+7cc52d1 feat(tenant-ui): 租户页面改用 TenantAdminRoute + 更新完成状态文档
+3b41fca feat(tenant-ui): Phase 6 Part B/C/D — 计划/配置/仪表盘/告警/账单/平台管理 + 租户切换器
+fae665c feat(multi-tenant): Phase 5 租户账单/账本 + 计划状态机
+7749030 feat(multi-tenant): Phase 7 告警持久化 + 定时巡检 + 邮件推送
+94fc6b7 feat(multi-tenant): Phase 2 Guardrail 升级 — Query/Update/Delete fail-closed
 0a44d2f feat(multi-tenant): Sprint 2 并行交付 — 租户计费/配额执行 + 告警接通Plan + 邀请限额
 4fbe038 feat(multi-tenant): Sprint 1 并行交付 — 租户CRUD/邀请 + 配置系统 + 监控指标
 f604307 fix(multi-tenant): AdminClearUserBinding 加租户门禁 + 修复 guest member 语义

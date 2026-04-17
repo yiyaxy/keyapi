@@ -169,8 +169,7 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 	// Get current user from session
 	session := sessions.Default(c)
 	id := session.Get("id")
-	user := model.User{Id: id.(int)}
-	err = user.FillUserById()
+	user, err := model.GetUserByIdWithContext(c, id.(int), true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -186,7 +185,7 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 		}
 	} else {
 		// Built-in provider: update user record directly
-		provider.SetProviderUserID(&user, oauthUser.ProviderUserID)
+		provider.SetProviderUserID(user, oauthUser.ProviderUserID)
 		err = user.Update(false)
 		if err != nil {
 			common.ApiError(c, err)
