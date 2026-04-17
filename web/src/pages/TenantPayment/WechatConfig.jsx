@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Card, Button, Banner, Typography, Space, Toast,
-  Input, Switch,
+  Input, TextArea, Switch,
 } from '@douyinfe/semi-ui';
 import {
   getTenantPaymentConfigs,
@@ -11,7 +11,6 @@ import {
 } from '../../helpers/payment';
 
 const { Title, Text } = Typography;
-const { TextArea } = Input;
 
 // Row renders a single labeled field; plain flex to keep state fully
 // controlled by the parent (avoids Semi UI Form's internal state which
