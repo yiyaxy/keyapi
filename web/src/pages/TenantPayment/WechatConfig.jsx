@@ -90,9 +90,17 @@ export default function WechatConfig() {
 
   const onDelete = async () => {
     if (!window.confirm('确认清除微信支付配置？')) return;
-    await deleteWechatConfig();
-    Toast.success('已清除');
-    await load();
+    try {
+      const res = await deleteWechatConfig();
+      if (res?.success) {
+        Toast.success('已清除');
+      } else {
+        Toast.error(res?.message || '清除失败');
+      }
+      await load();
+    } catch (e) {
+      Toast.error(String(e));
+    }
   };
 
   if (loading) return <Card loading />;
@@ -112,7 +120,7 @@ export default function WechatConfig() {
         />
       )}
 
-      <Form labelPosition="left" labelWidth={160} disabled={locked || saving}>
+      <Form labelPosition="left" labelWidth={160} disabled={locked || saving || testing}>
         <Form.Switch
           field="enabled"
           label="启用"
