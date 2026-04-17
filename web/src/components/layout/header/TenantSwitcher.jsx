@@ -39,7 +39,8 @@ function readCurrentTenantId() {
 function readRecentIds() {
   try {
     const raw = localStorage.getItem(RECENT_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -79,9 +80,12 @@ export default function TenantSwitcher() {
   }, [load]);
 
   const handleChange = async (value) => {
+    if (value === '__recent__' || value === '__all__') return;
     if (value === currentTenantId) return;
     try {
-      const res = await API.post('/api/user/tenant/switch', { tenant_id: value });
+      const res = await API.post('/api/user/tenant/switch', {
+        tenant_id: value,
+      });
       if (res?.data?.success) {
         // Persist updated fields into localStorage user payload
         try {
@@ -98,7 +102,11 @@ export default function TenantSwitcher() {
         }
         pushRecentId(value);
         updateAPI();
-        showSuccess(t('已切换到租户：{{name}}', { name: res.data.data?.tenant_name || '' }));
+        showSuccess(
+          t('已切换到租户：{{name}}', {
+            name: res.data.data?.tenant_name || '',
+          }),
+        );
         window.location.reload();
       } else {
         showError(res?.data?.message || t('切换失败'));
@@ -111,10 +119,9 @@ export default function TenantSwitcher() {
   const options = useMemo(() => {
     if (!tenants.length) return [];
 
-    const recentIds = readRecentIds();
-    const recentSet = new Set(recentIds.slice(0, RECENT_MAX));
+    const recentIds = readRecentIds().slice(0, RECENT_MAX);
+    const recentSet = new Set(recentIds);
     const recent = recentIds
-      .slice(0, RECENT_MAX)
       .map((id) => tenants.find((tnt) => tnt.tenant_id === id))
       .filter(Boolean);
     const rest = tenants.filter((tnt) => !recentSet.has(tnt.tenant_id));
