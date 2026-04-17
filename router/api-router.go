@@ -53,6 +53,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/stripe/webhook", controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
+		// WeChat Pay S2 callback — no auth; signature verified inside handler
+		apiRouter.POST("/payment/wechat/notify/:tenant_id/:order_type", controller.HandleWechatNotify)
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
@@ -629,6 +631,10 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.PUT("/payment/configs/wechat", controller.UpdateTenantWechatConfig)
 			tenantRoute.POST("/payment/configs/wechat/test", controller.TestTenantWechatConfig)
 			tenantRoute.DELETE("/payment/configs/wechat", controller.DeleteTenantWechatConfig)
+			// WeChat Pay S2 ordering + callback
+			tenantRoute.POST("/payment/wechat/sub/native", controller.CreateWechatSubNative)
+			tenantRoute.POST("/payment/wechat/sub/jsapi", controller.CreateWechatSubJsapi)
+			tenantRoute.GET("/payment/orders", controller.ListTenantPaymentOrders)
 		}
 
 		platformTenantRoute := apiRouter.Group("/platform/tenants")
@@ -645,6 +651,16 @@ func SetApiRouter(router *gin.Engine) {
 		tenantInviteRoute.Use(middleware.UserAuth())
 		{
 			tenantInviteRoute.GET("/accept", controller.AcceptInvite)
+		}
+
+		// WeChat Pay S2 user-facing ordering
+		paymentRoute := apiRouter.Group("/payment")
+		paymentRoute.Use(middleware.UserAuth())
+		{
+			paymentRoute.POST("/wechat/topup/native", controller.CreateWechatTopupNative)
+			paymentRoute.POST("/wechat/topup/h5", controller.CreateWechatTopupH5)
+			paymentRoute.POST("/wechat/topup/jsapi", controller.CreateWechatTopupJsapi)
+			paymentRoute.GET("/orders/:out_trade_no", controller.GetPaymentOrderByOutTradeNoHandler)
 		}
 	}
 }
