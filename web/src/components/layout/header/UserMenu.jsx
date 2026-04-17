@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext } from 'react';
+import React, { useContext, useMemo } from 'react';
 import { Avatar, Badge, Dropdown, Typography } from '@douyinfe/semi-ui';
 import {
   IconBell,
@@ -78,9 +78,10 @@ export default function UserMenu(/* { onToggleCollapse, mode } — accepted but 
   // Current language
   const currentLang = normalizeLanguage(i18n.language);
 
-  // Notification unread count (mirrors useNotifications logic)
+  // Notification unread count (mirrors useNotifications logic).
+  // Memoized so each render doesn't re-read localStorage + rebuild the Set.
   const announcements = statusState?.status?.announcements ?? [];
-  const unreadCount = (() => {
+  const unreadCount = useMemo(() => {
     if (!announcements.length) return 0;
     let readKeys = [];
     try {
@@ -88,11 +89,11 @@ export default function UserMenu(/* { onToggleCollapse, mode } — accepted but 
     } catch (_) {
       readKeys = [];
     }
-    const readSet = new Set(readKeys);
+    const readSet = new Set(Array.isArray(readKeys) ? readKeys : []);
     const key = (a) =>
       `${a?.publishDate || ''}-${(a?.content || '').slice(0, 30)}`;
     return announcements.filter((a) => !readSet.has(key(a))).length;
-  })();
+  }, [announcements]);
 
   // Campaign gate: new-year (same logic as NewYearButton / useHeaderBar)
   const now = new Date();
@@ -100,7 +101,14 @@ export default function UserMenu(/* { onToggleCollapse, mode } — accepted but 
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleLogout = async () => {
-    await API.get('/api/user/logout');
+    // Server logout is best-effort — client state is authoritative.
+    // If the API rejects (network blip, 401, CSRF expiry) we still clear
+    // local state so the user isn't stranded on a "logged out but not really" UI.
+    try {
+      await API.get('/api/user/logout');
+    } catch (_) {
+      /* ignore */
+    }
     showSuccess(t('注销成功!'));
     userDispatch({ type: 'logout' });
     localStorage.removeItem('user');
@@ -343,10 +351,14 @@ export default function UserMenu(/* { onToggleCollapse, mode } — accepted but 
   return (
     <Dropdown position='bottomRight' trigger='click' render={menuContent}>
       <span
+        role='button'
+        tabIndex={0}
+        aria-label={t('用户菜单')}
         style={{
           cursor: 'pointer',
           display: 'inline-flex',
           alignItems: 'center',
+          outline: 'none',
         }}
       >
         {unreadCount > 0 ? (
