@@ -709,16 +709,19 @@ func (user *User) HardDelete() error {
 
 // ValidateAndFill check password & user status
 func (user *User) ValidateAndFill() (err error) {
-	// When querying with struct, GORM will only query with non-zero fields,
-	// that means if your field's value is 0, '', false or other zero values,
-	// it won't be used to build query conditions
 	password := user.Password
 	username := strings.TrimSpace(user.Username)
 	if username == "" || password == "" {
 		return errors.New("用户名或密码为空")
 	}
-	// find by username or email (邮箱大小写不敏感)
-	DB.Where("username = ? OR LOWER(email) = ?", username, strings.ToLower(username)).First(user)
+	// Login identifies a user across tenants — the caller does not yet know
+	// which tenant the user belongs to. Tenant scope is enforced afterwards via
+	// TenantMembershipAllowsAccess (see ValidateAndFillWithTenant). Use
+	// WithTenantBypass to satisfy the fail-closed guardrail on this intentional
+	// cross-tenant lookup.
+	WithTenantBypass(DB).
+		Where("username = ? OR LOWER(email) = ?", username, strings.ToLower(username)).
+		First(user)
 	okay := common.ValidatePasswordAndHash(password, user.Password)
 	if !okay || user.Status != common.UserStatusEnabled {
 		return errors.New("用户名或密码错误，或用户已被封禁")
@@ -992,7 +995,9 @@ func GetUserGroup(id int, fromDB bool) (group string, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
-	err = DB.Model(&User{}).Where("id = ?", id).Select(commonGroupCol).Find(&group).Error
+	// group 是 user 的属性、与当前操作租户无关（user 可能是其他租户的 guest 成员）。
+	// 按 userId 唯一查询，bypass guardrail 是语义正确的选择。
+	err = WithTenantBypass(DB).Model(&User{}).Where("id = ?", id).Select(commonGroupCol).Find(&group).Error
 	if err != nil {
 		return "", err
 	}
