@@ -11,33 +11,33 @@ import (
 	"gorm.io/gorm"
 )
 
-// tenantScopedTables tracks which table names require tenant isolation.
+// tenantScopedTables 记录需要租户隔离的表名集合。
 var tenantScopedTables sync.Map
 
-// RegisterTenantScopedTable marks a table name as tenant-scoped.
+// RegisterTenantScopedTable 把一张表标记为"租户隔离"，之后 guardrail 会对它生效。
 func RegisterTenantScopedTable(tableName string) {
 	tenantScopedTables.Store(tableName, true)
 }
 
-// IsTenantScoped returns true if the table requires tenant isolation.
+// IsTenantScoped 判断一张表是否已注册为租户隔离表。
 func IsTenantScoped(tableName string) bool {
 	_, ok := tenantScopedTables.Load(tableName)
 	return ok
 }
 
-// TenantIDFromContext extracts tenant_id from context.
-// Returns DefaultTenantId if not set.
+// TenantIDFromContext 从 context 中读取 tenant_id。
+// 读不到时返回 DefaultTenantId（默认租户兜底，给"非 guardrail"路径用的宽松版）。
 //
-// Checks in order:
-//  1. gin.Context.Get (when ctx is a *gin.Context passed as interface)
-//  2. context.Value with typed key (constant.ContextKeyTenantId)
-//     — this is the path that c.Request.Context() takes after TenantResolve injects it
-//  3. context.Value with string key (fallback)
+// 查找顺序：
+//  1. gin.Context.Get（当 ctx 作为 interface 传入、底层是 *gin.Context 时）
+//  2. context.Value 使用 typed key（constant.ContextKeyTenantId）
+//     —— TenantResolve 中间件把 tenant_id 写到 c.Request.Context() 后走这条路
+//  3. context.Value 使用 string key（兜底）
 func TenantIDFromContext(ctx context.Context) int {
 	if ctx == nil {
 		return DefaultTenantId
 	}
-	// Path 1: gin.Context (when passed directly)
+	// Path 1：直接传进来的 gin.Context
 	if ginCtx, ok := ctx.(interface {
 		Get(string) (interface{}, bool)
 	}); ok {
@@ -47,13 +47,13 @@ func TenantIDFromContext(ctx context.Context) int {
 			}
 		}
 	}
-	// Path 2: standard context with typed key (from context.WithValue in TenantResolve)
+	// Path 2：标准 context + typed key（TenantResolve 里 context.WithValue 写入）
 	if tid := ctx.Value(constant.ContextKeyTenantId); tid != nil {
 		if id, ok := tid.(int); ok && id > 0 {
 			return id
 		}
 	}
-	// Path 3: standard context with string key (fallback)
+	// Path 3：标准 context + string key（兜底）
 	if tid := ctx.Value(string(constant.ContextKeyTenantId)); tid != nil {
 		if id, ok := tid.(int); ok && id > 0 {
 			return id
@@ -62,36 +62,35 @@ func TenantIDFromContext(ctx context.Context) int {
 	return DefaultTenantId
 }
 
-// TenantDB returns a *gorm.DB scoped to the given tenant from context.
-// Usage: TenantDB(c).Find(&users)
+// TenantDB 根据 context 里的租户返回一个已作用域化的 *gorm.DB。
+// 用法：TenantDB(c).Find(&users)
 func TenantDB(ctx context.Context) *gorm.DB {
 	tenantId := TenantIDFromContext(ctx)
 	return DB.Where("tenant_id = ?", tenantId)
 }
 
-// TenantLOGDB returns a *gorm.DB for the log database scoped to the given tenant.
+// TenantLOGDB 针对日志库（LOG_DB）返回一个已按租户作用域化的 *gorm.DB。
 func TenantLOGDB(ctx context.Context) *gorm.DB {
 	tenantId := TenantIDFromContext(ctx)
 	return LOG_DB.Where("tenant_id = ?", tenantId)
 }
 
-// ApplyTenantScope adds tenant_id = ? to an existing query.
+// ApplyTenantScope 给已有的查询链追加 tenant_id = ? 条件。
 func ApplyTenantScope(db *gorm.DB, tenantId int) *gorm.DB {
 	if tenantId <= 0 {
-		return db // bypass
+		return db // tenantId 非法，不加条件
 	}
 	return db.Where("tenant_id = ?", tenantId)
 }
 
-// BypassTenant returns a plain *gorm.DB without tenant filtering.
-// Use ONLY for super-admin cross-tenant queries, migrations, and bootstrap.
+// BypassTenant 返回一个"不做租户过滤"的 *gorm.DB。
+// 仅用于超级管理员跨租户查询、数据迁移、系统 bootstrap 场景。
 func BypassTenant(db *gorm.DB) *gorm.DB {
 	return db
 }
 
-// GetUserTenantId looks up the tenant_id for a given userId.
-// Used when logging from model-layer code that lacks gin.Context.
-// Falls back to DefaultTenantId on error.
+// GetUserTenantId 根据 userId 反查其归属的 tenant_id。
+// 主要给 model 层代码使用（那里通常拿不到 gin.Context），出错时兜底到 DefaultTenantId。
 func GetUserTenantId(userId int) int {
 	if userId <= 0 {
 		return DefaultTenantId
@@ -104,15 +103,15 @@ func GetUserTenantId(userId int) int {
 	return tenantId
 }
 
-// explicitTenantIDFromContext extracts tenant_id from context WITHOUT default fallback.
-// Returns 0 if the context does not explicitly carry a tenant_id.
-// This is used by guardrail callbacks where DefaultTenantId fallback would be dangerous
-// (e.g., silently rewriting queries for tenant 2+ into tenant 1).
+// ExplicitTenantIDFromContext 严格版：只从 context 里读"显式"写入的 tenant_id，
+// 读不到时返回 0（而不是 DefaultTenantId）。
+// guardrail callback 必须使用这个版本 —— 否则 context.Background() 的查询会被
+// 悄悄改写成 tenant_id=1，跨租户泄漏就发生了。
 func ExplicitTenantIDFromContext(ctx context.Context) int {
 	if ctx == nil {
 		return 0
 	}
-	// Path 1: gin.Context (when passed directly)
+	// Path 1：直接传进来的 gin.Context
 	if ginCtx, ok := ctx.(interface {
 		Get(string) (interface{}, bool)
 	}); ok {
@@ -122,29 +121,30 @@ func ExplicitTenantIDFromContext(ctx context.Context) int {
 			}
 		}
 	}
-	// Path 2: standard context with typed key (from context.WithValue in TenantResolve)
+	// Path 2：标准 context + typed key（TenantResolve 里 context.WithValue 写入）
 	if tid := ctx.Value(constant.ContextKeyTenantId); tid != nil {
 		if id, ok := tid.(int); ok && id > 0 {
 			return id
 		}
 	}
-	// Path 3: standard context with string key (fallback)
+	// Path 3：标准 context + string key（兜底）
 	if tid := ctx.Value(string(constant.ContextKeyTenantId)); tid != nil {
 		if id, ok := tid.(int); ok && id > 0 {
 			return id
 		}
 	}
-	// No tenant found — return 0, NOT DefaultTenantId
+	// 没有任何地方设置过租户 —— 返回 0，绝对不能返回 DefaultTenantId
 	return 0
 }
 
-// ---------- GORM guardrail callbacks ----------
+// ---------- GORM guardrail callback 实现 ----------
 
-// tenantBypassKey is set on GORM statement settings to explicitly skip tenant guardrails.
+// tenantBypassKey 是挂在 gorm Statement.Settings 上的标记位，
+// 用它来"显式"告诉 guardrail：这条语句允许跳过租户检查。
 const tenantBypassKey = "tenant:bypass"
 
-// WithTenantBypass marks a GORM session as explicitly bypassing tenant guardrails.
-// Use ONLY for migrations, bootstrap, and super-admin cross-tenant operations.
+// WithTenantBypass 给一次 gorm 会话打上"允许跨租户"的标记。
+// 仅限：数据迁移、系统 bootstrap、超级管理员跨租户操作。
 func WithTenantBypass(db *gorm.DB) *gorm.DB {
 	return db.Set(tenantBypassKey, true)
 }
@@ -158,20 +158,20 @@ func isTenantBypassed(db *gorm.DB) bool {
 	return false
 }
 
-// RegisterTenantCallbacks registers GORM callbacks for tenant-scoped models.
-// Behavior:
-//   - Create: auto-fill tenant_id from context, then fail-closed if still 0
-//   - Query/Update/Delete: fail-closed — reject if tenant_id missing in WHERE clause
-//   - Does not cover Raw/Exec or DB.Table() paths — those must use explicit tenant helpers
+// RegisterTenantCallbacks 在给定的 *gorm.DB 上挂载租户隔离 callback。
+// 行为总览：
+//   - Create：按 context 自动回填 tenant_id，仍为 0 时 fail-closed
+//   - Query/Update/Delete：若 WHERE 没有 tenant_id，fail-closed
+//   - 不覆盖 Raw/Exec 或 DB.Table() 路径 —— 这些必须自己写明显的租户条件
 func RegisterTenantCallbacks(db *gorm.DB) {
-	// Phase 1 tables
+	// Phase 1 表 —— 核心 5 张
 	RegisterTenantScopedTable("users")
 	RegisterTenantScopedTable("channels")
 	RegisterTenantScopedTable("tokens")
 	RegisterTenantScopedTable("logs")
 	RegisterTenantScopedTable("abilities")
 
-	// Phase 2 tables — financial
+	// Phase 2 表 —— 金融
 	RegisterTenantScopedTable("top_ups")
 	RegisterTenantScopedTable("redemptions")
 	RegisterTenantScopedTable("subscription_plans")
@@ -179,66 +179,70 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 	RegisterTenantScopedTable("user_subscriptions")
 	RegisterTenantScopedTable("subscription_pre_consume_records")
 
-	// Phase 2 tables — invoicing
+	// Phase 2 表 —— 发票
 	RegisterTenantScopedTable("invoice_applications")
 	RegisterTenantScopedTable("invoice_items")
 	RegisterTenantScopedTable("invoice_uploads")
 	RegisterTenantScopedTable("invoice_files")
 
-	// Phase 2 tables — tickets
+	// Phase 2 表 —— 工单
 	RegisterTenantScopedTable("tickets")
 	RegisterTenantScopedTable("ticket_replies")
 	RegisterTenantScopedTable("ticket_attachments")
 	RegisterTenantScopedTable("ticket_uploads")
 
-	// Phase 2 tables — affiliate
+	// Phase 2 表 —— 佣金
 	RegisterTenantScopedTable("aff_rebate_logs")
 	RegisterTenantScopedTable("aff_transfer_requests")
 
-	// Phase 2 tables — messaging
+	// Phase 2 表 —— 站内消息
 	RegisterTenantScopedTable("messages")
 	RegisterTenantScopedTable("message_read_statuses")
 
-	// Phase 2 tables — analytics & audit
+	// Phase 2 表 —— 分析与审计
 	RegisterTenantScopedTable("user_ip_records")
 	RegisterTenantScopedTable("quota_data")
 	RegisterTenantScopedTable("agent_logs")
 	RegisterTenantScopedTable("agent_reports")
 
-	// Phase 3 tables — membership
+	// Phase 3 表 —— 成员关系
 	RegisterTenantScopedTable("tenant_memberships")
 
-	// Phase 7 tables — alert persistence
+	// Phase 7 表 —— 告警持久化
 	RegisterTenantScopedTable("tenant_alert_records")
 
-	// Phase 5 tables — billing persistence
+	// Phase 5 表 —— 账单持久化
 	RegisterTenantScopedTable("tenant_bills")
 	RegisterTenantScopedTable("tenant_ledgers")
 
-	// Phase 7 tables — audit logging
+	// Phase 7 表 —— 审计日志
 	RegisterTenantScopedTable("tenant_audit_logs")
 
-	// Create: fail-closed (reject if tenant_id missing)
+	// Phase S1 表 —— 支付配置
+	RegisterTenantScopedTable("tenant_payment_configs")
+
+	// Create：fail-closed（没有 tenant_id 就拒绝入库）
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)
-	// Query/Update/Delete: fail-closed (reject if tenant_id not in WHERE clause)
-	// Phase 1.5 upgrade: from warn-only to blocking for tenant-scoped tables.
+	// Query/Update/Delete：fail-closed（WHERE 里没 tenant_id 就拒绝）
+	// Phase 1.5 升级：从只打 warning 改为直接 blocking。
 	db.Callback().Query().Before("gorm:query").Register("tenant:guard_query", tenantGuardScope)
 	db.Callback().Update().Before("gorm:update").Register("tenant:guard_update", tenantGuardScope)
 	db.Callback().Delete().Before("gorm:delete").Register("tenant:guard_delete", tenantGuardScope)
 }
 
-// tenantGuardScope enforces tenant_id scope on query/update/delete for tenant-scoped tables.
+// tenantGuardScope 是 Query/Update/Delete 的租户隔离守门员。
 //
-// Phase 2 behavior（已从 warn-only 升级为 fail-closed）:
-//   - If WHERE clause already contains tenant_id → allow
-//   - If context *explicitly* carries tenant_id (not default fallback) → auto-inject and allow
-//   - Otherwise → **reject the operation** (db.AddError) and log ERROR
+// Phase 2 生效行为（已从 warn-only 升级为 fail-closed）：
+//   - WHERE 已经含 tenant_id           → 放行
+//   - context 里"显式"携带了 tenant_id   → 自动注入 WHERE 并放行
+//   - 其它                             → 拒绝操作（db.AddError）+ 打 ERROR 日志
 //
-// Key design choice: uses explicitTenantIDFromContext (returns 0 when no tenant set)
-// instead of TenantIDFromContext (returns DefaultTenantId). This prevents silently
-// rewriting queries to tenant_id=1 when Statement.Context is context.Background().
+// 关键设计取舍：使用 ExplicitTenantIDFromContext（找不到返 0），
+// 而不是 TenantIDFromContext（找不到返 DefaultTenantId）。
+// 这是为了防止 context.Background() 的查询被误识别为"租户 1"，从而发生
+// 跨租户数据被改写/读取的严重事故。
 //
-// Bypass: use WithTenantBypass(db) for admin cross-tenant operations.
+// 需要跨租户操作时，调用方用 WithTenantBypass(db) 显式开闸。
 func tenantGuardScope(db *gorm.DB) {
 	if db.Statement.Schema == nil {
 		return
@@ -250,17 +254,16 @@ func tenantGuardScope(db *gorm.DB) {
 		return
 	}
 
-	// Check 1: tenant_id already in built SQL (in a WHERE position, not SELECT)
-	// The SQL string at this point contains only WHERE/JOIN conditions, not SELECT columns,
-	// because GORM builds SELECT separately. But to be safe, we also check the WHERE clause
-	// object directly below.
+	// Check 1：看生成的 SQL 里是否已出现 tenant_id（WHERE/JOIN 位置）。
+	// 此时 Statement.SQL 只包含 WHERE/JOIN 之类条件，不会包含 SELECT 列，
+	// 所以这里匹配 tenant_id 是安全的；保险起见下面还会再查一次 WHERE 子句对象。
 	sql := db.Statement.SQL.String()
 	if sql != "" && strings.Contains(sql, "tenant_id") {
 		return
 	}
 
-	// Check 2: inspect only the WHERE clause for tenant_id reference.
-	// This avoids false positives from Select("tenant_id") or other non-WHERE clauses.
+	// Check 2：单独检查 WHERE 子句对象是否引用了 tenant_id。
+	// 只看 WHERE，避免被 Select("tenant_id") 这类非 WHERE 位置误判为合法。
 	if whereClause, ok := db.Statement.Clauses["WHERE"]; ok {
 		expr := fmt.Sprintf("%v", whereClause.Expression)
 		if strings.Contains(expr, "tenant_id") {
@@ -268,9 +271,9 @@ func tenantGuardScope(db *gorm.DB) {
 		}
 	}
 
-	// Check 3: try auto-inject from context — but ONLY if context explicitly has tenant_id.
-	// explicitTenantIDFromContext returns 0 (not DefaultTenantId) when no tenant key is set.
-	// This prevents context.Background() from being misinterpreted as "tenant 1".
+	// Check 3：尝试从 context 里自动注入 —— 但必须是"显式"写入的 tenant_id 才行。
+	// ExplicitTenantIDFromContext 在没 set 时返 0（不是 DefaultTenantId），
+	// 这样 context.Background() 的查询不会被当成"租户 1"处理。
 	if ctx := db.Statement.Context; ctx != nil {
 		if tenantId := ExplicitTenantIDFromContext(ctx); tenantId > 0 {
 			db.Where("tenant_id = ?", tenantId)
@@ -278,9 +281,9 @@ func tenantGuardScope(db *gorm.DB) {
 		}
 	}
 
-	// Phase 2 fail-closed：记录 ERROR + 拒绝操作。
-	// 调用方需要：走 TenantDB(ctx) / 显式 .Where("tenant_id = ?", id) /
-	// 或用 WithTenantBypass() 为管理员跨租户操作明确开闸。
+	// 以上都不满足 —— Phase 2 fail-closed：写 ERROR 日志 + 拒绝执行。
+	// 调用方修法：走 TenantDB(ctx) / 显式 .Where("tenant_id = ?", id) /
+	// 或用 WithTenantBypass() 为超管跨租户操作明确开闸。
 	op := "QUERY"
 	switch db.Statement.BuildClauses[0] {
 	case "UPDATE":
@@ -296,8 +299,8 @@ func tenantGuardScope(db *gorm.DB) {
 		op, db.Statement.Schema.Table))
 }
 
-// tenantGuardCreate auto-fills tenant_id from context, then rejects the insert
-// if tenant_id is still 0 (fail-closed) unless explicitly bypassed.
+// tenantGuardCreate 是 Insert 的租户隔离守门员：
+// 先尝试按 context 自动回填 tenant_id，仍为 0 时 fail-closed（除非显式 bypass）。
 func tenantGuardCreate(db *gorm.DB) {
 	if db.Statement.Schema == nil {
 		return
@@ -313,7 +316,7 @@ func tenantGuardCreate(db *gorm.DB) {
 		return
 	}
 
-	// Phase 1: auto-fill from context if current value is 0
+	// Phase 1：如果当前 tenant_id 为 0，就尝试从 context 里自动回填
 	val, isZero := field.ValueOf(db.Statement.Context, db.Statement.ReflectValue)
 	currentTenantId := 0
 	switch v := val.(type) {
@@ -324,10 +327,9 @@ func tenantGuardCreate(db *gorm.DB) {
 	}
 
 	if isZero || currentTenantId == 0 {
-		// Use ExplicitTenantIDFromContext (returns 0 for context.Background())
-		// instead of TenantIDFromContext (returns DefaultTenantId).
-		// This prevents DB.Create() without request context from silently
-		// writing records into tenant 1.
+		// 用 ExplicitTenantIDFromContext（context.Background() 时返 0），
+		// 而不是 TenantIDFromContext（会返回 DefaultTenantId）。
+		// 这样可以防止 DB.Create() 在没挂请求 context 时，把数据悄悄写到租户 1。
 		tenantId := ExplicitTenantIDFromContext(db.Statement.Context)
 		if tenantId > 0 {
 			_ = field.Set(db.Statement.Context, db.Statement.ReflectValue, tenantId)
@@ -335,8 +337,8 @@ func tenantGuardCreate(db *gorm.DB) {
 		}
 	}
 
-	// Phase 2: fail-closed — reject if tenant_id is still 0
-	// Re-read after potential autofill
+	// Phase 2：fail-closed —— 如果 tenant_id 仍为 0，拒绝写入。
+	// 回填之后再读一次，避免前面 Set 没生效。
 	if currentTenantId == 0 {
 		val2, _ := field.ValueOf(db.Statement.Context, db.Statement.ReflectValue)
 		switch v := val2.(type) {
