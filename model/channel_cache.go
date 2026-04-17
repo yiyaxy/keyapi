@@ -27,14 +27,16 @@ func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		return
 	}
+	// 跨租户加载全量 channels / abilities 到内存缓存；
+	// 缓存 key 为 tenantId:group，按租户分桶。
 	newChannelId2channel := make(map[int]*Channel)
 	var channels []*Channel
-	DB.Find(&channels)
+	WithTenantBypass(DB).Find(&channels)
 	for _, channel := range channels {
 		newChannelId2channel[channel.Id] = channel
 	}
 	var abilities []*Ability
-	DB.Find(&abilities)
+	WithTenantBypass(DB).Find(&abilities)
 	groups := make(map[string]bool)
 	for _, ability := range abilities {
 		groups[tenantGroupKey(ability.TenantId, ability.Group)] = true

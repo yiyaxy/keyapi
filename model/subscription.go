@@ -1258,14 +1258,17 @@ type SubscriptionPreConsumeResult struct {
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
+// tenantId<=0 时按"全租户扫描"语义运行（定时任务场景），显式走 WithTenantBypass。
 func ExpireDueSubscriptions(tenantId int, limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	now := GetDBTimestamp()
-	query := DB.Where("status = ? AND end_time > 0 AND end_time <= ?", "active", now)
+	var query *gorm.DB
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		query = DB.Where("tenant_id = ? AND status = ? AND end_time > 0 AND end_time <= ?", tenantId, "active", now)
+	} else {
+		query = WithTenantBypass(DB).Where("status = ? AND end_time > 0 AND end_time <= ?", "active", now)
 	}
 	var subs []UserSubscription
 	if err := query.Order("end_time asc, id asc").
@@ -1571,14 +1574,18 @@ func RefundSubscriptionPreConsume(requestId string) error {
 }
 
 // ResetDueSubscriptions resets subscriptions whose next_reset_time has passed.
+// ResetDueSubscriptions 重置到期自动续期的订阅配额。
+// tenantId<=0 表示定时任务场景全租户扫描，显式 bypass。
 func ResetDueSubscriptions(tenantId int, limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	now := GetDBTimestamp()
-	query := DB.Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active")
+	var query *gorm.DB
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		query = DB.Where("tenant_id = ? AND next_reset_time > 0 AND next_reset_time <= ? AND status = ?", tenantId, now, "active")
+	} else {
+		query = WithTenantBypass(DB).Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active")
 	}
 	var subs []UserSubscription
 	if err := query.Order("next_reset_time asc").
