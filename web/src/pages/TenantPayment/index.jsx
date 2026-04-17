@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import WechatConfig from './WechatConfig';
+import OrderList from './OrderList';
 
 const { TabPane } = Tabs;
 const { Title } = Typography;
@@ -18,8 +19,8 @@ export default function TenantPaymentPage() {
         <TabPane tab={t('微信支付（WeChat Pay v3）')} itemKey='config'>
           <WechatConfig />
         </TabPane>
-        <TabPane tab='订单（S2 提供）' itemKey='orders' disabled>
-          <div />
+        <TabPane tab='订单' itemKey='orders'>
+          <OrderList />
         </TabPane>
         <TabPane tab='退款（S3 提供）' itemKey='refunds' disabled>
           <div />
