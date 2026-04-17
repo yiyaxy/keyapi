@@ -649,11 +649,12 @@ func ExpireTopUpOrder(tradeNo string) error {
 }
 
 // DeleteTopUpOrder hard-deletes a TopUp order by trade_no.
+// trade_no 全局唯一，允许 bypass guardrail 做跨租户唯一索引删除。
 func DeleteTopUpOrder(tradeNo string) error {
 	if tradeNo == "" {
 		return errors.New("trade_no is required")
 	}
-	result := DB.Where("trade_no = ?", tradeNo).Delete(&TopUp{})
+	result := WithTenantBypass(DB).Where("trade_no = ?", tradeNo).Delete(&TopUp{})
 	if result.Error != nil {
 		return result.Error
 	}

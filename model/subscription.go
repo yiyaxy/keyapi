@@ -1770,11 +1770,12 @@ func GetSubscriptionPlansByIds(tenantId int, ids []int) (map[int]*SubscriptionPl
 }
 
 // DeleteSubscriptionOrder hard-deletes a subscription order by trade_no.
+// trade_no 全局唯一，允许 bypass guardrail 做跨租户唯一索引删除。
 func DeleteSubscriptionOrder(tradeNo string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
-	result := DB.Where("trade_no = ?", tradeNo).Delete(&SubscriptionOrder{})
+	result := WithTenantBypass(DB).Where("trade_no = ?", tradeNo).Delete(&SubscriptionOrder{})
 	if result.Error != nil {
 		return result.Error
 	}

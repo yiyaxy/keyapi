@@ -416,7 +416,7 @@ func BatchInsertChannels(channels []Channel) error {
 	return tx.Commit().Error
 }
 
-func BatchDeleteChannels(ids []int) error {
+func BatchDeleteChannels(tenantId int, ids []int) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -426,11 +426,11 @@ func BatchDeleteChannels(ids []int) error {
 		return tx.Error
 	}
 	for _, chunk := range lo.Chunk(ids, 200) {
-		if err := tx.Where("id in (?)", chunk).Delete(&Channel{}).Error; err != nil {
+		if err := tx.Where("tenant_id = ? AND id in (?)", tenantId, chunk).Delete(&Channel{}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
-		if err := tx.Where("channel_id in (?)", chunk).Delete(&Ability{}).Error; err != nil {
+		if err := tx.Where("tenant_id = ? AND channel_id in (?)", tenantId, chunk).Delete(&Ability{}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -820,13 +820,17 @@ func updateChannelUsedQuota(id int, quota int, tenantId ...int) {
 	}
 }
 
+// DeleteChannelByStatus 管理员级跨租户删除，需显式 bypass guardrail。
 func DeleteChannelByStatus(status int64) (int64, error) {
-	result := DB.Where("status = ?", status).Delete(&Channel{})
+	result := WithTenantBypass(DB).Where("status = ?", status).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
-func DeleteDisabledChannel() (int64, error) {
-	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
+// DeleteDisabledChannel 按 tenant 清理被禁用渠道。
+func DeleteDisabledChannel(tenantId int) (int64, error) {
+	result := DB.Where("tenant_id = ? AND (status = ? or status = ?)",
+		tenantId, common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).
+		Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 

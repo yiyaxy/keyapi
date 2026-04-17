@@ -185,7 +185,7 @@ func DeleteHistoryLogs(c *gin.Context) {
 		})
 		return
 	}
-	count, err := model.DeleteOldLog(c.Request.Context(), targetTimestamp, 100)
+	count, err := model.DeleteOldLog(c.Request.Context(), middleware.GetTenantId(c), targetTimestamp, 100)
 	if err != nil {
 		common.ApiError(c, err)
 		return

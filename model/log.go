@@ -571,7 +571,9 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return token
 }
 
-func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {
+// DeleteOldLog 按租户清理历史日志。
+// 由 TenantAdminAuth 路由调用，必须限定在调用方当前租户内。
+func DeleteOldLog(ctx context.Context, tenantId int, targetTimestamp int64, limit int) (int64, error) {
 	var total int64 = 0
 
 	for {
@@ -579,7 +581,7 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 			return total, ctx.Err()
 		}
 
-		result := LOG_DB.Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
+		result := LOG_DB.Where("tenant_id = ? AND created_at < ?", tenantId, targetTimestamp).Limit(limit).Delete(&Log{})
 		if nil != result.Error {
 			return total, result.Error
 		}
