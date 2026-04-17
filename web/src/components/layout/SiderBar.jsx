@@ -45,6 +45,7 @@ const routerMap = {
   tenantAlerts: '/console/tenant-alerts',
   tenantAudit: '/console/tenant-audit',
   tenantBills: '/console/tenant-bills',
+  tenantPayment: '/console/tenant-payment',
   platformTenants: '/console/platform-tenants',
   subscription: '/console/subscription',
   log: '/console/log',
@@ -277,6 +278,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('租户账单'),
         itemKey: 'tenantBills',
         to: '/tenant-bills',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('支付配置'),
+        itemKey: 'tenantPayment',
+        to: '/tenant-payment',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

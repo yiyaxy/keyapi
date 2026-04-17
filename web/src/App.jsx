@@ -88,6 +88,7 @@ const TenantDashboardPage = lazy(() => import('./pages/TenantDashboard'));
 const TenantAlerts = lazy(() => import('./pages/TenantAlerts'));
 const TenantAudit = lazy(() => import('./pages/TenantAudit'));
 const TenantBills = lazy(() => import('./pages/TenantBills'));
+const TenantPaymentPage = lazy(() => import('./pages/TenantPayment'));
 const PlatformTenants = lazy(() => import('./pages/PlatformTenants'));
 
 function DynamicOAuth2Callback() {
@@ -354,6 +355,14 @@ function App() {
           element={
             <TenantAdminRoute>
               <TenantBills />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-payment'
+          element={
+            <TenantAdminRoute>
+              <TenantPaymentPage />
             </TenantAdminRoute>
           }
         />
