@@ -222,6 +222,7 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 
 	// Phase S1 表 —— 支付配置
 	RegisterTenantScopedTable("tenant_payment_configs")
+	RegisterTenantScopedTable("payment_orders")
 
 	// Create：fail-closed（没有 tenant_id 就拒绝入库）
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)

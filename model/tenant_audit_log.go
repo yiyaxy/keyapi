@@ -41,6 +41,27 @@ func CreateTenantAuditLog(log *TenantAuditLog) error {
 	return DB.Create(log).Error
 }
 
+// CreateTenantAuditLogTx writes an audit record on the caller-supplied
+// transaction. Required for any audit write that must be atomic with a
+// business state change — e.g. payment success in
+// service/payment/order.go. Plain CreateTenantAuditLog uses the global
+// DB and would persist even if the outer tx rolls back.
+func CreateTenantAuditLogTx(tx *gorm.DB, log *TenantAuditLog) error {
+	if log == nil {
+		return errors.New("nil audit log")
+	}
+	if log.TenantId <= 0 {
+		return errors.New("invalid tenantId")
+	}
+	if log.Action == "" {
+		return errors.New("action required")
+	}
+	if tx == nil {
+		return errors.New("nil tx; use CreateTenantAuditLog for non-tx writes")
+	}
+	return tx.Create(log).Error
+}
+
 // ListTenantAuditLogs 返回租户审计记录（按时间倒序，分页）。
 //
 // 参数：
