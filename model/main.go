@@ -404,10 +404,11 @@ func backfillTenantMemberships() {
 	}
 }
 
+// migrateDBFast 串行跑 AutoMigrate。
+// 历史注释："并行" 只是一种设想——GORM 的 PreparedStmtDB 不是并发安全的，
+// 并行 AutoMigrate 会触发 nil panic（prepare_stmt.go PreparedStmtDB.Reset）。
+// 日常启动已由 schema 版本门控整块跳过，首次/升级那一次用串行也是秒级。
 func migrateDBFast() error {
-
-	var wg sync.WaitGroup
-
 	migrations := []struct {
 		model interface{}
 		name  string
@@ -467,29 +468,13 @@ func migrateDBFast() error {
 		{&TenantLedger{}, "TenantLedger"},
 		{&TenantAuditLog{}, "TenantAuditLog"},
 	}
-	// 动态计算migration数量，确保errChan缓冲区足够大
-	errChan := make(chan error, len(migrations))
 
 	for _, m := range migrations {
-		wg.Add(1)
-		go func(model interface{}, name string) {
-			defer wg.Done()
-			if err := DB.AutoMigrate(model); err != nil {
-				errChan <- fmt.Errorf("failed to migrate %s: %v", name, err)
-			}
-		}(m.model, m.name)
-	}
-
-	// Wait for all migrations to complete
-	wg.Wait()
-	close(errChan)
-
-	// Check for any errors
-	for err := range errChan {
-		if err != nil {
-			return err
+		if err := DB.AutoMigrate(m.model); err != nil {
+			return fmt.Errorf("failed to migrate %s: %v", m.name, err)
 		}
 	}
+
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
