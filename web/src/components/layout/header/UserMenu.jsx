@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useState } from 'react';
+import React, { useContext } from 'react';
 import { Avatar, Badge, Dropdown, Typography } from '@douyinfe/semi-ui';
 import {
   IconBell,
@@ -241,7 +241,7 @@ export default function UserMenu(/* { onToggleCollapse, mode } — accepted but 
                   top: -4,
                   right: -4,
                   background: 'var(--semi-color-danger)',
-                  color: '#fff',
+                  color: 'var(--semi-color-white)',
                   borderRadius: '50%',
                   fontSize: 9,
                   lineHeight: '14px',
