@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -257,13 +259,139 @@ func ApplyPaymentSuccess(ctx context.Context, outTradeNo string, transactionId s
 	return nil
 }
 
-// applyTopupSuccess and applySubSuccess are filled in by Tasks 11 and 12.
-// Declared here so the transaction skeleton compiles.
-// The postCommit slice lets the handler schedule cache / redis writes
-// that must run *after* the tx commits (see ApplyPaymentSuccess doc).
+// applyTopupSuccess credits the user's quota, writes a top_ups row and an
+// audit log entry inside the caller's tx, then schedules postCommit
+// side-effects (topup log, rebate, cache sync) that run only after the tx
+// commits. See ApplyPaymentSuccess for the postCommit guarantee.
 func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]func()) error {
-	return errors.New("applyTopupSuccess: not implemented (Task 11)")
+	if order.UserId <= 0 {
+		return errors.New("topup order missing UserId")
+	}
+	// Metadata carries amount_units (already-normalized display units;
+	// see CreateTopupOrderInput doc). Quota is derived here using the
+	// same formula epay uses at callback time (controller/topup.go:371-
+	// 373), so both display modes round-trip the user's original request.
+	var meta struct {
+		AmountUnits int64 `json:"amount_units"`
+	}
+	if order.Metadata != "" {
+		if err := json.Unmarshal([]byte(order.Metadata), &meta); err != nil {
+			return fmt.Errorf("parse topup metadata: %w", err)
+		}
+	}
+	if meta.AmountUnits <= 0 {
+		return fmt.Errorf("invalid amount_units for topup order %d", order.Id)
+	}
+	quotaToAdd := decimal.NewFromInt(meta.AmountUnits).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+	if quotaToAdd <= 0 {
+		return fmt.Errorf("computed non-positive quota for order %d", order.Id)
+	}
+
+	// Add quota to the user's HOME tenant row (users.tenant_id), NOT
+	// order.TenantId (which is the session/collection tenant). See spec §6.3
+	// and controller/topup.go:374 for the precedent.
+	homeTenant := model.GetUserTenantId(order.UserId)
+	if homeTenant <= 0 {
+		return fmt.Errorf("cannot resolve home tenant for user %d", order.UserId)
+	}
+	// Tx-local quota credit. Do NOT call model.IncreaseUserQuota here —
+	// that helper writes via the global DB (model/user.go:1072) and
+	// kicks off an async gopool.Go cache write, both of which commit
+	// independently of this tx. If the top_ups insert or audit write
+	// below fails, we need users.quota to roll back with them.
+	// Cache sync is deferred to postCommit (ran only after tx success).
+	res := tx.Exec(
+		"UPDATE users SET quota = quota + ? WHERE id = ? AND tenant_id = ?",
+		quotaToAdd, order.UserId, homeTenant,
+	)
+	if res.Error != nil {
+		return fmt.Errorf("increase quota: %w", res.Error)
+	}
+	if res.RowsAffected != 1 {
+		return fmt.Errorf("quota update affected %d rows (user=%d, home=%d)",
+			res.RowsAffected, order.UserId, homeTenant)
+	}
+
+	// Record a top_ups row visible in the SESSION tenant so the user sees
+	// this order in their payment history / invoice flows. payment_method
+	// = "wxpay" keeps it compatible with invoice_service.go filters.
+	// Amount = AmountUnits (the "display units" value, matching epay
+	// line 234 semantics); NOT the quota delta. CreateTime = order's
+	// creation stamp; CompleteTime = paid moment.
+	topup := &model.TopUp{
+		TenantId:      order.TenantId,
+		UserId:        order.UserId,
+		Amount:        meta.AmountUnits,
+		Money:         float64(order.Amount) / 100.0, // CNY yuan
+		TradeNo:       order.OutTradeNo,
+		PaymentMethod: "wxpay",
+		Status:        "success",
+		CreateTime:    order.CreatedAt,
+		CompleteTime:  order.PaidAt,
+	}
+	if err := tx.Create(topup).Error; err != nil {
+		return fmt.Errorf("record top_ups: %w", err)
+	}
+
+	// Audit — MUST use the tx variant; the plain CreateTenantAuditLog
+	// writes via global DB and would persist even on tx rollback.
+	if err := model.CreateTenantAuditLogTx(tx, &model.TenantAuditLog{
+		TenantId:    order.TenantId,
+		ActorUserId: order.UserId,
+		Action:      "payment.topup.success",
+		Target:      "payment_orders",
+		TargetId:    order.Id,
+		Detail: mustJSON(map[string]any{
+			"out_trade_no":   order.OutTradeNo,
+			"amount_cents":   order.Amount,
+			"amount_units":   meta.AmountUnits,
+			"quota_delta":    quotaToAdd,
+			"home_tenant":    homeTenant,
+			"session_tenant": order.TenantId,
+		}),
+	}); err != nil {
+		// Don't fail the payment for an audit write hiccup, but log it.
+		common.SysLog(fmt.Sprintf("topup audit tx-write failed: %v", err))
+	}
+
+	// Post-commit side-effects. Parity with the existing epay success
+	// path (controller/topup.go:380-382) + the Stripe path
+	// (model/topup.go:130-133). WeChat must NOT behave differently per
+	// channel. Both helpers use global DB internally, so running them
+	// inside the tx would either (a) write to a different connection
+	// and not be atomic with the tx, or (b) block the tx on another
+	// connection's locks — neither is what we want. postCommit is
+	// correct.
+	userId := order.UserId
+	delta := quotaToAdd
+	tenantForLog := homeTenant
+	money := float64(order.Amount) / 100.0
+	logContent := fmt.Sprintf("使用微信支付充值成功，充值金额: %v，支付金额：%.2f 元",
+		logger.FormatQuota(int(delta)), money)
+	*postCommit = append(*postCommit, func() {
+		// 1. Topup log entry — visible in user log UI.
+		model.RecordTopUpLogWithTenant(tenantForLog, userId, int(delta), logContent)
+		// 2. Rebate processing — matches controller/topup.go:382 behavior.
+		model.ProcessTopUpRebate(userId, int(delta))
+		// 3. User quota cache sync.
+		if err := model.CacheIncrUserQuota(userId, delta); err != nil {
+			common.SysLog(fmt.Sprintf("topup cache sync failed user=%d: %v", userId, err))
+		}
+	})
+	return nil
 }
+
+// mustJSON marshals v to a JSON string; returns "{}" on error (audit detail
+// is best-effort, a marshal failure must not fail the payment tx).
+func mustJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 func applySubSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]func()) error {
 	return errors.New("applySubSuccess: not implemented (Task 12)")
 }

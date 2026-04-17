@@ -138,6 +138,15 @@ func cacheIncrUserQuota(userId int, delta int64) error {
 	return common.RedisHIncrBy(getUserCacheKey(userId), "Quota", delta)
 }
 
+// CacheIncrUserQuota is the exported form of cacheIncrUserQuota. Payment
+// success handlers (service/payment/order.go) call it from *postCommit*
+// after the DB tx commits — never from inside a tx, because the cache
+// and DB writes must not diverge on tx rollback (see
+// ApplyPaymentSuccess in service/payment/order.go).
+func CacheIncrUserQuota(id int, quota int64) error {
+	return cacheIncrUserQuota(id, quota)
+}
+
 func cacheDecrUserQuota(userId int, delta int64) error {
 	return cacheIncrUserQuota(userId, -delta)
 }
