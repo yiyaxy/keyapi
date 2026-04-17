@@ -23,9 +23,9 @@ tiktoken_cache
 .cache
 web/bun.lock
 plans
-!docs/superpowers/
-!docs/superpowers/plans/
-!docs/superpowers/plans/*.md
+!**/docs/superpowers/
+!**/docs/superpowers/plans/
+!**/docs/superpowers/plans/*.md
 .claude
 
 electron/node_modules
