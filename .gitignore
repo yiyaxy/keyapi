@@ -27,6 +27,7 @@ plans
 !**/docs/superpowers/plans/
 !**/docs/superpowers/plans/*.md
 .claude
+.worktrees/
 
 electron/node_modules
 electron/dist
