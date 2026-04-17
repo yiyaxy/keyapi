@@ -1624,14 +1624,17 @@ func ResetDueSubscriptions(tenantId int, limit int) (int, error) {
 }
 
 // CleanupSubscriptionPreConsumeRecords removes old idempotency records to keep table small.
+// tenantId<=0 表示定时任务场景全租户清理，显式 bypass guardrail。
 func CleanupSubscriptionPreConsumeRecords(tenantId int, olderThanSeconds int64) (int64, error) {
 	if olderThanSeconds <= 0 {
 		olderThanSeconds = 7 * 24 * 3600
 	}
 	cutoff := GetDBTimestamp() - olderThanSeconds
-	query := DB.Where("updated_at < ?", cutoff)
+	var query *gorm.DB
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		query = DB.Where("tenant_id = ? AND updated_at < ?", tenantId, cutoff)
+	} else {
+		query = WithTenantBypass(DB).Where("updated_at < ?", cutoff)
 	}
 	res := query.Delete(&SubscriptionPreConsumeRecord{})
 	return res.RowsAffected, res.Error
