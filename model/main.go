@@ -92,18 +92,30 @@ func createRootAccountIfNeed() error {
 
 func CheckSetup() {
 	setup := GetSetup()
-	if setup == nil {
-		// No setup record exists, check if we have a root user
+	// "已初始化" 的判据是 InitializedAt > 0（而不是行是否存在）。
+	// 因为 migrateDB 在写入 schema_version 时会创建占位 Setup 行，
+	// 那时 Version/InitializedAt 仍为空——不能算"已初始化"。
+	if setup == nil || setup.InitializedAt == 0 {
+		// 未完成安装，看是否已有 root 用户（老库直接启动的场景）
 		if RootUserExists() {
 			common.SysLog("system is not initialized, but root user exists")
-			// Create setup record
-			newSetup := Setup{
-				Version:       common.Version,
-				InitializedAt: time.Now().Unix(),
-			}
-			err := DB.Create(&newSetup).Error
-			if err != nil {
-				common.SysLog("failed to create setup record: " + err.Error())
+			if setup == nil {
+				err := DB.Create(&Setup{
+					Version:       common.Version,
+					SchemaVersion: CurrentSchemaVersion,
+					InitializedAt: time.Now().Unix(),
+				}).Error
+				if err != nil {
+					common.SysLog("failed to create setup record: " + err.Error())
+				}
+			} else {
+				err := DB.Model(setup).Updates(map[string]interface{}{
+					"version":        common.Version,
+					"initialized_at": time.Now().Unix(),
+				}).Error
+				if err != nil {
+					common.SysLog("failed to update setup record: " + err.Error())
+				}
 			}
 			constant.Setup = true
 		} else {
@@ -253,6 +265,25 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
+	// 先把 Setup 表本身建好，才能读写 schema 版本号
+	if err := DB.AutoMigrate(&Setup{}); err != nil {
+		return err
+	}
+
+	currentVersion := GetSchemaVersion()
+	if currentVersion == CurrentSchemaVersion {
+		common.SysLog(fmt.Sprintf("schema version matches (%s), skipping AutoMigrate", currentVersion))
+		// 版本匹配仍需执行的启动动作：缓存预热 + 默认租户幂等兜底
+		LoadIpBanCache()
+		LoadPromptRuleCache()
+		if err := EnsureDefaultTenant(); err != nil {
+			log.Printf("Warning: failed to bootstrap default tenant: %v", err)
+		}
+		return nil
+	}
+
+	common.SysLog(fmt.Sprintf("schema version %q → %q, running full migration", currentVersion, CurrentSchemaVersion))
+
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -260,76 +291,13 @@ func migrateDB() error {
 		return err
 	}
 
-	err := DB.AutoMigrate(
-		&Tenant{},
-		&TenantMembership{},
-		&TenantInvite{},
-		&TenantOption{},
-		&Channel{},
-		&Token{},
-		&User{},
-		&PasskeyCredential{},
-		&Option{},
-		&Redemption{},
-		&Ability{},
-		&Log{},
-		&Midjourney{},
-		&TopUp{},
-		&QuotaData{},
-		&Task{},
-		&Model{},
-		&Vendor{},
-		&PrefillGroup{},
-		&Setup{},
-		&TwoFA{},
-		&TwoFABackupCode{},
-		&Checkin{},
-		&SubscriptionOrder{},
-		&UserSubscription{},
-		&SubscriptionPreConsumeRecord{},
-		&CustomOAuthProvider{},
-		&UserOAuthBinding{},
-		&Message{},
-		&MessageReadStatus{},
-		&UserIpRecord{},
-		&IpBan{},
-		&MessageTranslation{},
-		&ContentTranslation{},
-		&PromptRule{},
-		&AffTransferRequest{},
-		&AffRebateLog{},
-		&UserRebateSetting{},
-		&Ticket{},
-		&TicketReply{},
-		&TicketAttachment{},
-		&TicketUpload{},
-		&InvoiceApplication{},
-		&InvoiceItem{},
-		&InvoiceUpload{},
-		&InvoiceFile{},
-		&SiteRPMSnapshot{},
-		&AgentLog{},
-		&AgentReport{},
-		&TenantPlan{},
-		&TenantAlertRecord{},
-		&TenantBill{},
-		&TenantLedger{},
-		&TenantAuditLog{},
-	)
-	if err != nil {
+	// 并行 AutoMigrate 所有表（表清单维护在 migrateDBFast 内部）
+	if err := migrateDBFast(); err != nil {
 		return err
 	}
+
 	LoadIpBanCache()
 	LoadPromptRuleCache()
-	if common.UsingSQLite {
-		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
-			return err
-		}
-	} else {
-		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
-			return err
-		}
-	}
 
 	// Bootstrap default tenant and backfill existing data
 	if err := EnsureDefaultTenant(); err != nil {
@@ -337,6 +305,11 @@ func migrateDB() error {
 	}
 	backfillTenantId()
 	backfillTenantMemberships()
+
+	// 记录新版本，下次启动即可快进
+	if err := SaveSchemaVersion(CurrentSchemaVersion); err != nil {
+		log.Printf("Warning: failed to save schema version: %v", err)
+	}
 
 	return nil
 }
@@ -372,8 +345,10 @@ func backfillTenantId() {
 			log.Printf("Backfilled tenant_id=%d for %d rows in %s", DefaultTenantId, result.RowsAffected, table)
 		}
 	}
-	// Handle LOG_DB if separate
-	if LOG_DB != DB {
+	// Handle LOG_DB if separate.
+	// backfillTenantId runs inside InitDB()→migrateDB(), before InitLogDB() has assigned LOG_DB,
+	// so LOG_DB may still be nil here. Skip when nil or when pointing to the same handle as DB.
+	if LOG_DB != nil && LOG_DB != DB {
 		result := LOG_DB.Exec("UPDATE logs SET tenant_id = ? WHERE tenant_id = 0", DefaultTenantId)
 		if result.Error != nil {
 			log.Printf("Warning: tenant_id backfill for LOG_DB logs: %v", result.Error)
@@ -440,6 +415,7 @@ func migrateDBFast() error {
 		{&Tenant{}, "Tenant"},
 		{&TenantMembership{}, "TenantMembership"},
 		{&TenantInvite{}, "TenantInvite"},
+		{&TenantOption{}, "TenantOption"},
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
@@ -466,6 +442,8 @@ func migrateDBFast() error {
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&Message{}, "Message"},
 		{&MessageReadStatus{}, "MessageReadStatus"},
+		{&UserIpRecord{}, "UserIpRecord"},
+		{&IpBan{}, "IpBan"},
 		{&MessageTranslation{}, "MessageTranslation"},
 		{&ContentTranslation{}, "ContentTranslation"},
 		{&PromptRule{}, "PromptRule"},
@@ -484,6 +462,10 @@ func migrateDBFast() error {
 		{&AgentLog{}, "AgentLog"},
 		{&AgentReport{}, "AgentReport"},
 		{&TenantPlan{}, "TenantPlan"},
+		{&TenantAlertRecord{}, "TenantAlertRecord"},
+		{&TenantBill{}, "TenantBill"},
+		{&TenantLedger{}, "TenantLedger"},
+		{&TenantAuditLog{}, "TenantAuditLog"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
