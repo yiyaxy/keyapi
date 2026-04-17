@@ -194,12 +194,6 @@ const RAW_GROUPS = [
         to: '/console/tenant-audit',
         i18nKey: 'nav.audit',
       },
-      {
-        id: 'channels',
-        icon: 'IconLink',
-        to: '/console/channel',
-        i18nKey: 'nav.channels',
-      },
     ],
   },
   {
@@ -212,6 +206,12 @@ const RAW_GROUPS = [
         icon: 'IconHome',
         to: '/console/platform-tenants',
         i18nKey: 'nav.platformTenants',
+      },
+      {
+        id: 'channels',
+        icon: 'IconLink',
+        to: '/console/channel',
+        i18nKey: 'nav.channels',
       },
       {
         id: 'agents',
