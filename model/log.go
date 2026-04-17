@@ -120,8 +120,8 @@ func RecordLogWithTenant(tenantId int, userId int, logType int, content string) 
 	}
 }
 
-// RecordTopUpLog records a topup log with quota amount.
-// This ensures the quota field is properly set for topup records.
+// Deprecated: Use RecordTopUpLogWithTenant instead. This function silently writes
+// to DefaultTenantId and breaks tenant isolation. Will be removed after Phase 2 cleanup.
 func RecordTopUpLog(userId int, quota int, content string) {
 	RecordTopUpLogWithTenant(DefaultTenantId, userId, quota, content)
 }

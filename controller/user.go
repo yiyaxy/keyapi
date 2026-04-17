@@ -32,7 +32,7 @@ type LoginRequest struct {
 }
 
 func Login(c *gin.Context) {
-	if !common.PasswordLoginEnabled {
+	if !service.GetConfigBool(middleware.GetTenantId(c), "PasswordLoginEnabled", common.PasswordLoginEnabled) {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
 		return
 	}
@@ -169,11 +169,12 @@ func Logout(c *gin.Context) {
 }
 
 func Register(c *gin.Context) {
-	if !common.RegisterEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if !service.GetConfigBool(tenantId, "RegisterEnabled", common.RegisterEnabled) {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 		return
 	}
-	if !common.PasswordRegisterEnabled {
+	if !service.GetConfigBool(tenantId, "PasswordRegisterEnabled", common.PasswordRegisterEnabled) {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordRegisterDisabled)
 		return
 	}
@@ -187,7 +188,7 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
-	if common.EmailVerificationEnabled {
+	if service.GetConfigBool(tenantId, "EmailVerificationEnabled", common.EmailVerificationEnabled) {
 		if user.Email == "" || user.VerificationCode == "" {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return

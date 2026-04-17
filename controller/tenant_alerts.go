@@ -69,6 +69,7 @@ func AckTenantAlert(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	service.RecordAudit(c, "alert.acknowledge", "alert", alertId, gin.H{})
 	common.ApiSuccess(c, nil)
 }
 

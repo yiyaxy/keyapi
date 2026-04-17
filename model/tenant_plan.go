@@ -23,6 +23,7 @@ type TenantPlan struct {
 	AllowedModels string `json:"allowed_models" gorm:"type:text"`       // comma-separated, empty = all
 	Status        int    `json:"status" gorm:"default:1"`               // 1=active
 	ExpiresAt     int64  `json:"expires_at" gorm:"bigint;default:0"`    // 0 = never expires
+	GracePeriodSeconds int64 `json:"grace_period_seconds" gorm:"default:0"` // grace period after expires_at before disabling; 0 = no grace, immediate disable
 	CreatedAt     int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
 	UpdatedAt     int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
@@ -141,6 +142,29 @@ func IsTenantPlanExpired(plan *TenantPlan) bool {
 		return false // 0 = never expires
 	}
 	return time.Now().Unix() > plan.ExpiresAt
+}
+
+// EffectiveExpireAt returns the absolute unix timestamp at which the plan should
+// transition to disabled, factoring in the grace period.
+// Returns 0 if the plan never expires.
+func EffectiveExpireAt(plan *TenantPlan) int64 {
+	if plan == nil || plan.ExpiresAt <= 0 {
+		return 0
+	}
+	if plan.GracePeriodSeconds < 0 {
+		return plan.ExpiresAt
+	}
+	return plan.ExpiresAt + plan.GracePeriodSeconds
+}
+
+// IsTenantPlanInGracePeriod returns true when the plan's expires_at has passed
+// but the grace window has not yet elapsed (i.e. expires_at < now <= expires_at + grace).
+func IsTenantPlanInGracePeriod(plan *TenantPlan) bool {
+	if plan == nil || plan.ExpiresAt <= 0 || plan.GracePeriodSeconds <= 0 {
+		return false
+	}
+	now := time.Now().Unix()
+	return now > plan.ExpiresAt && now <= plan.ExpiresAt+plan.GracePeriodSeconds
 }
 
 // GetAllTenantPlans returns all tenant plans (for platform admin).

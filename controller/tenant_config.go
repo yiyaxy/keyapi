@@ -68,6 +68,18 @@ func UpdateTenantConfig(c *gin.Context) {
 
 	service.InvalidateTenantOptionCacheKey(tenantId, req.Key)
 
+	// Audit: redact value if key looks sensitive (password/secret/token/api_key).
+	loggedValue := req.Value
+	if service.IsSensitiveConfigKey(req.Key) {
+		loggedValue = "(redacted)"
+	} else if len(loggedValue) > 100 {
+		loggedValue = loggedValue[:100] + "...(truncated)"
+	}
+	service.RecordAudit(c, "config.set", "option", 0, gin.H{
+		"key":   req.Key,
+		"value": loggedValue,
+	})
+
 	common.ApiSuccess(c, gin.H{
 		"key":   req.Key,
 		"value": req.Value,
@@ -99,6 +111,10 @@ func DeleteTenantConfig(c *gin.Context) {
 	}
 
 	service.InvalidateTenantOptionCacheKey(tenantId, req.Key)
+
+	service.RecordAudit(c, "config.delete", "option", 0, gin.H{
+		"key": req.Key,
+	})
 
 	common.ApiSuccess(c, gin.H{
 		"key": req.Key,

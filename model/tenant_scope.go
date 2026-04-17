@@ -215,6 +215,9 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 	RegisterTenantScopedTable("tenant_bills")
 	RegisterTenantScopedTable("tenant_ledgers")
 
+	// Phase 7 tables — audit logging
+	RegisterTenantScopedTable("tenant_audit_logs")
+
 	// Create: fail-closed (reject if tenant_id missing)
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)
 	// Query/Update/Delete: fail-closed (reject if tenant_id not in WHERE clause)

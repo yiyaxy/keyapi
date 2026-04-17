@@ -100,21 +100,45 @@ func CloseOverdueTenantBills() {
 }
 
 // RunTenantPlanStateMachine 对所有租户计划执行状态转换检查：
-//   - plan.Status=Active 且 expires_at <= now → 设为 Disabled（到期停服）
 //
-// 注意：当前计划没有"宽限期"字段。如果需要宽限期，在 TenantPlan 加
-// grace_period_seconds 即可扩展。
+// 含两个 pass：
+//   - Pass 1（宽限期预警）：plan.Status=Active 且 expires_at <= now <
+//     expires_at + grace_period_seconds → 仍保持 Active，但写入
+//     plan_in_grace_period 告警（severity=warning）。
+//   - Pass 2（到期停服）：plan.Status=Active 且 expires_at + grace_period_seconds <= now
+//     → 设为 Disabled，并写入 plan_expired_disabled 告警。
+//
+// 当 grace_period_seconds=0 时，pass 1 永远不会命中，行为与旧逻辑等价
+// （expires_at <= now 立刻进入 pass 2）。
 func RunTenantPlanStateMachine() {
 	now := time.Now().Unix()
-	var plans []model.TenantPlan
+
+	// ---------- Pass 1: in grace period (expires_at <= now < expires_at + grace) ----------
+	var gracePlans []model.TenantPlan
 	if err := model.WithTenantBypass(model.DB).
-		Where("status = ? AND expires_at > 0 AND expires_at <= ?",
+		Where("status = ? AND expires_at > 0 AND expires_at <= ? AND (expires_at + grace_period_seconds) > ?",
+			model.TenantPlanStatusActive, now, now).
+		Find(&gracePlans).Error; err != nil {
+		common.SysError(fmt.Sprintf("RunTenantPlanStateMachine grace list failed: %s", err.Error()))
+	} else {
+		for _, p := range gracePlans {
+			graceUntil := p.ExpiresAt + p.GracePeriodSeconds
+			_, _ = model.UpsertTenantAlert(p.TenantId, "plan_in_grace_period", "warning",
+				fmt.Sprintf("租户计划已到期，进入宽限期，宽限期至 %s",
+					time.Unix(graceUntil, 0).Format("2006-01-02 15:04:05")), now)
+		}
+	}
+
+	// ---------- Pass 2: grace exhausted (expires_at + grace <= now) → disable ----------
+	var expiredPlans []model.TenantPlan
+	if err := model.WithTenantBypass(model.DB).
+		Where("status = ? AND expires_at > 0 AND (expires_at + grace_period_seconds) <= ?",
 			model.TenantPlanStatusActive, now).
-		Find(&plans).Error; err != nil {
-		common.SysError(fmt.Sprintf("RunTenantPlanStateMachine list failed: %s", err.Error()))
+		Find(&expiredPlans).Error; err != nil {
+		common.SysError(fmt.Sprintf("RunTenantPlanStateMachine expired list failed: %s", err.Error()))
 		return
 	}
-	for _, p := range plans {
+	for _, p := range expiredPlans {
 		updates := map[string]interface{}{"status": model.TenantPlanStatusDisabled, "updated_at": now}
 		if err := model.WithTenantBypass(model.DB).
 			Model(&model.TenantPlan{}).

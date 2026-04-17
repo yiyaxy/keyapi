@@ -619,6 +619,7 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.GET("/alerts/history", controller.GetTenantAlertHistory)
 			tenantRoute.POST("/alerts/:id/ack", controller.AckTenantAlert)
 			tenantRoute.POST("/alerts/:id/resolve", controller.ResolveTenantAlertHandler)
+			tenantRoute.GET("/audit", controller.GetTenantAuditLogs)
 			tenantRoute.GET("/bills", controller.ListTenantBillsHandler)
 			tenantRoute.POST("/bills/current/refresh", controller.RefreshCurrentTenantBillHandler)
 			tenantRoute.GET("/ledger", controller.ListTenantLedgerHandler)

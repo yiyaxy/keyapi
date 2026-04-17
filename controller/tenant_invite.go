@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -68,6 +69,11 @@ func InviteMember(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
+		service.RecordAudit(c, "membership.invite", "user", user.Id, gin.H{
+			"email":  req.Email,
+			"role":   role,
+			"status": "joined",
+		})
 		common.ApiSuccess(c, gin.H{
 			"status":  "joined",
 			"user_id": user.Id,
@@ -94,6 +100,11 @@ func InviteMember(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	service.RecordAudit(c, "membership.invite", "user", 0, gin.H{
+		"email":  req.Email,
+		"role":   role,
+		"status": "invited",
+	})
 	common.ApiSuccess(c, gin.H{
 		"status": "invited",
 		"email":  req.Email,
@@ -150,6 +161,10 @@ func AcceptInvite(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	service.RecordAudit(c, "membership.accept", "user", userId, gin.H{
+		"role":      invite.Role,
+		"tenant_id": invite.TenantId,
+	})
 	common.ApiSuccess(c, gin.H{
 		"tenant_id": invite.TenantId,
 		"role":      invite.Role,
@@ -188,5 +203,6 @@ func RemoveMember(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	service.RecordAudit(c, "membership.remove", "user", req.UserId, gin.H{})
 	common.ApiSuccess(c, nil)
 }

@@ -42,6 +42,7 @@ func TestStatus(c *gin.Context) {
 func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
+	tenantId := middleware.GetTenantId(c)
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -51,7 +52,7 @@ func GetStatus(c *gin.Context) {
 	data := gin.H{
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
-		"email_verification":          common.EmailVerificationEnabled,
+		"email_verification":          service.GetConfigBool(tenantId, "EmailVerificationEnabled", common.EmailVerificationEnabled),
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
 		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
@@ -61,15 +62,15 @@ func GetStatus(c *gin.Context) {
 		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
 		"telegram_oauth":              common.TelegramOAuthEnabled,
 		"telegram_bot_name":           common.TelegramBotName,
-		"system_name":                 common.SystemName,
-		"logo":                        common.Logo,
-		"footer_html":                 common.Footer,
+		"system_name":                 service.GetConfig(tenantId, "SystemName", common.SystemName),
+		"logo":                        service.GetConfig(tenantId, "Logo", common.Logo),
+		"footer_html":                 service.GetConfig(tenantId, "Footer", common.Footer),
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
 		"server_address":              system_setting.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
-		"top_up_link":                 common.TopUpLink,
+		"top_up_link":                 service.GetConfig(tenantId, "TopUpLink", common.TopUpLink),
 		"topup_subscription_notice":   strings.TrimSpace(common.OptionMap["TopupSubscriptionNotice"]),
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
@@ -79,9 +80,9 @@ func GetStatus(c *gin.Context) {
 		"custom_currency_symbol":        operation_setting.GetGeneralSetting().CustomCurrencySymbol,
 		"custom_currency_exchange_rate": operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
 		"enable_batch_update":           common.BatchUpdateEnabled,
-		"enable_drawing":                common.DrawingEnabled,
-		"enable_task":                   common.TaskEnabled,
-		"enable_data_export":            common.DataExportEnabled,
+		"enable_drawing":                service.GetConfigBool(tenantId, "DrawingEnabled", common.DrawingEnabled),
+		"enable_task":                   service.GetConfigBool(tenantId, "TaskEnabled", common.TaskEnabled),
+		"enable_data_export":            service.GetConfigBool(tenantId, "DataExportEnabled", common.DataExportEnabled),
 		"data_export_default_time":      common.DataExportDefaultTime,
 		"default_collapse_sidebar":      common.DefaultCollapseSidebar,
 		"mj_notify_enabled":             setting.MjNotifyEnabled,
@@ -276,9 +277,20 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	localPart := parts[0]
 	domainPart := parts[1]
-	if common.EmailDomainRestrictionEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if service.GetConfigBool(tenantId, "EmailDomainRestrictionEnabled", common.EmailDomainRestrictionEnabled) {
+		whitelist := common.EmailDomainWhitelist
+		if override := service.GetConfig(tenantId, "EmailDomainWhitelist", ""); override != "" {
+			items := strings.Split(override, ",")
+			whitelist = make([]string, 0, len(items))
+			for _, p := range items {
+				if trimmed := strings.TrimSpace(p); trimmed != "" {
+					whitelist = append(whitelist, trimmed)
+				}
+			}
+		}
 		allowed := false
-		for _, domain := range common.EmailDomainWhitelist {
+		for _, domain := range whitelist {
 			if domainPart == domain {
 				allowed = true
 				break

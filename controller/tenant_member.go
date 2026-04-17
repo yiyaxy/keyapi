@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -41,6 +42,12 @@ func UpdateTenantMember(c *gin.Context) {
 		common.ApiErrorMsg(c, "不能修改自己的租户成员身份")
 		return
 	}
+	// Capture before-state for audit diff (best-effort).
+	roleBefore, statusBefore := 0, 0
+	if before, err := model.GetTenantMembershipUnscoped(tenantId, req.UserId); err == nil && before != nil {
+		roleBefore = before.Role
+		statusBefore = before.Status
+	}
 	if req.Role != 0 {
 		if !model.IsValidTenantRole(req.Role) {
 			common.ApiErrorMsg(c, "无效的租户角色")
@@ -66,6 +73,12 @@ func UpdateTenantMember(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	service.RecordAudit(c, "membership.update", "user", req.UserId, gin.H{
+		"role_before":   roleBefore,
+		"role_after":    membership.Role,
+		"status_before": statusBefore,
+		"status_after":  membership.Status,
+	})
 	common.ApiSuccess(c, gin.H{
 		"user_id":           membership.UserId,
 		"tenant_role":       membership.Role,

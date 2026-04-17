@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Descriptions, Spin, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Card, Descriptions, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../../helpers';
 
@@ -57,28 +57,57 @@ export default function TenantPlanCard() {
     ? plan.allowed_models.split(',').filter(Boolean)
     : [];
 
+  const grace = Number(plan.grace_period_seconds || 0);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const hasExpiry = plan.expires_at && plan.expires_at > 0;
+  const inGracePeriod =
+    hasExpiry && grace > 0 && nowSec > plan.expires_at && nowSec <= plan.expires_at + grace;
+  const graceUntilStr =
+    hasExpiry && grace > 0
+      ? new Date((plan.expires_at + grace) * 1000).toLocaleString()
+      : '';
+  const graceDays = grace > 0 ? Math.floor(grace / 86400) : 0;
+  const graceLabel =
+    grace > 0
+      ? graceDays > 0
+        ? `${graceDays} ${t('天')}`
+        : `${grace} ${t('秒')}`
+      : t('无');
+
+  const descriptionRows = [
+    { key: t('计划名称'), value: plan.plan_name || 'free' },
+    { key: t('Quota 上限'), value: formatLimit(plan.quota_limit) },
+    { key: t('RPM 上限'), value: formatLimit(plan.rpm_limit, ' 次/分') },
+    { key: t('TPM 上限'), value: formatLimit(plan.tpm_limit, ' token/分') },
+    { key: t('最大成员数'), value: formatLimit(plan.max_members) },
+    { key: t('最大令牌数'), value: formatLimit(plan.max_tokens) },
+    { key: t('最大渠道数'), value: formatLimit(plan.max_channels) },
+    {
+      key: t('可用模型'),
+      value:
+        allowedModels.length === 0
+          ? t('不限（全部允许）')
+          : allowedModels.join(', '),
+    },
+    { key: t('到期时间'), value: expires },
+  ];
+  if (hasExpiry && grace > 0) {
+    descriptionRows.push({ key: t('宽限期'), value: graceLabel });
+    descriptionRows.push({ key: t('宽限期截止'), value: graceUntilStr });
+  }
+
   return (
     <Card title={t('租户计划')} headerExtraContent={planStatusTag(t, plan.status)}>
-      <Descriptions
-        data={[
-          { key: t('计划名称'), value: plan.plan_name || 'free' },
-          { key: t('Quota 上限'), value: formatLimit(plan.quota_limit) },
-          { key: t('RPM 上限'), value: formatLimit(plan.rpm_limit, ' 次/分') },
-          { key: t('TPM 上限'), value: formatLimit(plan.tpm_limit, ' token/分') },
-          { key: t('最大成员数'), value: formatLimit(plan.max_members) },
-          { key: t('最大令牌数'), value: formatLimit(plan.max_tokens) },
-          { key: t('最大渠道数'), value: formatLimit(plan.max_channels) },
-          {
-            key: t('可用模型'),
-            value:
-              allowedModels.length === 0
-                ? t('不限（全部允许）')
-                : allowedModels.join(', '),
-          },
-          { key: t('到期时间'), value: expires },
-        ]}
-        row
-      />
+      {inGracePeriod ? (
+        <Banner
+          type='warning'
+          fullMode={false}
+          closeIcon={null}
+          description={`${t('套餐已到期，宽限期至')} ${graceUntilStr}`}
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
+      <Descriptions data={descriptionRows} row />
     </Card>
   );
 }

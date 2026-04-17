@@ -29,6 +29,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // semi-ui upstream removed `./dist/css/semi.css` from package.json `exports`
+      // (strict ESM exports gate). The file still ships on disk; alias bypasses
+      // the exports gate so `import '@douyinfe/semi-ui/dist/css/semi.css'` in
+      // src/index.jsx keeps working.
+      '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
+        __dirname,
+        './node_modules/@douyinfe/semi-ui/dist/css/semi.css',
+      ),
     },
   },
   plugins: [
@@ -66,6 +74,12 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      // @lobehub/icons v2 has internal `ProviderCombine` component that imports
+      // `antd` as a peer dep. We never use `ProviderCombine` in src/ — it's only
+      // pulled in via the wildcard `import * as LobeIcons from '@lobehub/icons'`.
+      // Externalize antd so Rollup stops trying to resolve it; if anyone uses
+      // ProviderCombine in the future they'll need to add antd themselves.
+      external: ['antd'],
       output: {
         manualChunks: {
           'react-core': ['react', 'react-dom', 'react-router-dom'],

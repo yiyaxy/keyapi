@@ -104,6 +104,7 @@ export default function PlatformTenantsPanel() {
         allowed_models: current.allowed_models || '',
         status: current.status ?? 1,
         expires_at: current.expires_at ?? 0,
+        grace_period_seconds: current.grace_period_seconds ?? 0,
       });
     }, 50);
   };
@@ -129,6 +130,7 @@ export default function PlatformTenantsPanel() {
         allowed_models: v.allowed_models || '',
         status: Number(v.status),
         expires_at: Number(v.expires_at),
+        grace_period_seconds: Number(v.grace_period_seconds || 0),
       });
       if (res?.data?.success) {
         showSuccess(t('已保存'));
@@ -240,6 +242,12 @@ export default function PlatformTenantsPanel() {
               <Form.Select.Option value={0}>{t('禁用')}</Form.Select.Option>
             </Form.Select>
             <Form.InputNumber field='expires_at' label={t('到期时间 (unix 秒, 0=不过期)')} />
+            <Form.InputNumber
+              field='grace_period_seconds'
+              label={t('宽限期（秒，0=立即停服）')}
+              placeholder={t('86400 = 1 天')}
+              min={0}
+            />
           </Form>
         ) : null}
       </Modal>

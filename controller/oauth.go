@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -237,7 +238,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 
 	// User doesn't exist, create new user if registration is enabled
-	if !common.RegisterEnabled {
+	if !service.GetConfigBool(tenantId, "RegisterEnabled", common.RegisterEnabled) {
 		return nil, &OAuthRegistrationDisabledError{}
 	}
 

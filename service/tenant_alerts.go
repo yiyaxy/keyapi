@@ -17,6 +17,21 @@ type TenantAlert struct {
 	TriggeredAt int64  `json:"triggered_at"`
 }
 
+// 告警类型常量。新告警类型应在此登记，便于前端 i18n / 后台过滤同步维护。
+const (
+	TenantAlertTypePlanDisabled        = "plan_disabled"
+	TenantAlertTypePlanExpired         = "plan_expired"
+	TenantAlertTypePlanExpiring        = "plan_expiring"
+	TenantAlertTypePlanInGracePeriod   = "plan_in_grace_period"   // severity=warning
+	TenantAlertTypePlanExpiredDisabled = "plan_expired_disabled" // severity=critical
+	TenantAlertTypeQuota80             = "quota_80"
+	TenantAlertTypeQuota100            = "quota_100"
+	TenantAlertTypeRPMHigh             = "rpm_high"
+	TenantAlertTypeMemberLimit         = "member_limit"
+	TenantAlertTypeTokenLimit          = "token_limit"
+	TenantAlertTypeChannelLimit        = "channel_limit"
+)
+
 // CheckTenantAlerts evaluates current usage against thresholds and returns active alerts.
 // It relies on GetTenantMetrics for live usage data. Plan-based checks (quota, token,
 // member limits) are skipped when model/tenant_plan.go is not present.

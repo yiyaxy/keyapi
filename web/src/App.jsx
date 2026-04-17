@@ -86,6 +86,7 @@ const TenantPlan = lazy(() => import('./pages/TenantPlan'));
 const TenantConfig = lazy(() => import('./pages/TenantConfig'));
 const TenantDashboardPage = lazy(() => import('./pages/TenantDashboard'));
 const TenantAlerts = lazy(() => import('./pages/TenantAlerts'));
+const TenantAudit = lazy(() => import('./pages/TenantAudit'));
 const TenantBills = lazy(() => import('./pages/TenantBills'));
 const PlatformTenants = lazy(() => import('./pages/PlatformTenants'));
 
@@ -337,6 +338,14 @@ function App() {
           element={
             <TenantAdminRoute>
               <TenantAlerts />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-audit'
+          element={
+            <TenantAdminRoute>
+              <TenantAudit />
             </TenantAdminRoute>
           }
         />

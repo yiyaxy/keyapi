@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -29,16 +30,17 @@ func GetTenantPlanInfo(c *gin.Context) {
 
 // UpdateTenantPlanRequest holds the fields that can be updated by platform admin.
 type UpdateTenantPlanRequest struct {
-	PlanName      string `json:"plan_name"`
-	QuotaLimit    *int64 `json:"quota_limit"`
-	RPMLimit      *int   `json:"rpm_limit"`
-	TPMLimit      *int   `json:"tpm_limit"`
-	MaxMembers    *int   `json:"max_members"`
-	MaxTokens     *int   `json:"max_tokens"`
-	MaxChannels   *int   `json:"max_channels"`
-	AllowedModels string `json:"allowed_models"`
-	Status        *int   `json:"status"`
-	ExpiresAt     *int64 `json:"expires_at"`
+	PlanName           string `json:"plan_name"`
+	QuotaLimit         *int64 `json:"quota_limit"`
+	RPMLimit           *int   `json:"rpm_limit"`
+	TPMLimit           *int   `json:"tpm_limit"`
+	MaxMembers         *int   `json:"max_members"`
+	MaxTokens          *int   `json:"max_tokens"`
+	MaxChannels        *int   `json:"max_channels"`
+	AllowedModels      string `json:"allowed_models"`
+	Status             *int   `json:"status"`
+	ExpiresAt          *int64 `json:"expires_at"`
+	GracePeriodSeconds *int64 `json:"grace_period_seconds"`
 }
 
 // UpdateTenantPlanHandler updates a tenant's plan.
@@ -68,6 +70,11 @@ func UpdateTenantPlanHandler(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	// Capture before-state for audit diff (best-effort).
+	planBeforeJSON := ""
+	if b, err := json.Marshal(plan); err == nil {
+		planBeforeJSON = string(b)
 	}
 
 	// Apply updates
@@ -100,6 +107,13 @@ func UpdateTenantPlanHandler(c *gin.Context) {
 	if req.ExpiresAt != nil {
 		plan.ExpiresAt = *req.ExpiresAt
 	}
+	if req.GracePeriodSeconds != nil {
+		gp := *req.GracePeriodSeconds
+		if gp < 0 {
+			gp = 0
+		}
+		plan.GracePeriodSeconds = gp
+	}
 
 	if err := model.UpsertTenantPlan(plan); err != nil {
 		common.ApiError(c, err)
@@ -112,6 +126,30 @@ func UpdateTenantPlanHandler(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	// Audit: platform admin updated a tenant plan. Write under the *target* tenant id
+	// (not the operator's current tenant), so the audit lives with the affected tenant.
+	planAfterJSON := ""
+	if b, err := json.Marshal(updated); err == nil {
+		planAfterJSON = string(b)
+	}
+	actorRole := "platform_admin"
+	_ = model.CreateTenantAuditLog(&model.TenantAuditLog{
+		TenantId:    id,
+		ActorUserId: c.GetInt("id"),
+		ActorRole:   actorRole,
+		Action:      "plan.update",
+		Target:      "plan",
+		TargetId:    updated.Id,
+		Detail: func() string {
+			b, _ := json.Marshal(gin.H{
+				"before": json.RawMessage(planBeforeJSON),
+				"after":  json.RawMessage(planAfterJSON),
+			})
+			return string(b)
+		}(),
+		ClientIP: c.ClientIP(),
+	})
 
 	common.ApiSuccess(c, updated)
 }

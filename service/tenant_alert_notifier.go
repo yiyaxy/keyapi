@@ -2,9 +2,11 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -17,34 +19,93 @@ import (
 //
 // 本函数不做"去重/频率限制"——由 notifyPendingAlerts 按 sinceUnix 过滤新告警来保证。
 func dispatchTenantAlertNotification(record model.TenantAlertRecord) {
-	if common.SMTPServer == "" {
-		common.SysLog(fmt.Sprintf("dispatchTenantAlertNotification skipped: SMTP not configured (tenant=%d type=%s)",
-			record.TenantId, record.AlertType))
-		return
-	}
-	emails, err := model.ListTenantAdminEmails(record.TenantId)
-	if err != nil {
-		common.SysError(fmt.Sprintf("dispatchTenantAlertNotification list admins failed tenant=%d: %s",
-			record.TenantId, err.Error()))
-		return
-	}
-	if len(emails) == 0 {
-		return
-	}
-
 	tenant := model.GetTenantById(record.TenantId)
 	tenantName := ""
 	if tenant != nil {
 		tenantName = tenant.Name
 	}
 
-	subject := fmt.Sprintf("[%s 告警] %s", tenantName, alertSeverityLabel(record.Severity))
-	body := buildAlertEmailBody(tenantName, record)
+	// 1) SMTP 邮件分发（保持原行为）
+	if common.SMTPServer == "" {
+		common.SysLog(fmt.Sprintf("dispatchTenantAlertNotification SMTP skipped: not configured (tenant=%d type=%s)",
+			record.TenantId, record.AlertType))
+	} else {
+		emails, err := model.ListTenantAdminEmails(record.TenantId)
+		if err != nil {
+			common.SysError(fmt.Sprintf("dispatchTenantAlertNotification list admin emails failed tenant=%d: %s",
+				record.TenantId, err.Error()))
+		} else if len(emails) > 0 {
+			subject := fmt.Sprintf("[%s 告警] %s", tenantName, alertSeverityLabel(record.Severity))
+			body := buildAlertEmailBody(tenantName, record)
+			for _, to := range emails {
+				if err := common.SendEmail(subject, to, body); err != nil {
+					common.SysError(fmt.Sprintf("dispatchTenantAlertNotification SendEmail failed tenant=%d to=%s: %s",
+						record.TenantId, to, err.Error()))
+				}
+			}
+		}
+	}
 
-	for _, to := range emails {
-		if err := common.SendEmail(subject, to, body); err != nil {
-			common.SysError(fmt.Sprintf("dispatchTenantAlertNotification SendEmail failed tenant=%d to=%s: %s",
-				record.TenantId, to, err.Error()))
+	// 2) Webhook 分发（best-effort）
+	dispatchTenantAlertWebhook(record)
+
+	// 3) 站内信分发（best-effort）
+	dispatchTenantAlertInApp(record)
+}
+
+// dispatchTenantAlertWebhook 当租户配置了 WebhookURL 时，POST 一份告警 payload。
+// HMAC-SHA256 签名由 SendWebhookNotify 内部根据 secret 生成。
+func dispatchTenantAlertWebhook(record model.TenantAlertRecord) {
+	webhookURL := GetConfig(record.TenantId, "WebhookURL", "")
+	if webhookURL == "" {
+		return
+	}
+	secret := GetConfig(record.TenantId, "WebhookSecret", "")
+	notify := dto.Notify{
+		Type:    "alert." + record.AlertType,
+		Title:   fmt.Sprintf("[%s] %s", strings.ToUpper(record.Severity), record.AlertType),
+		Content: record.Message,
+		Values: []interface{}{
+			map[string]interface{}{
+				"tenant_id":    record.TenantId,
+				"alert_id":     record.Id,
+				"alert_type":   record.AlertType,
+				"severity":     record.Severity,
+				"triggered_at": record.TriggeredAt,
+			},
+		},
+	}
+	if err := SendWebhookNotify(webhookURL, secret, notify); err != nil {
+		common.SysError(fmt.Sprintf("tenant alert webhook failed (tenant=%d alert=%d): %s",
+			record.TenantId, record.Id, err.Error()))
+	}
+}
+
+// dispatchTenantAlertInApp 给租户全部 active 管理员塞一条 directed 站内信。
+func dispatchTenantAlertInApp(record model.TenantAlertRecord) {
+	adminIds, err := model.ListTenantAdminUserIds(record.TenantId)
+	if err != nil {
+		common.SysError(fmt.Sprintf("dispatchTenantAlertInApp list admin ids failed tenant=%d: %s",
+			record.TenantId, err.Error()))
+		return
+	}
+	if len(adminIds) == 0 {
+		return
+	}
+	title := fmt.Sprintf("[告警] %s", record.AlertType)
+	for _, uid := range adminIds {
+		msg := &model.Message{
+			TenantId:     record.TenantId,
+			Title:        title,
+			Content:      record.Message,
+			Type:         model.MessageTypeDirected,
+			TargetUserId: uid,
+			SenderId:     0, // system sender
+			Status:       model.MessageStatusNormal,
+		}
+		if err := model.CreateMessage(msg); err != nil {
+			common.SysError(fmt.Sprintf("dispatchTenantAlertInApp CreateMessage failed tenant=%d user=%d: %s",
+				record.TenantId, uid, err.Error()))
 		}
 	}
 }

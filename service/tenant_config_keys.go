@@ -29,6 +29,10 @@ var TenantOverridableKeys = map[string]bool{
 	// Quota & pricing
 	"QuotaPerUnit": true,
 	"TopUpLink":    true,
+
+	// Notification
+	"WebhookURL":    true, // tenant alert webhook endpoint
+	"WebhookSecret": true, // HMAC signing secret
 }
 
 // IsTenantOverridableKey returns whether a given key can be overridden per-tenant.
