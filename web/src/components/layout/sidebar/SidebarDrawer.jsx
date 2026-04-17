@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+
 import React, { useEffect, useRef } from 'react';
 import { SideSheet } from '@douyinfe/semi-ui';
 import { useLocation } from 'react-router-dom';
@@ -45,6 +46,10 @@ export default function SidebarDrawer({ open, onClose }) {
       placement='left'
       width={240}
       closable={false}
+      closeOnEsc
+      maskClosable
+      // Semi renders an empty 56px header even when closable=false + no title;
+      // hide it so NavTree starts at y=0 inside the sheet.
       headerStyle={{ display: 'none' }}
       bodyStyle={{
         padding: 0,
