@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 
-export default function UserMenu() {
+// Stub — real implementation lands in Task 7 of the Shell & Nav plan.
+// Header.jsx passes { onToggleCollapse, mode } which this stub intentionally ignores.
+export default function UserMenu(/* { onToggleCollapse, mode } */) {
   return <div aria-hidden='true' style={{ width: 32, height: 32 }} />;
 }

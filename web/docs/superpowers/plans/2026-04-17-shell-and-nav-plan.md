@@ -1437,6 +1437,25 @@ export default function PageLayout() {
 
 Keep the existing file's non-shell code (context providers, suspense, setup check, etc.) — only swap the Header / Sidebar / SidebarDrawer / Footer region. If the current file had prop drilling into the old `SiderBar`, remove those props (no longer needed; state lives inside `useLayoutState`).
 
+**Important — pass `drawerOpen` to Header.** Task 5's `Header.jsx` signature is `{ mode, drawerOpen = false, onOpenDrawer, onToggleCollapse }`. Update the snippet above to include `drawerOpen={drawerOpen}` so `useHeaderBar` inside Header receives the real drawer state:
+
+```jsx
+<Header
+  mode={mode}
+  drawerOpen={drawerOpen}
+  onOpenDrawer={() => setDrawerOpen(true)}
+  onToggleCollapse={toggle}
+/>
+```
+
+**Important — localStorage key reconciliation.** Task 1's `useLayoutState` stores collapse preference under key `keyapi.sidebar.collapsed` with values `'1'` / `'0'`. The legacy `useSidebarCollapsed.js` (still read by `useHeaderBar`) uses key `default_collapse_sidebar` with values `'true'` / `'false'`. Without reconciliation, a user's pre-existing preference is lost and the two hooks can disagree.
+
+Options:
+1. **Add a one-time migration read in `useLayoutState.js`**: if `keyapi.sidebar.collapsed` is absent but `default_collapse_sidebar` exists, map `'true' → '1'` / `'false' → '0'` and write into the new key. Do this in `readStoredCollapsed` or a `useEffect` on first mount.
+2. **Switch `useLayoutState` to read the legacy key directly**: simplest, but leaves the legacy hook's string encoding (`'true'` / `'false'`) baked in.
+
+Pick option 1 (explicit migration). Until Task 16 deletes `useSidebarCollapsed.js` and `useHeaderBar.js`, both hooks may fire on the same app tick — the migration ensures they agree on initial state.
+
 - [ ] **Step 14.3: Lint + build**
 
 ```bash
