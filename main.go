@@ -294,6 +294,11 @@ func InitResources() error {
 
 	// Install the payment master-key resolver, enabling PAYMENT_MASTER_KEY env override.
 	model.InitPaymentCrypto(payment.PaymentMasterKey)
+	if os.Getenv("PAYMENT_MASTER_KEY") != "" {
+		common.SysLog("payment master key: using PAYMENT_MASTER_KEY env override")
+	} else {
+		common.SysLog("payment master key: using HKDF(CryptoSecret) default")
+	}
 
 	model.CheckSetup()
 

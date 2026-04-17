@@ -68,13 +68,21 @@ func init() {
 }
 
 // InitPaymentCrypto lets service/payment install its master-key resolver at
-// startup. Safe to call once during init; later writes are permitted but
-// must be ordered by the caller (the controller layer does not expect the
-// resolver to change after service start).
+// startup. Invokes the resolver once for eager validation — if the resolver
+// fatals (e.g. PAYMENT_MASTER_KEY is set but not valid base64/not 32 bytes),
+// the crash happens at startup rather than on the first encrypt/decrypt
+// call mid-request.
+//
+// Safe to call once during init; later writes are permitted but must be
+// ordered by the caller (the controller layer does not expect the resolver
+// to change after service start).
 func InitPaymentCrypto(resolver func() []byte) {
-	if resolver != nil {
-		paymentKeyResolver.Store(resolver)
+	if resolver == nil {
+		return
 	}
+	// Eager validation — fatal now, not later.
+	_ = resolver()
+	paymentKeyResolver.Store(resolver)
 }
 
 // derivePaymentKey reads the current resolver and invokes it.
