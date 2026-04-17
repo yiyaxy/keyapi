@@ -206,15 +206,18 @@ func MarkMessageAsRead(tenantId int, userId, messageId int, ip, userAgent string
 
 func GetUnreadCount(tenantId int, userId int) (int64, error) {
 	var count int64
+	// 子查询也必须带 tenant_id —— message_read_statuses 是租户隔离表，
+	// 不带条件会被 guardrail 拦住（子查询执行失败 → 主查询得到 NOT IN ()
+	// 这种空括号，进而 SQL 语法错）。
+	readSubQuery := DB.Model(&MessageReadStatus{}).
+		Select("message_id").
+		Where("tenant_id = ? AND user_id = ?", tenantId, userId)
 	tx := DB.Model(&Message{}).
+		Where("tenant_id = ?", tenantId).
 		Where("status = ?", MessageStatusNormal).
 		Where("(type = ? AND target_user_id = ?) OR type = ?",
 			MessageTypeDirected, userId, MessageTypeBroadcast).
-		Where("id NOT IN (?)",
-			DB.Model(&MessageReadStatus{}).Select("message_id").Where("user_id = ?", userId))
-	if tenantId > 0 {
-		tx = tx.Where("tenant_id = ?", tenantId)
-	}
+		Where("id NOT IN (?)", readSubQuery)
 	err := tx.Count(&count).Error
 	return count, err
 }

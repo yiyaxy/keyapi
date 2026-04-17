@@ -17,7 +17,7 @@ type TenantOption struct {
 func GetTenantOption(tenantId int, key string) (string, bool) {
 	var opt TenantOption
 	err := WithTenantBypass(DB).
-		Where("tenant_id = ? AND `key` = ?", tenantId, key).
+		Where("tenant_id = ? AND " + commonKeyCol + " = ?", tenantId, key).
 		First(&opt).Error
 	if err != nil {
 		return "", false
@@ -43,7 +43,7 @@ func SetTenantOption(tenantId int, key, value string) error {
 // DeleteTenantOption removes a tenant-specific option override, reverting to platform default.
 func DeleteTenantOption(tenantId int, key string) error {
 	return WithTenantBypass(DB).
-		Where("tenant_id = ? AND `key` = ?", tenantId, key).
+		Where("tenant_id = ? AND " + commonKeyCol + " = ?", tenantId, key).
 		Delete(&TenantOption{}).Error
 }
 
@@ -70,7 +70,7 @@ func GetTenantOptionsByKeys(tenantId int, keys []string) (map[string]string, err
 	}
 	var opts []TenantOption
 	err := WithTenantBypass(DB).
-		Where("tenant_id = ? AND `key` IN ?", tenantId, keys).
+		Where("tenant_id = ? AND " + commonKeyCol + " IN ?", tenantId, keys).
 		Find(&opts).Error
 	if err != nil {
 		return nil, err
