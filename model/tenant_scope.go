@@ -3,12 +3,14 @@ package model
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 // tenantScopedTables 记录需要租户隔离的表名集合。
@@ -264,14 +266,24 @@ func tenantGuardScope(db *gorm.DB) {
 
 	// Check 2：单独检查 WHERE 子句对象是否引用了 tenant_id。
 	// 只看 WHERE，避免被 Select("tenant_id") 这类非 WHERE 位置误判为合法。
+	var whereExpr string
 	if whereClause, ok := db.Statement.Clauses["WHERE"]; ok {
-		expr := fmt.Sprintf("%v", whereClause.Expression)
-		if strings.Contains(expr, "tenant_id") {
+		whereExpr = fmt.Sprintf("%v", whereClause.Expression)
+		if strings.Contains(whereExpr, "tenant_id") {
 			return
 		}
 	}
 
-	// Check 3：尝试从 context 里自动注入 —— 但必须是"显式"写入的 tenant_id 才行。
+	// Check 3：唯一索引查询自动放行。
+	// 如果 WHERE 里对 PK 或单列唯一索引做等值/IN 查询，结果行本身就是跨租户唯一的，
+	// 再加 tenant_id 条件只是冗余；不加也不会发生跨租户数据混淆。
+	// 这里吃掉了大量"按 id 反查"的裸调用（session user、passkey、OAuth 绑定、
+	// 订单 trade_no 查询等），让它们无需调用方改代码即可通过 guardrail。
+	if whereExpr != "" && hasUniqueKeyEquality(db.Statement.Schema, whereExpr) {
+		return
+	}
+
+	// Check 4：尝试从 context 里自动注入 —— 但必须是"显式"写入的 tenant_id 才行。
 	// ExplicitTenantIDFromContext 在没 set 时返 0（不是 DefaultTenantId），
 	// 这样 context.Background() 的查询不会被当成"租户 1"处理。
 	if ctx := db.Statement.Context; ctx != nil {
@@ -351,4 +363,66 @@ func tenantGuardCreate(db *gorm.DB) {
 	if currentTenantId == 0 {
 		_ = db.AddError(fmt.Errorf("tenant guardrail: refusing to create %s row without tenant_id (use WithTenantBypass to override)", db.Statement.Schema.Table))
 	}
+}
+
+// ---------- 唯一索引自动放行工具函数 ----------
+
+// uniqueColRegexCache 缓存每个列名对应的"等值/IN 判定"正则，避免每次重编译。
+var uniqueColRegexCache sync.Map // map[string]*regexp.Regexp
+
+// buildUniqueColRegex 构造一个匹配 `colname =` / `colname IN (...)` 的正则。
+//
+// 识别场景：
+//   - `id = ?`、`"id" = ?`、`` `id` = ? ``、`users.id = ?`、`(id = ?)`
+//   - `id IN (?, ?, ?)`
+// 带词界约束，防止 `user_id = ?` / `channel_id = ?` 误命中 `id`。
+func buildUniqueColRegex(col string) *regexp.Regexp {
+	// 前界：开头、空白、逗号、左括号、点、反引号、双引号、单引号
+	// 后界：同上去掉点，并可以直接跟 `=` 或 `IN`
+	prefix := `(?:^|[\s,(.` + "`" + `"'])`
+	suffix := `(?:[\s` + "`" + `"']|$)\s*(?:=|IN\b)`
+	pattern := `(?i)` + prefix + regexp.QuoteMeta(col) + suffix
+	return regexp.MustCompile(pattern)
+}
+
+func uniqueColRegex(col string) *regexp.Regexp {
+	if cached, ok := uniqueColRegexCache.Load(col); ok {
+		return cached.(*regexp.Regexp)
+	}
+	r := buildUniqueColRegex(col)
+	uniqueColRegexCache.Store(col, r)
+	return r
+}
+
+// hasUniqueKeyEquality 判断 WHERE 表达式是否对"单列唯一键"做了等值/IN 查询。
+//
+// 扫描的列：
+//   - 表的主键字段（Schema.PrimaryFields）
+//   - 带单列 `gorm:"uniqueIndex"` 或 `gorm:"unique"` 的字段（Schema.Field.Unique=true）
+//
+// 不扫描组合唯一索引的列（例如 `uniqueIndex:uk_name,priority:1`）——单列不足以
+// 保证跨租户唯一性，放行会有数据混淆风险。
+func hasUniqueKeyEquality(sch *schema.Schema, whereExpr string) bool {
+	if sch == nil || whereExpr == "" {
+		return false
+	}
+	// 先扫主键
+	for _, f := range sch.PrimaryFields {
+		if f == nil || f.DBName == "" {
+			continue
+		}
+		if uniqueColRegex(f.DBName).MatchString(whereExpr) {
+			return true
+		}
+	}
+	// 再扫单列 Unique 字段（GORM 对组合唯一索引不会把 Unique 置 true）
+	for _, f := range sch.Fields {
+		if f == nil || !f.Unique || f.DBName == "" || f.PrimaryKey {
+			continue
+		}
+		if uniqueColRegex(f.DBName).MatchString(whereExpr) {
+			return true
+		}
+	}
+	return false
 }
