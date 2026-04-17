@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Table, Button, Tag, Switch, Modal, Form, Input, Select, InputNumber,
+  Table, Button, Tag, Switch, Modal, Form, Input, TextArea, Select, InputNumber,
   Popconfirm, Space, Typography,
 } from '@douyinfe/semi-ui';
 import { usePromptRuleData } from '../../hooks/prompt-rule/usePromptRuleData';
 
-const { TextArea } = Input;
 const { Text } = Typography;
 
 export default function PromptRule() {

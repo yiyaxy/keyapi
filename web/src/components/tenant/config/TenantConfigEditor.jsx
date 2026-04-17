@@ -3,6 +3,7 @@ import {
   Card,
   Button,
   Input,
+  TextArea,
   Switch,
   Space,
   Banner,
@@ -18,7 +19,6 @@ import {
   TENANT_CONFIG_GROUP_TITLES,
 } from '../../../types/tenant';
 
-const { TextArea } = Input;
 const { Text } = Typography;
 
 /**
