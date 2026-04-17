@@ -34,31 +34,32 @@ export default function BalanceCard({ collapsed }) {
   const loading = !user;
 
   const amountText = quota == null ? '—' : renderQuota(quota);
-  const isDanger = quota != null && Number(quota) <= 0;
+  // Tight guard: only redden on a genuine non-positive number; string/NaN
+  // payloads stay neutral.
+  const isDanger = typeof quota === 'number' && quota <= 0;
+
+  const goToTopup = () => navigate('/console/topup');
+  const onKeyActivate = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      goToTopup();
+    }
+  };
 
   if (collapsed) {
     return (
       <Tooltip
         position='right'
-        content={
-          <div style={{ minWidth: 160 }}>
-            <div style={{ fontSize: 10, opacity: 0.8, letterSpacing: '0.05em' }}>
-              {t('sidebar.balance.label').toUpperCase()}
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-              {loading ? '…' : amountText}
-            </div>
-            <a onClick={() => navigate('/console/topup')} style={{ cursor: 'pointer' }}>
-              {t('sidebar.balance.topup')} →
-            </a>
-          </div>
-        }
+        content={t('sidebar.balance.tooltip', { amount: amountText })}
       >
         <div
           className='mx-2 my-2 py-2 text-center cursor-pointer rounded-semi-border-radius-small hover:bg-semi-color-fill-0'
-          onClick={() => navigate('/console/topup')}
+          onClick={goToTopup}
+          onKeyDown={onKeyActivate}
           role='button'
           tabIndex={0}
+          aria-label={t('sidebar.balance.tooltip', { amount: amountText })}
+          aria-busy={loading || undefined}
         >
           <div
             className={[
@@ -88,6 +89,7 @@ export default function BalanceCard({ collapsed }) {
           isDanger ? 'text-semi-color-danger' : 'text-semi-color-text-0',
         ].join(' ')}
         style={{ fontVariantNumeric: 'tabular-nums' }}
+        aria-busy={loading || undefined}
       >
         {loading ? (
           <Skeleton.Title active style={{ width: 80, height: 22 }} />
@@ -95,7 +97,7 @@ export default function BalanceCard({ collapsed }) {
           amountText
         )}
       </div>
-      <Button theme='light' type='tertiary' block onClick={() => navigate('/console/topup')}>
+      <Button theme='light' type='tertiary' block onClick={goToTopup}>
         {t('sidebar.balance.topup')}
       </Button>
     </div>
