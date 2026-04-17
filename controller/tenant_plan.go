@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
@@ -41,6 +42,9 @@ type UpdateTenantPlanRequest struct {
 	Status             *int   `json:"status"`
 	ExpiresAt          *int64 `json:"expires_at"`
 	GracePeriodSeconds *int64 `json:"grace_period_seconds"`
+	RenewPeriodDays    *int   `json:"renew_period_days"`
+	RenewPriceAmount   *int64 `json:"renew_price_amount"`
+	RenewCurrency      *string `json:"renew_currency"`
 }
 
 // UpdateTenantPlanHandler updates a tenant's plan.
@@ -113,6 +117,32 @@ func UpdateTenantPlanHandler(c *gin.Context) {
 			gp = 0
 		}
 		plan.GracePeriodSeconds = gp
+	}
+	if req.RenewPeriodDays != nil {
+		if *req.RenewPeriodDays < 0 {
+			common.ApiErrorMsg(c, "renew_period_days 必须 >= 0")
+			return
+		}
+		plan.RenewPeriodDays = *req.RenewPeriodDays
+	}
+	if req.RenewPriceAmount != nil {
+		if *req.RenewPriceAmount < 0 {
+			common.ApiErrorMsg(c, "renew_price_amount 必须 >= 0（单位：分）")
+			return
+		}
+		plan.RenewPriceAmount = *req.RenewPriceAmount
+	}
+	if req.RenewCurrency != nil {
+		cur := strings.ToUpper(strings.TrimSpace(*req.RenewCurrency))
+		if cur == "" {
+			cur = "CNY"
+		}
+		// v1 仅支持 CNY
+		if cur != "CNY" {
+			common.ApiErrorMsg(c, "renew_currency 当前仅支持 CNY")
+			return
+		}
+		plan.RenewCurrency = cur
 	}
 
 	if err := model.UpsertTenantPlan(plan); err != nil {
