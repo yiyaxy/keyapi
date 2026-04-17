@@ -41,6 +41,8 @@ import RechargeCard from './RechargeCard';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import WechatPayModal from '../payment/WechatPayModal';
+import { createWechatTopup } from '../../helpers/payment';
 import './topup-theme.css';
 
 const TopUp = () => {
@@ -65,6 +67,7 @@ const TopUp = () => {
   const [enableStripeTopUp, setEnableStripeTopUp] = useState(
     statusState?.status?.enable_stripe_topup || false,
   );
+  const [enableWechatTopup, setEnableWechatTopup] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
 
   const [creemProducts, setCreemProducts] = useState([]);
@@ -98,6 +101,13 @@ const TopUp = () => {
   const [presetAmounts, setPresetAmounts] = useState([]);
   const [selectedPreset, setSelectedPreset] = useState(null);
   const [topupView, setTopupView] = useState('subscription');
+
+  const [wechatModal, setWechatModal] = useState({
+    visible: false,
+    codeUrl: '',
+    outTradeNo: '',
+    amountCents: 0,
+  });
 
   const [topupInfo, setTopupInfo] = useState({
     amount_options: [],
@@ -154,6 +164,9 @@ const TopUp = () => {
         showError(t('管理员未开启Stripe充值！'));
         return;
       }
+    } else if (payment === 'wechat') {
+      // wechat S2 — method is only injected into payMethods when the tenant
+      // config is valid, so no separate flag check is needed here.
     } else {
       if (!enableOnlineTopUp) {
         showError(t('管理员未开启在线充值！'));
@@ -200,6 +213,23 @@ const TopUp = () => {
       await estimateAmount(topUpCount, payWay, {
         updateSelectedPreset: false,
       });
+
+      if (payWay === 'wechat') {
+        const res = await createWechatTopup('native', { amount: parseInt(topUpCount) });
+        if (!res?.success) {
+          Toast.error(res?.message || t('下单失败'));
+          return;
+        }
+        const env = res.data;
+        setWechatModal({
+          visible: true,
+          codeUrl: env.response.code_url,
+          outTradeNo: env.order.out_trade_no,
+          amountCents: env.order.amount,
+        });
+        setOpen(false);
+        return;
+      }
 
       let res;
       if (payWay === 'stripe') {
@@ -452,6 +482,7 @@ const TopUp = () => {
           const enableStripeTopUp = data.enable_stripe_topup || false;
           const enableOnlineTopUp = data.enable_online_topup || false;
           const enableCreemTopUp = data.enable_creem_topup || false;
+          const enableWechatTopupData = data.enable_wechat_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
@@ -460,6 +491,7 @@ const TopUp = () => {
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
+          setEnableWechatTopup(enableWechatTopupData);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
 
@@ -718,6 +750,17 @@ const TopUp = () => {
         t={t}
       />
 
+      <WechatPayModal
+        {...wechatModal}
+        onClose={() =>
+          setWechatModal({ visible: false, codeUrl: '', outTradeNo: '', amountCents: 0 })
+        }
+        onSuccess={() => {
+          getUserQuota();
+          setWechatModal({ visible: false, codeUrl: '', outTradeNo: '', amountCents: 0 });
+        }}
+      />
+
       <Modal
         title={`${t('确定要充值')} ${selectedCreemProduct?.currency === 'EUR' ? '€' : selectedCreemProduct?.currency === 'USD' ? '$' : '¥'}`}
         visible={creemOpen}
@@ -826,6 +869,7 @@ const TopUp = () => {
               enableOnlineTopUp={enableOnlineTopUp}
               enableStripeTopUp={enableStripeTopUp}
               enableCreemTopUp={enableCreemTopUp}
+              enableWechatTopup={enableWechatTopup}
               creemProducts={creemProducts}
               creemPreTopUp={creemPreTopUp}
               presetAmounts={presetAmounts}

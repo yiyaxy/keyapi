@@ -80,11 +80,38 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// 如果当前租户已配置微信支付（S2 原生），注入到支付方式列表
+	enableWechatTopup := false
+	tid := middleware.GetTenantId(c)
+	if tid > 0 {
+		wechatCfg, wechatErr := model.GetTenantPaymentConfig(tid, "wechat")
+		if wechatErr == nil && wechatCfg.Enabled && !wechatCfg.PlatformLocked &&
+			wechatCfg.Mchid != "" && wechatCfg.AppId != "" {
+			enableWechatTopup = true
+			hasWechat := false
+			for _, method := range payMethods {
+				if method["type"] == "wechat" {
+					hasWechat = true
+					break
+				}
+			}
+			if !hasWechat {
+				payMethods = append(payMethods, map[string]string{
+					"name":      "微信支付",
+					"type":      "wechat",
+					"color":     "rgba(var(--semi-green-5), 1)",
+					"min_topup": strconv.Itoa(int(operation_setting.MinTopUp)),
+				})
+			}
+		}
+	}
+
 	data := gin.H{
 		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_waffo_topup": enableWaffo,
+		"enable_waffo_topup":  enableWaffo,
+		"enable_wechat_topup": enableWechatTopup,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
