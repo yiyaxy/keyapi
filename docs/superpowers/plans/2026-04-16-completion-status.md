@@ -214,8 +214,21 @@
 - **前端**：`/console/tenant-payment` 独立页 + Tab 1 配置表单（原生 Semi `Switch`/`Input`/`TextArea` 受控）+ `_set` 布尔只读暴露（ciphertext 不过线）+ PlatformLocked danger Banner + 上次测试失败 warning Banner + 保存/测试连接/清除三按钮 + zh-CN/en i18n + Sidebar 菜单白名单 `tenantPayment`（顺手补了漏的 `tenantAudit`）
 - **端到端**：真实阿里云 RDS Postgres + 真实微信商户号，填凭据 → 保存 → 测试连接 → 返回 `连接成功`，`tenant_payment_configs` 行写入并可跨租户隔离
 
-#### 未完成（S2 / S3 计划中）
-- **S2**（下单 + 回调 + 续期定价配置）：`payment_orders` 模型 + Native/H5/JSAPI 下单 + 回调验签处理 + 订单状态机 + 订单查询 API（含归属校验）+ topup/sub 业务联动（`IncreaseUserQuota` 用 `GetUserTenantId`，`TopUp.PaymentMethod="wxpay"` 兼容发票）+ sub 续期成功显式恢复 `TenantPlan.Status=Active` + 前端 /console/topup 微信支付入口 + /console/tenant-plan 续期按钮 + 订单 Tab + `RenewPeriodDays`/`RenewPriceAmount`/`RenewCurrency` 字段 + /console/platform-tenants 定价编辑 UI
+### 已完成（续 — WeChat Pay S2: 下单 + 回调 + 业务联动, commits `b7310f6` → `e32ef11`, 2026-04-17）
+- **模型**：`model/payment_order.go` PaymentOrder 模型（状态机 `pending/paid/partial_refunded/fully_refunded/closed/expired` + `LastError` 字段用于留痕远端失败 *不删 pending*） + `BuildOutTradeNo`（`wx_t{tid}_{K}_{unix}_{rand6}` ≤31 字符） + `ValidateOutTradeNoRoute`（回调 URL 防篡改） + `MarkOrderPaid`（`UPDATE...WHERE status='pending'` 幂等原语） + `CreatePaymentOrder` / `GetPaymentOrderByOutTradeNo` CRUD；`TenantPlan` 加 `RenewPeriodDays` / `RenewPriceAmount` / `RenewCurrency`；tenant-scoped 注册 + AutoMigrate + schema version bump `2026-04-18`
+- **Provider 接口扩展**：`service/payment/provider.go` 加 `CreateOrder` / `VerifyAndParseNotify` / `QueryOrder` 方法 + `CreateOrderRequest/Response` / `NotifyResult` / `QueryOrderResult` 类型
+- **wechat 下单实现**：`service/payment/wechat/native.go` / `h5.go` / `jsapi.go` 三种 ProductForm（Native QR / H5 redirect / JSAPI prepay_id + wx.requestPayment 签名）；`notify.go` 走 `wechatpay-go` `NotifyHandler` 做 SHA256-with-RSA 验签 + AES-256-GCM 解密；`provider.go` `CreateOrder` switch-case 路由 + `QueryOrder` 用 `native.NativeApiService.QueryOrderByOutTradeNo`
+- **Service 层事务骨架**：`service/payment/order.go` `CreateTopupOrder` / `CreateSubOrder`（公共入口分别走 createOrder + metadata 写 `amount_units` / `renew_period_days`）；`markOrderCreationError`（**保留 pending + 写 LastError**，不删行——微信可能已受理本端没拿到响应）；`ApplyPaymentSuccess` tx 包 `MarkOrderPaid` 幂等 + 分派 topup/sub 业务 + `postCommit []func()` 钩子保证 cache/审计/日志写入在 tx commit 后才跑
+- **topup 成功路径**：`applyTopupSuccess` 在 tx 内 `UPDATE users SET quota = quota + ? WHERE id=? AND tenant_id=?`（走 home tenant）+ 写 `top_ups` 行（`PaymentMethod="wxpay"` 兼容发票过滤）+ `CreateTenantAuditLogTx` tx 审计；postCommit 里跑 `RecordTopUpLogWithTenant` + `ProcessTopUpRebate` + `CacheIncrUserQuota`（export 加在 `model/user_cache.go`），与 epay/stripe 路径严格行为一致
+- **sub 成功路径**：`applySubSuccess` 在 tx 内 `SELECT ... FOR UPDATE` 锁 `tenant_plans` 行 + 原子 `UPDATE expires_at = CASE WHEN expires_at > now THEN expires_at + secs ELSE now + secs END`（解决并发丢单）+ 显式恢复 `Status=Active`（当前状态机只 active→disabled，不会自动恢复）+ `CreateTenantAuditLogTx` 审计；postCommit 里 `InvalidateTenantPlanCache` 保证不与未提交 tx 争 cache
+- **Controller**：`controller/payment_wechat.go` 5 下单 handler + `resolveTopupPrice`（复用 `getPayMoney` + `getMinTopup` + tokens-mode 归一化，定价与 epay 一致）+ `buildNotifyUrl`（走 `system_setting.ServerAddress`，localhost / 空 / 缺 scheme 一律拒单）；`controller/payment_notify.go` 回调含 `ValidateOutTradeNoRoute` 纵深防御 + 路由不匹配触发 `payment.notify.mismatch` 审计；`controller/payment_order.go` 订单查询/列表 API（payer 或 tenant admin 可见否则 404，剔除 openid/metadata）
+- **Router**：8 条路由挂对应鉴权组 — `paymentRoute`（UserAuth）放 topup 3 + 单订单；`tenantRoute`（TenantAdminAuth）放 sub 2 + 订单列表；`apiRouter`（公开）放 notify（签名验证即 auth）
+- **Model 扩展 tx-aware 审计**：`model/tenant_audit_log.go` `CreateTenantAuditLogTx(tx, log)` 用调用方传入的 tx 写入，业务回滚时审计一并回滚（不再用全局 DB 的 `CreateTenantAuditLog` 逃逸事务）
+- **前端**：`web/src/types/tenant.ts` 5 种 order-related 类型；`web/src/helpers/payment.js` 4 个 API helper；`WechatPayModal`（QR + 3s `/api/payment/orders/:out_trade_no` 轮询 + 终态 Toast + 自动关闭）；`/console/topup` 加 wechat 按钮（后端通过 `GetTopUpInfo` 注入 `enable_wechat_topup` flag 按租户 wechat config 启用/禁用）；`/console/tenant-plan` 加续期按钮（`renew_price_amount<=0` 禁用 + tooltip）；`/console/tenant-payment` 订单 Tab（类型/状态筛选 + 分页）；`/console/platform-tenants` plan 编辑加续期周期/单价（yuan-cents 换算 + `renew_currency='CNY'` 硬编码 v1）
+- **3 轮 pre-execution review + 9 个 HIGH/MEDIUM 修订**：rollback 改 markOrderCreationError / quota 用 tx.Exec 不用 IncreaseUserQuota / SELECT FOR UPDATE + CASE atomic / tx 外不 reload / buildNotifyUrl 走 ServerAddress / resolveTopupPrice 复用 epay 定价 / postCommit 做 log+rebate+cache parity / CreateTenantAuditLogTx / tokens-mode 归一化防止多发 500k² 倍额度 — 完整明细见 plan 文件 `docs/superpowers/plans/2026-04-17-wechat-pay-s2-ordering-and-callback.md` 顶部"修订记录"节
+- **已提交 21 个 commit，分支 `feat/wechat-pay-s2` 已 push 到 origin**；真实商户号端到端手工验证（topup + sub 续期）待 LO 执行
+
+#### 未完成（S3 计划中）
 - **S3**（退款 + 补偿 + 续期告警）：`payment_refunds` 模型 + 退款 API（仅财务退回不回滚业务）+ 退款回调 + 缺单补偿循环（3 分钟 master 定时）+ 续期告警 3 类（7/3/1 天）+ 退款 Tab + 平台锁定开关
 
 #### 未完成（本次 spec 范围外，推迟至未来迭代）
@@ -225,7 +238,8 @@
 - 支付宝 / PayPal 落地（架构已预留）
 
 ### 未完成
-- 套餐续费/升级/降级的支付闭环（依赖外部支付集成，S2 交付续期后仅剩升降级 — v2 scope）
+- 套餐**升级 / 降级** + proration（需先补 `PlanTemplate` / SKU — v2 scope）
+- WeChat Pay **S3**（退款 + 缺单补偿 + 续期告警 — 见 S3 plan）
 
 ---
 
