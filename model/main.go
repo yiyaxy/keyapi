@@ -19,28 +19,11 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// newGormLogger 返回一个精简的 GORM 日志器。
-// 默认级别 Warn —— 只打 "慢查询" 和 "错误"，不再刷屏所有成功 SQL。
-// 设 DEBUG=true 时恢复 Info 级别，完整 SQL 回显，便于定位疑难。
-//
-// 其它细节：
-//   - SlowThreshold=500ms，慢查询才单独高亮
-//   - IgnoreRecordNotFoundError=true，避免 .First() 空结果被当成 error 刷屏
-//   - Colorful=true，让错误行颜色凸显
+// newGormLogger 返回项目定制的 GORM 日志器（实现见 gorm_logger.go）。
+// 特点：单行一条 / 颜色分级（错误红、慢黄、普通灰）/ 调用位置压成短路径 /
+// 默认 Warn 级别不刷屏，DEBUG=true 时 Info 级别完整回显。
 func newGormLogger() logger.Interface {
-	level := logger.Warn
-	if common.DebugEnabled {
-		level = logger.Info
-	}
-	return logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		logger.Config{
-			SlowThreshold:             500 * time.Millisecond,
-			LogLevel:                  level,
-			IgnoreRecordNotFoundError: true,
-			Colorful:                  true,
-		},
-	)
+	return newPrettyGormLogger()
 }
 
 var commonGroupCol string
