@@ -25,12 +25,14 @@ type TenantMetricsSummary struct {
 func GetTenantMetrics(tenantId int) (*TenantMetricsSummary, error) {
 	summary := &TenantMetricsSummary{TenantId: tenantId}
 
-	// 每次查询都从 WithTenantBypass(DB) 重新开始一条独立链路，
-	// 不能复用同一个 *gorm.DB —— 否则 Where/Table 会在同一 Statement 上累积，
-	// 下一次调用继承上次遗留的 WHERE 条件，导致类似
-	// "column deleted_at does not exist" 这种跨表污染的怪异报错。
+	// 每次查询都必须开独立会话。Session(&gorm.Session{NewDB: true}) 是 GORM 官方
+	// 推荐的"完全新会话"方法——不继承任何 Statement 状态（Clauses/Settings/Vars）。
+	// 不用 NewDB:true 仅凭 WithTenantBypass 仍有风险：若 model.DB 的 clone 状态不为 1
+	// （理论上应该是，但安全起见），Statement.clone() 会携带历史 Clauses。
+	// 症状表现为：后一条 Table 查询继承前一条的 Where 条件（比如 deleted_at IS NULL
+	// 被带到没有 deleted_at 列的 channels 表上，触发 SQLSTATE 42703 怪异报错）。
 	freshDB := func() *gorm.DB {
-		return model.WithTenantBypass(model.DB)
+		return model.WithTenantBypass(model.DB.Session(&gorm.Session{NewDB: true}))
 	}
 
 	// Total members (not removed)
