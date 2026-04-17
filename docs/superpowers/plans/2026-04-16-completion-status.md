@@ -200,8 +200,32 @@
 - 前端 `TenantPlanCard` 加宽限期 Banner + 平台 admin 表单可设置
 - 3 个单元测试（grace window / exhausted / no-grace）全 PASS
 
+### 已完成（续 — WeChat Pay S1: 凭据基础，commits `c5f7436` → `8764f9d`，2026-04-17）
+- **加密工具**：`common/crypto.go` 新增 `DeriveKey`（HKDF-SHA256 → 32 字节）+ `EncryptAESGCM` / `DecryptAESGCM`；6 个单测（确定性 / info 隔离 / roundtrip / 错 key / 篡改检测 / key 长度校验）
+- **支付密钥**：`service/payment/crypto.go` `paymentMasterKey()` 默认 HKDF(CryptoSecret, "wechat-pay-keys-v1")，可选 env `PAYMENT_MASTER_KEY`（32 字节 base64）覆盖
+- **TenantPaymentConfig 模型**：`model/tenant_payment_config.go` + AES-256-GCM 加密 3 敏感字段（app_secret / apiv3_key / private_key PEM）+ CRUD 全部走 `WithTenantBypass + WHERE tenant_id=?` + `paymentKeyResolver` 走 `atomic.Value` 避免 race + 硬删除（Unscoped，删除后不留 ciphertext）
+- **Guardrail 注册**：`tenant_payment_configs` 加入 `RegisterTenantScopedTable` 清单，fail-closed 跨租户访问检查
+- **启动 wire-up**：`main.go` 在 `InitDB` 后 `CheckSetup` 前 `model.InitPaymentCrypto(payment.PaymentMasterKey)` 注入 env-aware resolver + eager validate（PAYMENT_MASTER_KEY 无效立即 fatal，不等到首次请求）+ 启动 log 指明走 env 还是 HKDF
+- **Provider 抽象**：`service/payment/provider.go` `Provider` 接口（`Name` + `TestCredentials`）+ 注册表（init-time only）；`Register` nil-guard panic
+- **per-tenant WeChat Client 缓存**：`service/payment/wechat/client.go` `cachedClient` + `clientCache`（sync.RWMutex）+ DB-backed staleness check by `cfg.UpdatedAt` + `InvalidateCache(tenantId)` 导出 + 10s `callWithTimeout`
+- **TestCredentials 实现**：`service/payment/wechat/provider.go` 调微信 `/v3/certificates`（v0.2.21 SDK，`DownloadCertificates(ctx)`），成功则代表 mchid / serial / private key / apiv3_key 四件套凭据互洽；`init.go` 注册到 registry
+- **Controller CRUD + test endpoint**：`controller/tenant_payment.go` 4 handler — `GetTenantPaymentConfigs` / `UpdateTenantWechatConfig`（merge-on-update：空字段保留 existing ciphertext）/ `TestTenantWechatConfig`（sanitize 错误到 300 字符存 `LastTestError` + HTTP 响应，完整错误走 `common.SysError`）/ `DeleteTenantWechatConfig`（含 `PlatformLocked` 守护 + idempotent on NotFound）
+- **Router**：`router/api-router.go` 4 条路由挂在 `tenantRoute` 分组下（自带 `TenantAdminAuth()` 中间件）
+- **前端**：`/console/tenant-payment` 独立页 + Tab 1 配置表单（原生 Semi `Switch`/`Input`/`TextArea` 受控）+ `_set` 布尔只读暴露（ciphertext 不过线）+ PlatformLocked danger Banner + 上次测试失败 warning Banner + 保存/测试连接/清除三按钮 + zh-CN/en i18n + Sidebar 菜单白名单 `tenantPayment`（顺手补了漏的 `tenantAudit`）
+- **端到端**：真实阿里云 RDS Postgres + 真实微信商户号，填凭据 → 保存 → 测试连接 → 返回 `连接成功`，`tenant_payment_configs` 行写入并可跨租户隔离
+
+#### 未完成（S2 / S3 计划中）
+- **S2**（下单 + 回调 + 续期定价配置）：`payment_orders` 模型 + Native/H5/JSAPI 下单 + 回调验签处理 + 订单状态机 + 订单查询 API（含归属校验）+ topup/sub 业务联动（`IncreaseUserQuota` 用 `GetUserTenantId`，`TopUp.PaymentMethod="wxpay"` 兼容发票）+ sub 续期成功显式恢复 `TenantPlan.Status=Active` + 前端 /console/topup 微信支付入口 + /console/tenant-plan 续期按钮 + 订单 Tab + `RenewPeriodDays`/`RenewPriceAmount`/`RenewCurrency` 字段 + /console/platform-tenants 定价编辑 UI
+- **S3**（退款 + 补偿 + 续期告警）：`payment_refunds` 模型 + 退款 API（仅财务退回不回滚业务）+ 退款回调 + 缺单补偿循环（3 分钟 master 定时）+ 续期告警 3 类（7/3/1 天）+ 退款 Tab + 平台锁定开关
+
+#### 未完成（本次 spec 范围外，推迟至未来迭代）
+- 套餐升级 / 降级 / proration（需先补 `PlanTemplate` / SKU）
+- 每日对账单自动下载
+- 订阅消息模板推送
+- 支付宝 / PayPal 落地（架构已预留）
+
 ### 未完成
-- 套餐续费/升级/降级的支付闭环（依赖外部支付集成）
+- 套餐续费/升级/降级的支付闭环（依赖外部支付集成，S2 交付续期后仅剩升降级 — v2 scope）
 
 ---
 
