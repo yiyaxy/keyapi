@@ -27,3 +27,9 @@ func paymentMasterKey() []byte {
 	}
 	return common.DeriveKey([]byte(common.CryptoSecret), "wechat-pay-keys-v1")
 }
+
+// PaymentMasterKey is the exported wrapper used at startup to install the
+// key resolver into the model layer (avoiding a model→service import cycle).
+func PaymentMasterKey() []byte {
+	return paymentMasterKey()
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/payment"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -290,6 +291,9 @@ func InitResources() error {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
 	}
+
+	// Install the payment master-key resolver, enabling PAYMENT_MASTER_KEY env override.
+	model.InitPaymentCrypto(payment.PaymentMasterKey)
 
 	model.CheckSetup()
 
