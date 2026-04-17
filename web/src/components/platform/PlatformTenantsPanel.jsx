@@ -105,6 +105,8 @@ export default function PlatformTenantsPanel() {
         status: current.status ?? 1,
         expires_at: current.expires_at ?? 0,
         grace_period_seconds: current.grace_period_seconds ?? 0,
+        renew_period_days: current.renew_period_days ?? 0,
+        renew_price_yuan: (current.renew_price_amount ?? 0) / 100,
       });
     }, 50);
   };
@@ -131,6 +133,9 @@ export default function PlatformTenantsPanel() {
         status: Number(v.status),
         expires_at: Number(v.expires_at),
         grace_period_seconds: Number(v.grace_period_seconds || 0),
+        renew_period_days: Number(v.renew_period_days || 0),
+        renew_price_amount: Math.round((Number(v.renew_price_yuan) || 0) * 100),
+        renew_currency: 'CNY',
       });
       if (res?.data?.success) {
         showSuccess(t('已保存'));
@@ -247,6 +252,21 @@ export default function PlatformTenantsPanel() {
               label={t('宽限期（秒，0=立即停服）')}
               placeholder={t('86400 = 1 天')}
               min={0}
+            />
+            <Form.InputNumber
+              field='renew_period_days'
+              label={t('续期周期（天）')}
+              min={0}
+              placeholder={t('0 = 禁用续期')}
+            />
+            <Form.InputNumber
+              field='renew_price_yuan'
+              label={t('续期单价（元）')}
+              min={0}
+              precision={2}
+              suffix={t('元')}
+              placeholder='0.00'
+              extraText={t('0 表示禁用续期；后端存 renew_price_amount（分）= 元 × 100')}
             />
           </Form>
         ) : null}
