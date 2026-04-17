@@ -55,6 +55,7 @@ export default function NavItem({ item, siblings, collapsed }) {
       to={item.to}
       className={classes}
       aria-current={active ? 'page' : undefined}
+      aria-label={collapsed ? item.label : undefined}
     >
       {active && (
         <span
