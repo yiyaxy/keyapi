@@ -17,15 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import HeaderBar from './headerbar';
 import { Layout } from '@douyinfe/semi-ui';
-import SiderBar from './SiderBar';
 import App from '../../App';
 import FooterBar from './Footer';
 import { ToastContainer } from 'react-toastify';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
-import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
 import {
   API,
@@ -38,14 +35,17 @@ import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useLocation } from 'react-router-dom';
 import { normalizeLanguage } from '../../i18n/language';
-const { Sider, Content, Header } = Layout;
+import Header from './header/Header';
+import Sidebar from './sidebar/Sidebar';
+import SidebarDrawer from './sidebar/SidebarDrawer';
+import { useLayoutState } from './useLayoutState';
+const { Content } = Layout;
 
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
   const [, statusDispatch] = useContext(StatusContext);
   const isMobile = useIsMobile();
-  const [collapsed, , setCollapsed] = useSidebarCollapsed();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { mode, toggle, drawerOpen, setDrawerOpen } = useLayoutState();
   const { i18n } = useTranslation();
   const location = useLocation();
 
@@ -55,13 +55,7 @@ const PageLayout = () => {
     location.pathname !== '/console/playground';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
-  const showSider = isConsoleRoute && (!isMobile || drawerOpen);
-
-  useEffect(() => {
-    if (isMobile && drawerOpen && collapsed) {
-      setCollapsed(false);
-    }
-  }, [isMobile, drawerOpen, collapsed, setCollapsed]);
+  const showSider = isConsoleRoute && mode !== 'drawer';
 
   const loadUser = () => {
     let user = localStorage.getItem('user');
@@ -129,6 +123,8 @@ const PageLayout = () => {
     }
   }, [i18n, userState?.user?.setting]);
 
+  const sidebarWidth = showSider ? (mode === 'rail' ? 64 : 240) : 0;
+
   return (
     <Layout
       className='app-layout'
@@ -138,22 +134,21 @@ const PageLayout = () => {
         overflow: isMobile ? 'visible' : 'hidden',
       }}
     >
-      <Header
+      <div
         style={{
-          padding: 0,
-          height: 'auto',
-          lineHeight: 'normal',
           position: 'fixed',
           width: '100%',
           top: 0,
           zIndex: 100,
         }}
       >
-        <HeaderBar
-          onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
+        <Header
+          mode={mode}
           drawerOpen={drawerOpen}
+          onOpenDrawer={() => setDrawerOpen(true)}
+          onToggleCollapse={toggle}
         />
-      </Header>
+      </div>
       <Layout
         style={{
           overflow: isMobile ? 'visible' : 'auto',
@@ -162,32 +157,23 @@ const PageLayout = () => {
         }}
       >
         {showSider && (
-          <Sider
+          <div
             className='app-sider'
             style={{
               position: 'fixed',
               left: 0,
-              top: '64px',
+              top: '56px',
               zIndex: 99,
-              border: 'none',
-              paddingRight: '0',
-              width: 'var(--sidebar-current-width)',
+              bottom: 0,
             }}
           >
-            <SiderBar
-              onNavigate={() => {
-                if (isMobile) setDrawerOpen(false);
-              }}
-            />
-          </Sider>
+            <Sidebar mode={mode} />
+          </div>
         )}
+        <SidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
         <Layout
           style={{
-            marginLeft: isMobile
-              ? '0'
-              : showSider
-                ? 'var(--sidebar-current-width)'
-                : '0',
+            marginLeft: isMobile ? '0' : `${sidebarWidth}px`,
             flex: '1 1 auto',
             display: 'flex',
             flexDirection: 'column',

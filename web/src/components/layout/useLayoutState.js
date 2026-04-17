@@ -37,7 +37,20 @@ function computeMode(width, userCollapsed) {
 function readStoredCollapsed() {
   if (typeof window === 'undefined') return false;
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === '1';
+    const v = window.localStorage.getItem(STORAGE_KEY);
+    if (v !== null) return v === '1';
+    // One-time migration from the legacy key used by useSidebarCollapsed.js
+    const legacy = window.localStorage.getItem('default_collapse_sidebar');
+    if (legacy !== null) {
+      const mapped = legacy === 'true';
+      try {
+        window.localStorage.setItem(STORAGE_KEY, mapped ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return mapped;
+    }
+    return false;
   } catch {
     return false;
   }
