@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"encoding/base64"
 	"testing"
 )
 
@@ -56,11 +57,45 @@ func TestAESGCM_WrongKeyFails(t *testing.T) {
 
 func TestAESGCM_TamperedCiphertextFails(t *testing.T) {
 	key := DeriveKey([]byte("seed"), "tamper")
-	ciphertext, _ := EncryptAESGCM(key, []byte("secret"))
-	// flip one byte in the middle
-	tampered := []byte(ciphertext)
-	tampered[len(tampered)/2] ^= 0x01
-	if _, err := DecryptAESGCM(key, string(tampered)); err == nil {
-		t.Fatal("tampered ciphertext should fail auth")
+	ct, _ := EncryptAESGCM(key, []byte("secret"))
+	raw, err := base64.StdEncoding.DecodeString(ct)
+	if err != nil {
+		t.Fatalf("decode our own ciphertext: %v", err)
+	}
+	// Flip a byte in the tag region (last 16 bytes), which is past the nonce
+	// and past the ciphertext. This guarantees the GCM authentication check
+	// is the failure path, not a base64 decode error.
+	raw[len(raw)-1] ^= 0xFF
+	tampered := base64.StdEncoding.EncodeToString(raw)
+	if _, err := DecryptAESGCM(key, tampered); err == nil {
+		t.Fatal("tampered ciphertext should fail GCM auth")
+	}
+}
+
+func TestAESGCM_BadKeyLength(t *testing.T) {
+	// Both encrypt and decrypt must reject any key that isn't exactly 32 bytes.
+	shortKey := make([]byte, 16)   // AES-128 size, not allowed here
+	longKey := make([]byte, 64)    // too long
+	plaintext := []byte("secret")
+
+	if _, err := EncryptAESGCM(shortKey, plaintext); err == nil {
+		t.Error("EncryptAESGCM should reject 16-byte key")
+	}
+	if _, err := EncryptAESGCM(longKey, plaintext); err == nil {
+		t.Error("EncryptAESGCM should reject 64-byte key")
+	}
+
+	// For decrypt we need *some* valid ciphertext to try; produce one with a
+	// proper 32-byte key, then attempt to decrypt with wrong-length keys.
+	validKey := DeriveKey([]byte("seed"), "badkey")
+	ct, err := EncryptAESGCM(validKey, plaintext)
+	if err != nil {
+		t.Fatalf("setup encrypt: %v", err)
+	}
+	if _, err := DecryptAESGCM(shortKey, ct); err == nil {
+		t.Error("DecryptAESGCM should reject 16-byte key")
+	}
+	if _, err := DecryptAESGCM(longKey, ct); err == nil {
+		t.Error("DecryptAESGCM should reject 64-byte key")
 	}
 }
