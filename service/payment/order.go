@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // CreateTopupOrderInput is what the topup controller hands in.
@@ -393,5 +394,91 @@ func mustJSON(v any) string {
 }
 
 func applySubSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]func()) error {
-	return errors.New("applySubSuccess: not implemented (Task 12)")
+	var meta struct {
+		RenewPeriodDays int `json:"renew_period_days"`
+	}
+	if order.Metadata != "" {
+		if err := json.Unmarshal([]byte(order.Metadata), &meta); err != nil {
+			return fmt.Errorf("parse sub metadata: %w", err)
+		}
+	}
+	if meta.RenewPeriodDays <= 0 {
+		return fmt.Errorf("invalid renew_period_days for sub order %d", order.Id)
+	}
+
+	// Read plan inside the tx with a row lock to serialize concurrent
+	// renewals. Without this lock two callbacks landing at the same time
+	// would both read the same old ExpiresAt and the second UPDATE would
+	// overwrite the first — effectively losing one renewal (review #3).
+	//
+	// NOTE: do NOT use model.GetTenantPlan — it uses the global DB.
+	var plan model.TenantPlan
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ?", order.TenantId).
+		First(&plan).Error; err != nil {
+		return fmt.Errorf("lock plan: %w", err)
+	}
+	oldExpires := plan.ExpiresAt
+	oldStatus := plan.Status
+	statusRecovered := oldStatus != model.TenantPlanStatusActive
+
+	// Atomic-expression UPDATE. Belt-and-braces with FOR UPDATE above:
+	//   new_expires = GREATEST(expires_at, now) + days*86400
+	// Expressed as CASE so we don't depend on MySQL-only GREATEST.
+	now := time.Now().Unix()
+	secs := int64(meta.RenewPeriodDays) * 86400
+	updates := map[string]interface{}{
+		"expires_at": gorm.Expr(
+			"CASE WHEN expires_at > ? THEN expires_at + ? ELSE ? + ? END",
+			now, secs, now, secs),
+		"updated_at": now,
+	}
+	if statusRecovered {
+		updates["status"] = model.TenantPlanStatusActive
+	}
+	if err := tx.Model(&model.TenantPlan{}).
+		Where("id = ? AND tenant_id = ?", plan.Id, plan.TenantId).
+		Updates(updates).Error; err != nil {
+		return fmt.Errorf("extend plan expiry: %w", err)
+	}
+
+	// Read back the post-UPDATE ExpiresAt for the audit diff. Same tx, so
+	// the UPDATE is visible even before commit.
+	var reloaded model.TenantPlan
+	if err := tx.Select("expires_at").Where("id = ?", plan.Id).First(&reloaded).Error; err != nil {
+		return fmt.Errorf("reload plan after update: %w", err)
+	}
+	newExpires := reloaded.ExpiresAt
+
+	// Audit — tx variant so the audit rolls back with the plan UPDATE
+	// on any later failure in this closure. See rationale on
+	// applyTopupSuccess / CreateTenantAuditLogTx.
+	if err := model.CreateTenantAuditLogTx(tx, &model.TenantAuditLog{
+		TenantId:    order.TenantId,
+		ActorUserId: order.UserId,
+		Action:      "payment.sub.renewed",
+		Target:      "tenant_plans",
+		TargetId:    plan.Id,
+		Detail: mustJSON(map[string]any{
+			"out_trade_no":     order.OutTradeNo,
+			"amount":           order.Amount,
+			"renew_days":       meta.RenewPeriodDays,
+			"old_expires_at":   oldExpires,
+			"new_expires_at":   newExpires,
+			"old_status":       oldStatus,
+			"status_recovered": statusRecovered,
+		}),
+	}); err != nil {
+		common.SysLog(fmt.Sprintf("sub audit tx-write failed: %v", err))
+	}
+
+	// Post-commit: invalidate cached plan so the relay layer picks up
+	// the new ExpiresAt/Status immediately. Must run AFTER commit —
+	// invalidating mid-tx would race with an in-flight relay reading
+	// stale DB and then re-populating the cache with the old values.
+	tid := order.TenantId
+	*postCommit = append(*postCommit, func() {
+		model.InvalidateTenantPlanCache(tid)
+	})
+	return nil
 }
