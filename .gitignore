@@ -52,3 +52,4 @@ scripts/refund_*.py
 scripts/deploy-slave-*.sh
 scripts/deploy-test-*.sh
 .humanize/
+.omx/
