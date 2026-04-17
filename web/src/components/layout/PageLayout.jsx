@@ -162,6 +162,7 @@ const PageLayout = () => {
             style={{
               position: 'fixed',
               left: 0,
+              // TODO(task-15): replace with --header-height token from index.css
               top: '56px',
               zIndex: 99,
               bottom: 0,
@@ -174,6 +175,8 @@ const PageLayout = () => {
         <Layout
           style={{
             marginLeft: isMobile ? '0' : `${sidebarWidth}px`,
+            // Match sidebar's 200ms width transition so content doesn't snap on toggle
+            transition: 'margin-left 200ms cubic-bezier(0.2, 0, 0, 1)',
             flex: '1 1 auto',
             display: 'flex',
             flexDirection: 'column',

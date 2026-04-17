@@ -39,7 +39,9 @@ function readStoredCollapsed() {
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
     if (v !== null) return v === '1';
-    // One-time migration from the legacy key used by useSidebarCollapsed.js
+    // One-time migration from the legacy key used by useSidebarCollapsed.js.
+    // TODO(task-16): after useSidebarCollapsed.js is deleted, also remove the
+    // legacy 'default_collapse_sidebar' key (removeItem) to avoid stale state.
     const legacy = window.localStorage.getItem('default_collapse_sidebar');
     if (legacy !== null) {
       const mapped = legacy === 'true';
