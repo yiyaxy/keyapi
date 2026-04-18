@@ -1,0 +1,18 @@
+{
+  "page.title": "Dashboard",
+  "range.7d": "Last 7 days",
+  "range.30d": "Last 30 days",
+  "quota.label": "Balance",
+  "quota.used_of_total": "Used {{used}} of {{total}}",
+  "quota.zero_body": "No balance · Top up to start",
+  "quota.topup": "Top up",
+  "quota.exhausted": "Exhausted",
+  "usage.title": "Usage over last {{range}} (UTC)",
+  "usage.empty.title": "No usage yet",
+  "usage.empty.body": "Create a key to begin making requests.",
+  "usage.empty.cta": "Create key",
+  "usage.tooltip.requests": "{{count}} requests",
+  "activity.requests": "Requests",
+  "activity.tokens": "Tokens",
+  "activity.consumed": "Consumed"
+}

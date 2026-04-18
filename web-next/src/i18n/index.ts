@@ -4,11 +4,15 @@ import { initReactI18next } from 'react-i18next';
 
 import enAuth from './locales/en/auth.json';
 import enCommon from './locales/en/common.json';
+import enDashboard from './locales/en/dashboard.json';
 import enErrors from './locales/en/errors.json';
+import enKeys from './locales/en/keys.json';
 import enShell from './locales/en/shell.json';
 import zhAuth from './locales/zh/auth.json';
 import zhCommon from './locales/zh/common.json';
+import zhDashboard from './locales/zh/dashboard.json';
 import zhErrors from './locales/zh/errors.json';
+import zhKeys from './locales/zh/keys.json';
 import zhShell from './locales/zh/shell.json';
 
 void i18n
@@ -16,12 +20,26 @@ void i18n
   .use(initReactI18next)
   .init({
     resources: {
-      zh: { common: zhCommon, auth: zhAuth, shell: zhShell, errors: zhErrors },
-      en: { common: enCommon, auth: enAuth, shell: enShell, errors: enErrors },
+      zh: {
+        common: zhCommon,
+        auth: zhAuth,
+        shell: zhShell,
+        errors: zhErrors,
+        keys: zhKeys,
+        dashboard: zhDashboard,
+      },
+      en: {
+        common: enCommon,
+        auth: enAuth,
+        shell: enShell,
+        errors: enErrors,
+        keys: enKeys,
+        dashboard: enDashboard,
+      },
     },
     fallbackLng: 'zh',
     supportedLngs: ['zh', 'en'],
-    ns: ['common', 'auth', 'shell', 'errors'],
+    ns: ['common', 'auth', 'shell', 'errors', 'keys', 'dashboard'],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
     detection: {
