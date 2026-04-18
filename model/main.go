@@ -70,6 +70,11 @@ func initCol() {
 	//common.SysLog("Using Log SQL Type: " + common.LogSqlType)
 }
 
+// InitColForTest exposes the private initCol() for unit tests that need
+// commonKeyCol/commonGroupCol set without running the full InitDB() path.
+// Production code must not call this directly — InitDB() calls initCol().
+func InitColForTest() { initCol() }
+
 var DB *gorm.DB
 
 var LOG_DB *gorm.DB

@@ -539,3 +539,39 @@ func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 		Find(&tokens).Error
 	return tokens, err
 }
+
+// GetTokenByIdsTenant is the tenant-aware variant of GetTokenByIds.
+// Controllers use this to enforce tenant isolation on user-scoped token lookups.
+// Fail-closed: rejects any of id/userId/tenantId being 0.
+func GetTokenByIdsTenant(id, userId, tenantId int) (*Token, error) {
+	if id == 0 || userId == 0 || tenantId == 0 {
+		return nil, errors.New("id, userId, tenantId are required")
+	}
+	token := Token{Id: id, UserId: userId, TenantId: tenantId}
+	err := DB.First(&token, "id = ? AND user_id = ? AND tenant_id = ?", id, userId, tenantId).Error
+	return &token, err
+}
+
+// GetTokenKeysByIdsTenant is the tenant-aware variant of GetTokenKeysByIds.
+func GetTokenKeysByIdsTenant(ids []int, userId, tenantId int) ([]Token, error) {
+	if len(ids) == 0 || userId == 0 || tenantId == 0 {
+		return nil, errors.New("ids, userId, tenantId are required")
+	}
+	var tokens []Token
+	err := DB.Select("id", commonKeyCol).
+		Where("user_id = ? AND tenant_id = ? AND id IN (?)", userId, tenantId, ids).
+		Find(&tokens).Error
+	return tokens, err
+}
+
+// DeleteTokenByIdTenant is the tenant-aware variant of DeleteTokenById.
+func DeleteTokenByIdTenant(id, userId, tenantId int) error {
+	if id == 0 || userId == 0 || tenantId == 0 {
+		return errors.New("id, userId, tenantId are required")
+	}
+	token := Token{Id: id, UserId: userId, TenantId: tenantId}
+	if err := DB.Where(token).First(&token).Error; err != nil {
+		return err
+	}
+	return token.Delete()
+}
