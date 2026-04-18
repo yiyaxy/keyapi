@@ -68,11 +68,12 @@ func SearchTokens(c *gin.Context) {
 func GetToken(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := model.GetTokenByIdsTenant(id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -83,11 +84,12 @@ func GetToken(c *gin.Context) {
 func GetTokenKey(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := model.GetTokenByIdsTenant(id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -262,7 +264,8 @@ func AddToken(c *gin.Context) {
 func DeleteToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
-	err := model.DeleteTokenById(id, userId)
+	tenantId := middleware.GetTenantId(c)
+	err := model.DeleteTokenByIdTenant(id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -297,7 +300,8 @@ func UpdateToken(c *gin.Context) {
 			return
 		}
 	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
+	tenantId := middleware.GetTenantId(c)
+	cleanToken, err := model.GetTokenByIdsTenant(token.Id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -372,7 +376,8 @@ func GetTokenKeysBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
+	tenantId := middleware.GetTenantId(c)
+	tokens, err := model.GetTokenKeysByIdsTenant(tokenBatch.Ids, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
