@@ -20,6 +20,7 @@
   "create.hint_advanced": "默认为无限额度。可在编辑面板切换到自定义额度、设置 IP 白名单、限定模型。",
   "create.loading_groups": "加载分组中…",
   "create.groups_failed": "无法加载分组列表",
+  "create.groups_empty": "当前租户没有可用分组，请先联系管理员配置 channel。",
   "create.retry": "重试",
   "edit.title": "编辑密钥",
   "edit.field.name": "名称",

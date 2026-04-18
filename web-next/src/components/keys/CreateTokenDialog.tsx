@@ -64,7 +64,8 @@ export function CreateTokenDialog({
     }
   }
 
-  const submitDisabled = groups.isPending || groups.isError || create.isPending;
+  const groupsEmpty = groups.isSuccess && (groups.data?.length ?? 0) === 0;
+  const submitDisabled = groups.isPending || groups.isError || groupsEmpty || create.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -80,6 +81,7 @@ export function CreateTokenDialog({
             onClose={() => void groups.refetch()}
           />
         )}
+        {groupsEmpty && <InlineBanner level='warn' message={t('create.groups_empty')} />}
         {create.error && create.error instanceof ApiError && (
           <InlineBanner
             level='danger'
@@ -97,13 +99,11 @@ export function CreateTokenDialog({
               // eslint-disable-next-line react-hooks/incompatible-library
               value={form.watch('group')}
               onValueChange={(v) => form.setValue('group', v, { shouldValidate: true })}
-              disabled={groups.isPending || groups.isError}
+              disabled={groups.isPending || groups.isError || groupsEmpty}
             >
               <SelectTrigger id='create-group'>
                 <SelectValue
-                  placeholder={
-                    groups.isPending ? t('create.loading_groups') : t('create.group')
-                  }
+                  placeholder={groups.isPending ? t('create.loading_groups') : t('create.group')}
                 />
               </SelectTrigger>
               <SelectContent>

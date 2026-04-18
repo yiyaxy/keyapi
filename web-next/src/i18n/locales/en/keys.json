@@ -20,6 +20,7 @@
   "create.hint_advanced": "Created as unlimited. Switch to a custom quota, set IP allowlist, or scope to specific models in Edit.",
   "create.loading_groups": "Loading groups…",
   "create.groups_failed": "Unable to load groups",
+  "create.groups_empty": "No groups available. Ask an admin to add a channel first.",
   "create.retry": "Retry",
   "edit.title": "Edit key",
   "edit.field.name": "Name",
