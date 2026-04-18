@@ -7,7 +7,7 @@ upload
 *.db
 build
 *.db-journal
-logs
+/logs
 logs-slave/
 test-logs/
 web/dist

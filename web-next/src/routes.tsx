@@ -10,6 +10,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
 import { KeysPage } from '@/pages/Keys';
+import { LogsPage } from '@/pages/Logs';
 import { Login } from '@/pages/Login';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
@@ -35,7 +36,7 @@ export const router = createBrowserRouter([
               { path: '/dashboard', element: <DashboardPage /> },
               { path: '/keys', element: <KeysPage /> },
               { path: '/playground', element: <ComingSoon feature='Playground' /> },
-              { path: '/logs', element: <ComingSoon feature='Logs' /> },
+              { path: '/logs', element: <LogsPage /> },
               { path: '/topup', element: <ComingSoon feature='Top up · invoices' /> },
               { path: '/plan', element: <ComingSoon feature='Plan' /> },
               { path: '/account', element: <ComingSoon feature='Account' /> },
