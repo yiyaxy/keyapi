@@ -1,0 +1,12 @@
+{
+  "app.name": "new-api",
+  "home.tagline": "LLM 网关 · 开发者后台",
+  "home.scaffold.ok": "脚手架就绪",
+  "home.scaffold.desc": "Token 已接入 design_file，明暗双主题可切换。",
+  "home.balance.label": "BALANCE",
+  "home.balance.note": "示例余额，用于验证排印与货币样式",
+  "theme.toggle": "切换主题",
+  "theme.light": "亮色",
+  "theme.dark": "暗色",
+  "theme.system": "跟随系统"
+}

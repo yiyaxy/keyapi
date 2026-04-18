@@ -1,0 +1,23 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+.env
+.env.*
+!.env.example
+
+.vite
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# build output
+/dist
+
+# typescript build cache
+*.tsbuildinfo

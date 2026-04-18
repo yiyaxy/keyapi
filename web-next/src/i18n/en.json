@@ -1,0 +1,12 @@
+{
+  "app.name": "new-api",
+  "home.tagline": "LLM gateway · developer console",
+  "home.scaffold.ok": "Scaffold ready",
+  "home.scaffold.desc": "Tokens wired from design_file; light and dark themes both render.",
+  "home.balance.label": "BALANCE",
+  "home.balance.note": "Demo balance — used to verify typography and money style",
+  "theme.toggle": "Toggle theme",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.system": "System"
+}
