@@ -16,7 +16,7 @@ Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试�
 1. **后端**：修复 `controller/token.go` 中 5 处 handler 的租户隔离漏洞。GetToken / GetTokenKey / UpdateToken 走 `GetTokenByIds(id, userId)`、GetTokenKeysByIds 走 `GetTokenKeysByIds(ids, userId)`、DeleteToken 走 `DeleteTokenById(id, userId)`——**三个 model 函数全部不校验 `tenant_id`**。新增 3 个 tenant-aware 变体（`GetTokenByIdsTenant`、`GetTokenKeysByIdsTenant`、`DeleteTokenByIdTenant`），controller 切过去；保留旧函数不删（被 relay / channel 其他路径引用）。
 2. **前端 `/keys`**：买家自助 CRUD API 密钥——列表、创建、编辑全字段、启用/禁用、删除、按需展开 key 全串。4 列极简表格 + 行外 `⋯` DropdownMenu + 右侧 SideSheet 编辑。
 3. **前端 `/dashboard`**：买家用量概览——3 个 widget（Quota 卡 / 30 天用量折线 / 活动汇总卡）。时间段 7d/30d 下拉，URL search param 驱动。
-4. **测试**：延续 slice 1 哲学（unit + component + MSW 集成），新增 5 条集成路径覆盖 keys/dashboard 关键流。后端 `unit_test/tenant_test.go` 扩展 5 个 case 覆盖新函数。
+4. **测试**：延续 slice 1 哲学（unit + component + MSW 集成），新增 5 条集成路径覆盖 keys/dashboard 关键流。后端 `unit_test/tenant_test.go` 扩展 **15 个 case**（3 个新 helper × 5 模式）覆盖租户隔离。
 
 ### 1.3 不覆盖（推到后续 slice）
 | 模块 | 推到哪里 |
@@ -47,6 +47,8 @@ Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试�
 | **图表库** | recharts | shadcn 的 chart 封装用它；16KB gzip 可接受；生态活跃 |
 | **时间段持久化** | URL `?range=7d` / `?range=30d` | 可分享 + reload 保留；不走 Context 避免组件耦合 |
 | **Revealed key 回收** | 5s 后本地 state 自动切回掩码 | 比 "永远可见" 或 "手动收起" 更安全；避免用户离开屏幕后肩窥 |
+| **时间戳单位** | 后端统一 Unix **秒**；前端 `format.ts` 扩展 `fmtDateSec(sec)` / `fmtDaySec(sec)`；原 `fmtDate(d)` 语义保留（ms/Date/ISO）；聚合函数 `usage-aggregate.ts` 全程按 Unix 秒 + **UTC 日桶**（`floor(sec/86400)*86400`），展示层再转本地显示 | 后端 token `created_time`、`QuotaData.created_at`（小时桶）都是 Unix 秒；直接 `new Date(1713484800)` 会落到 1970；聚合不用 UTC 会出现浏览器时区跨日飘移问题（用户跨时区登录时同一天数据被切成两天或归入错误日期） |
+| **Group fallback 失败策略** | **fail-closed**：`useChannelGroups` query 失败 → Create dialog 禁用 Submit + 顶部 inline banner "Unable to load groups · Retry"；不再硬编 fallback | 硬编 `['auto','default']` 是 fail-open——`auto` 只在用户权限包含时才由 `controller/group.go:73` 返回，`default` 不保证是 tenant 的 enabled channel group；硬编会让建出的 token 直接失败或跨界 |
 | **Topbar action slot** | AppShell 通过 React Router `Outlet context` 把 `setPageAction(node)` 传给页面；页面在 `useEffect` 里 set/unset | slice 1 的 `Topbar` 支持 `action` prop 但 AppShell 没 wire；page-level action（Create / Range select）需要一条 shell-level infra |
 | **Create dialog 默认值** | `unlimited_quota: true` | 后端 `AddToken` (controller/token.go:170) 不做 "继承 user.quota" 归一化，原样收字段；`unlimited_quota=false` + `remain_quota` 不传 = 建出 0 额度死 key。Unlimited 作默认最能符合"快速建立第一个能用 key"的用户意图，用户可在 Edit 面板切非无限 |
 
@@ -56,9 +58,9 @@ Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试�
 
 ### 3.1 问题定位
 
-`controller/token.go` 的 5 处 handler 依赖 `model.GetTokenByIds(id, userId int)`（`model/token.go`）。这个函数只做 `WHERE id = ? AND user_id = ?`，**不检查 tenant_id**。攻击者在 tenant A 拿到 token ID（例如通过 log 或猜测），如果恰好能登录 tenant B 且其 user_id 在 tenant B 也存在（多租户 user 合并场景），就能读/改/删 tenant A 的 token。
+`controller/token.go` 的 5 处 handler 依赖三个不同的 model 函数做权限校验——`GetTokenByIds(id, userId)`（3 处）、`GetTokenKeysByIds(ids, userId)`、`DeleteTokenById(id, userId)`——**全部只匹配 `user_id`，没有 `tenant_id`**。攻击者在 tenant A 拿到 token ID（例如通过 log 或猜测），如果恰好能登录 tenant B 且其 user_id 在 tenant B 也存在（多租户 user 合并场景），就能读/改/删 tenant A 的 token。
 
-涉及 controller handler（注意 **Delete 和其他 4 个走不同 model 函数**，需要两个新 model 函数）：
+涉及 5 处 controller handler，拆到 **3 个底层 model 函数**，修复需要 **3 个新 tenant-aware helper**：
 
 | handler | 路由 | 底层 model 函数 | 当前 WHERE 条件 | 修法 |
 |---|---|---|---|---|
@@ -203,7 +205,7 @@ Pagination (if total > pageSize)
 | **Name** | 粗体 `token.name`；下行灰色小字显示 group chain 简写（`auto` / `vip → default`） | name 空 → "Untitled" |
 | **Key** | 掩码 `sk-••••{last4}` + 眼睛按钮 + 复制按钮；点击眼睛 → lazy 触发 `POST /:id/key`，成功后本组件 state 保留全串 5 秒自动回收 | 无 |
 | **Usage** | `{fmtNum(used_quota)} / {fmtNum(remain_quota + used_quota)}`（货币化展示走 `fmtMoney`）+ 进度条（`data-0` 色）；`unlimited_quota=true` → 渲染 "Unlimited" badge | `remain_quota + used_quota === 0` → "—" |
-| **Created** | `fmtDate(created_time, 'medium')`；`status !== 1` 时整行 opacity 0.6 + 右侧加 "Disabled" / "Expired" / "Exhausted" Badge | 无 |
+| **Created** | `fmtDateSec(created_time)`（backend Unix **秒**；`created_time` 字段在 `model/token.go` 里是秒，直接塞 `new Date()` 会落 1970，详见 §2 决策"时间戳单位"）；`status !== 1` 时整行 opacity 0.6 + 右侧加 "Disabled" / "Expired" / "Exhausted" Badge | 无 |
 | **Ops** | 最右固定列；DropdownMenu 触发按钮 `⋯`；菜单项：Edit / Enable·Disable / Delete（destructive） | 无 |
 
 **注**：status 取值语义见 `model/token.go`：1=Enabled, 2=Disabled, 3=Expired, 4=Exhausted。Enable/Disable 切换只在 1↔2 间翻转；Expired/Exhausted 状态不可切回 Enabled（后端约束）。
@@ -212,7 +214,7 @@ Pagination (if total > pageSize)
 
 shadcn `<Dialog>`。仅两个字段：
 - **Name**（必填，1–50 字符）
-- **Group**（Select，默认 `auto`；选项从 `GET /api/user/self/channel-groups`（controller `GetChannelGroups`，router/api-router.go:134）拉取；失败时 fallback `['auto', 'default']`）
+- **Group**（Select，选项从 `useChannelGroups()` → `GET /api/user/self/channel-groups`（controller `GetChannelGroups`，router/api-router.go:134）拉取）。**fail-closed**：query pending 时 Submit 禁用 + 占位 "Loading groups…"；query 失败时 Submit 仍禁用 + dialog 顶部 InlineBanner "Unable to load groups. [Retry]"；只在成功后才允许选择与提交。默认选中第一个组（通常是 `auto`，取决于用户实际可用 group）。
 
 提交：`POST /api/token/` body `{ name, group, unlimited_quota: true, remain_quota: 0, expired_time: -1 }`。**关键**：`unlimited_quota: true` 是**必须默认**，否则后端原样收字段会建出 `remain_quota=0 + unlimited=false` 的死 key（controller/token.go:170 不做"继承 user.quota"归一化）。用户想建非无限 key，在 Edit 面板开关调整。
 
@@ -352,8 +354,8 @@ type QuotaDataRow = {
 
 **渲染**：
 - shadcn `<Card>` 包 `<CardHeader>`（title "Usage over last {range}"）+ `<CardContent>`
-- recharts `<LineChart>` 高 280；x-axis `day`（`fmtDate` 短格式 'MMM d'），y-axis `fmtMoney(quota/quota_per_unit)`
-- Tooltip：hover 日期 → `{fmtDate} · {fmtMoney} · {fmtNum(count)} requests`
+- recharts `<LineChart>` 高 280；x-axis `day`（`fmtDaySec(day)` 短格式 'MMM d'，内部 UTC 转本地），y-axis `fmtMoney(quota/quota_per_unit)`
+- Tooltip：hover 日期 → `{fmtDaySec(day)} · {fmtMoney} · {fmtNum(count)} requests`
 
 **空态**（新注册，`QuotaDataRow[]` 长度 0）：
 ```
@@ -549,7 +551,7 @@ export function useDeleteToken() {
 2. **`keys-edit-optimistic.test.tsx`**：改 name → SideSheet 提交 → 表格立即更新（mock 延迟响应）
 3. **`keys-delete-rollback.test.tsx`**：mock 返 `success:false` → 行回插 + toast error
 4. **`keys-reveal.test.tsx`**：点眼睛 → `POST /:id/key` 返回 → 5s timer 后回掩码
-5. **`dashboard-loads.test.tsx`**：mock `/data/self` 返 30 天样本 + `/stat/self` 返聚合 → 3 widget 正常渲染
+5. **`dashboard-loads.test.tsx`**：mock `GET /api/data/self` 返 30 天小时桶样本 + `GET /api/log/self/stat` 返聚合 → 3 widget 正常渲染
 
 ### 8.5 验收闸（complete-time）
 
@@ -654,6 +656,8 @@ web-next/
 ```
 web-next/src/routes.tsx                  # /keys 和 /dashboard 的 element 替换
 web-next/src/components/layout/AppShell.tsx   # useState pageAction + Outlet context + Topbar action 注入（§4.1.1）
+web-next/src/lib/format.ts               # 新增 fmtDateSec(sec) / fmtDaySec(sec) 帮手；原 fmtDate(d) 保留；统一 Unix 秒约定 + UTC 对齐
+web-next/src/lib/format.test.ts          # 扩展：ms vs sec 断言；UTC vs 本地一致性
 web-next/src/i18n/locales/{zh,en}/keys.json         # 新 ns
 web-next/src/i18n/locales/{zh,en}/dashboard.json    # 新 ns
 web-next/src/i18n/index.ts               # 注册 keys / dashboard 两个新 ns
