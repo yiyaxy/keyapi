@@ -47,6 +47,8 @@ Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试�
 | **图表库** | recharts | shadcn 的 chart 封装用它；16KB gzip 可接受；生态活跃 |
 | **时间段持久化** | URL `?range=7d` / `?range=30d` | 可分享 + reload 保留；不走 Context 避免组件耦合 |
 | **Revealed key 回收** | 5s 后本地 state 自动切回掩码 | 比 "永远可见" 或 "手动收起" 更安全；避免用户离开屏幕后肩窥 |
+| **Topbar action slot** | AppShell 通过 React Router `Outlet context` 把 `setPageAction(node)` 传给页面；页面在 `useEffect` 里 set/unset | slice 1 的 `Topbar` 支持 `action` prop 但 AppShell 没 wire；page-level action（Create / Range select）需要一条 shell-level infra |
+| **Create dialog 默认值** | `unlimited_quota: true` | 后端 `AddToken` (controller/token.go:170) 不做 "继承 user.quota" 归一化，原样收字段；`unlimited_quota=false` + `remain_quota` 不传 = 建出 0 额度死 key。Unlimited 作默认最能符合"快速建立第一个能用 key"的用户意图，用户可在 Edit 面板切非无限 |
 
 ---
 
@@ -56,12 +58,15 @@ Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试�
 
 `controller/token.go` 的 5 处 handler 依赖 `model.GetTokenByIds(id, userId int)`（`model/token.go`）。这个函数只做 `WHERE id = ? AND user_id = ?`，**不检查 tenant_id**。攻击者在 tenant A 拿到 token ID（例如通过 log 或猜测），如果恰好能登录 tenant B 且其 user_id 在 tenant B 也存在（多租户 user 合并场景），就能读/改/删 tenant A 的 token。
 
-涉及 controller handler：
-1. `GetToken(c)` — `GET /api/token/:id`
-2. `GetTokenKey(c)` — `POST /api/token/:id/key`
-3. `UpdateToken(c)` — `PUT /api/token/`
-4. `DeleteToken(c)` — `DELETE /api/token/:id`
-5. `GetTokenKeysByIds(c)` — `POST /api/token/batch/keys`
+涉及 controller handler（注意 **Delete 和其他 4 个走不同 model 函数**，需要两个新 model 函数）：
+
+| handler | 路由 | 底层 model 函数 | 当前 WHERE 条件 | 修法 |
+|---|---|---|---|---|
+| `GetToken` | `GET /api/token/:id` | `GetTokenByIds(id, userId)` | `id AND user_id` | 切到新 `GetTokenByIdsTenant(id, userId, tenantId)` |
+| `GetTokenKey` | `POST /api/token/:id/key` | `GetTokenByIds(id, userId)` | 同上 | 同上 |
+| `UpdateToken` | `PUT /api/token/` | `GetTokenByIds(id, userId)` | 同上 | 同上 |
+| `GetTokenKeysByIds` | `POST /api/token/batch/keys` | `GetTokenKeysByIds(ids, userId)` | `id IN (?) AND user_id = ?` | 切到新 `GetTokenKeysByIdsTenant(ids, userId, tenantId)` |
+| **`DeleteToken`** | `DELETE /api/token/:id` | **`DeleteTokenById(id, userId)`** (model/token.go:394) | `id AND user_id` | **切到新 `DeleteTokenByIdTenant(id, userId, tenantId)`** |
 
 ### 3.2 修复方案
 
@@ -98,11 +103,27 @@ func GetTokenKeysByIdsTenant(ids []int, userId, tenantId int) (map[int]string, e
     }
     return out, nil
 }
+
+// DeleteTokenByIdTenant 是 DeleteTokenById 的 tenant-aware 版本。
+// 保留 DeleteTokenById 不删（可能被其他路径调用）；controller 切到这里。
+func DeleteTokenByIdTenant(id, userId, tenantId int) error {
+    if id == 0 || userId == 0 || tenantId == 0 {
+        return errors.New("id, userId, tenantId are required")
+    }
+    token := Token{Id: id, UserId: userId, TenantId: tenantId}
+    if err := DB.Where(token).First(&token).Error; err != nil {
+        return err
+    }
+    return token.Delete()
+}
 ```
 
-**原 `GetTokenByIds` 保留**。grep 确认除 controller 外还有其他调用点（relay / channel），不能贸然删除或改签名。Controller 层不再用它做权限校验。
+**原 `GetTokenByIds` / `DeleteTokenById` / `GetTokenKeysByIds` 都保留**。grep 确认除 controller 外还有其他调用点（relay / channel），不能贸然删除或改签名。Controller 层不再用它们做权限校验。
 
-**`controller/token.go`** 5 处 handler 改写：在已有 `userId := c.GetInt("id")` 之后，新增 `tenantId := middleware.GetTenantId(c)`，然后把 `GetTokenByIds(id, userId)` 换成 `GetTokenByIdsTenant(id, userId, tenantId)`；batch keys handler 同理切到 `GetTokenKeysByIdsTenant`。
+**`controller/token.go`** 5 处 handler 改写：在已有 `userId := c.GetInt("id")` 之后，新增 `tenantId := middleware.GetTenantId(c)`，然后：
+- `GetToken` / `GetTokenKey` / `UpdateToken` → `GetTokenByIdsTenant(id, userId, tenantId)`
+- `GetTokenKeysByIds` → `GetTokenKeysByIdsTenant(ids, userId, tenantId)`
+- `DeleteToken` (line 262) → `DeleteTokenByIdTenant(id, userId, tenantId)`
 
 ### 3.3 对前端的影响
 零。响应 shape、状态码、正常路径行为全部不变。只是跨租户的 id 查询从"放行"变成"not found"。
@@ -129,7 +150,7 @@ func TestGetTokenByIdsTenant(t *testing.T) {
 }
 ```
 
-同样规模 5 case 覆盖 `GetTokenKeysByIdsTenant`。
+同样规模 5 case 各覆盖 `GetTokenKeysByIdsTenant` 和 `DeleteTokenByIdTenant`（共 15 case）。关键 assertion：跨租户 delete 返回 `not found`，目标行留在数据库（不被删）。
 
 ---
 
@@ -138,12 +159,39 @@ func TestGetTokenByIdsTenant(t *testing.T) {
 ### 4.1 路由 & 入口
 `routes.tsx` 把 `/keys` 的 `element` 从 `<ComingSoon feature='API keys' />` 换成 `<KeysPage />`（`pages/Keys.tsx`）。
 
+### 4.1.1 Page action slot（shell infra）
+
+slice 1 的 `<Topbar>` 已支持 `action` prop，但 `AppShell` 硬编传 `title` 不传 `action`，页面无法挂入右上角按钮。本 slice 必须同时动：
+
+**`AppShell.tsx` 改动**：
+```tsx
+// 新增 state 保存 page-level action 节点
+const [pageAction, setPageAction] = useState<ReactNode>(null);
+// Outlet 通过 context 暴露 setter
+<Outlet context={{ setPageAction }} />
+// Topbar 渲染 action
+<Topbar title={t(titleKey)} action={pageAction} />
+```
+
+**新增 hook `hooks/usePageAction.ts`**：
+```tsx
+export function usePageAction(action: ReactNode) {
+  const { setPageAction } = useOutletContext<{ setPageAction: (n: ReactNode) => void }>();
+  useEffect(() => {
+    setPageAction(action);
+    return () => setPageAction(null);
+  }, [action, setPageAction]);
+}
+```
+
+Keys 页和 Dashboard 页都调 `usePageAction(...)` 挂按钮 / Select。
+
 ### 4.2 布局（AppShell 内）
 ```
-Topbar
+Topbar (由 shell 渲染)
   title: "API keys"
-  action: <Button>Create key</Button>
-Content
+  action: <Button>Create key</Button>  ← 通过 usePageAction 注入
+Content (Outlet 渲染)
   empty state  |  <KeysTable items={tokens} />  |  error state
 Pagination (if total > pageSize)
 ```
@@ -164,11 +212,13 @@ Pagination (if total > pageSize)
 
 shadcn `<Dialog>`。仅两个字段：
 - **Name**（必填，1–50 字符）
-- **Group**（Select，默认 `auto`；选项从 `/api/user/groups` 或直接硬编 `['auto', 'default']`——backend 有 groups endpoint 时走 API，没有就 fallback）
+- **Group**（Select，默认 `auto`；选项从 `GET /api/user/self/channel-groups`（controller `GetChannelGroups`，router/api-router.go:134）拉取；失败时 fallback `['auto', 'default']`）
 
-提交：`POST /api/token/` body `{ name, group, remain_quota: 无默认 → 后端继承 user.quota, unlimited_quota: false }`；成功后列表 invalidate，新 token 出现在表中第一行（因按 `created_time DESC` 默认排）。
+提交：`POST /api/token/` body `{ name, group, unlimited_quota: true, remain_quota: 0, expired_time: -1 }`。**关键**：`unlimited_quota: true` 是**必须默认**，否则后端原样收字段会建出 `remain_quota=0 + unlimited=false` 的死 key（controller/token.go:170 不做"继承 user.quota"归一化）。用户想建非无限 key，在 Edit 面板开关调整。
 
-小字提示："Advanced settings like IP allowlist, model limits, and expiration are configurable after creation."
+成功后列表 invalidate，新 token 出现在表中第一行（默认 `created_time DESC`）。
+
+小字提示："Created as unlimited. Switch to a custom quota, set IP allowlist, or scope to specific models in Edit."
 
 ### 4.5 Edit SideSheet
 
@@ -181,7 +231,7 @@ shadcn `<Dialog>` 以 `className` 改造成右侧 drawer（宽 480px）：
 | Unlimited quota | `<Switch>` | 开启时禁用下面的 quota 输入 |
 | Remain quota | `<Input type='number'>` | 0 ≤ x ≤ 1e9；unlimited 时灰 |
 | Expires | `<DatePicker>`（shadcn Calendar 封）+ 快捷按钮：+1d / +7d / +30d / Never | Never → `expired_time=-1` |
-| Model limits | `<MultiSelect>`（shadcn 没现成，用 Popover + Checkbox list；slice 2a 内先粗粒度实现） | 数据源 `useAvailableModels()` → `/api/user/available_models`；空 = 不限 |
+| Model limits | Popover + Checkbox list（shadcn 没 MultiSelect；slice 2a 用粗粒度实现：点 trigger 弹 Popover 显示所有模型复选框，关闭后 summary 显示 "N selected"） | 数据源 `useAvailableModels()` → `GET /api/user/self/models`（controller `GetUserModels`，router/api-router.go:138）；空 = 不限 |
 | Allow IPs | `<Textarea>`（行分隔） | 空 = 不限；每行校验 CIDR/IP 合法 |
 | Group chain | 同上 MultiSelect + `<Switch>` Cross group retry | Cross retry 需选 ≥ 2 组才 enabled |
 
@@ -249,38 +299,63 @@ Content (max-w-[1080px] mx-auto)
 
 ### 5.3 `<QuotaCard>`
 
-**数据源**：`user` 对象来自 `useAuth()`（`quota`, `used_quota` 字段），不额外请求。
+**数据源**：`user` 对象来自 `useAuth()`，不额外请求。关键字段语义（`/api/user/self` 返回的 `controller/user.go:490-491`）：
+- `user.quota` = **当前余额**（可用 quota）
+- `user.used_quota` = **历史累计已用**
+
+因此：
+- **Balance 大字** = `user.quota`（直接用）
+- **Total** = `user.quota + user.used_quota`
+- **Used** = `user.used_quota`
+- **进度条宽** = `used_quota / (quota + used_quota)` 百分比（total 为 0 时进度条宽 0）
 
 **渲染**：
 ```
 ╭─────────────────────────────────────╮
 │  Balance                             │
-│  $74.55                              │   ← 大号 fmtMoney(remain / quota_per_unit)
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │   ← 细进度条
-│  Used $25.45 of $100.00              │   ← 副行 fmtMoney
+│  $74.55                              │   ← fmtMoney(user.quota / quota_per_unit)
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │   ← 进度条
+│  Used $25.45 of $100.00              │   ← fmtMoney(used_quota) · fmtMoney(quota + used_quota)
 ╰─────────────────────────────────────╯
 ```
 
-- `remain = quota - used_quota`
-- 进度条宽 = `used_quota / quota * 100%`
-- `quota === 0` → 不显示数字，改显：
+- `user.quota === 0 && user.used_quota === 0` → 全新用户，不显示 balance 数字，改显：
   ```
   No balance · Top up to start    [Top up →]
   ```
   Top up 按钮跳 `/topup`（目前仍是 ComingSoon，链路成形即可）
+- `user.quota === 0 && user.used_quota > 0` → 余额耗尽，Balance 显示 `$0.00`，下面副行照常，右上追加小 badge "Exhausted"
 
 ### 5.4 `<UsageTrendCard>`
 
-**数据源**：`useUsageTrend(range)` → `GET /api/data/self?start_timestamp=<ts>&end_timestamp=<ts>`
-响应：`[{ date: "2026-04-18", quota: 12450 }, ...]`
+**数据源**：`useUsageTrend(startTs, endTs)` → `GET /api/data/self?start_timestamp=<ts>&end_timestamp=<ts>`
+
+**真实响应 shape**（`model/usedata.go:12` 的 `QuotaData` struct，`controller/usedata.go:32` 原样返回）：
+```ts
+type QuotaDataRow = {
+  id: number;
+  tenant_id: number;
+  user_id: number;
+  username: string;
+  model_name: string;         // 按模型分桶
+  created_at: number;         // unix 秒，桶时间戳（一般是小时粒度，取决于 logQuotaDataCache 的 key bucketing）
+  token_used: number;
+  count: number;              // 请求次数
+  quota: number;              // 消耗额度（raw units，÷ quota_per_unit 才是货币）
+};
+// 端点返回 QuotaDataRow[]（多模型 × 多时间桶的扁平数组）
+```
+
+**前端聚合**：
+- 把行按日期桶聚合 → 每天一个点：`{ day: floor(created_at / 86400) * 86400, quota: sum(row.quota), count: sum(row.count) }`
+- 用 `range` 生成完整日期序列，无数据日补 0（避免曲线断裂）
 
 **渲染**：
 - shadcn `<Card>` 包 `<CardHeader>`（title "Usage over last {range}"）+ `<CardContent>`
-- recharts `<LineChart>` 320×280；x-axis date（`fmtDate` 短格式），y-axis `fmtMoney(quota/quota_per_unit)`
-- Tooltip：hover 日期 → `{fmtDate} · {fmtMoney}`
-- 空日期补 0（避免曲线断裂）：后端返回只含有数据的日期，前端用 `range` 生成完整序列
+- recharts `<LineChart>` 高 280；x-axis `day`（`fmtDate` 短格式 'MMM d'），y-axis `fmtMoney(quota/quota_per_unit)`
+- Tooltip：hover 日期 → `{fmtDate} · {fmtMoney} · {fmtNum(count)} requests`
 
-**空态**（新注册）：
+**空态**（新注册，`QuotaDataRow[]` 长度 0）：
 ```
 [ line chart icon ]
 No usage yet
@@ -292,13 +367,25 @@ Create a key to begin making requests.
 
 ### 5.5 `<ActivityCard>`
 
-**数据源**：`useUserStat(range)` → `GET /api/log/self/stat?start_timestamp=<ts>&end_timestamp=<ts>`
-响应（现有后端 shape，实现时再确认字段名）：`{ request_count, total_quota, token_count }`
+**数据源**：`useUserStat(startTs, endTs)` → `GET /api/log/self/stat?start_timestamp=<ts>&end_timestamp=<ts>`
 
-**渲染**：3 个 `<StatTile>` 横排（flex gap-4）
+**真实响应 shape**（`controller/log.go:163-175`）：
+```ts
+type LogSelfStat = {
+  quota: number;                    // 已消耗额度 raw units
+  rpm: number;                      // 近期 requests/min
+  tpm: number;                      // 近期 tokens/min
+  total_requests: number;
+  total_tokens: number;
+  smartcache_savings_quota: number; // 缓存命中节省的 raw units
+};
 ```
-Requests       Tokens          Consumed
-12,347         8.2M            $25.45
+
+**渲染**：3 个 `<StatTile>` 横排（flex gap-4），使用 `total_requests` / `total_tokens` / `quota` 字段（`rpm` / `tpm` / `smartcache_savings_quota` 本 slice 不展示，留给 Logs 页 slice 2c）：
+```
+Requests        Tokens           Consumed
+{total_requests}  {total_tokens}   {fmtMoney(quota/quota_per_unit)}
+12,347          8.2M             $25.45
 ```
 
 每 tile：
@@ -311,7 +398,7 @@ Requests       Tokens          Consumed
 
 ### 5.6 时间段切换
 
-`<Select>` 在 topbar action slot，值 `7d` / `30d`（默认 `30d`）。
+`<RangeSelect>` 通过 `usePageAction(<RangeSelect />)` 挂到 Topbar action 位。值 `7d` / `30d`（默认 `30d`）。
 
 ```tsx
 const [params, setParams] = useSearchParams();
@@ -357,9 +444,10 @@ export const qk = {
 | `useDeleteToken()` | `{ mutate, isPending }` | optimistic 移除行；onError 回滚 |
 | `useToggleTokenStatus(id)` | `{ mutate }` | 薄层包 `useUpdateToken`，传 `status_only=1`，optimistic |
 | `useRevealKey(tokenId)` | `{ mutate: () => Promise<string> }` | 不缓存；每次调用新拉；不写 React Query cache（敏感数据） |
-| `useUsageTrend(startTs, endTs)` | `{ data, isLoading }` | `staleTime: 5 * 60_000`；range 变即重拉 |
-| `useUserStat(startTs, endTs)` | `{ data, isLoading }` | 同上 |
-| `useAvailableModels()` | `{ data }` | `staleTime: Infinity`（页面会话内不变） |
+| `useUsageTrend(startTs, endTs)` | `{ data: QuotaDataRow[], isLoading }` | `GET /api/data/self`；`staleTime: 5 * 60_000`；range 变即重拉 |
+| `useUserStat(startTs, endTs)` | `{ data: LogSelfStat, isLoading }` | `GET /api/log/self/stat`；`staleTime: 5 * 60_000` |
+| `useAvailableModels()` | `{ data: string[] }` | `GET /api/user/self/models`；`staleTime: Infinity`（页面会话内不变） |
+| `useChannelGroups()` | `{ data: string[] }` | `GET /api/user/self/channel-groups`；`staleTime: Infinity` |
 
 ### 6.3 全局 QueryClient 调整
 
@@ -526,7 +614,16 @@ web-next/
         StatTile.tsx
         StatTile.test.tsx
         RangeSelect.tsx
+      ui/                                # shadcn CLI 生成
+        select.tsx
+        switch.tsx
+        popover.tsx
+        textarea.tsx
+        calendar.tsx
+        card.tsx
+        chart.tsx                        # shadcn chart wrapper（依赖 recharts）
     hooks/
+      usePageAction.ts                   # shell infra（§4.1.1）
       useTokens.ts
       useTokens.test.tsx
       useRevealKey.ts
@@ -534,10 +631,13 @@ web-next/
       useUsageTrend.test.tsx
       useUserStat.ts
       useAvailableModels.ts
+      useChannelGroups.ts
     lib/
       queryKeys.ts
       token-schema.ts
       token-schema.test.ts
+      usage-aggregate.ts                 # QuotaDataRow[] → daily 聚合（§5.4）
+      usage-aggregate.test.ts
     test/
       integration/
         keys-create.test.tsx
@@ -545,33 +645,49 @@ web-next/
         keys-delete-rollback.test.tsx
         keys-reveal.test.tsx
         dashboard-loads.test.tsx
-  package.json                    # 加 recharts
-  bun.lock                        # 自动更新
 ```
 
 ### 9.3 前端修改
 ```
-web-next/src/routes.tsx            # /keys 和 /dashboard 的 element 替换
-web-next/src/i18n/locales/{zh,en}/{common,errors,shell}.json   # 加新页相关 key
-web-next/src/i18n/locales/{zh,en}/keys.json                    # 新 ns
-web-next/src/i18n/locales/{zh,en}/dashboard.json               # 新 ns
-web-next/src/i18n/index.ts         # 注册 keys / dashboard 两个新 ns
-web-next/src/App.tsx               # QueryClient refetchOnReconnect: true
+web-next/src/routes.tsx                  # /keys 和 /dashboard 的 element 替换
+web-next/src/components/layout/AppShell.tsx   # useState pageAction + Outlet context + Topbar action 注入（§4.1.1）
+web-next/src/i18n/locales/{zh,en}/keys.json         # 新 ns
+web-next/src/i18n/locales/{zh,en}/dashboard.json    # 新 ns
+web-next/src/i18n/index.ts               # 注册 keys / dashboard 两个新 ns
+web-next/src/App.tsx                     # QueryClient refetchOnReconnect: true
+web-next/package.json                    # 加 recharts + shadcn 新增 primitive
+web-next/bun.lock                        # 自动更新
 ```
 
 ---
 
 ## 10. 依赖新增
 
+### runtime
 ```json
 {
   "dependencies": {
-    "recharts": "^2.15.0"
+    "recharts": "^2.15.0",
+    "@radix-ui/react-select": "^2.x",
+    "@radix-ui/react-switch": "^1.x",
+    "@radix-ui/react-popover": "^1.x",
+    "react-day-picker": "^9.x",
+    "date-fns": "^4.x"
   }
 }
 ```
 
-只加 recharts。shadcn chart primitive（`components/ui/chart.tsx`）通过 `bunx shadcn@latest add chart` 生成，依赖 recharts。
+### shadcn primitives 新增（通过 `bunx shadcn@latest add <name>` 生成）
+- `select` — Create dialog 的 group select + Edit sheet 的 group chain select
+- `switch` — Edit sheet 的 Status / Unlimited / Cross group retry 三个开关
+- `popover` — model limits 多选器外壳
+- `textarea` — allow_ips 输入
+- `calendar` + DatePicker 组合 — expired_time 选择器（shadcn datepicker 是 Popover + Calendar 的组合范例）
+- `card` — Dashboard 三个 widget 外壳
+- `chart` — shadcn 的 recharts 轻封装（ChartContainer / ChartTooltip）
+
+shadcn primitive 会自动把对应 Radix peer dep 写进 `package.json`；runtime 列表是为了明确本 slice 实际引入的 npm 包。
+
 
 ---
 
@@ -598,22 +714,28 @@ web-next/src/App.tsx               # QueryClient refetchOnReconnect: true
 
 | 风险 | 缓解 |
 |---|---|
-| 租户补丁改到非测试路径的 `GetTokenByIds` 被 relay 复用，误改会炸 relay | 只在 controller 切换到新函数；不改旧函数签名；grep 确认其他调用点不受影响；加 go build 全包验证 |
+| 租户补丁改到非测试路径的 `GetTokenByIds` / `DeleteTokenById` / `GetTokenKeysByIds` 被 relay 复用，误改会炸 relay | 只**新增** tenant-aware 变体；旧函数签名一字不动；controller 层切换到新函数；grep 确认其他调用点不受影响；加 go build 全包验证 |
 | recharts 加入后 bundle 继续增大（slice 1 已 725KB gzip 224KB 警告） | 本 slice 接受单 chunk；chunk split 推 slice 2c 后做（更多图表页进来后集中优化） |
 | MultiSelect 组件 shadcn 没现成，自造成本 | slice 2a 内用 Popover + Checkbox list 粗粒度实现；slice 2b/2c 遇到同样需求时再抽成公共组件 |
 | Delete 无 Undo 还原流程，用户误删无法恢复 | UI 明确 "Requests using this key will start failing"；Create 成本低，用户可重建 |
 | reveal-toggle UX 比一次性展示更容易暴露 key（肩窥） | 5s 自动回收降低窗口；未来 slice 可能加 "only show once" 偏好设置 |
+| Create 默认 `unlimited_quota: true` 让新 key 不受用户 quota 限制 | 后端 relay 阶段仍然扣用户 quota（`user.quota`），unlimited 只解除 token 自身的 quota 上限；用户不会因为无限 token 超支。Edit 面板即可切回非无限 |
+| Topbar action 通过 `Outlet context` 注入，页面 unmount 时要清 | `usePageAction` hook 的 cleanup 已 `setPageAction(null)`；竞态在同页 re-render 时理论存在，但 effect dep 包含 `action` 可缓解 |
 
 ---
 
 ## 13. 开放问题（实现阶段确认）
 
-1. `/api/log/self/stat` 的确切字段名（`request_count` / `total_quota` / `token_count`）——读后端代码确认，实现 hook 时匹配
-2. `/api/user/available_models` 是否存在 / shape 如何——grep 后端；不存在则 EditTokenSheet 的 model limits 字段降级为 Textarea
-3. `/api/user/groups` 是否存在——同上；不存在则 Create dialog 的 group Select 硬编 `['auto', 'default']`
-4. Token shape 里 `group` 字段是 csv string 还是 array——读 `model/token.go`；前端按需 parse/serialize
+已解决（§3–5 中锁定源码引用）：
+- ✅ `/api/log/self/stat` 字段 → `controller/log.go:163-175`（`quota` / `rpm` / `tpm` / `total_requests` / `total_tokens` / `smartcache_savings_quota`）
+- ✅ `/api/user/self/models` → `controller.GetUserModels`（`router/api-router.go:138`）
+- ✅ `/api/user/self/channel-groups` → `controller.GetChannelGroups`（`router/api-router.go:134`）
 
-这些在写实现 plan 时读代码锁定；spec 不提前假设。
+仍需在实现阶段锁定：
+1. Token shape 里 `group` 字段的存储形式（csv string 还是 array）——读 `model/token.go` 结构体确认；前端 schema 按真实类型 parse/serialize
+2. `/api/user/self/models` 返回的是 `string[]`（模型名）还是 `{id, name, ...}[]`——实现 `useAvailableModels` 时 shape 匹配
+3. `/api/user/self/channel-groups` 返回 shape 同上——实现 `useChannelGroups` 时锁定
+4. `QuotaData.created_at` 的桶粒度（小时 or 其它）——读 `logQuotaDataCache`（`model/usedata.go:38`）确认 key 组成；`usage-aggregate.ts` 按天 reduce 对任意小粒度都鲁棒，但知道真实粒度有助于估算点数
 
 ---
 
