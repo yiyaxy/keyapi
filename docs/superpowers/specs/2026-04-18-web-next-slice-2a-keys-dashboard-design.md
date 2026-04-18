@@ -47,7 +47,7 @@ Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试�
 | **图表库** | recharts | shadcn 的 chart 封装用它；16KB gzip 可接受；生态活跃 |
 | **时间段持久化** | URL `?range=7d` / `?range=30d` | 可分享 + reload 保留；不走 Context 避免组件耦合 |
 | **Revealed key 回收** | 5s 后本地 state 自动切回掩码 | 比 "永远可见" 或 "手动收起" 更安全；避免用户离开屏幕后肩窥 |
-| **时间戳单位** | 后端统一 Unix **秒**；前端 `format.ts` 扩展 `fmtDateSec(sec)` / `fmtDaySec(sec)`；原 `fmtDate(d)` 语义保留（ms/Date/ISO）；聚合函数 `usage-aggregate.ts` 全程按 Unix 秒 + **UTC 日桶**（`floor(sec/86400)*86400`），展示层再转本地显示 | 后端 token `created_time`、`QuotaData.created_at`（小时桶）都是 Unix 秒；直接 `new Date(1713484800)` 会落到 1970；聚合不用 UTC 会出现浏览器时区跨日飘移问题（用户跨时区登录时同一天数据被切成两天或归入错误日期） |
+| **时间戳单位** | 后端统一 Unix **秒**；前端 `format.ts` 扩展 `fmtDateSec(sec)` / `fmtDaySec(sec)`；原 `fmtDate(d)` 语义保留（ms/Date/ISO）。**聚合 + 显示全链路 UTC**：`usage-aggregate.ts` 按 UTC 日桶（`floor(sec/86400)*86400`）；`fmtDaySec(sec)` 输出 UTC 标签（`toISOString` + `Intl.DateTimeFormat({ timeZone: 'UTC' })`）；`fmtDateSec(sec)` 对 `created_time` 这种单点时间用**本地时区**（用户想知道 token 什么时候在他那儿创建的，本地更直观）。两个 helper 各司其职 | 后端 token `created_time`、`QuotaData.created_at`（小时桶 %3600）都是 Unix 秒；直接 `new Date(1713484800)` 会落到 1970。聚合与显示如果时区不一致（如 UTC 聚合 + 本地显示），UTC 的 `2026-04-18 00:00` 桶在美西会渲染成 `Apr 17`——数据与视觉不对齐。统一 UTC 端到端最简单、跨用户视图一致；`created_time` 是单点事件没有聚合歧义，用本地 |
 | **Group fallback 失败策略** | **fail-closed**：`useChannelGroups` query 失败 → Create dialog 禁用 Submit + 顶部 inline banner "Unable to load groups · Retry"；不再硬编 fallback | 硬编 `['auto','default']` 是 fail-open——`auto` 只在用户权限包含时才由 `controller/group.go:73` 返回，`default` 不保证是 tenant 的 enabled channel group；硬编会让建出的 token 直接失败或跨界 |
 | **Topbar action slot** | AppShell 通过 React Router `Outlet context` 把 `setPageAction(node)` 传给页面；页面在 `useEffect` 里 set/unset | slice 1 的 `Topbar` 支持 `action` prop 但 AppShell 没 wire；page-level action（Create / Range select）需要一条 shell-level infra |
 | **Create dialog 默认值** | `unlimited_quota: true` | 后端 `AddToken` (controller/token.go:170) 不做 "继承 user.quota" 归一化，原样收字段；`unlimited_quota=false` + `remain_quota` 不传 = 建出 0 额度死 key。Unlimited 作默认最能符合"快速建立第一个能用 key"的用户意图，用户可在 Edit 面板切非无限 |
@@ -354,8 +354,8 @@ type QuotaDataRow = {
 
 **渲染**：
 - shadcn `<Card>` 包 `<CardHeader>`（title "Usage over last {range}"）+ `<CardContent>`
-- recharts `<LineChart>` 高 280；x-axis `day`（`fmtDaySec(day)` 短格式 'MMM d'，内部 UTC 转本地），y-axis `fmtMoney(quota/quota_per_unit)`
-- Tooltip：hover 日期 → `{fmtDaySec(day)} · {fmtMoney} · {fmtNum(count)} requests`
+- recharts `<LineChart>` 高 280；x-axis `day`（`fmtDaySec(day)` 短格式 'MMM d' / 'M月d日'，**全程 UTC**——聚合 + 显示同一时区，见 §2 决策"时间戳单位"），y-axis `fmtMoney(quota/quota_per_unit)`
+- Tooltip：hover 日期 → `{fmtDaySec(day)} (UTC) · {fmtMoney} · {fmtNum(count)} requests`（标签带 "UTC" 提示用户这是 UTC 日界）
 
 **空态**（新注册，`QuotaDataRow[]` 长度 0）：
 ```
@@ -449,7 +449,7 @@ export const qk = {
 | `useUsageTrend(startTs, endTs)` | `{ data: QuotaDataRow[], isLoading }` | `GET /api/data/self`；`staleTime: 5 * 60_000`；range 变即重拉 |
 | `useUserStat(startTs, endTs)` | `{ data: LogSelfStat, isLoading }` | `GET /api/log/self/stat`；`staleTime: 5 * 60_000` |
 | `useAvailableModels()` | `{ data: string[] }` | `GET /api/user/models`；`staleTime: Infinity`（页面会话内不变） |
-| `useChannelGroups()` | `{ data: ChannelGroup[] }`，其中 `ChannelGroup = { name: string; ratio: number \| string; desc: string }` | `GET /api/user/self/channel-groups` 返回 `Record<string, {ratio, desc}>`；**`ratio` 可能是 `number`（常规组的倍率）或 `string`（`auto` 组固定返回字符串 `"自动"`，见 `controller/group.go:76`）**。hook 归一化为 `[{name, ratio, desc}]`，UI 渲染按类型分支：number 显示 `×{ratio.toFixed(2)}`，string 直接显示；`staleTime: Infinity` |
+| `useChannelGroups()` | `{ data: ChannelGroup[] }`，其中 `ChannelGroup = { name: string; ratio: number \| string; desc: string }` | `GET /api/user/self/channel-groups` 返回 `Record<string, {ratio, desc}>`（Go map，**iteration 顺序不稳定**）；**`ratio` 可能是 `number`（常规组）或 `string`（`auto` 组固定返回 `"自动"`，见 `controller/group.go:76`）**。hook 归一化 + **固定排序**：`auto` 永远第一，其余按 `name` 升序，输出 `ChannelGroup[]`。UI 渲染按 ratio 类型分支：number 显示 `×{ratio.toFixed(2)}`，string 直接显示；Create dialog "默认选中第一个"即默认 `auto`（若 auto 不在用户权限内，则退回排序后的首个）。`staleTime: Infinity` |
 
 ### 6.3 全局 QueryClient 调整
 
@@ -534,7 +534,7 @@ export function useDeleteToken() {
 | `hooks/useTokens.test.tsx` | list query 返回 items；create 成功触发 list invalidate；delete optimistic 行消失；delete 失败回滚 |
 | `hooks/useUsageTrend.test.tsx` | range 变化触发重拉；空响应不崩 |
 | `lib/token-schema.test.ts` | zod schema 边界（name 长度 / remain_quota 非负 / IP 每行格式 / group 逗号拆分） |
-| `lib/usage-aggregate.test.ts` | **dashboard 趋势卡核心逻辑**：小时桶 → 按日 reduce 求和；跨月边界不丢点；空输入不崩；`range` 内无数据日补 0；时区边界（UTC vs 本地）一致（选定 UTC 聚合避免浏览器时区飘移） |
+| `lib/usage-aggregate.test.ts` | **dashboard 趋势卡核心逻辑**：小时桶 → 按 **UTC** 日 reduce 求和；跨月边界不丢点；空输入不崩；`range` 内无数据日补 0；UTC 日界（注入 fake timezone 验证 America/Los_Angeles 下同一 UTC 桶仍归同一 UTC 日，不被本地时区切分）；`fmtDaySec(sec)` 输出 UTC 标签（喂 `1713484800` 期望 "Apr 18"，不是 "Apr 17"） |
 
 ### 8.3 前端组件测
 
