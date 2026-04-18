@@ -231,7 +231,7 @@ shadcn `<Dialog>` 以 `className` 改造成右侧 drawer（宽 480px）：
 | Unlimited quota | `<Switch>` | 开启时禁用下面的 quota 输入 |
 | Remain quota | `<Input type='number'>` | 0 ≤ x ≤ 1e9；unlimited 时灰 |
 | Expires | `<DatePicker>`（shadcn Calendar 封）+ 快捷按钮：+1d / +7d / +30d / Never | Never → `expired_time=-1` |
-| Model limits | Popover + Checkbox list（shadcn 没 MultiSelect；slice 2a 用粗粒度实现：点 trigger 弹 Popover 显示所有模型复选框，关闭后 summary 显示 "N selected"） | 数据源 `useAvailableModels()` → `GET /api/user/self/models`（controller `GetUserModels`，router/api-router.go:138）；空 = 不限 |
+| Model limits | Popover + Checkbox list（shadcn 没 MultiSelect；slice 2a 用粗粒度实现：点 trigger 弹 Popover 显示所有模型复选框，关闭后 summary 显示 "N selected"） | 数据源 `useAvailableModels()` → `GET /api/user/models`（controller `GetUserModels`，router/api-router.go:138）；空 = 不限 |
 | Allow IPs | `<Textarea>`（行分隔） | 空 = 不限；每行校验 CIDR/IP 合法 |
 | Group chain | 同上 MultiSelect + `<Switch>` Cross group retry | Cross retry 需选 ≥ 2 组才 enabled |
 
@@ -446,8 +446,8 @@ export const qk = {
 | `useRevealKey(tokenId)` | `{ mutate: () => Promise<string> }` | 不缓存；每次调用新拉；不写 React Query cache（敏感数据） |
 | `useUsageTrend(startTs, endTs)` | `{ data: QuotaDataRow[], isLoading }` | `GET /api/data/self`；`staleTime: 5 * 60_000`；range 变即重拉 |
 | `useUserStat(startTs, endTs)` | `{ data: LogSelfStat, isLoading }` | `GET /api/log/self/stat`；`staleTime: 5 * 60_000` |
-| `useAvailableModels()` | `{ data: string[] }` | `GET /api/user/self/models`；`staleTime: Infinity`（页面会话内不变） |
-| `useChannelGroups()` | `{ data: string[] }` | `GET /api/user/self/channel-groups`；`staleTime: Infinity` |
+| `useAvailableModels()` | `{ data: string[] }` | `GET /api/user/models`；`staleTime: Infinity`（页面会话内不变） |
+| `useChannelGroups()` | `{ data: ChannelGroup[] }`，其中 `ChannelGroup = { name: string; ratio: number; desc: string }` | `GET /api/user/self/channel-groups` 返回 `Record<string, {ratio, desc}>`；hook 归一化为 `[{name, ratio, desc}]` 便于 UI 排序/渲染；`staleTime: Infinity` |
 
 ### 6.3 全局 QueryClient 调整
 
@@ -520,9 +520,10 @@ export function useDeleteToken() {
 
 ### 8.1 后端
 
-`unit_test/tenant_test.go` 扩展：
+`unit_test/tenant_test.go` 扩展（**共 15 case，3 函数 × 5 模式**）：
 - `TestGetTokenByIdsTenant`：5 case（同 tenant 同 user / 同 tenant 别 user / 跨 tenant / tenantId=0 / userId=0）
 - `TestGetTokenKeysByIdsTenant`：5 case（同上模式）
+- `TestDeleteTokenByIdTenant`：5 case（同上模式，并额外断言**跨租户 delete 返回 not found 且目标行仍在 DB**——这是漏洞本身的直接回归测）
 
 ### 8.2 前端单测（TDD）
 
@@ -556,6 +557,7 @@ export function useDeleteToken() {
 go build ./controller/... ./model/... ./middleware/... ./service/...
 go test ./unit_test/ -run TestGetTokenByIdsTenant -v
 go test ./unit_test/ -run TestGetTokenKeysByIdsTenant -v
+go test ./unit_test/ -run TestDeleteTokenByIdTenant -v
 
 # 前端
 cd web-next
@@ -585,7 +587,7 @@ bun run build
 ```
 model/token.go                    # 新增 GetTokenByIdsTenant, GetTokenKeysByIdsTenant
 controller/token.go               # 5 处 handler 切换
-unit_test/tenant_test.go          # 扩展 10 个 case
+unit_test/tenant_test.go          # 扩展 15 个 case（3 函数 × 5 模式）
 ```
 
 ### 9.2 前端新增
@@ -728,13 +730,13 @@ shadcn primitive 会自动把对应 Radix peer dep 写进 `package.json`；runti
 
 已解决（§3–5 中锁定源码引用）：
 - ✅ `/api/log/self/stat` 字段 → `controller/log.go:163-175`（`quota` / `rpm` / `tpm` / `total_requests` / `total_tokens` / `smartcache_savings_quota`）
-- ✅ `/api/user/self/models` → `controller.GetUserModels`（`router/api-router.go:138`）
+- ✅ `/api/user/models` → `controller.GetUserModels`（`router/api-router.go:138`）
 - ✅ `/api/user/self/channel-groups` → `controller.GetChannelGroups`（`router/api-router.go:134`）
 
 仍需在实现阶段锁定：
 1. Token shape 里 `group` 字段的存储形式（csv string 还是 array）——读 `model/token.go` 结构体确认；前端 schema 按真实类型 parse/serialize
-2. `/api/user/self/models` 返回的是 `string[]`（模型名）还是 `{id, name, ...}[]`——实现 `useAvailableModels` 时 shape 匹配
-3. `/api/user/self/channel-groups` 返回 shape 同上——实现 `useChannelGroups` 时锁定
+2. `/api/user/models` 返回的是 `string[]`（模型名）还是 `{id, name, ...}[]`——实现 `useAvailableModels` 时 shape 匹配
+3. ✅ `/api/user/self/channel-groups` 返回 `map[group]{ratio, desc}`（`controller/group.go:58`）；`useChannelGroups` 归一化为 `ChannelGroup[]` 便于 UI 排序/渲染
 4. `QuotaData.created_at` 的桶粒度（小时 or 其它）——读 `logQuotaDataCache`（`model/usedata.go:38`）确认 key 组成；`usage-aggregate.ts` 按天 reduce 对任意小粒度都鲁棒，但知道真实粒度有助于估算点数
 
 ---
