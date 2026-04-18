@@ -23,13 +23,13 @@ bun run dev   # http://localhost:4928
 
 ## Scripts
 
-| Script | Purpose |
-|---|---|
-| `bun run dev` | 开发服务器（端口 4928） |
-| `bun run build` | 产出 `dist/` |
-| `bun run typecheck` | 纯类型检查，无输出 |
-| `bun run preview` | 预览 build 结果 |
-| `bun run lint` | prettier check |
+| Script              | Purpose                 |
+| ------------------- | ----------------------- |
+| `bun run dev`       | 开发服务器（端口 4928） |
+| `bun run build`     | 产出 `dist/`            |
+| `bun run typecheck` | 纯类型检查，无输出      |
+| `bun run preview`   | 预览 build 结果         |
+| `bun run lint`      | prettier check          |
 
 ## 目录约定
 

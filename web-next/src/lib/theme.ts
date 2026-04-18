@@ -30,9 +30,7 @@ export function applyTheme(mode: ThemeMode) {
 export function initTheme() {
   applyTheme(getStoredTheme());
 
-  window
-    .matchMedia('(prefers-color-scheme: dark)')
-    .addEventListener('change', () => {
-      if (getStoredTheme() === 'system') applyTheme('system');
-    });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (getStoredTheme() === 'system') applyTheme('system');
+  });
 }
