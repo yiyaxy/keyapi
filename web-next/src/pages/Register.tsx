@@ -48,6 +48,8 @@ export function Register() {
     resolver: zodResolver(step2Schema),
     defaultValues: { code: '', username: '', password: '', password_confirm: '' },
   });
+  // react-hook-form's watch() is a library constraint React Compiler can't memoize.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const password = f2.watch('password') || '';
 
   if (status === 'authenticated') {

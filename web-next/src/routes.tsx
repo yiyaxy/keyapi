@@ -1,48 +1,16 @@
-import { useEffect } from 'react';
-import { Navigate, Outlet, createBrowserRouter, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { Navigate, createBrowserRouter } from 'react-router-dom';
 
 import { ComingSoon } from '@/components/common/ComingSoon';
 import { Forbidden } from '@/components/common/Forbidden';
 import { NotFound } from '@/components/common/NotFound';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
+import { RootLayout } from '@/components/common/RootLayout';
 import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
-import { onAuthEvent, onToast } from '@/lib/api';
 import { Forgot } from '@/pages/Forgot';
 import { Login } from '@/pages/Login';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
-
-function RootLayout() {
-  const navigate = useNavigate();
-  useEffect(() => {
-    const offAuth = onAuthEvent((event) => {
-      if (event === 'unauthorized') {
-        const current = window.location.pathname + window.location.search;
-        const publicRoutes = [
-          '/login',
-          '/register',
-          '/forgot',
-          '/reset',
-          '/user/reset',
-          '/forbidden',
-        ];
-        if (!publicRoutes.some((p) => window.location.pathname.startsWith(p))) {
-          navigate(`/login?redirect=${encodeURIComponent(current)}`, { replace: true });
-        }
-      } else if (event === 'forbidden') {
-        navigate('/forbidden', { replace: true });
-      }
-    });
-    const offToast = onToast((_, message) => toast.error(message));
-    return () => {
-      offAuth();
-      offToast();
-    };
-  }, [navigate]);
-  return <Outlet />;
-}
 
 export const router = createBrowserRouter([
   {

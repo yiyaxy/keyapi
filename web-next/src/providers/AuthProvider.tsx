@@ -50,6 +50,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Mount-hydration is a legitimate case where the effect must trigger
+    // a cascading setState (via refresh → setUser/setStatus). The alternative
+    // would be TanStack Query or useSyncExternalStore, both overkill for a
+    // one-shot boot read.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
