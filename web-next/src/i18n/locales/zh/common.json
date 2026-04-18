@@ -1,0 +1,11 @@
+{
+  "app.name": "new-api",
+  "actions.save": "保存",
+  "actions.cancel": "取消",
+  "actions.confirm": "确认",
+  "actions.back": "返回",
+  "actions.copy": "复制",
+  "actions.copied": "已复制",
+  "states.loading": "加载中…",
+  "viewport.too_narrow": "请使用更大的屏幕访问"
+}

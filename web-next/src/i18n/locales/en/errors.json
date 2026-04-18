@@ -1,0 +1,7 @@
+{
+  "unauthorized": "Your session has expired. Please sign in again.",
+  "forbidden": "You don't have permission for this action.",
+  "server_error": "The server is unavailable. Try again in a moment.",
+  "network": "Network error. Check your connection and retry.",
+  "unknown": "An unknown error occurred."
+}
