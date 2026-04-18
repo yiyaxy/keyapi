@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Components — Table</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); }
+  .tbl { width: 100%; border-collapse: collapse; background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; font: 400 13px/20px var(--font-sans); }
+  th { text-align: left; font: 500 11px/16px var(--font-sans); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-2); padding: 8px 12px; background: var(--bg-1); border-bottom: 1px solid var(--border); }
+  td { padding: 9px 12px; color: var(--text-0); border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg-2); }
+  .num { font-variant-numeric: tabular-nums; text-align: right; font-weight: 500; }
+  .key { font-family: var(--font-mono); color: var(--text-1); font-size: 12px; }
+  .b-success { background: oklch(0.95 0.04 155); color: oklch(0.40 0.10 155); padding:1px 8px; border-radius:99px; font-size:11px; font-weight:500; }
+  .b-warn { background: oklch(0.96 0.05 75); color: oklch(0.45 0.14 75); padding:1px 8px; border-radius:99px; font-size:11px; font-weight:500; }
+</style>
+</head>
+<body>
+<table class="tbl">
+  <thead>
+    <tr><th>Key</th><th>Name</th><th class="num">Spent</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><span class="key">sk-…V8j2</span></td><td>prod-backend</td><td class="num">$ 124.18</td><td><span class="b-success">Active</span></td></tr>
+    <tr><td><span class="key">sk-…r4L9</span></td><td>local-dev</td><td class="num">$  12.97</td><td><span class="b-success">Active</span></td></tr>
+    <tr><td><span class="key">sk-…m71x</span></td><td>edge-worker</td><td class="num">$  88.04</td><td><span class="b-warn">Quota 92%</span></td></tr>
+    <tr><td><span class="key">sk-…q0Pa</span></td><td>analytics-cron</td><td class="num">$   3.42</td><td><span class="b-success">Active</span></td></tr>
+  </tbody>
+</table>
+</body>
+</html>

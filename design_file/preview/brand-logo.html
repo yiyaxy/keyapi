@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Brand — Logo</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .panel { padding: 18px; border: 1px solid var(--border); border-radius: var(--r-md); display:flex; align-items:center; gap: 14px; }
+  .panel.dark { background: oklch(0.14 0.006 260); border-color: oklch(0.28 0.008 260); color: oklch(0.97 0.003 260); }
+  .panel.light { background: oklch(0.99 0.002 260); }
+  img { width: 40px; height: 40px; border-radius: 8px; }
+  .word { font: 600 22px/24px var(--font-sans); letter-spacing: -0.01em; }
+  .word .accent { color: var(--accent); }
+  .panel.dark .word { color: oklch(0.97 0.003 260); }
+  .sub { font: 500 11px/14px var(--font-mono); color: var(--text-2); margin-top: 4px; }
+  .panel.dark .sub { color: oklch(0.55 0.010 260); }
+</style>
+</head>
+<body>
+<div class="panel light">
+  <img src="../assets/logo.png" alt="logo" />
+  <div>
+    <div class="word">new<span class="accent">·</span>api</div>
+    <div class="sub">light surface · 40×40 mark</div>
+  </div>
+</div>
+<div class="panel dark">
+  <img src="../assets/logo.png" alt="logo" />
+  <div>
+    <div class="word">new<span class="accent">·</span>api</div>
+    <div class="sub">dark surface · 40×40 mark</div>
+  </div>
+</div>
+</body>
+</html>

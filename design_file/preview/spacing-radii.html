@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Spacing — Radii & Elevation</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .col-title { font: 600 11px/1 var(--font-mono); color: var(--text-2); margin-bottom: 8px; }
+  .radii { display:flex; gap:10px; align-items:flex-end; }
+  .r { width: 56px; height: 56px; background: var(--bg-1); border: 1px solid var(--border); display:flex; align-items:center; justify-content:center; font: 500 11px/1 var(--font-mono); color: var(--text-1); }
+  .elev { display:grid; gap:10px; }
+  .e { padding: 10px 12px; background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--r-md); font: 500 12px/1 var(--font-sans); }
+  .e1 { box-shadow: 0 1px 0 0 color-mix(in oklab, var(--text-0) 6%, transparent); }
+  .e2 { box-shadow: 0 1px 2px color-mix(in oklab, var(--text-0) 8%, transparent), 0 4px 12px color-mix(in oklab, var(--text-0) 4%, transparent); }
+  .e3 { box-shadow: 0 4px 24px color-mix(in oklab, var(--text-0) 12%, transparent); }
+</style>
+</head>
+<body>
+<div>
+  <div class="col-title">RADII — small/medium reign</div>
+  <div class="radii">
+    <div class="r" style="border-radius:4px">xs · 4</div>
+    <div class="r" style="border-radius:6px">sm · 6</div>
+    <div class="r" style="border-radius:8px">md · 8</div>
+    <div class="r" style="border-radius:12px">lg · 12</div>
+    <div class="r" style="border-radius:9999px">pill</div>
+  </div>
+</div>
+<div>
+  <div class="col-title">ELEVATION — borders do most of the work</div>
+  <div class="elev">
+    <div class="e e1">shadow-sm · table rows</div>
+    <div class="e e2">shadow-md · floating menu</div>
+    <div class="e e3">shadow-pop · modal / toast</div>
+  </div>
+</div>
+</body>
+</html>

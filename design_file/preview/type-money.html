@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Type — Money / Numerals</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 20px; background: var(--bg-0); }
+  .group { padding: 12px 0; border-bottom: 1px dashed var(--border); }
+  .row { display: flex; gap: 16px; align-items: baseline; }
+  .label { font: 500 10px/1 var(--font-mono); color: var(--text-2); width: 64px; flex-shrink: 0; }
+  .accent { color: var(--accent); }
+  .table { display: grid; grid-template-columns: 1fr auto; gap: 4px 24px; padding-top: 8px; }
+  .table .name { font: 400 13px/18px var(--font-sans); color: var(--text-1); }
+  .table .num { font-size: 14px; }
+</style>
+</head>
+<body>
+  <div class="group">
+    <div class="row"><span class="label">money-xl</span><span class="money money-xl"><span style="color:var(--text-1);font-weight:500">$</span>1,284<span style="color:var(--text-1);font-weight:500">.50</span></span></div>
+  </div>
+  <div class="group">
+    <div class="row"><span class="label">money-lg</span><span class="money money-lg accent">$284.12</span><span class="money money-lg">9,432,108</span></div>
+  </div>
+  <div class="group">
+    <div class="row"><span class="label">tabular</span></div>
+    <div class="table">
+      <span class="name">gpt-4o</span><span class="num">$  124.18</span>
+      <span class="name">claude-sonnet-4</span><span class="num">$   88.04</span>
+      <span class="name">gemini-2.5-pro</span><span class="num">$   12.97</span>
+    </div>
+  </div>
+</body>
+</html>

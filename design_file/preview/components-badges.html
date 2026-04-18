@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Components — Badges & Tags</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); display:flex; flex-direction:column; gap:10px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .lbl { font: 500 11px/1 var(--font-mono); color: var(--text-2); width: 80px; }
+  .b { display: inline-flex; align-items:center; gap:4px; padding: 2px 8px; border-radius: var(--r-pill); font: 500 11px/16px var(--font-sans); border: 1px solid transparent; }
+  .dot { width:6px; height:6px; border-radius:99px; }
+  .b-neutral { background: var(--bg-2); color: var(--text-1); }
+  .b-accent  { background: var(--accent-soft); color: oklch(0.40 0.10 160); }
+  .b-success { background: oklch(0.95 0.04 155); color: oklch(0.40 0.10 155); }
+  .b-warn    { background: oklch(0.96 0.05 75); color: oklch(0.45 0.14 75); }
+  .b-danger  { background: oklch(0.95 0.04 25); color: oklch(0.45 0.18 25); }
+  .b-outline { border-color: var(--border); color: var(--text-1); background: transparent; }
+  .kbd { display:inline-flex; align-items:center; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-1); box-shadow: 0 1px 0 0 var(--border); font: 500 11px/14px var(--font-mono); color: var(--text-1); }
+</style>
+</head>
+<body>
+  <div class="row"><span class="lbl">Status</span>
+    <span class="b b-success"><span class="dot" style="background:var(--success)"></span>Active</span>
+    <span class="b b-warn"><span class="dot" style="background:var(--warn)"></span>Quota 80%</span>
+    <span class="b b-danger"><span class="dot" style="background:var(--danger)"></span>Revoked</span>
+    <span class="b b-neutral"><span class="dot" style="background:var(--text-2)"></span>Paused</span>
+  </div>
+  <div class="row"><span class="lbl">Model tag</span>
+    <span class="b b-accent">gpt-4o</span>
+    <span class="b b-outline">claude-sonnet-4</span>
+    <span class="b b-outline">gemini-2.5-pro</span>
+    <span class="b b-outline">+ 12 more</span>
+  </div>
+  <div class="row"><span class="lbl">Keyboard</span>
+    <span class="kbd">⌘</span><span class="kbd">K</span>
+    <span style="color:var(--text-2);font-size:12px">to open command palette</span>
+  </div>
+</body>
+</html>

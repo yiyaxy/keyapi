@@ -1,0 +1,288 @@
+/* ============================================================
+   new-api Design System — Colors & Typography Tokens
+   Single source of truth. All values OKLCH. No hex outside this file.
+   ============================================================ */
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('fonts/GeneralSans-Variable.woff2') format('woff2-variations');
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('fonts/CommitMono-Variable.woff2') format('woff2-variations');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- Light theme (default) ---------- */
+:root {
+  /* Surfaces (cool-grey, faintly blue) */
+  --bg-0: oklch(0.99 0.002 260);   /* page */
+  --bg-1: oklch(0.97 0.003 260);   /* card */
+  --bg-2: oklch(0.94 0.004 260);   /* code / inset */
+  --bg-3: oklch(0.91 0.005 260);   /* hover-on-card */
+
+  /* Text */
+  --text-0: oklch(0.20 0.008 260); /* body / heading */
+  --text-1: oklch(0.45 0.010 260); /* secondary */
+  --text-2: oklch(0.62 0.010 260); /* tertiary / muted */
+  --text-inv: oklch(0.99 0.002 260);
+
+  /* Lines */
+  --border:        oklch(0.90 0.004 260);
+  --border-strong: oklch(0.82 0.006 260);
+  --focus-ring:    oklch(0.65 0.16 200);
+
+  /* Brand / actions */
+  --primary:       oklch(0.22 0.010 260);   /* near-black charcoal CTA */
+  --primary-hover: oklch(0.30 0.010 260);
+  --primary-fg:    oklch(0.99 0.002 260);
+
+  --accent:        oklch(0.65 0.16 160);    /* graphite-sage – the only hue */
+  --accent-hover:  oklch(0.58 0.17 160);
+  --accent-fg:     oklch(0.99 0.002 260);
+  --accent-soft:   oklch(0.94 0.04 160);
+
+  /* States — never red/green-only, always paired with icons */
+  --danger:  oklch(0.55 0.20 25);
+  --danger-soft: oklch(0.95 0.04 25);
+  --warn:    oklch(0.70 0.16 75);
+  --warn-soft:   oklch(0.96 0.05 75);
+  --success: oklch(0.60 0.13 155);
+  --success-soft: oklch(0.95 0.04 155);
+  --info:    oklch(0.60 0.12 230);
+  --info-soft:   oklch(0.95 0.03 230);
+
+  /* Chart palette — semantic, not raw hex usage */
+  --data-0: oklch(0.55 0.14 240);
+  --data-1: oklch(0.62 0.15 160);
+  --data-2: oklch(0.65 0.16 60);
+  --data-3: oklch(0.55 0.18 350);
+  --data-4: oklch(0.55 0.14 290);
+  --data-5: oklch(0.65 0.10 200);
+  --data-6: oklch(0.50 0.08 30);
+  --data-7: oklch(0.45 0.05 260);
+
+  /* Radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-pill: 9999px;
+
+  /* Spacing — only 12 / 16 / 24 are blessed; rest exist for rare use */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+
+  /* Subtle elevation — borders do most of the work */
+  --shadow-sm: 0 1px 0 0 color-mix(in oklab, var(--text-0) 6%, transparent);
+  --shadow-md: 0 1px 2px color-mix(in oklab, var(--text-0) 8%, transparent),
+               0 4px 12px color-mix(in oklab, var(--text-0) 4%, transparent);
+  --shadow-pop: 0 4px 24px color-mix(in oklab, var(--text-0) 12%, transparent);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);   /* ease-out-quart */
+  --ease-out-strong: cubic-bezier(0.16, 1, 0.3, 1); /* ease-out-expo */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 280ms;
+
+  /* Type families */
+  --font-sans: 'General Sans', 'Be Vietnam Pro', 'HarmonyOS Sans SC', ui-sans-serif, system-ui,
+    -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'Commit Mono', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* ---------- Dark theme ---------- */
+.dark, [data-theme='dark'] {
+  --bg-0: oklch(0.14 0.006 260);
+  --bg-1: oklch(0.17 0.006 260);
+  --bg-2: oklch(0.21 0.006 260);
+  --bg-3: oklch(0.24 0.007 260);
+
+  --text-0: oklch(0.97 0.003 260);
+  --text-1: oklch(0.72 0.010 260);
+  --text-2: oklch(0.55 0.010 260);
+  --text-inv: oklch(0.14 0.006 260);
+
+  --border:        oklch(0.28 0.008 260);
+  --border-strong: oklch(0.38 0.009 260);
+  --focus-ring:    oklch(0.72 0.16 200);
+
+  --primary:       oklch(0.96 0.006 260);
+  --primary-hover: oklch(0.88 0.006 260);
+  --primary-fg:    oklch(0.16 0.006 260);
+
+  --accent:        oklch(0.72 0.18 160);
+  --accent-hover:  oklch(0.78 0.18 160);
+  --accent-fg:     oklch(0.16 0.006 260);
+  --accent-soft:   oklch(0.28 0.06 160);
+
+  --danger:  oklch(0.65 0.22 25);
+  --danger-soft: oklch(0.27 0.08 25);
+  --warn:    oklch(0.78 0.16 75);
+  --warn-soft:   oklch(0.28 0.07 75);
+  --success: oklch(0.70 0.14 155);
+  --success-soft: oklch(0.26 0.06 155);
+  --info:    oklch(0.70 0.13 230);
+  --info-soft:   oklch(0.26 0.06 230);
+
+  --data-0: oklch(0.70 0.14 240);
+  --data-1: oklch(0.74 0.15 160);
+  --data-2: oklch(0.78 0.15 65);
+  --data-3: oklch(0.68 0.18 350);
+  --data-4: oklch(0.70 0.14 290);
+  --data-5: oklch(0.75 0.10 200);
+  --data-6: oklch(0.62 0.10 30);
+  --data-7: oklch(0.65 0.05 260);
+
+  --shadow-sm: 0 1px 0 0 color-mix(in oklab, black 30%, transparent);
+  --shadow-md: 0 1px 2px color-mix(in oklab, black 40%, transparent),
+               0 4px 12px color-mix(in oklab, black 25%, transparent);
+  --shadow-pop: 0 4px 24px color-mix(in oklab, black 60%, transparent);
+}
+
+/* ---------- Auto follow system ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg-0: oklch(0.14 0.006 260);
+    --bg-1: oklch(0.17 0.006 260);
+    --bg-2: oklch(0.21 0.006 260);
+    --bg-3: oklch(0.24 0.007 260);
+    --text-0: oklch(0.97 0.003 260);
+    --text-1: oklch(0.72 0.010 260);
+    --text-2: oklch(0.55 0.010 260);
+    --border: oklch(0.28 0.008 260);
+    --border-strong: oklch(0.38 0.009 260);
+    --primary: oklch(0.96 0.006 260);
+    --primary-hover: oklch(0.88 0.006 260);
+    --primary-fg: oklch(0.16 0.006 260);
+    --accent: oklch(0.72 0.18 160);
+    --accent-hover: oklch(0.78 0.18 160);
+    --accent-soft: oklch(0.28 0.06 160);
+  }
+}
+
+/* ============================================================
+   Type scale — fixed rem, no clamp for app UI
+   12 / 13 / 14 / 16 / 18 / 20 / 24 / 32 / 48
+   ============================================================ */
+
+html { font-size: 16px; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-0);
+  background: var(--bg-0);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.text-12 { font-size: 12px; line-height: 16px; }
+.text-13 { font-size: 13px; line-height: 18px; }
+.text-14 { font-size: 14px; line-height: 20px; }
+.text-16 { font-size: 16px; line-height: 24px; }
+.text-18 { font-size: 18px; line-height: 26px; }
+.text-20 { font-size: 20px; line-height: 28px; }
+.text-24 { font-size: 24px; line-height: 32px; }
+.text-32 { font-size: 32px; line-height: 38px; letter-spacing: -0.01em; }
+.text-48 { font-size: 48px; line-height: 52px; letter-spacing: -0.02em; }
+
+/* Semantic blocks */
+h1, .h1 { font: 600 32px/38px var(--font-sans); letter-spacing: -0.01em; color: var(--text-0); }
+h2, .h2 { font: 600 24px/32px var(--font-sans); letter-spacing: -0.005em; color: var(--text-0); }
+h3, .h3 { font: 600 18px/26px var(--font-sans); color: var(--text-0); }
+h4, .h4 { font: 600 16px/24px var(--font-sans); color: var(--text-0); }
+
+p, .body { font: 400 14px/20px var(--font-sans); color: var(--text-0); }
+.body-lg { font: 400 16px/24px var(--font-sans); color: var(--text-0); }
+.muted   { color: var(--text-1); }
+.subtle  { color: var(--text-2); }
+
+.eyebrow {
+  font: 500 12px/16px var(--font-sans);
+  color: var(--text-1);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Money — the hero. tabular-nums, 600, never lighter than text-0 */
+.money, .num {
+  font-family: var(--font-sans);
+  font-feature-settings: 'tnum' 1, 'cv11' 1, 'ss01' 1;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-0);
+}
+.money-xl  { font-size: 48px; line-height: 52px; letter-spacing: -0.02em; }
+.money-lg  { font-size: 32px; line-height: 38px; letter-spacing: -0.01em; }
+.money-md  { font-size: 24px; line-height: 30px; }
+.money-sm  { font-size: 18px; line-height: 24px; }
+
+/* Code / API key / log */
+code, kbd, pre, samp, .mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'liga' 0, 'calt' 0; /* no over-clever ligatures */
+}
+code, .code-inline {
+  font-size: 13px;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--bg-2);
+  color: var(--text-0);
+}
+pre {
+  font-size: 13px;
+  line-height: 20px;
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+/* Links */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  text-underline-offset: 2px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+  }
+}
+
+/* Selection */
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+  color: var(--text-0);
+}
+
+/* Focus ring — never the accent color */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
