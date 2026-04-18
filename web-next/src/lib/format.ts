@@ -20,3 +20,20 @@ export function fmtDate(d: Date | string | number): string {
     timeStyle: 'short',
   }).format(date);
 }
+
+export function fmtDateSec(sec: number): string {
+  if (sec <= 0 || !Number.isFinite(sec)) return '—';
+  return new Intl.DateTimeFormat(i18n.language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(sec * 1000));
+}
+
+export function fmtDaySec(sec: number): string {
+  if (sec <= 0 || !Number.isFinite(sec)) return '—';
+  return new Intl.DateTimeFormat(i18n.language, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(sec * 1000));
+}

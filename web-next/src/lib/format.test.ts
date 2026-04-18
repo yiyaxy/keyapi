@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-import { fmtDate, fmtMoney, fmtNum } from './format';
+import { fmtDate, fmtDateSec, fmtDaySec, fmtMoney, fmtNum } from './format';
 
 beforeAll(async () => {
   if (!i18n.isInitialized) {
@@ -30,5 +30,39 @@ describe('format', () => {
   test('fmtDate returns locale string', () => {
     const out = fmtDate('2026-04-18T12:34:56Z');
     expect(out).toMatch(/\d/);
+  });
+});
+
+describe('fmtDateSec (Unix seconds, local timezone)', () => {
+  test('formats Unix-sec into date-time with year digits', () => {
+    const out = fmtDateSec(1713484800);
+    expect(out).toMatch(/\d{4}/);
+    expect(out).not.toMatch(/1970/);
+  });
+
+  test('zero returns dash', () => {
+    expect(fmtDateSec(0)).toBe('—');
+  });
+
+  test('negative (backend Never sentinel -1) returns dash', () => {
+    expect(fmtDateSec(-1)).toBe('—');
+  });
+});
+
+describe('fmtDaySec (Unix seconds, UTC day label)', () => {
+  test('renders UTC month short + day', () => {
+    const out = fmtDaySec(1713484800);
+    expect(out).toMatch(/Apr/);
+    expect(out).toMatch(/19/);
+  });
+
+  test('late-UTC-day stays on UTC day', () => {
+    const out = fmtDaySec(1713484800 + 23 * 3600);
+    expect(out).toMatch(/Apr/);
+    expect(out).toMatch(/19/);
+  });
+
+  test('zero returns dash', () => {
+    expect(fmtDaySec(0)).toBe('—');
   });
 });
