@@ -11,11 +11,13 @@ import {
 
 export type Range = '7d' | '30d';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useRange(): Range {
   const [params] = useSearchParams();
   return params.get('range') === '7d' ? '7d' : '30d';
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function rangeToSeconds(range: Range): { startSec: number; endSec: number } {
   const endSec = Math.floor(Date.now() / 1000);
   const days = range === '7d' ? 7 : 30;

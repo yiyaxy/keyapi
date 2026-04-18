@@ -94,6 +94,7 @@ export function CreateTokenDialog({
           <div className='space-y-2'>
             <Label htmlFor='create-group'>{t('create.group')}</Label>
             <Select
+              // eslint-disable-next-line react-hooks/incompatible-library
               value={form.watch('group')}
               onValueChange={(v) => form.setValue('group', v, { shouldValidate: true })}
               disabled={groups.isPending || groups.isError}

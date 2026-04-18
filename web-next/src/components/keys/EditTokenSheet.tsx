@@ -75,9 +75,11 @@ export function EditTokenSheet({
     });
   }, [token, form]);
 
+  /* eslint-disable react-hooks/incompatible-library -- rhf watch() is by design */
   const unlimited = form.watch('unlimited_quota');
   const modelLimits = form.watch('model_limits');
   const groupChain = form.watch('group');
+  /* eslint-enable react-hooks/incompatible-library */
 
   async function onSubmit(values: EditTokenValues) {
     try {
