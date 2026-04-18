@@ -8,7 +8,12 @@ import { router } from './routes';
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 },
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      retry: 1,
+    },
   },
 });
 
