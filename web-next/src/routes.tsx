@@ -7,7 +7,9 @@ import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { RootLayout } from '@/components/common/RootLayout';
 import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
+import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
+import { KeysPage } from '@/pages/Keys';
 import { Login } from '@/pages/Login';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
@@ -30,8 +32,8 @@ export const router = createBrowserRouter([
             element: <AppShell />,
             children: [
               { path: '/', element: <Navigate to='/dashboard' replace /> },
-              { path: '/dashboard', element: <ComingSoon feature='Dashboard' /> },
-              { path: '/keys', element: <ComingSoon feature='API keys' /> },
+              { path: '/dashboard', element: <DashboardPage /> },
+              { path: '/keys', element: <KeysPage /> },
               { path: '/playground', element: <ComingSoon feature='Playground' /> },
               { path: '/logs', element: <ComingSoon feature='Logs' /> },
               { path: '/topup', element: <ComingSoon feature='Top up · invoices' /> },
