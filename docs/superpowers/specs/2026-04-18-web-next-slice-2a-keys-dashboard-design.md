@@ -13,7 +13,7 @@
 Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试基建、shadcn↔design_file token 桥接。租户 plumbing 在 slice 1 已验证（UserChip 正确显示 `Tenant #<id> · <group>`，axios 拦截器自动注入 `X-Tenant-Id` + `New-API-User` 头）。
 
 ### 1.2 本次目标（Slice 2a）
-1. **后端**：修复 `controller/token.go` 中 5 处 handler 的租户隔离漏洞（GetToken / GetTokenKey / UpdateToken / DeleteToken / GetTokenKeysByIds 依赖的 `GetTokenByIds(id, userId)` 不校验 `tenant_id`，允许跨租户访问）。新增 `GetTokenByIdsTenant(id, userId, tenantId)` 作安全变体，controller 切过去；保留旧函数不删（被 relay / channel 其他路径引用）。
+1. **后端**：修复 `controller/token.go` 中 5 处 handler 的租户隔离漏洞。GetToken / GetTokenKey / UpdateToken 走 `GetTokenByIds(id, userId)`、GetTokenKeysByIds 走 `GetTokenKeysByIds(ids, userId)`、DeleteToken 走 `DeleteTokenById(id, userId)`——**三个 model 函数全部不校验 `tenant_id`**。新增 3 个 tenant-aware 变体（`GetTokenByIdsTenant`、`GetTokenKeysByIdsTenant`、`DeleteTokenByIdTenant`），controller 切过去；保留旧函数不删（被 relay / channel 其他路径引用）。
 2. **前端 `/keys`**：买家自助 CRUD API 密钥——列表、创建、编辑全字段、启用/禁用、删除、按需展开 key 全串。4 列极简表格 + 行外 `⋯` DropdownMenu + 右侧 SideSheet 编辑。
 3. **前端 `/dashboard`**：买家用量概览——3 个 widget（Quota 卡 / 30 天用量折线 / 活动汇总卡）。时间段 7d/30d 下拉，URL search param 驱动。
 4. **测试**：延续 slice 1 哲学（unit + component + MSW 集成），新增 5 条集成路径覆盖 keys/dashboard 关键流。后端 `unit_test/tenant_test.go` 扩展 5 个 case 覆盖新函数。
@@ -70,7 +70,7 @@ Slice 1 已交付：shell、auth、路由骨架、i18n、错误体系、测试�
 
 ### 3.2 修复方案
 
-**`model/token.go`** 新增两个函数：
+**`model/token.go`** 新增三个函数：
 
 ```go
 // GetTokenByIdsTenant 是 GetTokenByIds 的 tenant-aware 版本。
@@ -447,7 +447,7 @@ export const qk = {
 | `useUsageTrend(startTs, endTs)` | `{ data: QuotaDataRow[], isLoading }` | `GET /api/data/self`；`staleTime: 5 * 60_000`；range 变即重拉 |
 | `useUserStat(startTs, endTs)` | `{ data: LogSelfStat, isLoading }` | `GET /api/log/self/stat`；`staleTime: 5 * 60_000` |
 | `useAvailableModels()` | `{ data: string[] }` | `GET /api/user/models`；`staleTime: Infinity`（页面会话内不变） |
-| `useChannelGroups()` | `{ data: ChannelGroup[] }`，其中 `ChannelGroup = { name: string; ratio: number; desc: string }` | `GET /api/user/self/channel-groups` 返回 `Record<string, {ratio, desc}>`；hook 归一化为 `[{name, ratio, desc}]` 便于 UI 排序/渲染；`staleTime: Infinity` |
+| `useChannelGroups()` | `{ data: ChannelGroup[] }`，其中 `ChannelGroup = { name: string; ratio: number \| string; desc: string }` | `GET /api/user/self/channel-groups` 返回 `Record<string, {ratio, desc}>`；**`ratio` 可能是 `number`（常规组的倍率）或 `string`（`auto` 组固定返回字符串 `"自动"`，见 `controller/group.go:76`）**。hook 归一化为 `[{name, ratio, desc}]`，UI 渲染按类型分支：number 显示 `×{ratio.toFixed(2)}`，string 直接显示；`staleTime: Infinity` |
 
 ### 6.3 全局 QueryClient 调整
 
@@ -532,6 +532,7 @@ export function useDeleteToken() {
 | `hooks/useTokens.test.tsx` | list query 返回 items；create 成功触发 list invalidate；delete optimistic 行消失；delete 失败回滚 |
 | `hooks/useUsageTrend.test.tsx` | range 变化触发重拉；空响应不崩 |
 | `lib/token-schema.test.ts` | zod schema 边界（name 长度 / remain_quota 非负 / IP 每行格式 / group 逗号拆分） |
+| `lib/usage-aggregate.test.ts` | **dashboard 趋势卡核心逻辑**：小时桶 → 按日 reduce 求和；跨月边界不丢点；空输入不崩；`range` 内无数据日补 0；时区边界（UTC vs 本地）一致（选定 UTC 聚合避免浏览器时区飘移） |
 
 ### 8.3 前端组件测
 
@@ -585,7 +586,7 @@ bun run build
 
 ### 9.1 后端（新增 / 修改）
 ```
-model/token.go                    # 新增 GetTokenByIdsTenant, GetTokenKeysByIdsTenant
+model/token.go                    # 新增 GetTokenByIdsTenant, GetTokenKeysByIdsTenant, DeleteTokenByIdTenant
 controller/token.go               # 5 处 handler 切换
 unit_test/tenant_test.go          # 扩展 15 个 case（3 函数 × 5 模式）
 ```
@@ -728,16 +729,15 @@ shadcn primitive 会自动把对应 Radix peer dep 写进 `package.json`；runti
 
 ## 13. 开放问题（实现阶段确认）
 
-已解决（§3–5 中锁定源码引用）：
-- ✅ `/api/log/self/stat` 字段 → `controller/log.go:163-175`（`quota` / `rpm` / `tpm` / `total_requests` / `total_tokens` / `smartcache_savings_quota`）
-- ✅ `/api/user/models` → `controller.GetUserModels`（`router/api-router.go:138`）
-- ✅ `/api/user/self/channel-groups` → `controller.GetChannelGroups`（`router/api-router.go:134`）
+以下问题在 spec 内均已锁定，实现阶段无需再读代码确认：
 
-仍需在实现阶段锁定：
-1. Token shape 里 `group` 字段的存储形式（csv string 还是 array）——读 `model/token.go` 结构体确认；前端 schema 按真实类型 parse/serialize
-2. `/api/user/models` 返回的是 `string[]`（模型名）还是 `{id, name, ...}[]`——实现 `useAvailableModels` 时 shape 匹配
-3. ✅ `/api/user/self/channel-groups` 返回 `map[group]{ratio, desc}`（`controller/group.go:58`）；`useChannelGroups` 归一化为 `ChannelGroup[]` 便于 UI 排序/渲染
-4. `QuotaData.created_at` 的桶粒度（小时 or 其它）——读 `logQuotaDataCache`（`model/usedata.go:38`）确认 key 组成；`usage-aggregate.ts` 按天 reduce 对任意小粒度都鲁棒，但知道真实粒度有助于估算点数
+- ✅ `/api/log/self/stat` shape → `controller/log.go:163–175`（`quota` / `rpm` / `tpm` / `total_requests` / `total_tokens` / `smartcache_savings_quota`）
+- ✅ `/api/user/models` shape → `controller/user.go:621` 明确返回 `[]string`（仅模型名数组，无 `{id, name}` 对象）
+- ✅ `/api/user/self/channel-groups` shape → `controller/group.go:58`；`ratio` 类型为 `number | string`（`auto` 组为字符串 `"自动"`）；`useChannelGroups` 归一化为 `ChannelGroup[]`
+- ✅ Token `Group` 字段 → `model/token.go:31` 是 `string`；多组时用逗号分隔（CSV 语义，与老 UI `TokensColumnDefs.jsx` 一致）；前端 schema `parseGroupChain(str): string[]` / `serializeGroupChain(arr): string`
+- ✅ `QuotaData.created_at` 桶粒度 → `model/usedata.go:62` 明确小时对齐（`createdAt - (createdAt % 3600)`）；`usage-aggregate.ts` 按 24 个点一天 reduce
+
+本 section 现为空——slice 2a 实现阶段不再有"等确认"的接口细节。
 
 ---
 
