@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import { initReactI18next } from 'react-i18next';
 
+import enAccount from './locales/en/account.json';
 import enAuth from './locales/en/auth.json';
 import enCommon from './locales/en/common.json';
 import enDashboard from './locales/en/dashboard.json';
@@ -9,6 +10,7 @@ import enErrors from './locales/en/errors.json';
 import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
 import enShell from './locales/en/shell.json';
+import zhAccount from './locales/zh/account.json';
 import zhAuth from './locales/zh/auth.json';
 import zhCommon from './locales/zh/common.json';
 import zhDashboard from './locales/zh/dashboard.json';
@@ -30,6 +32,7 @@ void i18n
         keys: zhKeys,
         dashboard: zhDashboard,
         logs: zhLogs,
+        account: zhAccount,
       },
       en: {
         common: enCommon,
@@ -39,11 +42,12 @@ void i18n
         keys: enKeys,
         dashboard: enDashboard,
         logs: enLogs,
+        account: enAccount,
       },
     },
     fallbackLng: 'zh',
     supportedLngs: ['zh', 'en'],
-    ns: ['common', 'auth', 'shell', 'errors', 'keys', 'dashboard', 'logs'],
+    ns: ['common', 'auth', 'shell', 'errors', 'keys', 'dashboard', 'logs', 'account'],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
     detection: {

@@ -12,6 +12,12 @@ export type User = {
   group: string;
   quota: number;
   used_quota: number;
+  github_id?: string;
+  discord_id?: string;
+  wechat_id?: string;
+  oidc_id?: string;
+  telegram_id?: string;
+  linux_do_id?: string;
 };
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';

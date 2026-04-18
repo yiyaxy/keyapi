@@ -9,6 +9,7 @@ import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
+import { AccountPage } from '@/pages/Account';
 import { KeysPage } from '@/pages/Keys';
 import { LogsPage } from '@/pages/Logs';
 import { Login } from '@/pages/Login';
@@ -39,7 +40,7 @@ export const router = createBrowserRouter([
               { path: '/logs', element: <LogsPage /> },
               { path: '/topup', element: <ComingSoon feature='Top up · invoices' /> },
               { path: '/plan', element: <ComingSoon feature='Plan' /> },
-              { path: '/account', element: <ComingSoon feature='Account' /> },
+              { path: '/account', element: <AccountPage /> },
               { path: '*', element: <NotFound /> },
             ],
           },
