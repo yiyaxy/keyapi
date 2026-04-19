@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
+import { RechargeCard } from '@/components/topup/RechargeCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -72,6 +73,7 @@ export function TopupPage() {
           </div>
         </CardContent>
       </Card>
+      <RechargeCard />
       <Card>
         <CardHeader>
           <CardTitle>{t('redeem.title')}</CardTitle>
@@ -99,7 +101,7 @@ export function TopupPage() {
           </div>
         </CardContent>
       </Card>
-      <Card>
+      <Card className='lg:col-span-2'>
         <CardHeader>
           <CardTitle>{t('contact.title')}</CardTitle>
         </CardHeader>
