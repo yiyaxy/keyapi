@@ -58,6 +58,7 @@ export function Sidebar() {
         </SidebarGroup>
         <SidebarGroup label={t('nav.billing')}>
           <NavItem to='/topup' label={t('nav.topup')} icon={Receipt} />
+          <NavItem to='/plan' label={t('nav.plan')} icon={Gem} />
           <NavItem to='/invoice' label={t('nav.invoice')} icon={ScrollText} />
           <NavItem
             to='/inbox'

@@ -1,0 +1,18 @@
+{
+  "page.title": "Plans",
+  "page.sub": "Pick a subscription tier or stick with pay-as-you-go top-ups.",
+  "current.title": "Current subscription",
+  "current.none": "No active subscription — all usage is billed against your balance.",
+  "current.expires": "Expires {{date}}",
+  "current.used_quota": "{{used}} / {{total}} consumed",
+  "current.purchase_count": "{{count}} purchases",
+  "plans.empty": "No plans available right now.",
+  "plans.duration.month": "{{value}} mo",
+  "plans.duration.year": "{{value}} yr",
+  "plans.duration.day": "{{value}} days",
+  "plans.price.per_cycle": "{{price}} / {{cycle}}",
+  "plans.cta.activate": "Activate",
+  "plans.cta.current": "Current plan",
+  "plans.status.sold_out": "Sold out",
+  "activate.success": "Activated. Refreshing…"
+}

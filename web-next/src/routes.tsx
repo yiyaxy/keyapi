@@ -23,6 +23,7 @@ import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
 import { LogsAdminPage } from '@/pages/LogsAdmin';
 import { LogsPage } from '@/pages/Logs';
+import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
@@ -78,7 +79,7 @@ export const router = createBrowserRouter([
               { path: '/playground', element: <ComingSoon feature='Playground' /> },
               { path: '/logs', element: <LogsPage /> },
               { path: '/topup', element: <TopupPage /> },
-              { path: '/plan', element: <ComingSoon feature='Plan' /> },
+              { path: '/plan', element: <PlanPage /> },
               { path: '/account', element: <AccountPage /> },
               { path: '/inbox', element: <InboxPage /> },
               { path: '/invoice', element: <InvoicesPage /> },

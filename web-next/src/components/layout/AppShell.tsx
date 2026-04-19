@@ -11,7 +11,7 @@ const TITLES: Record<string, string> = {
   '/playground': 'nav.playground',
   '/logs': 'nav.logs',
   '/topup': 'nav.topup',
-  '/plan': 'nav.topup',
+  '/plan': 'nav.plan',
   '/account': 'usermenu.account',
   '/inbox': 'nav.inbox',
   '/invoice': 'nav.invoice',

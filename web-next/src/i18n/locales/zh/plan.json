@@ -1,0 +1,18 @@
+{
+  "page.title": "订阅套餐",
+  "page.sub": "选择订阅套餐或继续按量充值。",
+  "current.title": "当前订阅",
+  "current.none": "当前没有活跃订阅，按余额扣费。",
+  "current.expires": "到期时间：{{date}}",
+  "current.used_quota": "已用 {{used}} / {{total}}",
+  "current.purchase_count": "已购买 {{count}} 次",
+  "plans.empty": "当前暂无可订阅套餐。",
+  "plans.duration.month": "{{value}} 月",
+  "plans.duration.year": "{{value}} 年",
+  "plans.duration.day": "{{value}} 天",
+  "plans.price.per_cycle": "{{price}} / {{cycle}}",
+  "plans.cta.activate": "激活",
+  "plans.cta.current": "当前套餐",
+  "plans.status.sold_out": "已售罄",
+  "activate.success": "已激活，正在刷新…"
+}
