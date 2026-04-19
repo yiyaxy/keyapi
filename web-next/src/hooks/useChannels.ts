@@ -2,6 +2,10 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api } from '@/lib/api';
 
+// Channel mirrors the subset of model.Channel fields the admin UI works
+// with. `setting` is a JSON-encoded blob (see dto.ChannelSettings); we
+// surface proxy + system_prompt as first-class inputs and leave anything
+// else the backend wrote in place on save.
 export type Channel = {
   id: number;
   tenant_id: number;
@@ -25,6 +29,15 @@ export type Channel = {
   max_retry: number | null;
   tag: string | null;
   remark: string | null;
+
+  // extended fields
+  openai_organization: string | null;
+  test_model: string | null;
+  model_mapping: string | null;
+  status_code_mapping: string | null;
+  param_override: string | null;
+  header_override: string | null;
+  setting: string | null; // JSON — dto.ChannelSettings
 };
 
 export type ChannelsQuery = {
@@ -67,28 +80,47 @@ export function useChannels(q: ChannelsQuery) {
   });
 }
 
-export type ChannelCreateInput = {
+// ChannelInput is the write shape. Everything optional so the dialog
+// can send only what it cares about. `setting` is a pre-serialized JSON
+// string — the dialog is responsible for merging before sending.
+export type ChannelInput = {
   name: string;
   type: number;
-  key: string;
+  key?: string;
   base_url?: string;
   models: string;
   group: string;
   priority?: number;
+  weight?: number;
+  auto_ban?: number;
+  max_retry?: number;
+  openai_organization?: string;
+  test_model?: string;
+  model_mapping?: string;
+  status_code_mapping?: string;
+  param_override?: string;
+  header_override?: string;
+  tag?: string;
+  remark?: string;
+  setting?: string;
 };
 
+// The AddChannel handler decodes AddChannelRequest{ Channel *model.Channel }
+// — i.e. the channel fields must be nested under a "channel" key. Update
+// on the other hand uses PatchChannel which EMBEDS model.Channel, so flat
+// is correct there.
 export function useCreateChannel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: ChannelCreateInput) => {
-      const res = await api.post<Channel>('/api/channel/', input);
+    mutationFn: async (input: ChannelInput) => {
+      const res = await api.post<Channel>('/api/channel/', { mode: '', channel: input });
       return res.data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['channels', 'list'] }),
   });
 }
 
-export type ChannelUpdateInput = Partial<ChannelCreateInput> & { id: number };
+export type ChannelUpdateInput = Partial<ChannelInput> & { id: number };
 
 export function useUpdateChannel() {
   const qc = useQueryClient();
