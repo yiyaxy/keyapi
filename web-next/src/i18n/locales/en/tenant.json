@@ -40,5 +40,22 @@
   "invite.success": "Invitation sent",
   "remove.title": "Remove member",
   "remove.body": "Remove {{name}} from this tenant? Their API keys and logs remain but they lose access.",
-  "remove.confirm": "Remove"
+  "remove.confirm": "Remove",
+  "dashboard.title": "Tenant dashboard",
+  "dashboard.members": "Members",
+  "dashboard.members.active": "{{active}} active of {{total}}",
+  "dashboard.tokens": "API keys",
+  "dashboard.tokens.active": "{{active}} active of {{total}}",
+  "dashboard.channels": "Channels",
+  "dashboard.channels.active": "{{active}} active of {{total}}",
+  "dashboard.usage": "Usage",
+  "dashboard.usage.today": "Today: {{quota}} · {{requests}} req",
+  "dashboard.usage.total": "All-time: {{quota}} · {{requests}} req",
+  "dashboard.trend.title": "Usage over last {{days}} days",
+  "dashboard.trend.empty": "No usage yet",
+  "dashboard.models.title": "Top models (all time)",
+  "dashboard.models.col.model": "Model",
+  "dashboard.models.col.requests": "Requests",
+  "dashboard.models.col.cost": "Cost",
+  "dashboard.models.empty": "No model usage yet"
 }

@@ -17,6 +17,7 @@
   "nav.admin.platform_tenants": "平台租户",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
+  "nav.tenant.dashboard": "总览",
   "nav.tenant.info": "租户设置",
   "nav.tenant.members": "租户成员",
   "search.placeholder": "Find anything",

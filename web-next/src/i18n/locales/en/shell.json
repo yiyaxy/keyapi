@@ -17,6 +17,7 @@
   "nav.admin.platform_tenants": "Platform tenants",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
+  "nav.tenant.dashboard": "Overview",
   "nav.tenant.info": "Settings",
   "nav.tenant.members": "Members",
   "search.placeholder": "Find anything",

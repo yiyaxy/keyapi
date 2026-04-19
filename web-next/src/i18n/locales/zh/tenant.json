@@ -40,5 +40,22 @@
   "invite.success": "邀请已发送",
   "remove.title": "移除成员",
   "remove.body": "确认将 {{name}} 从当前租户移除？对方的 API key 和日志保留，但会立即失去访问权限。",
-  "remove.confirm": "移除"
+  "remove.confirm": "移除",
+  "dashboard.title": "租户总览",
+  "dashboard.members": "成员",
+  "dashboard.members.active": "{{active}} / {{total}} 活跃",
+  "dashboard.tokens": "API 密钥",
+  "dashboard.tokens.active": "{{active}} / {{total}} 启用",
+  "dashboard.channels": "渠道",
+  "dashboard.channels.active": "{{active}} / {{total}} 启用",
+  "dashboard.usage": "用量",
+  "dashboard.usage.today": "今日：{{quota}} · {{requests}} 次请求",
+  "dashboard.usage.total": "累计：{{quota}} · {{requests}} 次请求",
+  "dashboard.trend.title": "近 {{days}} 天用量",
+  "dashboard.trend.empty": "暂无用量",
+  "dashboard.models.title": "Top 模型（累计）",
+  "dashboard.models.col.model": "模型",
+  "dashboard.models.col.requests": "请求数",
+  "dashboard.models.col.cost": "金额",
+  "dashboard.models.empty": "暂无模型用量"
 }

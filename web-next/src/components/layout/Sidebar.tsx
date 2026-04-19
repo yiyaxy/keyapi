@@ -83,6 +83,11 @@ export function Sidebar() {
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>
               <NavItem
+                to='/tenant/dashboard'
+                label={t('nav.tenant.dashboard')}
+                icon={LayoutDashboard}
+              />
+              <NavItem
                 to='/tenant/info'
                 label={t('nav.tenant.info')}
                 icon={Building2}
