@@ -63,3 +63,83 @@ export function useActivateSubscription() {
     },
   });
 }
+
+export function useAdminSubscriptionPlans() {
+  return useQuery<SubscriptionPlanDTO[]>({
+    queryKey: ['subscription-admin', 'plans'] as const,
+    queryFn: async () => {
+      const res = await api.get<SubscriptionPlanDTO[]>(
+        '/api/subscription/admin/plans'
+      );
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 15_000,
+  });
+}
+
+export type AdminPlanInput = {
+  id?: number;
+  title: string;
+  subtitle?: string;
+  promo_highlights?: string;
+  price_amount: number;
+  currency?: string;
+  duration_unit: string;
+  duration_value: number;
+  sort_order?: number;
+  status?: string;
+  enabled?: boolean;
+  max_purchase_per_user?: number;
+  upgrade_group?: string;
+  total_amount?: number;
+};
+
+export function useAdminCreatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (plan: AdminPlanInput) => {
+      await api.post('/api/subscription/admin/plans', { plan });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['subscription-admin'] });
+      void qc.invalidateQueries({ queryKey: ['subscription', 'plans'] });
+    },
+  });
+}
+
+export function useAdminUpdatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, plan }: { id: number; plan: AdminPlanInput }) => {
+      await api.put(`/api/subscription/admin/plans/${id}`, { plan });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['subscription-admin'] });
+      void qc.invalidateQueries({ queryKey: ['subscription', 'plans'] });
+    },
+  });
+}
+
+export function useAdminPatchPlanStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      status,
+      enabled,
+    }: {
+      id: number;
+      status?: string;
+      enabled?: boolean;
+    }) => {
+      await api.patch(`/api/subscription/admin/plans/${id}`, {
+        status,
+        enabled,
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['subscription-admin'] });
+      void qc.invalidateQueries({ queryKey: ['subscription', 'plans'] });
+    },
+  });
+}

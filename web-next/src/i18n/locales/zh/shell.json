@@ -17,6 +17,7 @@
   "nav.admin.logs": "全部日志",
   "nav.admin.tickets": "全部工单",
   "nav.admin.invoices": "发票",
+  "nav.admin.subscriptions": "套餐管理",
   "nav.admin.platform_tenants": "平台租户",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",

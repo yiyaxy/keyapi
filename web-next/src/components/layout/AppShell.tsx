@@ -22,6 +22,7 @@ const TITLES: Record<string, string> = {
   '/admin/logs': 'nav.admin.logs',
   '/admin/tickets': 'nav.admin.tickets',
   '/admin/invoices': 'nav.admin.invoices',
+  '/admin/subscriptions': 'nav.admin.subscriptions',
   '/admin/platform-tenants': 'nav.admin.platform_tenants',
   '/tenant/dashboard': 'nav.tenant.dashboard',
   '/tenant/info': 'nav.tenant.info',

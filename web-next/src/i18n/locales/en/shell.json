@@ -17,6 +17,7 @@
   "nav.admin.logs": "All logs",
   "nav.admin.tickets": "All tickets",
   "nav.admin.invoices": "Invoices",
+  "nav.admin.subscriptions": "Subscriptions",
   "nav.admin.platform_tenants": "Platform tenants",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
