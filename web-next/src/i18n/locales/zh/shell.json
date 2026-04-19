@@ -27,6 +27,7 @@
   "nav.admin.message": "消息中心",
   "nav.admin.agent_log": "Agent 日志",
   "nav.admin.agent_report": "Agent 报告",
+  "nav.admin.ip_analysis": "IP 分析",
   "nav.admin.aff_transfer": "邀请额度转移",
   "nav.aff_transfer": "邀请收益",
   "nav.admin.platform_tenants": "平台租户",

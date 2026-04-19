@@ -12,6 +12,7 @@ import enDashboard from './locales/en/dashboard.json';
 import enErrors from './locales/en/errors.json';
 import enInbox from './locales/en/inbox.json';
 import enInvoice from './locales/en/invoice.json';
+import enIp from './locales/en/ip.json';
 import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
 import enMessage from './locales/en/message.json';
@@ -39,6 +40,7 @@ import zhDashboard from './locales/zh/dashboard.json';
 import zhErrors from './locales/zh/errors.json';
 import zhInbox from './locales/zh/inbox.json';
 import zhInvoice from './locales/zh/invoice.json';
+import zhIp from './locales/zh/ip.json';
 import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
 import zhMessage from './locales/zh/message.json';
@@ -90,6 +92,7 @@ void i18n
         prompt: zhPrompt,
         message: zhMessage,
         agent: zhAgent,
+        ip: zhIp,
       },
       en: {
         common: enCommon,
@@ -119,6 +122,7 @@ void i18n
         prompt: enPrompt,
         message: enMessage,
         agent: enAgent,
+        ip: enIp,
       },
     },
     fallbackLng: 'zh',
@@ -151,6 +155,7 @@ void i18n
       'prompt',
       'message',
       'agent',
+      'ip',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

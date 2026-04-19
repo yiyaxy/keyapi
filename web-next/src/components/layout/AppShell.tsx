@@ -32,6 +32,7 @@ const TITLES: Record<string, string> = {
   '/admin/message': 'nav.admin.message',
   '/admin/agent-log': 'nav.admin.agent_log',
   '/admin/agent-report': 'nav.admin.agent_report',
+  '/admin/ip-analysis': 'nav.admin.ip_analysis',
   '/admin/aff-transfer': 'nav.admin.aff_transfer',
   '/admin/platform-tenants': 'nav.admin.platform_tenants',
   '/admin/models': 'nav.admin.models',

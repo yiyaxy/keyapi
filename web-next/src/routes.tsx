@@ -23,6 +23,7 @@ import { HomePage } from '@/pages/Home';
 import { InboxPage } from '@/pages/Inbox';
 import { InvoicesAdminPage } from '@/pages/InvoicesAdmin';
 import { InvoicesPage } from '@/pages/Invoices';
+import { IpAnalysisAdminPage } from '@/pages/IpAnalysisAdmin';
 import { KeysPage } from '@/pages/Keys';
 import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
@@ -135,10 +136,7 @@ export const router = createBrowserRouter([
                     path: '/admin/purchase-analytics',
                     element: <ComingSoon feature='Purchase analytics' />,
                   },
-                  {
-                    path: '/admin/ip-analysis',
-                    element: <ComingSoon feature='IP analysis' />,
-                  },
+                  { path: '/admin/ip-analysis', element: <IpAnalysisAdminPage /> },
                   { path: '/admin/prompt-rule', element: <PromptRuleAdminPage /> },
                   {
                     path: '/admin/aff-transfer',

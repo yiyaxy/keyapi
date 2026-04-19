@@ -19,6 +19,7 @@ import {
   LifeBuoy,
   List,
   Megaphone,
+  Network,
   Play,
   Plug,
   Receipt,
@@ -118,6 +119,11 @@ export function Sidebar() {
                 to='/admin/agent-report'
                 label={t('nav.admin.agent_report')}
                 icon={FileBarChart}
+              />
+              <NavItem
+                to='/admin/ip-analysis'
+                label={t('nav.admin.ip_analysis')}
+                icon={Network}
               />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>

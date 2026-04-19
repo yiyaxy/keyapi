@@ -27,6 +27,7 @@
   "nav.admin.message": "Message center",
   "nav.admin.agent_log": "Agent log",
   "nav.admin.agent_report": "Agent reports",
+  "nav.admin.ip_analysis": "IP analysis",
   "nav.admin.aff_transfer": "Invite transfers",
   "nav.aff_transfer": "Invite earnings",
   "nav.admin.platform_tenants": "Platform tenants",
