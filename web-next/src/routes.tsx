@@ -29,6 +29,7 @@ import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { SiteRPMPage } from '@/pages/SiteRPM';
+import { SmartCachePage } from '@/pages/SmartCache';
 import { SubscriptionAdminPage } from '@/pages/SubscriptionAdmin';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
@@ -86,6 +87,7 @@ export const router = createBrowserRouter([
               { path: '/account', element: <AccountPage /> },
               { path: '/inbox', element: <InboxPage /> },
               { path: '/invoice', element: <InvoicesPage /> },
+              { path: '/smart-cache', element: <SmartCachePage /> },
               { path: '/tickets', element: <TicketsPage /> },
               { path: '/tickets/:id', element: <TicketDetailPage /> },
               {

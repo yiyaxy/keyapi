@@ -25,5 +25,13 @@
   "monitor.status.disabled": "已禁用",
   "monitor.status.auto_disabled": "自动禁用",
   "monitor.empty": "暂无监控数据",
-  "monitor.reason.none": "—"
+  "monitor.reason.none": "—",
+  "cache.page.title": "智能缓存",
+  "cache.sub": "近 {{days}} 天通过提示缓存节省的额度。",
+  "cache.range.7": "7 天",
+  "cache.range.30": "30 天",
+  "cache.range.90": "90 天",
+  "cache.total_savings": "节省额度",
+  "cache.cache_tokens": "命中 Token",
+  "cache.hit_count": "命中次数"
 }

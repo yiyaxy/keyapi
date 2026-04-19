@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Building2,
   ClipboardList,
+  Database,
   FileText,
   Gauge,
   Gem,
@@ -62,6 +63,11 @@ export function Sidebar() {
           <NavItem to='/topup' label={t('nav.topup')} icon={Receipt} />
           <NavItem to='/plan' label={t('nav.plan')} icon={Gem} />
           <NavItem to='/invoice' label={t('nav.invoice')} icon={ScrollText} />
+          <NavItem
+            to='/smart-cache'
+            label={t('nav.smart_cache')}
+            icon={Database}
+          />
           <NavItem
             to='/inbox'
             label={t('nav.inbox')}

@@ -15,6 +15,7 @@ const TITLES: Record<string, string> = {
   '/account': 'usermenu.account',
   '/inbox': 'nav.inbox',
   '/invoice': 'nav.invoice',
+  '/smart-cache': 'nav.smart_cache',
   '/tickets': 'nav.tickets',
   '/admin/channels': 'nav.admin.channels',
   '/admin/users': 'nav.admin.users',
