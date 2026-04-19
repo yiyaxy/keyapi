@@ -5,6 +5,7 @@ import {
   Play,
   Plug,
   Receipt,
+  Ticket,
   Users,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -49,6 +50,11 @@ export function Sidebar() {
               icon={Plug}
             />
             <NavItem to='/admin/users' label={t('nav.admin.users')} icon={Users} />
+            <NavItem
+              to='/admin/redemption'
+              label={t('nav.admin.redemption')}
+              icon={Ticket}
+            />
           </SidebarGroup>
         )}
       </nav>

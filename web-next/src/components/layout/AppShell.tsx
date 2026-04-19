@@ -15,6 +15,7 @@ const TITLES: Record<string, string> = {
   '/account': 'usermenu.account',
   '/admin/channels': 'nav.admin.channels',
   '/admin/users': 'nav.admin.users',
+  '/admin/redemption': 'nav.admin.redemption',
 };
 
 export function AppShell() {
