@@ -21,45 +21,50 @@ import (
 // paymentRefundView mirrors paymentOrderView's shape conventions: no PII,
 // enough for an admin dashboard + order-detail drawer.
 type paymentRefundView struct {
-	Id             int    `json:"id"`
-	OutTradeNo     string `json:"out_trade_no"`
-	OutRefundNo    string `json:"out_refund_no"`
-	RefundId       string `json:"refund_id,omitempty"`
-	PaymentOrderId int    `json:"payment_order_id"`
-	Amount         int64  `json:"amount"`
-	Currency       string `json:"currency"`
-	Reason         string `json:"reason"`
-	Status         string `json:"status"`
-	LastError      string `json:"last_error,omitempty"`
-	InitiatedBy    int    `json:"initiated_by"`
-	RefundedAt     int64  `json:"refunded_at"`
-	CreatedAt      int64  `json:"created_at"`
-	UpdatedAt      int64  `json:"updated_at"`
+	Id                    int    `json:"id"`
+	OutTradeNo            string `json:"out_trade_no"`
+	OutRefundNo           string `json:"out_refund_no"`
+	RefundId              string `json:"refund_id,omitempty"`
+	PaymentOrderId        int    `json:"payment_order_id"`
+	Amount                int64  `json:"amount"`
+	Currency              string `json:"currency"`
+	Reason                string `json:"reason"`
+	Status                string `json:"status"`
+	LastError             string `json:"last_error,omitempty"`
+	InitiatedBy           int    `json:"initiated_by"`
+	UserQuotaDelta        int64  `json:"user_quota_delta"`
+	UserQuotaDeltaApplied int64  `json:"user_quota_delta_applied"`
+	RefundedAt            int64  `json:"refunded_at"`
+	CreatedAt             int64  `json:"created_at"`
+	UpdatedAt             int64  `json:"updated_at"`
 }
 
 func toRefundView(r *model.PaymentRefund) paymentRefundView {
 	return paymentRefundView{
-		Id:          r.Id,
-		OutTradeNo:  r.OutTradeNo,
-		OutRefundNo: r.OutRefundNo,
-		RefundId:    r.RefundId,
-		PaymentOrderId: r.PaymentOrderId,
-		Amount:      r.Amount,
-		Currency:    r.Currency,
-		Reason:      r.Reason,
-		Status:      r.Status,
-		LastError:   r.LastError,
-		InitiatedBy: r.InitiatedBy,
-		RefundedAt:  r.RefundedAt,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
+		Id:                    r.Id,
+		OutTradeNo:            r.OutTradeNo,
+		OutRefundNo:           r.OutRefundNo,
+		RefundId:              r.RefundId,
+		PaymentOrderId:        r.PaymentOrderId,
+		Amount:                r.Amount,
+		Currency:              r.Currency,
+		Reason:                r.Reason,
+		Status:                r.Status,
+		LastError:             r.LastError,
+		InitiatedBy:           r.InitiatedBy,
+		UserQuotaDelta:        r.UserQuotaDelta,
+		UserQuotaDeltaApplied: r.UserQuotaDeltaApplied,
+		RefundedAt:            r.RefundedAt,
+		CreatedAt:             r.CreatedAt,
+		UpdatedAt:             r.UpdatedAt,
 	}
 }
 
 type createRefundRequest struct {
-	OutTradeNo  string `json:"out_trade_no"`
-	AmountCents int64  `json:"amount_cents"`
-	Reason      string `json:"reason"`
+	OutTradeNo     string `json:"out_trade_no"`
+	AmountCents    int64  `json:"amount_cents"`
+	Reason         string `json:"reason"`
+	UserQuotaDelta int64  `json:"user_quota_delta"` // 0 = keep user balance; otherwise deduct this many raw quota (clamped to 0)
 }
 
 // buildRefundNotifyUrl reuses the same ServerAddress validation as
@@ -107,12 +112,13 @@ func CreateWechatRefund(c *gin.Context) {
 	}
 
 	refund, err := payment.CreateRefund(c.Request.Context(), payment.CreateRefundInput{
-		TenantId:    tid,
-		InitiatedBy: actorId,
-		OutTradeNo:  req.OutTradeNo,
-		AmountCents: req.AmountCents,
-		Reason:      req.Reason,
-		NotifyUrl:   notifyUrl,
+		TenantId:       tid,
+		InitiatedBy:    actorId,
+		OutTradeNo:     req.OutTradeNo,
+		AmountCents:    req.AmountCents,
+		Reason:         req.Reason,
+		NotifyUrl:      notifyUrl,
+		UserQuotaDelta: req.UserQuotaDelta,
 	})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

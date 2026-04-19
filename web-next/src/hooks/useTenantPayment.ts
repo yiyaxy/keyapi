@@ -139,10 +139,38 @@ export type PaymentRefundView = {
   status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'closed';
   last_error?: string;
   initiated_by: number;
+  user_quota_delta: number; // raw quota admin wants reclaimed
+  user_quota_delta_applied: number; // raw quota actually reclaimed after clamp
   refunded_at: number;
   created_at: number;
   updated_at: number;
 };
+
+// OrderWithRefundContext is the admin-only response from
+// GET /api/payment/orders/:out_trade_no — includes the extra fields the
+// refund dialog needs to compute a sensible default deduction.
+export type OrderWithRefundContext = {
+  id: number;
+  out_trade_no: string;
+  order_type: string;
+  amount: number; // cents
+  refunded_amount: number;
+  currency: string;
+  status: string;
+  credited_quota: number; // raw quota applied to the user on topup
+  payer_user_id: number;
+  payer_username: string;
+  payer_current_quota: number;
+};
+
+export async function fetchOrderRefundContext(
+  outTradeNo: string
+): Promise<OrderWithRefundContext> {
+  const res = await api.get<OrderWithRefundContext>(
+    `/api/payment/orders/${encodeURIComponent(outTradeNo)}`
+  );
+  return res.data;
+}
 
 export function useTenantPaymentRefunds(q: {
   page?: number;
@@ -170,6 +198,7 @@ export type CreateRefundPayload = {
   out_trade_no: string;
   amount_cents: number;
   reason?: string;
+  user_quota_delta?: number; // raw quota; backend clamps to ≤ user.quota
 };
 
 export function useCreateRefund() {

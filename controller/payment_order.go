@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/shopspring/decimal"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -42,6 +44,27 @@ func toOrderView(o *model.PaymentOrder) paymentOrderView {
 	}
 }
 
+// creditedRawQuota reconstructs the raw quota delta that the success
+// callback wrote to users.quota for a topup order. Reads amount_units
+// from metadata (same source applyTopupSuccess uses). Returns 0 on any
+// parse problem or if the order isn't a topup.
+func creditedRawQuota(o *model.PaymentOrder) int64 {
+	if o == nil || o.OrderType != model.PaymentOrderTypeTopup {
+		return 0
+	}
+	var meta struct {
+		AmountUnits int64 `json:"amount_units"`
+	}
+	if err := json.Unmarshal([]byte(o.Metadata), &meta); err != nil {
+		return 0
+	}
+	if meta.AmountUnits <= 0 {
+		return 0
+	}
+	return decimal.NewFromInt(meta.AmountUnits).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+}
+
 // GetPaymentOrderByOutTradeNoHandler returns a single order. Authz:
 //   - session.user_id == order.user_id  (the payer themselves), OR
 //   - session.tenant_role >= model.TenantRoleAdmin AND session.tenant_id == order.tenant_id
@@ -73,7 +96,47 @@ func GetPaymentOrderByOutTradeNoHandler(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "not found"})
 		return
 	}
-	common.ApiSuccess(c, toOrderView(order))
+
+	// Admins get a few extra fields useful for the refund dialog:
+	//   - credited_quota: what the topup callback wrote to users.quota
+	//   - payer_user_id / payer_username: so the dialog can show who paid
+	//   - payer_current_quota: balance of payer's home-tenant row (for
+	//     computing the max sensible deduction on refund)
+	// Regular payers get the plain view — they don't need these.
+	view := toOrderView(order)
+	if !isTenantAdmin {
+		common.ApiSuccess(c, view)
+		return
+	}
+	payerQuota := int64(0)
+	payerUsername := ""
+	if order.UserId > 0 {
+		if u, err := model.GetUserByIdWithContext(nil, order.UserId, false); err == nil && u != nil {
+			payerQuota = int64(u.Quota)
+			payerUsername = u.Username
+		}
+	}
+	common.ApiSuccess(c, gin.H{
+		"id":              view.Id,
+		"out_trade_no":    view.OutTradeNo,
+		"transaction_id":  view.TransactionId,
+		"provider":        view.Provider,
+		"order_type":      view.OrderType,
+		"product_form":    view.ProductForm,
+		"amount":          view.Amount,
+		"refunded_amount": view.RefundedAmount,
+		"currency":        view.Currency,
+		"status":          view.Status,
+		"paid_at":         view.PaidAt,
+		"expires_at":      view.ExpiresAt,
+		"created_at":      view.CreatedAt,
+		"updated_at":      view.UpdatedAt,
+		// Admin-only
+		"credited_quota":      creditedRawQuota(order),
+		"payer_user_id":       order.UserId,
+		"payer_username":      payerUsername,
+		"payer_current_quota": payerQuota,
+	})
 }
 
 // ListTenantPaymentOrders returns a paginated list for the current tenant.

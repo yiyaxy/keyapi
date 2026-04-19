@@ -20,6 +20,11 @@ type CreateRefundInput struct {
 	AmountCents int64  // ≤ order.Amount - order.RefundedAmount
 	Reason      string // shown on user's WeChat UI (optional)
 	NotifyUrl   string // absolute refund callback URL
+	// UserQuotaDelta is the raw quota the admin wants reclaimed from the
+	// payer's balance on refund success. 0 = don't touch quota (historical
+	// default). Non-negative; enforced here and clamped at apply time so
+	// the user never goes negative even if they spent the topup already.
+	UserQuotaDelta int64
 }
 
 // CreateRefund persists a pending PaymentRefund, asks WeChat to accept the
@@ -58,6 +63,16 @@ func CreateRefund(ctx context.Context, in CreateRefundInput) (*model.PaymentRefu
 	if err != nil {
 		return nil, err
 	}
+	quotaDelta := in.UserQuotaDelta
+	if quotaDelta < 0 {
+		quotaDelta = 0
+	}
+	// Only topup orders credit quota; subscription renewals bump
+	// tenant_plans.expires_at instead, so quota deduction on refund is
+	// nonsensical there. Force to 0.
+	if order.OrderType != model.PaymentOrderTypeTopup {
+		quotaDelta = 0
+	}
 	refund := &model.PaymentRefund{
 		TenantId:       in.TenantId,
 		PaymentOrderId: order.Id,
@@ -68,6 +83,7 @@ func CreateRefund(ctx context.Context, in CreateRefundInput) (*model.PaymentRefu
 		Reason:         in.Reason,
 		Status:         model.PaymentRefundStatusPending,
 		InitiatedBy:    in.InitiatedBy,
+		UserQuotaDelta: quotaDelta,
 	}
 	if err := model.CreatePaymentRefund(refund); err != nil {
 		return nil, fmt.Errorf("persist refund: %w", err)
@@ -118,6 +134,13 @@ func CreateRefund(ctx context.Context, in CreateRefundInput) (*model.PaymentRefu
 	return refund, nil
 }
 
+// postCommitDeduct captures what a successful refund needs to do to the
+// user's in-memory cache after the DB tx lands.
+type postCommitDeduct struct {
+	userId    int
+	delta     int64 // negative for deduction; 0 = skip
+}
+
 // ApplyRefundSuccess is the single entry-point for the refund-success
 // transition; called by both the callback handler and the sync-success
 // path in CreateRefund. Idempotent.
@@ -144,12 +167,67 @@ func ApplyRefundSuccess(ctx context.Context, outRefundNo string, refundId string
 			amountCents, refund.Amount)
 	}
 
-	return model.WithTenantBypass(model.DB).Transaction(func(tx *gorm.DB) error {
-		flipped, err := model.MarkRefundSucceeded(tx, outRefundNo, refundId, refundedAt)
+	// Resolve the payer and their home tenant once up front so we can
+	// run the deduction inside the same tx as the refund state transition.
+	// We do this BEFORE the tx so a failed lookup doesn't roll the refund
+	// state back — the refund should still succeed financially even if
+	// we can't reach the user row for some reason.
+	var payerUserId, payerHomeTenant int
+	if refund.UserQuotaDelta > 0 {
+		order, oerr := model.GetPaymentOrderByOutTradeNo(refund.OutTradeNo)
+		if oerr == nil && order != nil && order.OrderType == model.PaymentOrderTypeTopup {
+			payerUserId = order.UserId
+			payerHomeTenant = model.GetUserTenantId(payerUserId)
+		}
+	}
+
+	postCommit := postCommitDeduct{userId: payerUserId, delta: 0}
+
+	txErr := model.WithTenantBypass(model.DB).Transaction(func(tx *gorm.DB) error {
+		// Compute actual deduction inside the tx so reads are consistent
+		// with the update we're about to make.
+		actualDelta := int64(0)
+		if refund.UserQuotaDelta > 0 && payerUserId > 0 && payerHomeTenant > 0 {
+			var currentQuota int64
+			if err := tx.Raw(
+				"SELECT quota FROM users WHERE id = ? AND tenant_id = ?",
+				payerUserId, payerHomeTenant,
+			).Scan(&currentQuota).Error; err != nil {
+				common.SysLog(fmt.Sprintf("refund deduct lookup failed user=%d: %v", payerUserId, err))
+				currentQuota = 0
+			}
+			// Clamp to 0 — never drive the user negative even if they've
+			// already spent the topup beyond what we're trying to reclaim.
+			actualDelta = refund.UserQuotaDelta
+			if actualDelta > currentQuota {
+				actualDelta = currentQuota
+			}
+			if actualDelta > 0 {
+				res := tx.Exec(
+					"UPDATE users SET quota = quota - ? WHERE id = ? AND tenant_id = ?",
+					actualDelta, payerUserId, payerHomeTenant,
+				)
+				if res.Error != nil {
+					return fmt.Errorf("deduct user quota: %w", res.Error)
+				}
+				if res.RowsAffected != 1 {
+					return fmt.Errorf("quota deduct affected %d rows (user=%d, home=%d)",
+						res.RowsAffected, payerUserId, payerHomeTenant)
+				}
+			}
+		}
+		postCommit.delta = -actualDelta
+
+		flipped, err := model.MarkRefundSucceeded(tx, outRefundNo, refundId, refundedAt, actualDelta)
 		if err != nil {
 			return err
 		}
 		if !flipped {
+			// Idempotent re-entry — nothing further to do. But if we did
+			// the deduction above, that's a bug (we wouldn't flip twice
+			// because the WHERE status IN (...) guard would block). Leave
+			// the postCommit cache invalidation running anyway — it's a no-op
+			// on repeat.
 			return nil
 		}
 		newTotal, err := model.BumpOrderRefundedAmount(tx, refund.PaymentOrderId, refund.Amount)
@@ -163,15 +241,32 @@ func ApplyRefundSuccess(ctx context.Context, outRefundNo string, refundId string
 			Target:      "payment_refunds",
 			TargetId:    refund.Id,
 			Detail: mustJSON(map[string]any{
-				"out_trade_no":       refund.OutTradeNo,
-				"out_refund_no":      refund.OutRefundNo,
-				"refund_id":          refundId,
-				"amount_cents":       refund.Amount,
-				"order_refunded_now": newTotal,
+				"out_trade_no":         refund.OutTradeNo,
+				"out_refund_no":        refund.OutRefundNo,
+				"refund_id":            refundId,
+				"amount_cents":         refund.Amount,
+				"order_refunded_now":   newTotal,
+				"quota_delta_requested": refund.UserQuotaDelta,
+				"quota_delta_applied":  actualDelta,
+				"payer_user_id":        payerUserId,
+				"payer_home_tenant":    payerHomeTenant,
 			}),
 		}); err != nil {
 			common.SysLog(fmt.Sprintf("refund audit tx-write failed: %v", err))
 		}
 		return nil
 	})
+	if txErr != nil {
+		return txErr
+	}
+
+	// Sync the user-quota cache after the tx commits — the topup path
+	// does the mirror of this on credit. If the cache sync fails we log
+	// but don't error; cache will re-converge next read.
+	if postCommit.delta < 0 {
+		if err := model.CacheIncrUserQuota(postCommit.userId, postCommit.delta); err != nil {
+			common.SysLog(fmt.Sprintf("refund cache sync failed user=%d: %v", postCommit.userId, err))
+		}
+	}
+	return nil
 }

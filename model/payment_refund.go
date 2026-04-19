@@ -67,6 +67,17 @@ type PaymentRefund struct {
 	// callback-only records (there currently aren't any; reserved).
 	InitiatedBy int `json:"initiated_by" gorm:"default:0"`
 
+	// UserQuotaDelta is the raw quota amount the admin wants to reclaim
+	// from the payer's balance when the refund succeeds. 0 means
+	// "don't touch quota" (the historical default). ApplyRefundSuccess
+	// clamps to min(delta, user.current_quota) so a user who has already
+	// spent the topup won't be driven negative. See UserQuotaDeltaApplied
+	// below for the actual amount removed.
+	UserQuotaDelta int64 `json:"user_quota_delta" gorm:"bigint;default:0"`
+	// UserQuotaDeltaApplied is what ApplyRefundSuccess actually subtracted
+	// (0 if user had no balance left). Set when Status flips to succeeded.
+	UserQuotaDeltaApplied int64 `json:"user_quota_delta_applied" gorm:"bigint;default:0"`
+
 	RefundedAt int64 `json:"refunded_at"`
 	CreatedAt  int64 `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt  int64 `json:"updated_at" gorm:"autoUpdateTime"`
@@ -210,14 +221,17 @@ func MarkRefundFailed(outRefundNo string, reason string) error {
 // MarkRefundSucceeded transitions a pending/processing refund to succeeded
 // atomically inside the caller's tx. Returns flipped=true iff this call
 // actually changed the row (idempotent guard for replayed callbacks).
-func MarkRefundSucceeded(tx *gorm.DB, outRefundNo string, refundId string, refundedAt int64) (bool, error) {
+// quotaDeltaApplied records how much of UserQuotaDelta actually came off
+// the user's balance (can be less than requested if user spent it down).
+func MarkRefundSucceeded(tx *gorm.DB, outRefundNo string, refundId string, refundedAt int64, quotaDeltaApplied int64) (bool, error) {
 	if tx == nil {
 		tx = WithTenantBypass(DB)
 	}
 	updates := map[string]interface{}{
-		"status":      PaymentRefundStatusSucceeded,
-		"refunded_at": refundedAt,
-		"updated_at":  time.Now().Unix(),
+		"status":                   PaymentRefundStatusSucceeded,
+		"refunded_at":              refundedAt,
+		"user_quota_delta_applied": quotaDeltaApplied,
+		"updated_at":               time.Now().Unix(),
 	}
 	if refundId != "" {
 		updates["refund_id"] = refundId
