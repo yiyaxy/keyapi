@@ -5,11 +5,17 @@ import { toast } from 'sonner';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreateTenantDialog } from '@/components/platform/CreateTenantDialog';
+import { TenantPlanEditorDialog } from '@/components/platform/TenantPlanEditorDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageAction } from '@/hooks/usePageAction';
-import { useDeleteTenant, usePlatformTenants } from '@/hooks/usePlatformTenants';
+import {
+  useDeleteTenant,
+  usePlatformTenants,
+  useTenantPlans,
+  type TenantPlan,
+} from '@/hooks/usePlatformTenants';
 import type { Tenant } from '@/hooks/useTenant';
 import { fmtDateSec } from '@/lib/format';
 
@@ -32,11 +38,15 @@ function statusMeta(status: number): {
 export function PlatformTenantsPage() {
   const { t } = useTranslation('platform');
   const tenants = usePlatformTenants();
+  const plans = useTenantPlans();
   const del = useDeleteTenant();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
+  const [planTarget, setPlanTarget] = useState<{ tenant: Tenant; plan: TenantPlan } | null>(null);
 
   const items = tenants.data ?? [];
+  const planByTenant = new Map<number, TenantPlan>();
+  for (const p of plans.data ?? []) planByTenant.set(p.tenant_id, p);
 
   return (
     <div className='space-y-4'>
@@ -86,7 +96,19 @@ export function PlatformTenantsPage() {
                       <Badge variant={meta.variant}>{t(meta.key)}</Badge>
                     </td>
                     <td className='px-3 py-2 text-fg-1'>{fmtDateSec(tnt.created_at)}</td>
-                    <td className='px-3 py-2'>
+                    <td className='px-3 py-2 text-right'>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        disabled={!planByTenant.has(tnt.id)}
+                        onClick={() => {
+                          const p = planByTenant.get(tnt.id);
+                          if (p) setPlanTarget({ tenant: tnt, plan: p });
+                        }}
+                      >
+                        {t('tenants.action.plan')}
+                      </Button>
                       <Button
                         type='button'
                         variant='ghost'
@@ -106,6 +128,14 @@ export function PlatformTenantsPage() {
         </div>
       )}
       <CreateTenantDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {planTarget && (
+        <TenantPlanEditorDialog
+          open
+          tenantName={planTarget.tenant.name}
+          plan={planTarget.plan}
+          onOpenChange={(o) => !o && setPlanTarget(null)}
+        />
+      )}
       {deleteTarget && (
         <ConfirmDialog
           open

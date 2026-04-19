@@ -41,6 +41,12 @@ type UpdateTenantPlanRequest struct {
 	Status             *int   `json:"status"`
 	ExpiresAt          *int64 `json:"expires_at"`
 	GracePeriodSeconds *int64 `json:"grace_period_seconds"`
+	// Renewal pricing (S2). Setting RenewPriceAmount > 0 is the signal that
+	// a tenant admin can self-serve renew via WeChat Pay; <=0 disables the
+	// renewal flow entirely.
+	RenewPeriodDays  *int    `json:"renew_period_days"`
+	RenewPriceAmount *int64  `json:"renew_price_amount"`
+	RenewCurrency    *string `json:"renew_currency"`
 }
 
 // UpdateTenantPlanHandler updates a tenant's plan.
@@ -113,6 +119,23 @@ func UpdateTenantPlanHandler(c *gin.Context) {
 			gp = 0
 		}
 		plan.GracePeriodSeconds = gp
+	}
+	if req.RenewPeriodDays != nil {
+		d := *req.RenewPeriodDays
+		if d < 0 {
+			d = 0
+		}
+		plan.RenewPeriodDays = d
+	}
+	if req.RenewPriceAmount != nil {
+		a := *req.RenewPriceAmount
+		if a < 0 {
+			a = 0
+		}
+		plan.RenewPriceAmount = a
+	}
+	if req.RenewCurrency != nil {
+		plan.RenewCurrency = *req.RenewCurrency
 	}
 
 	if err := model.UpsertTenantPlan(plan); err != nil {
