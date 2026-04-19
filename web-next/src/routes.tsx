@@ -13,6 +13,8 @@ import { AboutPage } from '@/pages/About';
 import { AccountPage } from '@/pages/Account';
 import { AffTransferAdminPage } from '@/pages/AffTransferAdmin';
 import { AffTransferPage } from '@/pages/AffTransfer';
+import { AgentLogAdminPage } from '@/pages/AgentLogAdmin';
+import { AgentReportAdminPage } from '@/pages/AgentReportAdmin';
 import { ChannelMonitorPage } from '@/pages/ChannelMonitor';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
@@ -147,13 +149,10 @@ export const router = createBrowserRouter([
                     element: <RebateSettingsAdminPage />,
                   },
                   { path: '/admin/message', element: <MessageAdminPage /> },
-                  {
-                    path: '/admin/agent-log',
-                    element: <ComingSoon feature='Agent log' />,
-                  },
+                  { path: '/admin/agent-log', element: <AgentLogAdminPage /> },
                   {
                     path: '/admin/agent-report',
-                    element: <ComingSoon feature='Agent report' />,
+                    element: <AgentReportAdminPage />,
                   },
                   { path: '/admin/request-trace', element: <RequestTracePage /> },
                   {

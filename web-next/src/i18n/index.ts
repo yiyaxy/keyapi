@@ -4,6 +4,7 @@ import { initReactI18next } from 'react-i18next';
 
 import enAccount from './locales/en/account.json';
 import enAff from './locales/en/aff.json';
+import enAgent from './locales/en/agent.json';
 import enAuth from './locales/en/auth.json';
 import enChannels from './locales/en/channels.json';
 import enCommon from './locales/en/common.json';
@@ -30,6 +31,7 @@ import enTopup from './locales/en/topup.json';
 import enUsers from './locales/en/users.json';
 import zhAccount from './locales/zh/account.json';
 import zhAff from './locales/zh/aff.json';
+import zhAgent from './locales/zh/agent.json';
 import zhAuth from './locales/zh/auth.json';
 import zhChannels from './locales/zh/channels.json';
 import zhCommon from './locales/zh/common.json';
@@ -87,6 +89,7 @@ void i18n
         rebate: zhRebate,
         prompt: zhPrompt,
         message: zhMessage,
+        agent: zhAgent,
       },
       en: {
         common: enCommon,
@@ -115,6 +118,7 @@ void i18n
         rebate: enRebate,
         prompt: enPrompt,
         message: enMessage,
+        agent: enAgent,
       },
     },
     fallbackLng: 'zh',
@@ -146,6 +150,7 @@ void i18n
       'rebate',
       'prompt',
       'message',
+      'agent',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

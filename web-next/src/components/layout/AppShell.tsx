@@ -30,6 +30,8 @@ const TITLES: Record<string, string> = {
   '/admin/rebate-settings': 'nav.admin.rebate_settings',
   '/admin/prompt-rule': 'nav.admin.prompt_rule',
   '/admin/message': 'nav.admin.message',
+  '/admin/agent-log': 'nav.admin.agent_log',
+  '/admin/agent-report': 'nav.admin.agent_report',
   '/admin/aff-transfer': 'nav.admin.aff_transfer',
   '/admin/platform-tenants': 'nav.admin.platform_tenants',
   '/admin/models': 'nav.admin.models',

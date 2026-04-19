@@ -1,8 +1,10 @@
 import {
   Activity,
   AlertCircle,
+  Bot,
   Building2,
   ClipboardList,
+  FileBarChart,
   Coins,
   Database,
   FileText,
@@ -106,6 +108,16 @@ export function Sidebar() {
                 to='/admin/message'
                 label={t('nav.admin.message')}
                 icon={Megaphone}
+              />
+              <NavItem
+                to='/admin/agent-log'
+                label={t('nav.admin.agent_log')}
+                icon={Bot}
+              />
+              <NavItem
+                to='/admin/agent-report'
+                label={t('nav.admin.agent_report')}
+                icon={FileBarChart}
               />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>
