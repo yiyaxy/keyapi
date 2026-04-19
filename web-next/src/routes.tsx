@@ -29,6 +29,7 @@ import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
+import { RequestTracePage } from '@/pages/RequestTrace';
 import { SiteRPMPage } from '@/pages/SiteRPM';
 import { SmartCachePage } from '@/pages/SmartCache';
 import { SubscriptionAdminPage } from '@/pages/SubscriptionAdmin';
@@ -155,13 +156,10 @@ export const router = createBrowserRouter([
                     path: '/admin/agent-report',
                     element: <ComingSoon feature='Agent report' />,
                   },
-                  {
-                    path: '/admin/request-trace',
-                    element: <ComingSoon feature='Request trace' />,
-                  },
+                  { path: '/admin/request-trace', element: <RequestTracePage /> },
                   {
                     path: '/admin/request-trace/:requestId',
-                    element: <ComingSoon feature='Request trace' />,
+                    element: <RequestTracePage />,
                   },
                   {
                     path: '/admin/settings',

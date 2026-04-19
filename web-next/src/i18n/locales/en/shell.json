@@ -21,6 +21,7 @@
   "nav.admin.subscriptions": "Subscriptions",
   "nav.admin.site_rpm": "Site RPM",
   "nav.admin.channel_monitor": "Channel monitor",
+  "nav.admin.request_trace": "Request trace",
   "nav.admin.platform_tenants": "Platform tenants",
   "nav.admin.models": "Model registry",
   "nav.platform": "PLATFORM",

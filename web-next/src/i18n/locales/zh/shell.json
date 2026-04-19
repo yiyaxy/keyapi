@@ -21,6 +21,7 @@
   "nav.admin.subscriptions": "套餐管理",
   "nav.admin.site_rpm": "站点 RPM",
   "nav.admin.channel_monitor": "渠道监控",
+  "nav.admin.request_trace": "请求追踪",
   "nav.admin.platform_tenants": "平台租户",
   "nav.admin.models": "模型注册表",
   "nav.platform": "PLATFORM",

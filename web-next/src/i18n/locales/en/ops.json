@@ -33,5 +33,20 @@
   "cache.range.90": "90 days",
   "cache.total_savings": "Saved",
   "cache.cache_tokens": "Cached tokens",
-  "cache.hit_count": "Cache hits"
+  "cache.hit_count": "Cache hits",
+  "trace.page.title": "Request trace",
+  "trace.sub": "Look up all log rows for a specific request_id.",
+  "trace.input.placeholder": "Paste request_id",
+  "trace.lookup": "Look up",
+  "trace.empty": "Enter a request_id above to begin.",
+  "trace.not_found": "No logs found for this request_id.",
+  "trace.col.time": "Time",
+  "trace.col.type": "Type",
+  "trace.col.user": "User",
+  "trace.col.channel": "Channel",
+  "trace.col.model": "Model",
+  "trace.col.tokens": "Tokens",
+  "trace.col.quota": "Cost",
+  "trace.col.latency": "Latency",
+  "trace.col.content": "Content"
 }

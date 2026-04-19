@@ -116,6 +116,11 @@ export function Sidebar() {
                 label={t('nav.admin.channel_monitor')}
                 icon={Activity}
               />
+              <NavItem
+                to='/admin/request-trace'
+                label={t('nav.admin.request_trace')}
+                icon={Activity}
+              />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>
               <NavItem

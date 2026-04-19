@@ -33,5 +33,20 @@
   "cache.range.90": "90 天",
   "cache.total_savings": "节省额度",
   "cache.cache_tokens": "命中 Token",
-  "cache.hit_count": "命中次数"
+  "cache.hit_count": "命中次数",
+  "trace.page.title": "请求追踪",
+  "trace.sub": "根据 request_id 查找所有相关日志。",
+  "trace.input.placeholder": "粘贴 request_id",
+  "trace.lookup": "查询",
+  "trace.empty": "输入 request_id 进行查询。",
+  "trace.not_found": "未找到该 request_id 对应的日志。",
+  "trace.col.time": "时间",
+  "trace.col.type": "类型",
+  "trace.col.user": "用户",
+  "trace.col.channel": "渠道",
+  "trace.col.model": "模型",
+  "trace.col.tokens": "Tokens",
+  "trace.col.quota": "金额",
+  "trace.col.latency": "耗时",
+  "trace.col.content": "内容"
 }
