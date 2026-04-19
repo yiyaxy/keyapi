@@ -10,6 +10,7 @@ import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
 import { AccountPage } from '@/pages/Account';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
+import { UsersAdminPage } from '@/pages/UsersAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
 import { KeysPage } from '@/pages/Keys';
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
                 element: <AdminRoute />,
                 children: [
                   { path: '/admin/channels', element: <ChannelsAdminPage /> },
+                  { path: '/admin/users', element: <UsersAdminPage /> },
                 ],
               },
               { path: '*', element: <NotFound /> },

@@ -1,4 +1,12 @@
-import { KeyRound, LayoutDashboard, List, Play, Plug, Receipt } from 'lucide-react';
+import {
+  KeyRound,
+  LayoutDashboard,
+  List,
+  Play,
+  Plug,
+  Receipt,
+  Users,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
@@ -40,6 +48,7 @@ export function Sidebar() {
               label={t('nav.admin.channels')}
               icon={Plug}
             />
+            <NavItem to='/admin/users' label={t('nav.admin.users')} icon={Users} />
           </SidebarGroup>
         )}
       </nav>

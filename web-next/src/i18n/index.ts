@@ -12,6 +12,7 @@ import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
 import enShell from './locales/en/shell.json';
 import enTopup from './locales/en/topup.json';
+import enUsers from './locales/en/users.json';
 import zhAccount from './locales/zh/account.json';
 import zhAuth from './locales/zh/auth.json';
 import zhChannels from './locales/zh/channels.json';
@@ -22,6 +23,7 @@ import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
 import zhShell from './locales/zh/shell.json';
 import zhTopup from './locales/zh/topup.json';
+import zhUsers from './locales/zh/users.json';
 
 void i18n
   .use(LanguageDetector)
@@ -39,6 +41,7 @@ void i18n
         account: zhAccount,
         topup: zhTopup,
         channels: zhChannels,
+        users: zhUsers,
       },
       en: {
         common: enCommon,
@@ -51,6 +54,7 @@ void i18n
         account: enAccount,
         topup: enTopup,
         channels: enChannels,
+        users: enUsers,
       },
     },
     fallbackLng: 'zh',
@@ -66,6 +70,7 @@ void i18n
       'account',
       'topup',
       'channels',
+      'users',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
