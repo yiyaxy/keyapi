@@ -30,6 +30,7 @@ import { ModelsAdminPage } from '@/pages/ModelsAdmin';
 import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
+import { RebateSettingsAdminPage } from '@/pages/RebateSettingsAdmin';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { RequestTracePage } from '@/pages/RequestTrace';
 import { SiteRPMPage } from '@/pages/SiteRPM';
@@ -144,7 +145,7 @@ export const router = createBrowserRouter([
                   },
                   {
                     path: '/admin/rebate-settings',
-                    element: <ComingSoon feature='Rebate settings' />,
+                    element: <RebateSettingsAdminPage />,
                   },
                   {
                     path: '/admin/message',

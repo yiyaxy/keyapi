@@ -18,6 +18,7 @@ import enOps from './locales/en/ops.json';
 import enPlan from './locales/en/plan.json';
 import enPlatform from './locales/en/platform.json';
 import enPublic from './locales/en/public.json';
+import enRebate from './locales/en/rebate.json';
 import enRedemption from './locales/en/redemption.json';
 import enSetup from './locales/en/setup.json';
 import enShell from './locales/en/shell.json';
@@ -41,6 +42,7 @@ import zhOps from './locales/zh/ops.json';
 import zhPlan from './locales/zh/plan.json';
 import zhPlatform from './locales/zh/platform.json';
 import zhPublic from './locales/zh/public.json';
+import zhRebate from './locales/zh/rebate.json';
 import zhRedemption from './locales/zh/redemption.json';
 import zhSetup from './locales/zh/setup.json';
 import zhShell from './locales/zh/shell.json';
@@ -78,6 +80,7 @@ void i18n
         ops: zhOps,
         models: zhModels,
         aff: zhAff,
+        rebate: zhRebate,
       },
       en: {
         common: enCommon,
@@ -103,6 +106,7 @@ void i18n
         ops: enOps,
         models: enModels,
         aff: enAff,
+        rebate: enRebate,
       },
     },
     fallbackLng: 'zh',
@@ -131,6 +135,7 @@ void i18n
       'ops',
       'models',
       'aff',
+      'rebate',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
