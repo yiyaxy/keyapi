@@ -6,6 +6,7 @@ import {
   Coins,
   Database,
   FileText,
+  FilterX,
   Gauge,
   Gem,
   Gift,
@@ -94,6 +95,11 @@ export function Sidebar() {
                 to='/admin/rebate-settings'
                 label={t('nav.admin.rebate_settings')}
                 icon={Gift}
+              />
+              <NavItem
+                to='/admin/prompt-rule'
+                label={t('nav.admin.prompt_rule')}
+                icon={FilterX}
               />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>

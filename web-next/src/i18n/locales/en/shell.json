@@ -23,6 +23,7 @@
   "nav.admin.channel_monitor": "Channel monitor",
   "nav.admin.request_trace": "Request trace",
   "nav.admin.rebate_settings": "Rebate settings",
+  "nav.admin.prompt_rule": "Prompt rules",
   "nav.admin.aff_transfer": "Invite transfers",
   "nav.aff_transfer": "Invite earnings",
   "nav.admin.platform_tenants": "Platform tenants",

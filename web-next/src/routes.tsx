@@ -30,6 +30,7 @@ import { ModelsAdminPage } from '@/pages/ModelsAdmin';
 import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
+import { PromptRuleAdminPage } from '@/pages/PromptRuleAdmin';
 import { RebateSettingsAdminPage } from '@/pages/RebateSettingsAdmin';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { RequestTracePage } from '@/pages/RequestTrace';
@@ -135,10 +136,7 @@ export const router = createBrowserRouter([
                     path: '/admin/ip-analysis',
                     element: <ComingSoon feature='IP analysis' />,
                   },
-                  {
-                    path: '/admin/prompt-rule',
-                    element: <ComingSoon feature='Prompt rule' />,
-                  },
+                  { path: '/admin/prompt-rule', element: <PromptRuleAdminPage /> },
                   {
                     path: '/admin/aff-transfer',
                     element: <AffTransferAdminPage />,
