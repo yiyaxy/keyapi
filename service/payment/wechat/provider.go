@@ -77,6 +77,17 @@ func (providerImpl) VerifyAndParseNotify(ctx context.Context, tenantId int, body
 	return verifyAndParseNotify(ctx, tenantId, body, headers)
 }
 
+func (providerImpl) Refund(ctx context.Context, req payment.RefundRequest) (*payment.RefundResult, error) {
+	if req.Order == nil {
+		return nil, errors.New("req.Order nil")
+	}
+	return createRefund(ctx, req.Order.TenantId, req)
+}
+
+func (providerImpl) VerifyAndParseRefundNotify(ctx context.Context, tenantId int, body []byte, headers map[string]string) (*payment.RefundNotifyResult, error) {
+	return verifyAndParseRefundNotify(ctx, tenantId, body, headers)
+}
+
 func (providerImpl) QueryOrder(ctx context.Context, tenantId int, outTradeNo string) (*payment.QueryOrderResult, error) {
 	cc, err := getClient(ctx, tenantId)
 	if err != nil {

@@ -61,6 +61,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
 		// WeChat Pay S2 callback — no auth; signature verified inside handler
 		apiRouter.POST("/payment/wechat/notify/:tenant_id/:order_type", controller.HandleWechatNotify)
+		// WeChat Pay S3 refund callback — no auth; signature verified inside handler
+		apiRouter.POST("/payment/wechat/refund_notify/:tenant_id", controller.HandleWechatRefundNotify)
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
@@ -641,6 +643,9 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.POST("/payment/wechat/sub/native", controller.CreateWechatSubNative)
 			tenantRoute.POST("/payment/wechat/sub/jsapi", controller.CreateWechatSubJsapi)
 			tenantRoute.GET("/payment/orders", controller.ListTenantPaymentOrders)
+			// WeChat Pay S3 refunds
+			tenantRoute.POST("/payment/refunds", controller.CreateWechatRefund)
+			tenantRoute.GET("/payment/refunds", controller.ListTenantPaymentRefundsHandler)
 		}
 
 		platformTenantRoute := apiRouter.Group("/platform/tenants")

@@ -55,6 +55,38 @@ type QueryOrderResult struct {
 	PaidAt        int64
 }
 
+// RefundRequest is what Provider.Refund consumes. Amount is in CNY cents;
+// it MUST equal PaymentRefund.Amount (the row the caller just persisted).
+// OriginalAmount is order.Amount — WeChat requires both in CreateRequest.
+type RefundRequest struct {
+	Order          *model.PaymentOrder
+	Refund         *model.PaymentRefund
+	OriginalAmount int64  // order.Amount
+	NotifyUrl      string // absolute refund callback URL
+	Reason         string // shown on user's WeChat UI (optional)
+}
+
+// RefundResult captures what the provider returned when CREATING the refund
+// (before any async callback). We persist RefundId onto the refund row so
+// operators can trace it in the WeChat dashboard.
+type RefundResult struct {
+	RefundId     string
+	RefundStatus string // "SUCCESS" / "PROCESSING" / "CLOSED" / "ABNORMAL"
+	SuccessTime  int64  // if the provider already completed the refund synchronously
+}
+
+// RefundNotifyResult is the decrypted refund callback payload.
+type RefundNotifyResult struct {
+	OutTradeNo   string
+	OutRefundNo  string
+	RefundId     string
+	RefundStatus string
+	SuccessTime  int64
+	// Amount is the refunded CNY cents (for sanity-checking against the
+	// PaymentRefund row before we bump order.RefundedAmount).
+	Amount int64
+}
+
 // Provider abstracts a payment gateway adapter (wechat, alipay, etc).
 //
 // S1 only required Name + TestCredentials. S2 adds CreateOrder /
@@ -79,6 +111,15 @@ type Provider interface {
 	// S2 defines the method so S3's reconcile loop can use it without a
 	// breaking interface change.
 	QueryOrder(ctx context.Context, tenantId int, outTradeNo string) (*QueryOrderResult, error)
+
+	// Refund submits a refund against an existing paid order. The caller is
+	// expected to have already persisted a PaymentRefund row (so WeChat's
+	// out_refund_no idempotency key exists before we call them).
+	Refund(ctx context.Context, req RefundRequest) (*RefundResult, error)
+
+	// VerifyAndParseRefundNotify decrypts a refund callback body the same way
+	// VerifyAndParseNotify handles payment callbacks.
+	VerifyAndParseRefundNotify(ctx context.Context, tenantId int, body []byte, headers map[string]string) (*RefundNotifyResult, error)
 }
 
 // --- Registry (unchanged from S1) ---
