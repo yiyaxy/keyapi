@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { PasswordField } from '@/components/auth/PasswordField';
-import { WechatCodeModal } from '@/components/auth/WechatCodeModal';
+import { WechatQrModal } from '@/components/auth/WechatQrModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -107,7 +107,7 @@ export function Login() {
       >
         {t('login.wechat')}
       </Button>
-      <WechatCodeModal open={wechatOpen} onOpenChange={setWechatOpen} redirectTo={redirect} />
+      <WechatQrModal open={wechatOpen} onOpenChange={setWechatOpen} redirectTo={redirect} />
     </AuthLayout>
   );
 }

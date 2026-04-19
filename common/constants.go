@@ -105,6 +105,11 @@ var WeChatServerAddress = ""
 var WeChatServerToken = ""
 var WeChatAccountQRCodeImageURL = ""
 
+// Weixin Mini-Program (wx.login + jscode2session) login
+var WxMiniAuthEnabled = false
+var WxMiniAppId = ""
+var WxMiniAppSecret = ""
+
 var TurnstileSiteKey = ""
 var TurnstileSecretKey = ""
 

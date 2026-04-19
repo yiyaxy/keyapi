@@ -45,6 +45,13 @@
 			"style": {
 				"navigationBarTitleText": "消费记录"
 			}
+		},
+		{
+			"path": "pages/qr-confirm/index",
+			"style": {
+				"navigationBarTitleText": "扫码登录",
+				"navigationStyle": "custom"
+			}
 		}
 	],
 	"easycom": {
