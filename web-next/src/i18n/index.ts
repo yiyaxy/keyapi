@@ -9,6 +9,7 @@ import enCommon from './locales/en/common.json';
 import enDashboard from './locales/en/dashboard.json';
 import enErrors from './locales/en/errors.json';
 import enInbox from './locales/en/inbox.json';
+import enInvoice from './locales/en/invoice.json';
 import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
 import enPlatform from './locales/en/platform.json';
@@ -27,6 +28,7 @@ import zhCommon from './locales/zh/common.json';
 import zhDashboard from './locales/zh/dashboard.json';
 import zhErrors from './locales/zh/errors.json';
 import zhInbox from './locales/zh/inbox.json';
+import zhInvoice from './locales/zh/invoice.json';
 import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
 import zhPlatform from './locales/zh/platform.json';
@@ -63,6 +65,7 @@ void i18n
         public: zhPublic,
         setup: zhSetup,
         platform: zhPlatform,
+        invoice: zhInvoice,
       },
       en: {
         common: enCommon,
@@ -83,6 +86,7 @@ void i18n
         public: enPublic,
         setup: enSetup,
         platform: enPlatform,
+        invoice: enInvoice,
       },
     },
     fallbackLng: 'zh',
@@ -106,6 +110,7 @@ void i18n
       'public',
       'setup',
       'platform',
+      'invoice',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

@@ -13,6 +13,7 @@ import {
   Play,
   Plug,
   Receipt,
+  ScrollText,
   Settings2,
   Ticket,
   Users,
@@ -57,6 +58,7 @@ export function Sidebar() {
         </SidebarGroup>
         <SidebarGroup label={t('nav.billing')}>
           <NavItem to='/topup' label={t('nav.topup')} icon={Receipt} />
+          <NavItem to='/invoice' label={t('nav.invoice')} icon={ScrollText} />
           <NavItem
             to='/inbox'
             label={t('nav.inbox')}

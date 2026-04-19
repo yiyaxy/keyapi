@@ -16,6 +16,7 @@ import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
 import { HomePage } from '@/pages/Home';
 import { InboxPage } from '@/pages/Inbox';
+import { InvoicesPage } from '@/pages/Invoices';
 import { KeysPage } from '@/pages/Keys';
 import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
@@ -79,6 +80,7 @@ export const router = createBrowserRouter([
               { path: '/plan', element: <ComingSoon feature='Plan' /> },
               { path: '/account', element: <AccountPage /> },
               { path: '/inbox', element: <InboxPage /> },
+              { path: '/invoice', element: <InvoicesPage /> },
               { path: '/tickets', element: <TicketsPage /> },
               { path: '/tickets/:id', element: <TicketDetailPage /> },
               {
