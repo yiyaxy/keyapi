@@ -11,6 +11,8 @@ import { AppShell } from '@/components/layout/AppShell';
 import { PublicLayout } from '@/components/public/PublicLayout';
 import { AboutPage } from '@/pages/About';
 import { AccountPage } from '@/pages/Account';
+import { AffTransferAdminPage } from '@/pages/AffTransferAdmin';
+import { AffTransferPage } from '@/pages/AffTransfer';
 import { ChannelMonitorPage } from '@/pages/ChannelMonitor';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
@@ -92,7 +94,7 @@ export const router = createBrowserRouter([
               { path: '/smart-cache', element: <SmartCachePage /> },
               { path: '/tickets', element: <TicketsPage /> },
               { path: '/tickets/:id', element: <TicketDetailPage /> },
-              { path: '/aff-transfer', element: <ComingSoon feature='Affiliate transfer' /> },
+              { path: '/aff-transfer', element: <AffTransferPage /> },
               { path: '/midjourney', element: <ComingSoon feature='Midjourney' /> },
               { path: '/task', element: <ComingSoon feature='Async tasks' /> },
               { path: '/chat/:id?', element: <ComingSoon feature='Chat' /> },
@@ -138,7 +140,7 @@ export const router = createBrowserRouter([
                   },
                   {
                     path: '/admin/aff-transfer',
-                    element: <ComingSoon feature='Affiliate transfer admin' />,
+                    element: <AffTransferAdminPage />,
                   },
                   {
                     path: '/admin/rebate-settings',

@@ -3,6 +3,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import { initReactI18next } from 'react-i18next';
 
 import enAccount from './locales/en/account.json';
+import enAff from './locales/en/aff.json';
 import enAuth from './locales/en/auth.json';
 import enChannels from './locales/en/channels.json';
 import enCommon from './locales/en/common.json';
@@ -25,6 +26,7 @@ import enTickets from './locales/en/tickets.json';
 import enTopup from './locales/en/topup.json';
 import enUsers from './locales/en/users.json';
 import zhAccount from './locales/zh/account.json';
+import zhAff from './locales/zh/aff.json';
 import zhAuth from './locales/zh/auth.json';
 import zhChannels from './locales/zh/channels.json';
 import zhCommon from './locales/zh/common.json';
@@ -75,6 +77,7 @@ void i18n
         plan: zhPlan,
         ops: zhOps,
         models: zhModels,
+        aff: zhAff,
       },
       en: {
         common: enCommon,
@@ -99,6 +102,7 @@ void i18n
         plan: enPlan,
         ops: enOps,
         models: enModels,
+        aff: enAff,
       },
     },
     fallbackLng: 'zh',
@@ -126,6 +130,7 @@ void i18n
       'plan',
       'ops',
       'models',
+      'aff',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
