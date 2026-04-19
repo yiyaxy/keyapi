@@ -12,6 +12,8 @@ import { AccountPage } from '@/pages/Account';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
 import { InboxPage } from '@/pages/Inbox';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
+import { TicketDetailPage } from '@/pages/TicketDetail';
+import { TicketsPage } from '@/pages/Tickets';
 import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
 import { UsersAdminPage } from '@/pages/UsersAdmin';
@@ -50,6 +52,8 @@ export const router = createBrowserRouter([
               { path: '/plan', element: <ComingSoon feature='Plan' /> },
               { path: '/account', element: <AccountPage /> },
               { path: '/inbox', element: <InboxPage /> },
+              { path: '/tickets', element: <TicketsPage /> },
+              { path: '/tickets/:id', element: <TicketDetailPage /> },
               {
                 element: <AdminRoute />,
                 children: [

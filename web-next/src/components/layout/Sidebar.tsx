@@ -3,6 +3,7 @@ import {
   Inbox,
   KeyRound,
   LayoutDashboard,
+  LifeBuoy,
   List,
   Play,
   Plug,
@@ -52,6 +53,7 @@ export function Sidebar() {
             icon={Inbox}
             badge={unread.data}
           />
+          <NavItem to='/tickets' label={t('nav.tickets')} icon={LifeBuoy} />
         </SidebarGroup>
         {isAdmin && (
           <>
