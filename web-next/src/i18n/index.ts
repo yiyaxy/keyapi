@@ -10,6 +10,7 @@ import enErrors from './locales/en/errors.json';
 import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
 import enShell from './locales/en/shell.json';
+import enTopup from './locales/en/topup.json';
 import zhAccount from './locales/zh/account.json';
 import zhAuth from './locales/zh/auth.json';
 import zhCommon from './locales/zh/common.json';
@@ -18,6 +19,7 @@ import zhErrors from './locales/zh/errors.json';
 import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
 import zhShell from './locales/zh/shell.json';
+import zhTopup from './locales/zh/topup.json';
 
 void i18n
   .use(LanguageDetector)
@@ -33,6 +35,7 @@ void i18n
         dashboard: zhDashboard,
         logs: zhLogs,
         account: zhAccount,
+        topup: zhTopup,
       },
       en: {
         common: enCommon,
@@ -43,11 +46,22 @@ void i18n
         dashboard: enDashboard,
         logs: enLogs,
         account: enAccount,
+        topup: enTopup,
       },
     },
     fallbackLng: 'zh',
     supportedLngs: ['zh', 'en'],
-    ns: ['common', 'auth', 'shell', 'errors', 'keys', 'dashboard', 'logs', 'account'],
+    ns: [
+      'common',
+      'auth',
+      'shell',
+      'errors',
+      'keys',
+      'dashboard',
+      'logs',
+      'account',
+      'topup',
+    ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
     detection: {

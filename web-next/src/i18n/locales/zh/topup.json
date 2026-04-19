@@ -1,0 +1,16 @@
+{
+  "page.title": "充值",
+  "balance.title": "当前余额",
+  "balance.used": "已用 {{used}} / {{total}}",
+  "balance.refresh": "刷新",
+  "redeem.title": "兑换码",
+  "redeem.body": "粘贴管理员提供的兑换码，金额将实时到账。",
+  "redeem.placeholder": "输入兑换码",
+  "redeem.submit": "兑换",
+  "redeem.success": "已为您充值 {{amount}}",
+  "redeem.empty": "请输入兑换码",
+  "contact.title": "需要更多额度？",
+  "contact.body": "请联系管理员申请兑换码或人工充值。",
+  "history.title": "最近充值",
+  "history.empty": "暂无充值记录"
+}

@@ -1,0 +1,16 @@
+{
+  "page.title": "Top up",
+  "balance.title": "Current balance",
+  "balance.used": "Used {{used}} of {{total}}",
+  "balance.refresh": "Refresh",
+  "redeem.title": "Redemption code",
+  "redeem.body": "Paste a redemption code provided by your administrator to credit your account.",
+  "redeem.placeholder": "Enter redemption code",
+  "redeem.submit": "Redeem",
+  "redeem.success": "Credited {{amount}} to your balance",
+  "redeem.empty": "Please enter a code",
+  "contact.title": "Need more balance?",
+  "contact.body": "Contact your administrator to request a redemption code or arrange a manual top-up.",
+  "history.title": "Recent top-ups",
+  "history.empty": "No top-ups yet"
+}
