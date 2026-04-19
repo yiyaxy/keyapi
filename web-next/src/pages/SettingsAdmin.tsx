@@ -5,13 +5,6 @@ import { toast } from 'sonner';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,39 +14,110 @@ import {
   useForceLogoutAll,
   useOptions,
   useUpdateOption,
-  type Option,
 } from '@/hooks/useOptions';
+import {
+  allKnownKeys,
+  SECRET_FIELDS,
+  SETTINGS_GROUPS,
+  type FieldDef,
+  type Group,
+} from '@/lib/settingsSchema';
 
-function detectBool(value: string): boolean | null {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return null;
+function labelFor(
+  label: { zh: string; en: string },
+  lang: string
+): string {
+  return lang.startsWith('zh') ? label.zh : label.en;
 }
 
-function EditDialogInner({
-  option,
-  onOpenChange,
+function coerceBool(v: string): boolean {
+  return v === 'true' || v === '1';
+}
+
+function isPrettyJson(value: string): string {
+  try {
+    const parsed = JSON.parse(value);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function BoolRow({
+  field,
+  value,
+  onSaved,
 }: {
-  option: Option;
-  onOpenChange: (o: boolean) => void;
+  field: FieldDef;
+  value: string;
+  onSaved: (next: string) => void;
 }) {
-  const { t } = useTranslation('settings');
+  const { t, i18n } = useTranslation('settings');
   const update = useUpdateOption();
-  const [value, setValue] = useState(option.value);
-  const [boolValue, setBoolValue] = useState<boolean | null>(
-    detectBool(option.value)
+  const checked = coerceBool(value);
+  return (
+    <div className='flex items-center justify-between gap-4 border-b border-line py-2 last:border-b-0'>
+      <div className='min-w-0'>
+        <div className='text-13'>{labelFor(field.label, i18n.language)}</div>
+        <div className='font-mono text-11 text-fg-2'>{field.key}</div>
+      </div>
+      <Switch
+        checked={checked}
+        disabled={update.isPending}
+        onCheckedChange={(next) => {
+          update.mutate(
+            { key: field.key, value: next },
+            {
+              onSuccess: () => {
+                onSaved(String(next));
+                toast.success(t('toast.save.success'));
+              },
+              onError: (e) => toast.error((e as Error).message),
+            }
+          );
+        }}
+      />
+    </div>
   );
+}
 
-  const isBool = boolValue !== null;
+function TextRow({
+  field,
+  value,
+  onSaved,
+}: {
+  field: FieldDef;
+  value: string;
+  onSaved: (next: string) => void;
+}) {
+  const { t, i18n } = useTranslation('settings');
+  const update = useUpdateOption();
+  const initial =
+    field.kind === 'json' ? isPrettyJson(value) : value;
+  const [draft, setDraft] = useState(initial);
+  const dirty = draft !== initial;
 
-  function submit() {
-    const payload = isBool ? boolValue! : value;
+  const long = field.kind === 'longText' || field.kind === 'json';
+
+  function save() {
+    // Normalise JSON on save so backend stores compact form when valid
+    let payload = draft;
+    if (field.kind === 'json') {
+      try {
+        payload = JSON.stringify(JSON.parse(draft));
+      } catch {
+        /* send as-is */
+      }
+    } else if (field.kind === 'number') {
+      const n = Number(draft);
+      if (!Number.isNaN(n)) payload = String(n);
+    }
     update.mutate(
-      { key: option.key, value: payload },
+      { key: field.key, value: payload },
       {
         onSuccess: () => {
+          onSaved(payload);
           toast.success(t('toast.save.success'));
-          onOpenChange(false);
         },
         onError: (e) => toast.error((e as Error).message),
       }
@@ -61,53 +125,277 @@ function EditDialogInner({
   }
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-[640px]'>
-        <DialogHeader>
-          <DialogTitle className='font-mono text-14'>
-            {t('form.title', { key: option.key })}
-          </DialogTitle>
-        </DialogHeader>
-        <div className='space-y-2'>
-          <Label htmlFor='opt-value'>{t('form.value.label')}</Label>
-          {isBool ? (
-            <div className='flex items-center gap-2'>
-              <Switch
-                id='opt-value'
-                checked={boolValue!}
-                onCheckedChange={setBoolValue}
+    <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
+      <div className='flex items-center justify-between gap-4'>
+        <div className='min-w-0'>
+          <Label className='text-13'>
+            {labelFor(field.label, i18n.language)}
+          </Label>
+          <div className='font-mono text-11 text-fg-2'>{field.key}</div>
+        </div>
+        <div className='flex shrink-0 gap-1'>
+          {dirty && (
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              onClick={() => setDraft(initial)}
+            >
+              {t('action.revert')}
+            </Button>
+          )}
+          <Button
+            type='button'
+            size='sm'
+            disabled={!dirty || update.isPending}
+            onClick={save}
+          >
+            {update.isPending
+              ? t('action.saving')
+              : dirty
+                ? t('action.save')
+                : t('action.saved')}
+          </Button>
+        </div>
+      </div>
+      {long ? (
+        <Textarea
+          rows={field.kind === 'json' ? 8 : 4}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          className={
+            field.kind === 'json' ? 'font-mono text-12' : undefined
+          }
+        />
+      ) : (
+        <Input
+          type={field.kind === 'number' ? 'number' : 'text'}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SecretRow({ field }: { field: FieldDef }) {
+  const { t, i18n } = useTranslation('settings');
+  const update = useUpdateOption();
+  const [draft, setDraft] = useState('');
+
+  function save() {
+    if (!draft) return;
+    update.mutate(
+      { key: field.key, value: draft },
+      {
+        onSuccess: () => {
+          setDraft('');
+          toast.success(t('toast.save.success'));
+        },
+        onError: (e) => toast.error((e as Error).message),
+      }
+    );
+  }
+
+  return (
+    <div className='flex items-end justify-between gap-4 border-b border-line py-3 last:border-b-0'>
+      <div className='min-w-0 flex-1 space-y-1'>
+        <Label className='text-13'>
+          {labelFor(field.label, i18n.language)}
+        </Label>
+        <div className='font-mono text-11 text-fg-2'>{field.key}</div>
+        <Input
+          type='password'
+          placeholder={t('secrets.placeholder')}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+      </div>
+      <Button
+        type='button'
+        size='sm'
+        disabled={!draft || update.isPending}
+        onClick={save}
+      >
+        {update.isPending ? t('action.saving') : t('action.save')}
+      </Button>
+    </div>
+  );
+}
+
+function GroupCard({
+  group,
+  values,
+  onSaved,
+  searchTerm,
+}: {
+  group: Group;
+  values: Record<string, string>;
+  onSaved: (key: string, next: string) => void;
+  searchTerm: string;
+}) {
+  const { t, i18n } = useTranslation('settings');
+  const [open, setOpen] = useState(true);
+
+  const fields = useMemo(() => {
+    const present = group.fields.filter((f) =>
+      Object.prototype.hasOwnProperty.call(values, f.key)
+    );
+    if (!searchTerm) return present;
+    const q = searchTerm.toLowerCase();
+    return present.filter((f) => {
+      if (f.key.toLowerCase().includes(q)) return true;
+      const zh = f.label.zh.toLowerCase();
+      const en = f.label.en.toLowerCase();
+      return zh.includes(q) || en.includes(q);
+    });
+  }, [group.fields, values, searchTerm]);
+
+  if (fields.length === 0) return null;
+
+  return (
+    <section className='rounded-md border border-line bg-bg-1'>
+      <button
+        type='button'
+        className='flex w-full items-center justify-between gap-2 px-4 py-3 text-left'
+        onClick={() => setOpen((v) => !v)}
+      >
+        <h3 className='text-14 font-medium'>
+          {labelFor(group.title, i18n.language)}
+        </h3>
+        <span className='text-12 text-fg-2'>
+          {fields.length} · {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && (
+        <div className='divide-y divide-line border-t border-line px-4 py-1'>
+          {fields.map((f) =>
+            f.kind === 'bool' ? (
+              <BoolRow
+                key={f.key}
+                field={f}
+                value={values[f.key]!}
+                onSaved={(next) => onSaved(f.key, next)}
               />
-              <span className='text-13'>
-                {boolValue ? t('form.bool.true') : t('form.bool.false')}
-              </span>
-            </div>
-          ) : value.length > 80 || value.includes('\n') ? (
-            <Textarea
-              id='opt-value'
-              rows={10}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              className='font-mono text-12'
-            />
-          ) : (
-            <Input
-              id='opt-value'
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              className='font-mono'
-            />
+            ) : (
+              <TextRow
+                key={f.key}
+                field={f}
+                value={values[f.key]!}
+                onSaved={(next) => onSaved(f.key, next)}
+              />
+            )
           )}
         </div>
-        <DialogFooter>
-          <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>
-            {t('form.cancel')}
-          </Button>
-          <Button type='button' disabled={update.isPending} onClick={submit}>
-            {t('form.submit')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      )}
+      {fields.length === 0 && (
+        <div className='px-4 py-6 text-13 text-fg-2'>{t('empty.group')}</div>
+      )}
+    </section>
+  );
+}
+
+function SecretsCard() {
+  const { t } = useTranslation('settings');
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className='rounded-md border border-line bg-bg-1'>
+      <button
+        type='button'
+        className='flex w-full items-center justify-between gap-2 px-4 py-3 text-left'
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div>
+          <h3 className='text-14 font-medium'>{t('secrets.title')}</h3>
+          <p className='text-12 text-fg-2'>{t('secrets.sub')}</p>
+        </div>
+        <span className='text-12 text-fg-2'>
+          {SECRET_FIELDS.length} · {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && (
+        <div className='divide-y divide-line border-t border-line px-4 py-1'>
+          {SECRET_FIELDS.map((f) => (
+            <SecretRow key={f.key} field={f} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AdvancedCard({
+  unknown,
+  onSaved,
+  searchTerm,
+}: {
+  unknown: Array<{ key: string; value: string }>;
+  onSaved: (key: string, next: string) => void;
+  searchTerm: string;
+}) {
+  const { t } = useTranslation('settings');
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!searchTerm) return unknown;
+    const q = searchTerm.toLowerCase();
+    return unknown.filter(
+      (o) =>
+        o.key.toLowerCase().includes(q) ||
+        o.value.toLowerCase().includes(q)
+    );
+  }, [unknown, searchTerm]);
+
+  if (unknown.length === 0) return null;
+
+  return (
+    <section className='rounded-md border border-line bg-bg-1'>
+      <button
+        type='button'
+        className='flex w-full items-center justify-between gap-2 px-4 py-3 text-left'
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div>
+          <h3 className='text-14 font-medium'>{t('advanced.title')}</h3>
+          <p className='text-12 text-fg-2'>{t('advanced.sub')}</p>
+        </div>
+        <span className='text-12 text-fg-2'>
+          {filtered.length} · {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && (
+        <div className='divide-y divide-line border-t border-line px-4 py-1'>
+          {filtered.map((o) => {
+            const isBool = o.value === 'true' || o.value === 'false';
+            const field: FieldDef = {
+              key: o.key,
+              kind: isBool
+                ? 'bool'
+                : o.value.length > 80 || o.value.includes('\n')
+                  ? 'longText'
+                  : 'text',
+              label: { zh: o.key, en: o.key },
+            };
+            return field.kind === 'bool' ? (
+              <BoolRow
+                key={o.key}
+                field={field}
+                value={o.value}
+                onSaved={(next) => onSaved(o.key, next)}
+              />
+            ) : (
+              <TextRow
+                key={o.key}
+                field={field}
+                value={o.value}
+                onSaved={(next) => onSaved(o.key, next)}
+              />
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -116,22 +404,28 @@ export function SettingsAdminPage() {
   const list = useOptions();
   const forceLogout = useForceLogoutAll();
   const [keyword, setKeyword] = useState('');
-  const [editTarget, setEditTarget] = useState<Option | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [forceLogoutOpen, setForceLogoutOpen] = useState(false);
 
-  const filtered = useMemo(() => {
-    const items = list.data ?? [];
-    if (!keyword) return items;
-    const k = keyword.toLowerCase();
-    return items.filter(
-      (o) => o.key.toLowerCase().includes(k) || o.value.toLowerCase().includes(k)
-    );
-  }, [list.data, keyword]);
+  const known = useMemo(() => allKnownKeys(), []);
+
+  const values: Record<string, string> = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const o of list.data ?? []) m[o.key] = o.value;
+    return { ...m, ...overrides };
+  }, [list.data, overrides]);
+
+  const unknown = useMemo(() => {
+    return (list.data ?? []).filter((o) => !known.has(o.key));
+  }, [list.data, known]);
+
+  function onSaved(key: string, next: string) {
+    setOverrides((prev) => ({ ...prev, [key]: next }));
+  }
 
   return (
     <div className='space-y-4'>
-      <InlineBanner level='info' message={t('notice')} />
-      <div className='flex items-center gap-2'>
+      <div className='flex flex-wrap items-center gap-2'>
         <Input
           className='max-w-xs'
           placeholder={t('search.placeholder')}
@@ -157,56 +451,25 @@ export function SettingsAdminPage() {
         />
       )}
       {list.isPending ? (
-        <div className='space-y-2'>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className='h-10 w-full' />
+        <div className='space-y-3'>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className='h-20 w-full' />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
-        <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
-          {t('empty')}
-        </div>
       ) : (
-        <div className='overflow-x-auto rounded-md border border-line'>
-          <table className='w-full border-collapse'>
-            <thead>
-              <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
-                <th className='px-3 py-2 font-medium'>{t('col.key')}</th>
-                <th className='px-3 py-2 font-medium'>{t('col.value')}</th>
-                <th className='px-3 py-2' />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((o) => (
-                <tr key={o.key} className='border-b border-line text-13 hover:bg-bg-1'>
-                  <td className='max-w-[260px] px-3 py-2 font-mono text-12'>
-                    {o.key}
-                  </td>
-                  <td className='max-w-[480px] truncate px-3 py-2 font-mono text-12 text-fg-1'>
-                    {o.value}
-                  </td>
-                  <td className='px-3 py-2'>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => setEditTarget(o)}
-                    >
-                      {t('action.edit')}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className='space-y-3'>
+          {SETTINGS_GROUPS.map((g) => (
+            <GroupCard
+              key={g.id}
+              group={g}
+              values={values}
+              onSaved={onSaved}
+              searchTerm={keyword}
+            />
+          ))}
+          <SecretsCard />
+          <AdvancedCard unknown={unknown} onSaved={onSaved} searchTerm={keyword} />
         </div>
-      )}
-      {editTarget && (
-        <EditDialogInner
-          key={editTarget.key}
-          option={editTarget}
-          onOpenChange={(o) => !o && setEditTarget(null)}
-        />
       )}
       <ConfirmDialog
         open={forceLogoutOpen}

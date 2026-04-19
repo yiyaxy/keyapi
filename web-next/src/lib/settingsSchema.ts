@@ -1,0 +1,555 @@
+export type FieldKind =
+  | 'bool'
+  | 'number'
+  | 'text'
+  | 'longText'
+  | 'json'
+  | 'secret';
+
+export type FieldDef = {
+  key: string;
+  kind: FieldKind;
+  label: { zh: string; en: string };
+  help?: { zh: string; en: string };
+  placeholder?: string;
+};
+
+export type Group = {
+  id: string;
+  title: { zh: string; en: string };
+  fields: FieldDef[];
+};
+
+function f(
+  key: string,
+  kind: FieldKind,
+  label: { zh: string; en: string },
+  help?: { zh: string; en: string }
+): FieldDef {
+  return { key, kind, label, help };
+}
+
+export const SETTINGS_GROUPS: Group[] = [
+  {
+    id: 'general',
+    title: { zh: '基础信息', en: 'General' },
+    fields: [
+      f('SystemName', 'text', { zh: '站点名称', en: 'Site name' }),
+      f('Logo', 'text', { zh: 'Logo URL', en: 'Logo URL' }),
+      f('Footer', 'longText', { zh: '页脚（HTML）', en: 'Footer (HTML)' }),
+      f('Notice', 'longText', { zh: '公告（Markdown）', en: 'Notice (Markdown)' }),
+      f('HomePageContent', 'longText', {
+        zh: '首页正文（Markdown）',
+        en: 'Home page content (Markdown)',
+      }),
+      f('About', 'longText', { zh: '关于页面', en: 'About page' }),
+      f('ServerAddress', 'text', { zh: '服务端地址', en: 'Server address' }),
+      f('TopUpLink', 'text', { zh: '充值跳转链接', en: 'Top-up link' }),
+      f('ChatLink', 'text', { zh: '聊天跳转链接', en: 'Chat link' }),
+      f('Chats', 'json', { zh: '聊天入口 JSON', en: 'Chat entries (JSON)' }),
+    ],
+  },
+  {
+    id: 'login',
+    title: { zh: '登录与注册', en: 'Login & register' },
+    fields: [
+      f('PasswordLoginEnabled', 'bool', { zh: '启用密码登录', en: 'Password login' }),
+      f('PasswordRegisterEnabled', 'bool', {
+        zh: '启用密码注册',
+        en: 'Password register',
+      }),
+      f('RegisterEnabled', 'bool', { zh: '允许注册', en: 'Registration open' }),
+      f('EmailVerificationEnabled', 'bool', {
+        zh: '注册需邮箱验证',
+        en: 'Require email verification',
+      }),
+      f('EmailDomainRestrictionEnabled', 'bool', {
+        zh: '限制注册邮箱域名',
+        en: 'Restrict email domains',
+      }),
+      f('EmailDomainWhitelist', 'longText', {
+        zh: '邮箱域名白名单（逗号分隔）',
+        en: 'Email domain whitelist',
+      }),
+      f('EmailAliasRestrictionEnabled', 'bool', {
+        zh: '禁止别名邮箱',
+        en: 'Block email aliases',
+      }),
+      f('TurnstileCheckEnabled', 'bool', {
+        zh: '启用 Turnstile',
+        en: 'Enable Turnstile',
+      }),
+      f('TurnstileSiteKey', 'text', {
+        zh: 'Turnstile site key',
+        en: 'Turnstile site key',
+      }),
+    ],
+  },
+  {
+    id: 'oauth',
+    title: { zh: 'OAuth 集成', en: 'OAuth providers' },
+    fields: [
+      f('GitHubOAuthEnabled', 'bool', { zh: '启用 GitHub', en: 'Enable GitHub' }),
+      f('GitHubClientId', 'text', { zh: 'GitHub client ID', en: 'GitHub client ID' }),
+      f('WeChatAuthEnabled', 'bool', { zh: '启用微信', en: 'Enable WeChat' }),
+      f('WeChatServerAddress', 'text', {
+        zh: '微信服务器地址',
+        en: 'WeChat server URL',
+      }),
+      f('WeChatAccountQRCodeImageURL', 'text', {
+        zh: '公众号二维码 URL',
+        en: 'WeChat QR image URL',
+      }),
+      f('LinuxDOOAuthEnabled', 'bool', {
+        zh: '启用 LinuxDO',
+        en: 'Enable LinuxDO',
+      }),
+      f('TelegramOAuthEnabled', 'bool', {
+        zh: '启用 Telegram',
+        en: 'Enable Telegram',
+      }),
+      f('TelegramBotName', 'text', {
+        zh: 'Telegram bot name',
+        en: 'Telegram bot name',
+      }),
+    ],
+  },
+  {
+    id: 'smtp',
+    title: { zh: 'SMTP 邮件', en: 'SMTP email' },
+    fields: [
+      f('SMTPServer', 'text', { zh: 'SMTP 服务器', en: 'SMTP host' }),
+      f('SMTPPort', 'number', { zh: 'SMTP 端口', en: 'SMTP port' }),
+      f('SMTPAccount', 'text', { zh: 'SMTP 账号', en: 'SMTP account' }),
+      f('SMTPFrom', 'text', { zh: '发件人地址', en: 'SMTP from' }),
+      f('SMTPSSLEnabled', 'bool', { zh: '启用 SSL', en: 'Use SSL' }),
+    ],
+  },
+  {
+    id: 'quota',
+    title: { zh: '额度与计费', en: 'Quota & billing' },
+    fields: [
+      f('QuotaPerUnit', 'number', {
+        zh: '每单位美元对应额度',
+        en: 'Quota per USD',
+      }),
+      f('USDExchangeRate', 'number', { zh: '美元汇率', en: 'USD exchange rate' }),
+      f('QuotaForNewUser', 'number', {
+        zh: '新用户赠送额度',
+        en: 'New user quota',
+      }),
+      f('PreConsumedQuota', 'number', {
+        zh: '请求预扣额度',
+        en: 'Pre-consumed quota',
+      }),
+      f('QuotaForInviter', 'number', {
+        zh: '邀请人奖励额度',
+        en: 'Inviter reward',
+      }),
+      f('QuotaForInvitee', 'number', {
+        zh: '被邀请人奖励额度',
+        en: 'Invitee reward',
+      }),
+      f('TopUpRebateCount', 'number', {
+        zh: '充值返利次数',
+        en: 'Top-up rebate count',
+      }),
+      f('TopUpRebatePercent', 'number', {
+        zh: '充值返利比例 (%)',
+        en: 'Top-up rebate %',
+      }),
+      f('SubscriptionRebateCount', 'number', {
+        zh: '订阅返利次数',
+        en: 'Subscription rebate count',
+      }),
+      f('MinTopUp', 'number', { zh: '最小充值额', en: 'Min top-up' }),
+      f('DisplayInCurrencyEnabled', 'bool', {
+        zh: '按美元展示额度',
+        en: 'Display in USD',
+      }),
+      f('DisplayTokenStatEnabled', 'bool', {
+        zh: '展示 token 统计',
+        en: 'Show token stats',
+      }),
+    ],
+  },
+  {
+    id: 'ratios',
+    title: { zh: '分组与模型倍率', en: 'Groups & ratios' },
+    fields: [
+      f('ModelPrice', 'json', { zh: '模型价格', en: 'Model price' }),
+      f('ModelRatio', 'json', { zh: '模型倍率', en: 'Model ratio' }),
+      f('CompletionRatio', 'json', { zh: '补全倍率', en: 'Completion ratio' }),
+      f('CacheRatio', 'json', { zh: '缓存倍率', en: 'Cache ratio' }),
+      f('CreateCacheRatio', 'json', {
+        zh: '创建缓存倍率',
+        en: 'Create cache ratio',
+      }),
+      f('ImageRatio', 'json', { zh: '图片倍率', en: 'Image ratio' }),
+      f('AudioRatio', 'json', { zh: '音频倍率', en: 'Audio ratio' }),
+      f('AudioCompletionRatio', 'json', {
+        zh: '音频补全倍率',
+        en: 'Audio completion ratio',
+      }),
+      f('GroupRatio', 'json', { zh: '用户分组倍率', en: 'Group ratio' }),
+      f('GroupGroupRatio', 'json', {
+        zh: '分组-分组倍率',
+        en: 'Group→group ratio',
+      }),
+      f('TopupGroupRatio', 'json', { zh: '充值分组倍率', en: 'Topup group ratio' }),
+      f('UserUsableGroups', 'json', {
+        zh: '用户可用分组',
+        en: 'User usable groups',
+      }),
+      f('AutoGroups', 'text', {
+        zh: '自动分组（逗号分隔）',
+        en: 'Auto groups (comma-separated)',
+      }),
+      f('DefaultUseAutoGroup', 'bool', {
+        zh: '默认使用自动分组',
+        en: 'Default use auto group',
+      }),
+    ],
+  },
+  {
+    id: 'monitor',
+    title: { zh: '渠道监控与重试', en: 'Channel monitor & retry' },
+    fields: [
+      f('RetryTimes', 'number', { zh: '重试次数', en: 'Retry times' }),
+      f('ChannelDisableThreshold', 'number', {
+        zh: '渠道禁用阈值（秒）',
+        en: 'Channel disable threshold (s)',
+      }),
+      f('QuotaRemindThreshold', 'number', {
+        zh: '额度不足提醒阈值',
+        en: 'Low-quota remind threshold',
+      }),
+      f('AutomaticDisableChannelEnabled', 'bool', {
+        zh: '自动禁用失败渠道',
+        en: 'Auto-disable failed channels',
+      }),
+      f('AutomaticEnableChannelEnabled', 'bool', {
+        zh: '自动恢复渠道',
+        en: 'Auto-enable channels',
+      }),
+      f('AutomaticDisableKeywords', 'longText', {
+        zh: '触发禁用的关键词',
+        en: 'Auto-disable keywords',
+      }),
+      f('AutomaticDisableStatusCodes', 'text', {
+        zh: '触发禁用的状态码',
+        en: 'Auto-disable status codes',
+      }),
+      f('AutomaticRetryStatusCodes', 'text', {
+        zh: '自动重试状态码',
+        en: 'Auto-retry status codes',
+      }),
+      f('ChannelMonitorVisibility', 'text', {
+        zh: '渠道监控可见性',
+        en: 'Channel monitor visibility',
+      }),
+    ],
+  },
+  {
+    id: 'ratelimit',
+    title: { zh: '速率限制', en: 'Rate limit' },
+    fields: [
+      f('ModelRequestRateLimitEnabled', 'bool', {
+        zh: '启用模型请求限流',
+        en: 'Enable model request rate limit',
+      }),
+      f('ModelRequestRateLimitCount', 'number', {
+        zh: '请求次数上限',
+        en: 'Request count cap',
+      }),
+      f('ModelRequestRateLimitSuccessCount', 'number', {
+        zh: '成功请求上限',
+        en: 'Success count cap',
+      }),
+      f('ModelRequestRateLimitDurationMinutes', 'number', {
+        zh: '窗口时长（分钟）',
+        en: 'Window (minutes)',
+      }),
+      f('ModelRequestRateLimitGroup', 'text', {
+        zh: '作用分组',
+        en: 'Applies to group',
+      }),
+    ],
+  },
+  {
+    id: 'sensitive',
+    title: { zh: '敏感词过滤', en: 'Sensitive words' },
+    fields: [
+      f('CheckSensitiveEnabled', 'bool', {
+        zh: '启用敏感词检查',
+        en: 'Enable sensitive check',
+      }),
+      f('CheckSensitiveOnPromptEnabled', 'bool', {
+        zh: '仅检查 prompt',
+        en: 'Check prompt only',
+      }),
+      f('StopOnSensitiveEnabled', 'bool', {
+        zh: '命中后中断请求',
+        en: 'Stop on sensitive hit',
+      }),
+      f('SensitiveWords', 'longText', { zh: '敏感词列表', en: 'Sensitive words' }),
+    ],
+  },
+  {
+    id: 'permissions',
+    title: { zh: '文件与站点模式', en: 'Files & site modes' },
+    fields: [
+      f('FileDownloadPermission', 'text', {
+        zh: '文件下载权限',
+        en: 'File download permission',
+      }),
+      f('FileUploadPermission', 'text', {
+        zh: '文件上传权限',
+        en: 'File upload permission',
+      }),
+      f('ImageDownloadPermission', 'text', {
+        zh: '图片下载权限',
+        en: 'Image download permission',
+      }),
+      f('ImageUploadPermission', 'text', {
+        zh: '图片上传权限',
+        en: 'Image upload permission',
+      }),
+      f('DemoSiteEnabled', 'bool', { zh: '启用演示站模式', en: 'Demo site mode' }),
+      f('SelfUseModeEnabled', 'bool', {
+        zh: '启用自用模式',
+        en: 'Self-use mode',
+      }),
+      f('ExposeRatioEnabled', 'bool', {
+        zh: '暴露倍率给用户',
+        en: 'Expose ratios to users',
+      }),
+      f('DefaultCollapseSidebar', 'bool', {
+        zh: '默认收起侧边栏',
+        en: 'Collapse sidebar by default',
+      }),
+    ],
+  },
+  {
+    id: 'log',
+    title: { zh: '日志与导出', en: 'Log & export' },
+    fields: [
+      f('LogConsumeEnabled', 'bool', { zh: '记录消耗日志', en: 'Log consumption' }),
+      f('DataExportEnabled', 'bool', {
+        zh: '启用数据导出',
+        en: 'Enable data export',
+      }),
+      f('DataExportDefaultTime', 'text', {
+        zh: '导出默认时间窗',
+        en: 'Default export window',
+      }),
+      f('DataExportInterval', 'number', {
+        zh: '导出间隔（分钟）',
+        en: 'Export interval (min)',
+      }),
+    ],
+  },
+  {
+    id: 'payment_epay',
+    title: { zh: '支付 · 易支付', en: 'Payment · Epay' },
+    fields: [
+      f('EpayId', 'text', { zh: '易支付商户 ID', en: 'Epay merchant ID' }),
+      f('PayAddress', 'text', { zh: '支付地址', en: 'Pay address' }),
+      f('PayMethods', 'json', { zh: '支付方式 JSON', en: 'Pay methods (JSON)' }),
+      f('CustomCallbackAddress', 'text', {
+        zh: '自定义回调地址',
+        en: 'Custom callback URL',
+      }),
+      f('PaymentReturnUrl', 'text', {
+        zh: '支付完成跳转 URL',
+        en: 'Payment return URL',
+      }),
+    ],
+  },
+  {
+    id: 'payment_stripe',
+    title: { zh: '支付 · Stripe', en: 'Payment · Stripe' },
+    fields: [
+      f('StripePriceId', 'text', { zh: 'Stripe price ID', en: 'Stripe price ID' }),
+      f('StripeMinTopUp', 'number', {
+        zh: 'Stripe 最小充值',
+        en: 'Stripe min top-up',
+      }),
+      f('StripeUnitPrice', 'number', {
+        zh: 'Stripe 单价',
+        en: 'Stripe unit price',
+      }),
+      f('StripePromotionCodesEnabled', 'bool', {
+        zh: '允许优惠码',
+        en: 'Allow promotion codes',
+      }),
+    ],
+  },
+  {
+    id: 'payment_creem',
+    title: { zh: '支付 · Creem', en: 'Payment · Creem' },
+    fields: [
+      f('CreemProducts', 'json', { zh: '商品 JSON', en: 'Creem products (JSON)' }),
+      f('CreemTestMode', 'bool', { zh: '测试模式', en: 'Test mode' }),
+    ],
+  },
+  {
+    id: 'invoice',
+    title: { zh: '发票', en: 'Invoices' },
+    fields: [
+      f('InvoiceProvider', 'text', { zh: '发票服务商', en: 'Invoice provider' }),
+      f('InvoiceAutoIssueEnabled', 'bool', {
+        zh: '自动开票',
+        en: 'Auto-issue invoices',
+      }),
+      f('MinInvoiceAmount', 'number', {
+        zh: '最小开票金额',
+        en: 'Min invoice amount',
+      }),
+      f('InvoiceSellerEnterpriseName', 'text', {
+        zh: '销方企业名称',
+        en: 'Seller enterprise name',
+      }),
+      f('InvoiceSellerTaxpayerNum', 'text', {
+        zh: '销方税号',
+        en: 'Seller tax ID',
+      }),
+      f('InvoiceDefaultAccount', 'text', {
+        zh: '默认账户',
+        en: 'Default account',
+      }),
+      f('InvoiceDefaultGoodsName', 'text', {
+        zh: '默认商品名',
+        en: 'Default goods name',
+      }),
+      f('InvoiceDefaultTaxRateValue', 'text', {
+        zh: '默认税率',
+        en: 'Default tax rate',
+      }),
+      f('InvoiceDefaultIssueKindCode', 'text', {
+        zh: '默认开票类型',
+        en: 'Default issue kind',
+      }),
+      f('InvoiceDefaultPaymentCode', 'text', {
+        zh: '默认支付代码',
+        en: 'Default payment code',
+      }),
+      f('InvoiceDefaultSubMchid', 'text', {
+        zh: '默认子商户号',
+        en: 'Default sub-merchant',
+      }),
+      f('InvoiceDefaultTaxClassificationCode', 'text', {
+        zh: '默认税收分类编码',
+        en: 'Default tax class code',
+      }),
+      f('InvoicePiaoTongBaseURL', 'text', {
+        zh: '票通接口地址',
+        en: 'PiaoTong base URL',
+      }),
+      f('InvoicePiaoTongPlatformAlias', 'text', {
+        zh: '票通平台别名',
+        en: 'PiaoTong alias',
+      }),
+      f('InvoicePiaoTongPlatformCode', 'text', {
+        zh: '票通平台代码',
+        en: 'PiaoTong code',
+      }),
+      f('InvoiceQueryMaxAttempts', 'number', {
+        zh: '查询最大尝试',
+        en: 'Max query attempts',
+      }),
+      f('InvoiceQueryRetryIntervalSeconds', 'number', {
+        zh: '查询重试间隔（秒）',
+        en: 'Query retry interval (s)',
+      }),
+    ],
+  },
+  {
+    id: 'midjourney',
+    title: { zh: 'Midjourney', en: 'Midjourney' },
+    fields: [
+      f('MjAccountFilterEnabled', 'bool', {
+        zh: '启用账户过滤',
+        en: 'Enable account filter',
+      }),
+      f('MjActionCheckSuccessEnabled', 'bool', {
+        zh: '检查动作成功',
+        en: 'Check action success',
+      }),
+      f('MjForwardUrlEnabled', 'bool', {
+        zh: '启用图片转发',
+        en: 'Forward image URL',
+      }),
+      f('MjModeClearEnabled', 'bool', { zh: '清理模式', en: 'Clear mode' }),
+      f('MjNotifyEnabled', 'bool', {
+        zh: '启用通知',
+        en: 'Enable notifications',
+      }),
+    ],
+  },
+  {
+    id: 'integrations',
+    title: { zh: '集成 · Cloudflare Worker / 翻译', en: 'Integrations' },
+    fields: [
+      f('WorkerUrl', 'text', { zh: 'Worker URL', en: 'Worker URL' }),
+      f('WorkerAllowHttpImageRequestEnabled', 'bool', {
+        zh: '允许 HTTP 图片',
+        en: 'Allow HTTP images',
+      }),
+      f('TranslationChannelId', 'text', {
+        zh: '翻译渠道 ID',
+        en: 'Translation channel',
+      }),
+      f('TranslationModel', 'text', { zh: '翻译模型', en: 'Translation model' }),
+      f('TaskEnabled', 'bool', { zh: '启用异步任务', en: 'Enable async tasks' }),
+      f('DrawingEnabled', 'bool', { zh: '启用绘图', en: 'Enable drawing' }),
+      f('StreamCacheQueueLength', 'number', {
+        zh: '流式缓存队列',
+        en: 'Stream cache queue length',
+      }),
+    ],
+  },
+];
+
+export const SECRET_FIELDS: FieldDef[] = [
+  f('SMTPToken', 'secret', { zh: 'SMTP 密码', en: 'SMTP password' }),
+  f('GitHubClientSecret', 'secret', {
+    zh: 'GitHub client secret',
+    en: 'GitHub client secret',
+  }),
+  f('WeChatServerToken', 'secret', {
+    zh: '微信服务器 token',
+    en: 'WeChat server token',
+  }),
+  f('TelegramBotToken', 'secret', {
+    zh: 'Telegram bot token',
+    en: 'Telegram bot token',
+  }),
+  f('TurnstileSecretKey', 'secret', {
+    zh: 'Turnstile secret',
+    en: 'Turnstile secret',
+  }),
+  f('EpayKey', 'secret', { zh: '易支付 key', en: 'Epay key' }),
+  f('StripeApiSecret', 'secret', {
+    zh: 'Stripe API secret',
+    en: 'Stripe API secret',
+  }),
+  f('StripeWebhookSecret', 'secret', {
+    zh: 'Stripe webhook secret',
+    en: 'Stripe webhook secret',
+  }),
+  f('CreemApiKey', 'secret', { zh: 'Creem API key', en: 'Creem API key' }),
+  f('CreemWebhookSecret', 'secret', {
+    zh: 'Creem webhook secret',
+    en: 'Creem webhook secret',
+  }),
+];
+
+export function allKnownKeys(): Set<string> {
+  const s = new Set<string>();
+  for (const g of SETTINGS_GROUPS) {
+    for (const f of g.fields) s.add(f.key);
+  }
+  for (const f of SECRET_FIELDS) s.add(f.key);
+  return s;
+}
