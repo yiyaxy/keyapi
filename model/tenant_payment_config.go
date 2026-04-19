@@ -24,6 +24,13 @@ type TenantPaymentConfig struct {
 	Enabled        bool `json:"enabled" gorm:"default:false"`
 	PlatformLocked bool `json:"platform_locked" gorm:"default:false"`
 
+	// MiniLoginEnabled toggles WeChat mini-program login (wx.login →
+	// jscode2session) and the scan-to-login QR flow for this tenant.
+	// Login shares AppId + AppSecret with the payment config — they're
+	// the same credentials; the distinction is only which capability the
+	// tenant chose to enable.
+	MiniLoginEnabled bool `json:"mini_login_enabled" gorm:"default:false"`
+
 	AppId    string `json:"app_id" gorm:"type:varchar(64)"`
 	Mchid    string `json:"mchid" gorm:"type:varchar(32)"`
 	SerialNo string `json:"serial_no" gorm:"type:varchar(64)"`

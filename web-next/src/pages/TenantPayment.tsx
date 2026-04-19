@@ -79,6 +79,9 @@ function WechatConfigPanel({
   const [mchid, setMchid] = useState(data?.mchid ?? '');
   const [serialNo, setSerialNo] = useState(data?.serial_no ?? '');
   const [enabled, setEnabled] = useState(data?.enabled ?? false);
+  const [miniLoginEnabled, setMiniLoginEnabled] = useState(
+    data?.mini_login_enabled ?? false
+  );
   const [appSecret, setAppSecret] = useState('');
   const [apiv3Key, setApiv3Key] = useState('');
   const [privateKey, setPrivateKey] = useState('');
@@ -90,6 +93,7 @@ function WechatConfigPanel({
     update.mutate(
       {
         enabled,
+        mini_login_enabled: miniLoginEnabled,
         app_id: appId,
         mchid,
         serial_no: serialNo,
@@ -141,13 +145,23 @@ function WechatConfigPanel({
           <div>
             <h3 className='text-14 font-medium'>{t('form.section.public')}</h3>
           </div>
-          <div className='flex items-center gap-2'>
-            <Label className='text-13'>{t('form.enabled')}</Label>
-            <Switch
-              checked={enabled}
-              onCheckedChange={setEnabled}
-              disabled={locked}
-            />
+          <div className='flex items-center gap-4'>
+            <div className='flex items-center gap-2'>
+              <Label className='text-13'>{t('form.enabled')}</Label>
+              <Switch
+                checked={enabled}
+                onCheckedChange={setEnabled}
+                disabled={locked}
+              />
+            </div>
+            <div className='flex items-center gap-2'>
+              <Label className='text-13'>{t('form.mini_login_enabled')}</Label>
+              <Switch
+                checked={miniLoginEnabled}
+                onCheckedChange={setMiniLoginEnabled}
+                disabled={locked}
+              />
+            </div>
           </div>
         </div>
         <div className='grid gap-3 sm:grid-cols-2'>

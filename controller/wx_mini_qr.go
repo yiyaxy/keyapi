@@ -48,7 +48,8 @@ type wxQrLoginRequest struct {
 // The ticket is scoped to the resolved tenant so scanned users log in
 // to the correct tenant even if multiple tenants share the mini-program.
 func GenerateWxQrTicket(c *gin.Context) {
-	if !common.WxMiniAuthEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if !service.IsWxMiniLoginEnabled(tenantId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "管理员未开启微信小程序登录",
@@ -56,7 +57,6 @@ func GenerateWxQrTicket(c *gin.Context) {
 		return
 	}
 
-	tenantId := middleware.GetTenantId(c)
 	ticket, err := service.CreateWxQrTicket(tenantId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -64,7 +64,7 @@ func GenerateWxQrTicket(c *gin.Context) {
 	}
 
 	envVersion := strings.TrimSpace(common.OptionMap["WxMiniEnvVersion"])
-	png, err := service.GetWxaCodeUnlimited(ticket.Ticket, wxQrMiniPage, envVersion)
+	png, err := service.GetWxaCodeUnlimited(tenantId, ticket.Ticket, wxQrMiniPage, envVersion)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
@@ -100,14 +100,6 @@ func PollWxQrTicket(c *gin.Context) {
 // Body: {ticket, code}. No session auth — the WeChat code itself proves
 // identity via jscode2session.
 func ConfirmWxQrTicket(c *gin.Context) {
-	if !common.WxMiniAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "管理员未开启微信小程序登录",
-		})
-		return
-	}
-
 	var req wxQrConfirmRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
 		common.ApiErrorMsg(c, "无效的请求")
@@ -125,6 +117,13 @@ func ConfirmWxQrTicket(c *gin.Context) {
 	}
 	if t == nil {
 		common.ApiErrorMsg(c, service.ErrWxQrTicketNotFound.Error())
+		return
+	}
+
+	// Ticket carries the originating tenant; use it as the authority,
+	// not the mini-program's default tenant context.
+	if !service.IsWxMiniLoginEnabled(t.TenantId) {
+		common.ApiErrorMsg(c, "管理员未开启微信小程序登录")
 		return
 	}
 
@@ -152,7 +151,7 @@ func ConfirmWxQrTicket(c *gin.Context) {
 // Called by the web after polling shows status=confirmed; exchanges the
 // ticket for a real session cookie. The ticket is consumed (one-shot).
 func LoginWithWxQrTicket(c *gin.Context) {
-	if !common.WxMiniAuthEnabled {
+	if !service.IsWxMiniLoginEnabled(middleware.GetTenantId(c)) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "管理员未开启微信小程序登录",

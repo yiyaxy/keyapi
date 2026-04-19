@@ -11,6 +11,7 @@ export type WechatConfigView = {
   id: number;
   provider: string;
   enabled: boolean;
+  mini_login_enabled: boolean;
   platform_locked: boolean;
   app_id: string;
   mchid: string;
@@ -27,6 +28,7 @@ export type WechatConfigView = {
 
 export type WechatConfigUpdate = {
   enabled?: boolean;
+  mini_login_enabled?: boolean;
   app_id?: string;
   mchid?: string;
   serial_no?: string;

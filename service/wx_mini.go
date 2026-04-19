@@ -7,22 +7,27 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 )
 
 // This file implements helpers for WeChat mini-program scan-to-login:
-//   - access_token cache (2h WeChat TTL, refreshed ~10min before expiry)
+//   - access_token cache (2h WeChat TTL, refreshed ~5min before expiry)
 //   - wxacode.getUnlimited (generates a "小程序码" PNG with a scene)
+//
+// Credentials are read from the tenant's payment config row (single source
+// of truth) — payment and mini-login share the same AppId / AppSecret pair.
 //
 // Both Redis-backed (when REDIS_CONN_STRING is set) and in-memory
 // fallbacks are provided so the feature works in single-node dev too.
 
 const (
-	accessTokenCacheKey    = "wxmini:access_token"
-	accessTokenSafetyMargin = 300 // seconds subtracted from expires_in
+	accessTokenCacheKeyPrefix = "wxmini:access_token:"
+	accessTokenSafetyMargin   = 300 // seconds subtracted from expires_in
 )
 
 type wxAccessTokenResponse struct {
@@ -32,77 +37,148 @@ type wxAccessTokenResponse struct {
 	ErrMsg      string `json:"errmsg,omitempty"`
 }
 
-// in-memory cache (used when Redis is off)
+// in-memory cache (used when Redis is off). Keyed by tenantId so each
+// tenant's WeChat token is isolated.
+type memAccessToken struct {
+	value  string
+	expire time.Time
+}
+
 var (
-	memAccessTokenMu     sync.Mutex
-	memAccessTokenValue  string
-	memAccessTokenExpire time.Time
+	memAccessTokens sync.Map // map[int]memAccessToken
 )
 
-// fetchTokenMu serializes concurrent upstream fetches so we don't blow through
-// WeChat's 2000/day token quota on a cold cache.
-var fetchTokenMu sync.Mutex
+// fetchTokenMu serializes concurrent upstream fetches per-tenant so we don't
+// blow through WeChat's 2000/day token quota on a cold cache. Stored per-
+// tenant so a tenant with a hot cache doesn't wait on another's miss.
+var fetchTokenMus sync.Map // map[int]*sync.Mutex
 
-// GetWxMiniAccessToken returns a valid WeChat mini-program access_token,
-// fetching + caching a fresh one if needed.
-func GetWxMiniAccessToken() (string, error) {
-	if common.WxMiniAppId == "" || common.WxMiniAppSecret == "" {
-		return "", errors.New("管理员尚未配置小程序 AppId/AppSecret")
+func fetchTokenLock(tenantId int) *sync.Mutex {
+	if m, ok := fetchTokenMus.Load(tenantId); ok {
+		return m.(*sync.Mutex)
 	}
+	actual, _ := fetchTokenMus.LoadOrStore(tenantId, &sync.Mutex{})
+	return actual.(*sync.Mutex)
+}
 
-	if tok := loadAccessTokenFromCache(); tok != "" {
-		return tok, nil
+// WxMiniCredentials is the plaintext AppId/AppSecret pair used by the
+// mini-program OAuth + access_token flow. Loaded from the tenant's payment
+// config row; same fields the payment JSAPI flow uses.
+type WxMiniCredentials struct {
+	AppId     string
+	AppSecret string
+	// MiniLoginEnabled is the tenant-level feature flag (tenant_payment_configs.mini_login_enabled).
+	MiniLoginEnabled bool
+}
+
+// LoadWxMiniCredentials reads AppId+AppSecret from the tenant's payment
+// config. Returns a clear error when the tenant hasn't configured the
+// mini-program yet — the caller surfaces that to the client so the admin
+// knows where to go.
+func LoadWxMiniCredentials(tenantId int) (*WxMiniCredentials, error) {
+	if tenantId <= 0 {
+		return nil, errors.New("invalid tenantId")
 	}
-
-	fetchTokenMu.Lock()
-	defer fetchTokenMu.Unlock()
-
-	// re-check after acquiring lock (another goroutine may have filled it)
-	if tok := loadAccessTokenFromCache(); tok != "" {
-		return tok, nil
+	cfg, err := model.GetTenantPaymentConfig(tenantId, "wechat")
+	if err != nil {
+		return nil, fmt.Errorf("当前租户尚未配置微信支付/小程序：%w", err)
 	}
+	if cfg.AppId == "" {
+		return nil, errors.New("当前租户未配置小程序 AppId")
+	}
+	plain, err := cfg.DecryptSensitive()
+	if err != nil {
+		return nil, fmt.Errorf("解密 AppSecret 失败: %w", err)
+	}
+	if plain.AppSecret == "" {
+		return nil, errors.New("当前租户未配置 AppSecret")
+	}
+	return &WxMiniCredentials{
+		AppId:            cfg.AppId,
+		AppSecret:        plain.AppSecret,
+		MiniLoginEnabled: cfg.MiniLoginEnabled,
+	}, nil
+}
 
-	token, ttl, err := fetchAccessTokenUpstream()
+// IsWxMiniLoginEnabled is the cheap probe the /api/status endpoint uses —
+// only looks at the enable flag, doesn't decrypt anything.
+func IsWxMiniLoginEnabled(tenantId int) bool {
+	if tenantId <= 0 {
+		return false
+	}
+	cfg, err := model.GetTenantPaymentConfig(tenantId, "wechat")
+	if err != nil {
+		return false
+	}
+	return cfg.MiniLoginEnabled && cfg.AppId != ""
+}
+
+// GetWxMiniAccessToken returns a valid WeChat mini-program access_token for
+// the given tenant, fetching + caching a fresh one if needed.
+func GetWxMiniAccessToken(tenantId int) (string, error) {
+	creds, err := LoadWxMiniCredentials(tenantId)
 	if err != nil {
 		return "", err
 	}
-	storeAccessTokenToCache(token, ttl)
+
+	cacheKey := accessTokenCacheKeyPrefix + strconv.Itoa(tenantId)
+
+	if tok := loadAccessTokenFromCache(tenantId, cacheKey); tok != "" {
+		return tok, nil
+	}
+
+	lock := fetchTokenLock(tenantId)
+	lock.Lock()
+	defer lock.Unlock()
+
+	// re-check after acquiring lock (another goroutine may have filled it)
+	if tok := loadAccessTokenFromCache(tenantId, cacheKey); tok != "" {
+		return tok, nil
+	}
+
+	token, ttl, err := fetchAccessTokenUpstream(creds)
+	if err != nil {
+		return "", err
+	}
+	storeAccessTokenToCache(tenantId, cacheKey, token, ttl)
 	return token, nil
 }
 
-func loadAccessTokenFromCache() string {
+func loadAccessTokenFromCache(tenantId int, cacheKey string) string {
 	if common.RedisEnabled {
-		val, err := common.RedisGet(accessTokenCacheKey)
+		val, err := common.RedisGet(cacheKey)
 		if err == nil && val != "" {
 			return val
 		}
 		return ""
 	}
-	memAccessTokenMu.Lock()
-	defer memAccessTokenMu.Unlock()
-	if memAccessTokenValue != "" && time.Now().Before(memAccessTokenExpire) {
-		return memAccessTokenValue
+	if v, ok := memAccessTokens.Load(tenantId); ok {
+		t := v.(memAccessToken)
+		if t.value != "" && time.Now().Before(t.expire) {
+			return t.value
+		}
+		memAccessTokens.Delete(tenantId)
 	}
 	return ""
 }
 
-func storeAccessTokenToCache(token string, ttl time.Duration) {
+func storeAccessTokenToCache(tenantId int, cacheKey string, token string, ttl time.Duration) {
 	if common.RedisEnabled {
-		if err := common.RedisSet(accessTokenCacheKey, token, ttl); err != nil {
+		if err := common.RedisSet(cacheKey, token, ttl); err != nil {
 			common.SysError("cache wx_mini access_token to redis failed: " + err.Error())
 		}
 		return
 	}
-	memAccessTokenMu.Lock()
-	defer memAccessTokenMu.Unlock()
-	memAccessTokenValue = token
-	memAccessTokenExpire = time.Now().Add(ttl)
+	memAccessTokens.Store(tenantId, memAccessToken{
+		value:  token,
+		expire: time.Now().Add(ttl),
+	})
 }
 
-func fetchAccessTokenUpstream() (string, time.Duration, error) {
+func fetchAccessTokenUpstream(creds *WxMiniCredentials) (string, time.Duration, error) {
 	endpoint := fmt.Sprintf(
 		"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s",
-		common.WxMiniAppId, common.WxMiniAppSecret,
+		creds.AppId, creds.AppSecret,
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -142,13 +218,14 @@ func fetchAccessTokenUpstream() (string, time.Duration, error) {
 	return parsed.AccessToken, time.Duration(ttlSec) * time.Second, nil
 }
 
-// GetWxaCodeUnlimited calls wxacode.getUnlimited and returns the PNG bytes.
-// Caller is responsible for base64-encoding or streaming the result.
+// GetWxaCodeUnlimited calls wxacode.getUnlimited for the given tenant and
+// returns the PNG bytes. Caller is responsible for base64-encoding or
+// streaming the result.
 //
 // scene: max 32 chars, only [0-9a-zA-Z!#$&'()*+,/:;=?@-._~]
 // page:  e.g. "pages/qr-confirm/index"; must exist in mini-program
 // envVersion: "release" | "trial" | "develop"
-func GetWxaCodeUnlimited(scene, page, envVersion string) ([]byte, error) {
+func GetWxaCodeUnlimited(tenantId int, scene, page, envVersion string) ([]byte, error) {
 	if scene == "" || len(scene) > 32 {
 		return nil, errors.New("scene 非法：长度必须在 1..32")
 	}
@@ -156,7 +233,7 @@ func GetWxaCodeUnlimited(scene, page, envVersion string) ([]byte, error) {
 		envVersion = "release"
 	}
 
-	token, err := GetWxMiniAccessToken()
+	token, err := GetWxMiniAccessToken(tenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +272,8 @@ func GetWxaCodeUnlimited(scene, page, envVersion string) ([]byte, error) {
 		return nil, err
 	}
 
-	// WeChat returns JSON on error, binary PNG on success.
-	// Content-Type is image/jpeg or image/png on success;
-	// application/json on error. We check Content-Type first.
+	// WeChat returns JSON on error, binary PNG on success. Content-Type is
+	// image/jpeg or image/png on success; application/json on error.
 	ct := resp.Header.Get("Content-Type")
 	if len(ct) >= 16 && ct[:16] == "application/json" {
 		var apiErr wxAccessTokenResponse
@@ -205,7 +281,7 @@ func GetWxaCodeUnlimited(scene, page, envVersion string) ([]byte, error) {
 			// access_token may have been revoked server-side; clear cache so
 			// the next call re-fetches.
 			if apiErr.ErrCode == 40001 || apiErr.ErrCode == 42001 || apiErr.ErrCode == 41001 {
-				invalidateAccessTokenCache()
+				invalidateAccessTokenCache(tenantId)
 			}
 			return nil, fmt.Errorf("微信生成小程序码失败: %s (errcode=%d)", apiErr.ErrMsg, apiErr.ErrCode)
 		}
@@ -218,13 +294,58 @@ func GetWxaCodeUnlimited(scene, page, envVersion string) ([]byte, error) {
 	return data, nil
 }
 
-func invalidateAccessTokenCache() {
+func invalidateAccessTokenCache(tenantId int) {
+	cacheKey := accessTokenCacheKeyPrefix + strconv.Itoa(tenantId)
 	if common.RedisEnabled {
-		_ = common.RedisDel(accessTokenCacheKey)
+		_ = common.RedisDel(cacheKey)
 		return
 	}
-	memAccessTokenMu.Lock()
-	defer memAccessTokenMu.Unlock()
-	memAccessTokenValue = ""
-	memAccessTokenExpire = time.Time{}
+	memAccessTokens.Delete(tenantId)
+}
+
+// ExchangeWxMiniCode calls jscode2session against the tenant's credentials
+// and returns the openid. Shared between the login path and the scan-QR
+// confirm path so both use identical error semantics.
+func ExchangeWxMiniCode(tenantId int, code string) (string, error) {
+	if code == "" {
+		return "", errors.New("微信登录凭证为空")
+	}
+	creds, err := LoadWxMiniCredentials(tenantId)
+	if err != nil {
+		return "", err
+	}
+
+	endpoint := fmt.Sprintf(
+		"https://api.weixin.qq.com/sns/jscode2session?appid=%s&secret=%s&js_code=%s&grant_type=authorization_code",
+		creds.AppId, creds.AppSecret, code,
+	)
+
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("调用微信接口失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取微信响应失败: %w", err)
+	}
+
+	var parsed struct {
+		OpenId  string `json:"openid"`
+		ErrCode int    `json:"errcode,omitempty"`
+		ErrMsg  string `json:"errmsg,omitempty"`
+	}
+	if err := common.Unmarshal(body, &parsed); err != nil {
+		return "", fmt.Errorf("解析微信响应失败: %w", err)
+	}
+
+	if parsed.ErrCode != 0 {
+		return "", fmt.Errorf("微信登录失败: %s (errcode=%d)", parsed.ErrMsg, parsed.ErrCode)
+	}
+	if parsed.OpenId == "" {
+		return "", errors.New("微信未返回 openid")
+	}
+	return parsed.OpenId, nil
 }

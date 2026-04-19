@@ -22,28 +22,30 @@ import (
 // encrypted field we return a boolean "<field>_set" so the UI knows
 // whether the user needs to paste the secret again on update.
 type tenantPaymentConfigView struct {
-	Id             int    `json:"id"`
-	Provider       string `json:"provider"`
-	Enabled        bool   `json:"enabled"`
-	PlatformLocked bool   `json:"platform_locked"`
-	AppId          string `json:"app_id"`
-	Mchid          string `json:"mchid"`
-	SerialNo       string `json:"serial_no"`
-	AppSecretSet   bool   `json:"app_secret_set"`
-	Apiv3KeySet    bool   `json:"apiv3_key_set"`
-	PrivateKeySet  bool   `json:"private_key_set"`
-	LastTestAt     int64  `json:"last_test_at"`
-	LastTestOk     bool   `json:"last_test_ok"`
-	LastTestError  string `json:"last_test_error"`
-	CreatedAt      int64  `json:"created_at"`
-	UpdatedAt      int64  `json:"updated_at"`
+	Id               int    `json:"id"`
+	Provider         string `json:"provider"`
+	Enabled          bool   `json:"enabled"`
+	MiniLoginEnabled bool   `json:"mini_login_enabled"`
+	PlatformLocked   bool   `json:"platform_locked"`
+	AppId            string `json:"app_id"`
+	Mchid            string `json:"mchid"`
+	SerialNo         string `json:"serial_no"`
+	AppSecretSet     bool   `json:"app_secret_set"`
+	Apiv3KeySet      bool   `json:"apiv3_key_set"`
+	PrivateKeySet    bool   `json:"private_key_set"`
+	LastTestAt       int64  `json:"last_test_at"`
+	LastTestOk       bool   `json:"last_test_ok"`
+	LastTestError    string `json:"last_test_error"`
+	CreatedAt        int64  `json:"created_at"`
+	UpdatedAt        int64  `json:"updated_at"`
 }
 
 func toView(cfg *model.TenantPaymentConfig) tenantPaymentConfigView {
 	return tenantPaymentConfigView{
 		Id: cfg.Id, Provider: cfg.Provider,
-		Enabled: cfg.Enabled, PlatformLocked: cfg.PlatformLocked,
-		AppId: cfg.AppId, Mchid: cfg.Mchid, SerialNo: cfg.SerialNo,
+		Enabled: cfg.Enabled, MiniLoginEnabled: cfg.MiniLoginEnabled,
+		PlatformLocked: cfg.PlatformLocked,
+		AppId:          cfg.AppId, Mchid: cfg.Mchid, SerialNo: cfg.SerialNo,
 		AppSecretSet: cfg.AppSecretEnc != "", Apiv3KeySet: cfg.Apiv3KeyEnc != "",
 		PrivateKeySet: cfg.PrivateKeyEnc != "",
 		LastTestAt:    cfg.LastTestAt, LastTestOk: cfg.LastTestOk,
@@ -76,13 +78,14 @@ func GetTenantPaymentConfigs(c *gin.Context) {
 // Sensitive strings are optional: empty string means "leave existing
 // ciphertext alone" so the UI doesn't need to force re-entry on every save.
 type UpdateTenantPaymentConfigRequest struct {
-	Enabled    *bool  `json:"enabled"`
-	AppId      string `json:"app_id"`
-	Mchid      string `json:"mchid"`
-	SerialNo   string `json:"serial_no"`
-	AppSecret  string `json:"app_secret"`
-	Apiv3Key   string `json:"apiv3_key"`
-	PrivateKey string `json:"private_key"`
+	Enabled          *bool  `json:"enabled"`
+	MiniLoginEnabled *bool  `json:"mini_login_enabled"`
+	AppId            string `json:"app_id"`
+	Mchid            string `json:"mchid"`
+	SerialNo         string `json:"serial_no"`
+	AppSecret        string `json:"app_secret"`
+	Apiv3Key         string `json:"apiv3_key"`
+	PrivateKey       string `json:"private_key"`
 }
 
 // UpdateTenantWechatConfig writes new config values for the current tenant.
@@ -122,6 +125,9 @@ func UpdateTenantWechatConfig(c *gin.Context) {
 	}
 	if req.Enabled != nil {
 		cfg.Enabled = *req.Enabled
+	}
+	if req.MiniLoginEnabled != nil {
+		cfg.MiniLoginEnabled = *req.MiniLoginEnabled
 	}
 
 	// Only (re-)encrypt the fields actually provided. Empty => keep existing.
