@@ -11,6 +11,7 @@ import enErrors from './locales/en/errors.json';
 import enInbox from './locales/en/inbox.json';
 import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
+import enPublic from './locales/en/public.json';
 import enRedemption from './locales/en/redemption.json';
 import enShell from './locales/en/shell.json';
 import enTenant from './locales/en/tenant.json';
@@ -26,6 +27,7 @@ import zhErrors from './locales/zh/errors.json';
 import zhInbox from './locales/zh/inbox.json';
 import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
+import zhPublic from './locales/zh/public.json';
 import zhRedemption from './locales/zh/redemption.json';
 import zhShell from './locales/zh/shell.json';
 import zhTenant from './locales/zh/tenant.json';
@@ -54,6 +56,7 @@ void i18n
         tenant: zhTenant,
         inbox: zhInbox,
         tickets: zhTickets,
+        public: zhPublic,
       },
       en: {
         common: enCommon,
@@ -71,6 +74,7 @@ void i18n
         tenant: enTenant,
         inbox: enInbox,
         tickets: enTickets,
+        public: enPublic,
       },
     },
     fallbackLng: 'zh',
@@ -91,6 +95,7 @@ void i18n
       'tenant',
       'inbox',
       'tickets',
+      'public',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

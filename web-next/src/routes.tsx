@@ -1,4 +1,4 @@
-import { Navigate, createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 
 import { AdminRoute } from '@/components/common/AdminRoute';
 import { ComingSoon } from '@/components/common/ComingSoon';
@@ -8,23 +8,28 @@ import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { RootLayout } from '@/components/common/RootLayout';
 import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
+import { PublicLayout } from '@/components/public/PublicLayout';
+import { AboutPage } from '@/pages/About';
 import { AccountPage } from '@/pages/Account';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
-import { InboxPage } from '@/pages/Inbox';
-import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
-import { TicketDetailPage } from '@/pages/TicketDetail';
-import { TicketsPage } from '@/pages/Tickets';
-import { TenantInfoPage } from '@/pages/TenantInfo';
-import { TenantMembersPage } from '@/pages/TenantMembers';
-import { UsersAdminPage } from '@/pages/UsersAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
+import { HomePage } from '@/pages/Home';
+import { InboxPage } from '@/pages/Inbox';
 import { KeysPage } from '@/pages/Keys';
+import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
 import { LogsPage } from '@/pages/Logs';
+import { PricingPage } from '@/pages/Pricing';
+import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
+import { TenantInfoPage } from '@/pages/TenantInfo';
+import { TenantMembersPage } from '@/pages/TenantMembers';
+import { TicketDetailPage } from '@/pages/TicketDetail';
+import { TicketsPage } from '@/pages/Tickets';
 import { TopupPage } from '@/pages/Topup';
+import { UsersAdminPage } from '@/pages/UsersAdmin';
 
 export const router = createBrowserRouter([
   {
@@ -38,12 +43,22 @@ export const router = createBrowserRouter([
       { path: '/user/reset', element: <Reset /> },
       { path: '/forbidden', element: <Forbidden /> },
       {
+        element: <PublicLayout />,
+        children: [
+          { path: '/', element: <HomePage /> },
+          { path: '/about', element: <AboutPage /> },
+          { path: '/pricing', element: <PricingPage /> },
+          { path: '/user-agreement', element: <LegalPage kind='terms' /> },
+          { path: '/privacy-policy', element: <LegalPage kind='privacy' /> },
+          { path: '/refund-policy', element: <LegalPage kind='refund' /> },
+        ],
+      },
+      {
         element: <ProtectedRoute />,
         children: [
           {
             element: <AppShell />,
             children: [
-              { path: '/', element: <Navigate to='/dashboard' replace /> },
               { path: '/dashboard', element: <DashboardPage /> },
               { path: '/keys', element: <KeysPage /> },
               { path: '/playground', element: <ComingSoon feature='Playground' /> },
