@@ -10,6 +10,7 @@ import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
 import { AccountPage } from '@/pages/Account';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
+import { InboxPage } from '@/pages/Inbox';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
               { path: '/topup', element: <TopupPage /> },
               { path: '/plan', element: <ComingSoon feature='Plan' /> },
               { path: '/account', element: <AccountPage /> },
+              { path: '/inbox', element: <InboxPage /> },
               {
                 element: <AdminRoute />,
                 children: [

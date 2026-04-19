@@ -1,0 +1,12 @@
+{
+  "page.title": "收件箱",
+  "page.empty.title": "暂无消息",
+  "page.empty.body": "系统通知和公告会显示在这里。",
+  "list.col.status": "",
+  "list.col.title": "消息",
+  "list.col.time": "时间",
+  "list.badge.new": "未读",
+  "detail.sender.system": "系统",
+  "detail.read_at": "已读于 {{time}}",
+  "detail.mark_read": "标记已读"
+}

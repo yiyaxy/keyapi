@@ -1,0 +1,12 @@
+{
+  "page.title": "Inbox",
+  "page.empty.title": "No messages",
+  "page.empty.body": "System notifications and announcements will land here.",
+  "list.col.status": "",
+  "list.col.title": "Message",
+  "list.col.time": "Received",
+  "list.badge.new": "New",
+  "detail.sender.system": "System",
+  "detail.read_at": "Read {{time}}",
+  "detail.mark_read": "Mark as read"
+}

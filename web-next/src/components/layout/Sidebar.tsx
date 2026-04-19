@@ -1,5 +1,6 @@
 import {
   Building2,
+  Inbox,
   KeyRound,
   LayoutDashboard,
   List,
@@ -13,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useUnreadCount } from '@/hooks/useInbox';
 
 import { Logo } from './Logo';
 import { NavItem } from './NavItem';
@@ -27,6 +29,7 @@ export function Sidebar() {
   const isAdmin =
     user !== null &&
     Math.max(user.role, user.platform_role, user.tenant_role) >= ROLE_ADMIN;
+  const unread = useUnreadCount();
 
   return (
     <aside className='flex w-[240px] shrink-0 flex-col border-r border-line bg-bg-0'>
@@ -43,6 +46,12 @@ export function Sidebar() {
         </SidebarGroup>
         <SidebarGroup label={t('nav.billing')}>
           <NavItem to='/topup' label={t('nav.topup')} icon={Receipt} />
+          <NavItem
+            to='/inbox'
+            label={t('nav.inbox')}
+            icon={Inbox}
+            badge={unread.data}
+          />
         </SidebarGroup>
         {isAdmin && (
           <>

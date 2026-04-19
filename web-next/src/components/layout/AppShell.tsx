@@ -13,6 +13,7 @@ const TITLES: Record<string, string> = {
   '/topup': 'nav.topup',
   '/plan': 'nav.topup',
   '/account': 'usermenu.account',
+  '/inbox': 'nav.inbox',
   '/admin/channels': 'nav.admin.channels',
   '/admin/users': 'nav.admin.users',
   '/admin/redemption': 'nav.admin.redemption',

@@ -8,6 +8,7 @@ import enChannels from './locales/en/channels.json';
 import enCommon from './locales/en/common.json';
 import enDashboard from './locales/en/dashboard.json';
 import enErrors from './locales/en/errors.json';
+import enInbox from './locales/en/inbox.json';
 import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
 import enRedemption from './locales/en/redemption.json';
@@ -21,6 +22,7 @@ import zhChannels from './locales/zh/channels.json';
 import zhCommon from './locales/zh/common.json';
 import zhDashboard from './locales/zh/dashboard.json';
 import zhErrors from './locales/zh/errors.json';
+import zhInbox from './locales/zh/inbox.json';
 import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
 import zhRedemption from './locales/zh/redemption.json';
@@ -48,6 +50,7 @@ void i18n
         users: zhUsers,
         redemption: zhRedemption,
         tenant: zhTenant,
+        inbox: zhInbox,
       },
       en: {
         common: enCommon,
@@ -63,6 +66,7 @@ void i18n
         users: enUsers,
         redemption: enRedemption,
         tenant: enTenant,
+        inbox: enInbox,
       },
     },
     fallbackLng: 'zh',
@@ -81,6 +85,7 @@ void i18n
       'users',
       'redemption',
       'tenant',
+      'inbox',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

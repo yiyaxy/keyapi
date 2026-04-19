@@ -7,9 +7,10 @@ type Props = {
   to: string;
   label: string;
   icon: LucideIcon;
+  badge?: number;
 };
 
-export function NavItem({ to, label, icon: Icon }: Props) {
+export function NavItem({ to, label, icon: Icon, badge }: Props) {
   return (
     <NavLink
       to={to}
@@ -22,7 +23,12 @@ export function NavItem({ to, label, icon: Icon }: Props) {
       }
     >
       <Icon size={16} strokeWidth={1.5} />
-      <span>{label}</span>
+      <span className='flex-1 truncate'>{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className='rounded-full bg-primary px-1.5 py-0.5 text-11 font-medium leading-none text-primary-foreground'>
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </NavLink>
   );
 }
