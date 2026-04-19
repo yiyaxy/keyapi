@@ -18,6 +18,8 @@
   "nav.admin.tickets": "All tickets",
   "nav.admin.invoices": "Invoices",
   "nav.admin.subscriptions": "Subscriptions",
+  "nav.admin.site_rpm": "Site RPM",
+  "nav.admin.channel_monitor": "Channel monitor",
   "nav.admin.platform_tenants": "Platform tenants",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",

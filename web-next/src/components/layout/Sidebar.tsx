@@ -1,8 +1,10 @@
 import {
+  Activity,
   AlertCircle,
   Building2,
   ClipboardList,
   FileText,
+  Gauge,
   Gem,
   Globe,
   Inbox,
@@ -97,6 +99,16 @@ export function Sidebar() {
                 to='/admin/subscriptions'
                 label={t('nav.admin.subscriptions')}
                 icon={Gem}
+              />
+              <NavItem
+                to='/admin/site-rpm'
+                label={t('nav.admin.site_rpm')}
+                icon={Gauge}
+              />
+              <NavItem
+                to='/admin/channel-monitor'
+                label={t('nav.admin.channel_monitor')}
+                icon={Activity}
               />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>

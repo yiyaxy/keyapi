@@ -11,6 +11,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { PublicLayout } from '@/components/public/PublicLayout';
 import { AboutPage } from '@/pages/About';
 import { AccountPage } from '@/pages/Account';
+import { ChannelMonitorPage } from '@/pages/ChannelMonitor';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
@@ -27,6 +28,7 @@ import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
+import { SiteRPMPage } from '@/pages/SiteRPM';
 import { SubscriptionAdminPage } from '@/pages/SubscriptionAdmin';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
@@ -99,6 +101,11 @@ export const router = createBrowserRouter([
                   {
                     path: '/admin/subscriptions',
                     element: <SubscriptionAdminPage />,
+                  },
+                  { path: '/admin/site-rpm', element: <SiteRPMPage /> },
+                  {
+                    path: '/admin/channel-monitor',
+                    element: <ChannelMonitorPage />,
                   },
                   { path: '/tenant/dashboard', element: <TenantDashboardPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },

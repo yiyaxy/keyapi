@@ -23,6 +23,8 @@ const TITLES: Record<string, string> = {
   '/admin/tickets': 'nav.admin.tickets',
   '/admin/invoices': 'nav.admin.invoices',
   '/admin/subscriptions': 'nav.admin.subscriptions',
+  '/admin/site-rpm': 'nav.admin.site_rpm',
+  '/admin/channel-monitor': 'nav.admin.channel_monitor',
   '/admin/platform-tenants': 'nav.admin.platform_tenants',
   '/tenant/dashboard': 'nav.tenant.dashboard',
   '/tenant/info': 'nav.tenant.info',
