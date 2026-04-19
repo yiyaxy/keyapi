@@ -146,6 +146,10 @@ func main() {
 		gopool.Go(func() {
 			service.StartTenantBillingAndPlanLoop(time.Hour)
 		})
+		// 微信支付对账循环：每 5 分钟扫 pending 订单，丢回调也能兜底
+		gopool.Go(func() {
+			payment.StartPaymentReconcileLoop(5 * time.Minute)
+		})
 	}
 
 	if common.IsMasterNode && constant.UpdateTask {

@@ -190,3 +190,61 @@ func MarkOrderPaid(tx *gorm.DB, outTradeNo string, transactionId string, paidAt 
 	}
 	return res.RowsAffected == 1, nil
 }
+
+// markOrderPendingTo is the generic pending→terminal transition used by the
+// reconcile loop for non-success outcomes. reason is persisted into last_error
+// for audit. Returns (true, nil) if flipped, (false, nil) if already in a
+// post-pending state.
+func markOrderPendingTo(outTradeNo string, newStatus string, reason string) (bool, error) {
+	if outTradeNo == "" {
+		return false, errors.New("empty out_trade_no")
+	}
+	if len(reason) > 512 {
+		reason = reason[:512]
+	}
+	res := WithTenantBypass(DB).Model(&PaymentOrder{}).
+		Where("out_trade_no = ? AND status = ?", outTradeNo, PaymentOrderStatusPending).
+		Updates(map[string]interface{}{
+			"status":     newStatus,
+			"last_error": reason,
+			"updated_at": time.Now().Unix(),
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
+}
+
+// MarkOrderExpired flips pending → expired. Used by the reconcile loop when
+// an order is past ExpiresAt and the provider reports a non-success state.
+func MarkOrderExpired(outTradeNo string, reason string) (bool, error) {
+	return markOrderPendingTo(outTradeNo, PaymentOrderStatusExpired, reason)
+}
+
+// MarkOrderClosed flips pending → closed. Used when the provider reports
+// a terminal non-success state (CLOSED / PAYERROR / REVOKED) independent of
+// our own ExpiresAt.
+func MarkOrderClosed(outTradeNo string, reason string) (bool, error) {
+	return markOrderPendingTo(outTradeNo, PaymentOrderStatusClosed, reason)
+}
+
+// ListPendingPaymentOrdersForReconcile returns pending orders for the given
+// provider whose creation time is at least `graceSeconds` in the past.
+// Ordered oldest-first and capped at `limit`. Used by the reconcile sweep.
+//
+// The grace window lets the normal callback path resolve fresh orders
+// without us hitting the provider's QueryOrder API for every single one.
+func ListPendingPaymentOrdersForReconcile(provider string, graceSeconds int64, limit int) ([]PaymentOrder, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	cutoff := time.Now().Unix() - graceSeconds
+	var orders []PaymentOrder
+	err := WithTenantBypass(DB).
+		Where("provider = ? AND status = ? AND created_at <= ?",
+			provider, PaymentOrderStatusPending, cutoff).
+		Order("created_at ASC").
+		Limit(limit).
+		Find(&orders).Error
+	return orders, err
+}
