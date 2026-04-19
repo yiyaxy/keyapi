@@ -27,6 +27,7 @@ import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
 import { SetupPage } from '@/pages/Setup';
+import { TenantAlertsPage } from '@/pages/TenantAlerts';
 import { TenantAuditPage } from '@/pages/TenantAudit';
 import { TenantBillsPage } from '@/pages/TenantBills';
 import { TenantDashboardPage } from '@/pages/TenantDashboard';
@@ -93,6 +94,7 @@ export const router = createBrowserRouter([
                   { path: '/tenant/members', element: <TenantMembersPage /> },
                   { path: '/tenant/plan', element: <TenantPlanPage /> },
                   { path: '/tenant/bills', element: <TenantBillsPage /> },
+                  { path: '/tenant/alerts', element: <TenantAlertsPage /> },
                   { path: '/tenant/audit', element: <TenantAuditPage /> },
                 ],
               },

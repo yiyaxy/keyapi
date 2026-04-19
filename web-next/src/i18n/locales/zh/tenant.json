@@ -90,5 +90,22 @@
   "audit.col.action": "动作",
   "audit.col.target": "目标",
   "audit.col.ip": "IP",
-  "audit.empty": "暂无审计记录"
+  "audit.empty": "暂无审计记录",
+  "alerts.title": "告警",
+  "alerts.tab.active": "当前",
+  "alerts.tab.history": "历史",
+  "alerts.col.severity": "等级",
+  "alerts.col.type": "类型",
+  "alerts.col.message": "消息",
+  "alerts.col.triggered": "触发时间",
+  "alerts.col.status": "状态",
+  "alerts.status.active": "未处理",
+  "alerts.status.acknowledged": "已确认",
+  "alerts.status.resolved": "已解决",
+  "alerts.severity.info": "提示",
+  "alerts.severity.warning": "警告",
+  "alerts.severity.critical": "严重",
+  "alerts.action.ack": "确认",
+  "alerts.action.resolve": "解决",
+  "alerts.empty": "暂无告警"
 }

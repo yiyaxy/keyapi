@@ -22,6 +22,7 @@
   "nav.tenant.members": "租户成员",
   "nav.tenant.plan": "套餐",
   "nav.tenant.bills": "账单",
+  "nav.tenant.alerts": "告警",
   "nav.tenant.audit": "审计日志",
   "search.placeholder": "Find anything",
   "search.coming_soon": "命令面板 · 待推出",

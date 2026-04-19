@@ -90,5 +90,22 @@
   "audit.col.action": "Action",
   "audit.col.target": "Target",
   "audit.col.ip": "IP",
-  "audit.empty": "No audit entries"
+  "audit.empty": "No audit entries",
+  "alerts.title": "Alerts",
+  "alerts.tab.active": "Active",
+  "alerts.tab.history": "History",
+  "alerts.col.severity": "Severity",
+  "alerts.col.type": "Type",
+  "alerts.col.message": "Message",
+  "alerts.col.triggered": "Triggered",
+  "alerts.col.status": "Status",
+  "alerts.status.active": "Active",
+  "alerts.status.acknowledged": "Acknowledged",
+  "alerts.status.resolved": "Resolved",
+  "alerts.severity.info": "Info",
+  "alerts.severity.warning": "Warning",
+  "alerts.severity.critical": "Critical",
+  "alerts.action.ack": "Acknowledge",
+  "alerts.action.resolve": "Resolve",
+  "alerts.empty": "No alerts"
 }

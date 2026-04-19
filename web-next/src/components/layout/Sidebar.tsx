@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Building2,
   ClipboardList,
   FileText,
@@ -105,6 +106,11 @@ export function Sidebar() {
                 to='/tenant/bills'
                 label={t('nav.tenant.bills')}
                 icon={FileText}
+              />
+              <NavItem
+                to='/tenant/alerts'
+                label={t('nav.tenant.alerts')}
+                icon={AlertCircle}
               />
               <NavItem
                 to='/tenant/audit'
