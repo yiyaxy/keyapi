@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
-import { useCreateWechatTopupNative, type CreateTopupResult } from '@/hooks/useTopup';
+import { useCreateWechatTopupNative, type CreateTopupResponse } from '@/hooks/useTopup';
 import { ApiError } from '@/lib/api';
 
 const PRESETS = [1, 5, 10, 20, 50, 100]; // CNY yuan presets
@@ -26,7 +26,7 @@ export function RechargeCard() {
   const [preset, setPreset] = useState<number>(PRESETS[1]);
   const [custom, setCustom] = useState<string>('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [result, setResult] = useState<CreateTopupResult | null>(null);
+  const [result, setResult] = useState<CreateTopupResponse | null>(null);
 
   // Effective amount: custom wins if it's a positive number, else use preset.
   const customNum = Number(custom);
@@ -38,7 +38,7 @@ export function RechargeCard() {
     if (!canSubmit) return;
     try {
       const res = await create.mutateAsync({ amount });
-      if (!res.code_url) {
+      if (!res.response?.code_url) {
         // Defense-in-depth — backend shouldn't return without code_url on Native.
         toast.error(t('wechat.missing_code_url'));
         return;
@@ -125,9 +125,9 @@ export function RechargeCard() {
       <WechatPayModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        codeUrl={result?.code_url ?? null}
-        outTradeNo={result?.out_trade_no ?? null}
-        amountCents={result?.amount_cents ?? Math.round(amount * 100)}
+        codeUrl={result?.response.code_url ?? null}
+        outTradeNo={result?.order.out_trade_no ?? null}
+        amountCents={result?.order.amount ?? Math.round(amount * 100)}
         onSuccess={() => {
           setResult(null);
           void refresh();

@@ -136,3 +136,25 @@ export const transferAff = (quota) =>
  */
 export const getAffTransferHistory = (p = 1, size = 20) =>
   request.get('/api/aff_transfer/self', { p, size })
+
+// ─── 微信支付充值 ───────────────────────────────────────
+/**
+ * 发起微信小程序 JSAPI 充值下单
+ * @param {number} amount 充值金额（与 PC 端一致：显示单位，USD/CNY/TOKENS 模式自动换算）
+ * 返回字段：
+ *   order:    { out_trade_no, amount }  // amount 单位：分
+ *   response: { prepay_id, package, nonce_str, timestamp, sign_type, pay_sign }
+ *   —— response 里的字段直接喂给 uni.requestPayment
+ * 说明：openid 由后端从 session 用户的 wechat_id 里解析，客户端无需传
+ */
+export const createWechatTopupJsapi = (amount) =>
+  request.post('/api/payment/wechat/topup/jsapi', { amount })
+
+/**
+ * 查询支付订单状态
+ * @param {string} outTradeNo 订单号
+ * 返回字段：id, out_trade_no, status(pending/paid/closed/expired/...),
+ *            amount, paid_at, ...
+ */
+export const getPaymentOrder = (outTradeNo) =>
+  request.get(`/api/payment/orders/${outTradeNo}`)

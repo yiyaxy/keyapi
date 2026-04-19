@@ -59,6 +59,12 @@
         <!-- 快捷入口 -->
         <text class="section-title">快捷功能</text>
         <view class="grid">
+          <view class="grid-item" @click="nav('/pages/topup/index')">
+            <view class="grid-icon" style="background:#e8faf0;">
+              <u-icon name="rmb-circle-fill" size="52" color="#09BB07" />
+            </view>
+            <text class="grid-label">微信充值</text>
+          </view>
           <view class="grid-item" @click="nav('/pages/redeem/index')">
             <view class="grid-icon" style="background:#eef1ff;">
               <u-icon name="coupon" size="52" color="#4F6EF7" />

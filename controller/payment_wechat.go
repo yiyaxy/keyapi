@@ -122,13 +122,28 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 			return
 		}
 
+		// For JSAPI (mini-program), the client rarely has its own openid
+		// handy — the backend already stored it during wx.login, prefixed
+		// as "wxmini:<openid>" in users.wechat_id. If the client didn't
+		// pass an explicit openid, resolve it from the session user. Other
+		// product forms ignore the Openid field entirely.
+		openid := req.Openid
+		if productForm == model.PaymentProductFormJsapi && openid == "" {
+			resolved, resolveErr := resolveMiniOpenidForUser(c, userId)
+			if resolveErr != nil {
+				common.ApiErrorMsg(c, resolveErr.Error())
+				return
+			}
+			openid = resolved
+		}
+
 		resp, order, err := payment.CreateTopupOrder(c.Request.Context(), payment.CreateTopupOrderInput{
 			TenantId:    tid,
 			UserId:      userId,
 			AmountCents: amountCents,
 			AmountUnits: amountUnits,
 			ProductForm: productForm,
-			Openid:      req.Openid,
+			Openid:      openid,
 			ClientIp:    c.ClientIP(),
 			Description: "充值",
 			NotifyUrl:   notifyUrl,
@@ -142,6 +157,28 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 			"response": resp,
 		})
 	}
+}
+
+// resolveMiniOpenidForUser reads the session user's wechat_id and strips the
+// mini-program prefix ("wxmini:") that WxMiniLogin stored, returning the raw
+// openid that WeChat's JSAPI place-order API needs. Fails fast if the user
+// has not linked via the mini-program — the caller should respond with a
+// clear error so the client can send them through wx.login again.
+func resolveMiniOpenidForUser(c *gin.Context, userId int) (string, error) {
+	user, err := model.GetUserByIdWithContext(c.Request.Context(), userId, false)
+	if err != nil {
+		return "", fmt.Errorf("无法加载用户信息: %w", err)
+	}
+	if user.WeChatId == "" {
+		return "", errors.New("当前账号未绑定微信，请重新登录")
+	}
+	if !strings.HasPrefix(user.WeChatId, wxMiniIdPrefix) {
+		// The WeChat OA (公众号) login path also writes to wechat_id but with
+		// a different id space — it's NOT a mini-program openid and cannot
+		// be used as payer_openid for JSAPI.
+		return "", errors.New("请通过小程序登录后再发起微信支付")
+	}
+	return strings.TrimPrefix(user.WeChatId, wxMiniIdPrefix), nil
 }
 
 func CreateWechatTopupNative(c *gin.Context) {

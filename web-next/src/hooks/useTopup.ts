@@ -2,31 +2,42 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
-// POST /api/payment/wechat/topup/native returns the data WeChat hands back:
-//   - code_url is the "weixin://wxpay/..." deeplink that becomes the QR
-//   - out_trade_no is our internal id used to poll for status
-export type WechatNativeCreateResponse = {
+// WechatCreateResponse mirrors service/payment.CreateOrderResponse. Only
+// one of code_url / h5_url / (prepay_id + signing bundle) is non-empty,
+// depending on which product form was requested.
+export type WechatCreateResponse = {
   code_url?: string;
   h5_url?: string;
   prepay_id?: string;
+  package?: string;    // "prepay_id=..." for JSAPI
+  nonce_str?: string;
+  timestamp?: string;
+  sign_type?: string;  // "RSA"
+  pay_sign?: string;
+};
+
+// The controller wraps the order + provider response:
+//
+//   { success: true, data: { order: { out_trade_no, amount }, response: {...} } }
+//
+// `amount` is CNY cents (matches PaymentOrder.Amount).
+export type CreateTopupResponse = {
+  order: {
+    out_trade_no: string;
+    amount: number; // cents
+  };
+  response: WechatCreateResponse;
 };
 
 export type CreateTopupPayload = {
   amount: number; // display units — see resolveTopupPrice() in Go
+  openid?: string; // jsapi only; native/h5 ignore
 };
-
-export type CreateTopupResult = WechatNativeCreateResponse & {
-  out_trade_no: string;
-  amount_cents: number;
-};
-
-// The controller returns `{ success, data: { ...createOrderResponse, out_trade_no, amount_cents } }`.
-// Our axios wrapper unwraps `.data`, so the callback gets the inner `data` payload.
 
 export function useCreateWechatTopupNative() {
   return useMutation({
     mutationFn: async (payload: CreateTopupPayload) => {
-      const res = await api.post<CreateTopupResult>('/api/payment/wechat/topup/native', payload);
+      const res = await api.post<CreateTopupResponse>('/api/payment/wechat/topup/native', payload);
       return res.data;
     },
   });
