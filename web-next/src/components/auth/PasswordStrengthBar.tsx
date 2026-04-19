@@ -31,9 +31,7 @@ export function PasswordStrengthBar({ value }: { value: string }) {
         aria-valuemax={4}
         aria-valuenow={['none', 'weak', 'fair', 'good', 'strong'].indexOf(s)}
       >
-        <div
-          className={cn('absolute left-0 top-0 h-full transition-all', WIDTHS[s], COLORS[s])}
-        />
+        <div className={cn('absolute left-0 top-0 h-full transition-all', WIDTHS[s], COLORS[s])} />
       </div>
       <span className='w-10 text-right text-12 text-fg-1'>{t(`strength.${s}`)}</span>
     </div>

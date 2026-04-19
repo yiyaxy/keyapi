@@ -66,9 +66,7 @@ describe('integration: logs list', () => {
     expect(screen.getByText('tok2')).toBeInTheDocument();
     const detailButtons = await screen.findAllByRole('button', { name: /Detail|详情/ });
     await user.click(detailButtons[0]);
-    await waitFor(() =>
-      expect(screen.getByText(/req-1/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/req-1/)).toBeInTheDocument());
   });
 
   test('filter apply resets to page 1 and refetches', async () => {

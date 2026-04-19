@@ -23,10 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  useCreateInvoiceApplication,
-  type InvoiceableOrder,
-} from '@/hooks/useInvoice';
+import { useCreateInvoiceApplication, type InvoiceableOrder } from '@/hooks/useInvoice';
 import { ApiError } from '@/lib/api';
 
 const schema = z.object({
@@ -114,9 +111,7 @@ export function CreateApplicationDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value='normal'>{t('create.invoice_type.normal')}</SelectItem>
-                <SelectItem value='special'>
-                  {t('create.invoice_type.special')}
-                </SelectItem>
+                <SelectItem value='special'>{t('create.invoice_type.special')}</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -38,9 +33,7 @@ export function useRedemptions(q: RedemptionsQuery) {
       const params = new URLSearchParams();
       params.set('p', String(q.p ?? 1));
       params.set('page_size', String(q.page_size ?? 50));
-      const res = await api.get<RedemptionsPage>(
-        `/api/redemption/?${params.toString()}`
-      );
+      const res = await api.get<RedemptionsPage>(`/api/redemption/?${params.toString()}`);
       return res.data;
     },
     placeholderData: keepPreviousData,
@@ -62,8 +55,7 @@ export function useCreateRedemptions() {
       const res = await api.post<string[]>('/api/redemption/', input);
       return res.data;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['redemptions', 'list'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['redemptions', 'list'] }),
   });
 }
 
@@ -74,8 +66,7 @@ export function useDeleteRedemption() {
       await api.delete(`/api/redemption/${id}`);
       return id;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['redemptions', 'list'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['redemptions', 'list'] }),
   });
 }
 
@@ -85,7 +76,6 @@ export function useDeleteInvalidRedemptions() {
     mutationFn: async () => {
       await api.delete('/api/redemption/invalid');
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['redemptions', 'list'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['redemptions', 'list'] }),
   });
 }

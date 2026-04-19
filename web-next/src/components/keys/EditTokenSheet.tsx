@@ -6,12 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -190,16 +185,11 @@ export function EditTokenSheet({
                 {(models.data ?? []).map((m) => {
                   const checked = modelLimits.includes(m);
                   return (
-                    <label
-                      key={m}
-                      className='flex items-center gap-2 rounded-sm p-1 hover:bg-bg-1'
-                    >
+                    <label key={m} className='flex items-center gap-2 rounded-sm p-1 hover:bg-bg-1'>
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(v) => {
-                          const next = v
-                            ? [...modelLimits, m]
-                            : modelLimits.filter((x) => x !== m);
+                          const next = v ? [...modelLimits, m] : modelLimits.filter((x) => x !== m);
                           form.setValue('model_limits', next);
                           form.setValue('model_limits_enabled', next.length > 0);
                         }}

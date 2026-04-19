@@ -17,9 +17,7 @@ export function PublicLayout() {
         <div className='mx-auto flex h-14 max-w-[1180px] items-center gap-6 px-4'>
           <Link to='/' className='flex items-center gap-2'>
             <Logo size={22} />
-            <span className='font-semibold'>
-              {t('app.name', { ns: 'common' })}
-            </span>
+            <span className='font-semibold'>{t('app.name', { ns: 'common' })}</span>
           </Link>
           <nav className='flex items-center gap-1 text-13'>
             <PublicLink to='/' label={t('nav.home')} end />
@@ -71,15 +69,7 @@ export function PublicLayout() {
   );
 }
 
-function PublicLink({
-  to,
-  label,
-  end,
-}: {
-  to: string;
-  label: string;
-  end?: boolean;
-}) {
+function PublicLink({ to, label, end }: { to: string; label: string; end?: boolean }) {
   return (
     <NavLink
       to={to}

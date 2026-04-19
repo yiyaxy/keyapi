@@ -12,8 +12,7 @@ function statusMeta(r: Redemption): {
   key: string;
   variant: 'default' | 'secondary' | 'destructive' | 'outline';
 } {
-  if (r.status === 2 || r.redeemed_time > 0)
-    return { key: 'status.used', variant: 'secondary' };
+  if (r.status === 2 || r.redeemed_time > 0) return { key: 'status.used', variant: 'secondary' };
   if (r.status === 3) return { key: 'status.disabled', variant: 'destructive' };
   if (r.expired_time > 0 && r.expired_time < Math.floor(Date.now() / 1000))
     return { key: 'status.expired', variant: 'destructive' };
@@ -70,9 +69,7 @@ export function RedemptionsTable({
                   {r.expired_time > 0 ? fmtDateSec(r.expired_time) : '—'}
                 </td>
                 <td className='px-3 py-2 font-mono'>
-                  {canCopy
-                    ? `${r.key.slice(0, 4)}…${r.key.slice(-4)}`
-                    : '—'}
+                  {canCopy ? `${r.key.slice(0, 4)}…${r.key.slice(-4)}` : '—'}
                 </td>
                 <td className='px-3 py-2'>
                   <div className='flex gap-1'>

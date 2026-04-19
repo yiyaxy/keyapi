@@ -84,9 +84,7 @@ export function TenantInfoPage() {
               <div className='space-y-1'>
                 <Label className='text-fg-2'>{t('info.status')}</Label>
                 <div className='text-13 text-fg-1'>
-                  {tenant.status === 1
-                    ? t('info.status.active')
-                    : t('info.status.suspended')}
+                  {tenant.status === 1 ? t('info.status.active') : t('info.status.suspended')}
                 </div>
               </div>
               <div className='space-y-1'>

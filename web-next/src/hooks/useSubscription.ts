@@ -68,9 +68,7 @@ export function useAdminSubscriptionPlans() {
   return useQuery<SubscriptionPlanDTO[]>({
     queryKey: ['subscription-admin', 'plans'] as const,
     queryFn: async () => {
-      const res = await api.get<SubscriptionPlanDTO[]>(
-        '/api/subscription/admin/plans'
-      );
+      const res = await api.get<SubscriptionPlanDTO[]>('/api/subscription/admin/plans');
       return Array.isArray(res.data) ? res.data : [];
     },
     staleTime: 15_000,

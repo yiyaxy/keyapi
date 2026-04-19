@@ -8,11 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageAction } from '@/hooks/usePageAction';
-import {
-  useRefreshCurrentBill,
-  useTenantBills,
-  type TenantBill,
-} from '@/hooks/useTenantBilling';
+import { useRefreshCurrentBill, useTenantBills, type TenantBill } from '@/hooks/useTenantBilling';
 import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
 
 const QUOTA_PER_UNIT = 500_000;
@@ -93,16 +89,11 @@ export function TenantBillsPage() {
                 {items.map((bill) => {
                   const meta = statusMeta(bill.status);
                   return (
-                    <tr
-                      key={bill.id}
-                      className='border-b border-line text-13 hover:bg-bg-1'
-                    >
+                    <tr key={bill.id} className='border-b border-line text-13 hover:bg-bg-1'>
                       <td className='px-3 py-2 text-fg-1'>
                         {fmtDateSec(bill.period_start)} → {fmtDateSec(bill.period_end)}
                       </td>
-                      <td className='px-3 py-2'>
-                        {fmtMoney(bill.quota_used / QUOTA_PER_UNIT)}
-                      </td>
+                      <td className='px-3 py-2'>{fmtMoney(bill.quota_used / QUOTA_PER_UNIT)}</td>
                       <td className='px-3 py-2'>{fmtNum(bill.request_count)}</td>
                       <td className='px-3 py-2'>{bill.plan_name || '—'}</td>
                       <td className='px-3 py-2'>
@@ -117,12 +108,7 @@ export function TenantBillsPage() {
               </tbody>
             </table>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
     </div>

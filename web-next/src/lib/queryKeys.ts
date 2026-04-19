@@ -4,10 +4,8 @@ export const qk = {
     detail: (id: number) => ['tokens', 'detail', id] as const,
   },
   user: {
-    dataSelf: (startTs: number, endTs: number) =>
-      ['user', 'data', startTs, endTs] as const,
-    statSelf: (startTs: number, endTs: number) =>
-      ['user', 'stat', startTs, endTs] as const,
+    dataSelf: (startTs: number, endTs: number) => ['user', 'data', startTs, endTs] as const,
+    statSelf: (startTs: number, endTs: number) => ['user', 'stat', startTs, endTs] as const,
     self: ['user', 'self'] as const,
   },
   logs: {

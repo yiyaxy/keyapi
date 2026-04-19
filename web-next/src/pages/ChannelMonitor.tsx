@@ -4,17 +4,12 @@ import { InlineBanner } from '@/components/auth/InlineBanner';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  useChannelMonitor,
-  type ChannelMonitorItem,
-} from '@/hooks/useAnalytics';
+import { useChannelMonitor, type ChannelMonitorItem } from '@/hooks/useAnalytics';
 import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
 
 const QUOTA_PER_UNIT = 500_000;
 
-function healthVariant(
-  status: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function healthVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'normal':
       return 'default';
@@ -27,9 +22,7 @@ function healthVariant(
   }
 }
 
-function statusVariant(
-  status: number
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function statusVariant(status: number): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 1) return 'default';
   if (status === 3) return 'destructive';
   return 'secondary';
@@ -86,9 +79,7 @@ export function ChannelMonitorPage() {
                   </span>
                 </div>
               </div>
-              {g.health_reason && (
-                <p className='text-12 text-fg-2'>{g.health_reason}</p>
-              )}
+              {g.health_reason && <p className='text-12 text-fg-2'>{g.health_reason}</p>}
             </CardHeader>
             <CardContent>
               <ChannelMonitorTable channels={g.channels} t={t} />
@@ -108,9 +99,7 @@ function ChannelMonitorTable({
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   if (channels.length === 0) {
-    return (
-      <div className='text-13 text-fg-2'>{t('monitor.empty')}</div>
-    );
+    return <div className='text-13 text-fg-2'>{t('monitor.empty')}</div>;
   }
   return (
     <div className='overflow-x-auto'>
@@ -121,9 +110,7 @@ function ChannelMonitorTable({
             <th className='px-3 py-2 font-medium'>{t('monitor.col.group')}</th>
             <th className='px-3 py-2 font-medium'>{t('monitor.col.status')}</th>
             <th className='px-3 py-2 font-medium'>{t('monitor.col.latency')}</th>
-            <th className='px-3 py-2 font-medium'>
-              {t('monitor.col.availability')}
-            </th>
+            <th className='px-3 py-2 font-medium'>{t('monitor.col.availability')}</th>
             <th className='px-3 py-2 font-medium'>{t('monitor.col.balance')}</th>
             <th className='px-3 py-2 font-medium'>{t('monitor.col.used_1h')}</th>
           </tr>
@@ -150,16 +137,10 @@ function ChannelMonitorTable({
               <td className='px-3 py-2'>
                 {ch.response_time_ms > 0 ? `${ch.response_time_ms} ms` : '—'}
               </td>
+              <td className='px-3 py-2'>{(ch.availability_rate * 100).toFixed(1)}%</td>
+              <td className='px-3 py-2'>{ch.balance !== 0 ? ch.balance.toFixed(2) : '—'}</td>
               <td className='px-3 py-2'>
-                {(ch.availability_rate * 100).toFixed(1)}%
-              </td>
-              <td className='px-3 py-2'>
-                {ch.balance !== 0 ? ch.balance.toFixed(2) : '—'}
-              </td>
-              <td className='px-3 py-2'>
-                {ch.used_quota_1h > 0
-                  ? fmtMoney(ch.used_quota_1h / QUOTA_PER_UNIT)
-                  : fmtNum(0)}
+                {ch.used_quota_1h > 0 ? fmtMoney(ch.used_quota_1h / QUOTA_PER_UNIT) : fmtNum(0)}
               </td>
             </tr>
           ))}

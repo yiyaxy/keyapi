@@ -9,9 +9,7 @@ export function useRequestTrace(requestId: string | null) {
     enabled: !!requestId,
     queryFn: async () => {
       if (!requestId) return [];
-      const res = await api.get<LogRow[]>(
-        `/api/log/request/${encodeURIComponent(requestId)}`
-      );
+      const res = await api.get<LogRow[]>(`/api/log/request/${encodeURIComponent(requestId)}`);
       return Array.isArray(res.data) ? res.data : [];
     },
     staleTime: 60_000,

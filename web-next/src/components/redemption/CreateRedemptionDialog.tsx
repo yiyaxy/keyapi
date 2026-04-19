@@ -82,9 +82,7 @@ export function CreateRedemptionDialog({
       <DialogContent className='max-w-[480px]'>
         <DialogHeader>
           <DialogTitle>
-            {generated
-              ? t('create.result.title', { count: generated.length })
-              : t('create.title')}
+            {generated ? t('create.result.title', { count: generated.length }) : t('create.title')}
           </DialogTitle>
         </DialogHeader>
         {create.error instanceof ApiError && (
@@ -160,11 +158,7 @@ export function CreateRedemptionDialog({
               </div>
             </div>
             <DialogFooter>
-              <Button
-                type='button'
-                variant='secondary'
-                onClick={() => closeDialog(false)}
-              >
+              <Button type='button' variant='secondary' onClick={() => closeDialog(false)}>
                 {t('create.cancel')}
               </Button>
               <Button type='submit' disabled={create.isPending}>

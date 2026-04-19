@@ -3,10 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { LogDetailDialog } from '@/components/logs/LogDetailDialog';
-import {
-  LogsAdminFilters,
-  type AdminLogsFilterValues,
-} from '@/components/logs/LogsAdminFilters';
+import { LogsAdminFilters, type AdminLogsFilterValues } from '@/components/logs/LogsAdminFilters';
 import { LogsAdminTable } from '@/components/logs/LogsAdminTable';
 import { LogsPagination } from '@/components/logs/LogsPagination';
 import { Skeleton } from '@/components/ui/skeleton';

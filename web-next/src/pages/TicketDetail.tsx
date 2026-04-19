@@ -83,7 +83,9 @@ export function TicketDetailPage() {
             <CardTitle>{ticket.subject}</CardTitle>
             <Badge variant={meta.variant}>{t(meta.key)}</Badge>
           </div>
-          <div className='text-12 text-fg-2'>#{ticket.id} · {fmtDateSec(ticket.created_at)}</div>
+          <div className='text-12 text-fg-2'>
+            #{ticket.id} · {fmtDateSec(ticket.created_at)}
+          </div>
         </CardHeader>
         <CardContent>
           <ul className='space-y-4'>
@@ -121,31 +123,17 @@ export function TicketDetailPage() {
   );
 }
 
-function ReplyBlock({
-  reply,
-  t,
-}: {
-  reply: TicketReply;
-  t: (k: string) => string;
-}) {
+function ReplyBlock({ reply, t }: { reply: TicketReply; t: (k: string) => string }) {
   const isUser = reply.role === 'user';
   return (
-    <li
-      className={
-        'rounded-md border border-line p-3 ' + (isUser ? 'bg-bg-0' : 'bg-bg-1')
-      }
-    >
+    <li className={'rounded-md border border-line p-3 ' + (isUser ? 'bg-bg-0' : 'bg-bg-1')}>
       <div className='mb-2 flex items-center justify-between'>
         <div className='text-12 font-medium text-fg-1'>
           {t(isUser ? 'detail.role.user' : 'detail.role.admin')}
         </div>
-        <div className='text-12 text-fg-2 tabular-nums'>
-          {fmtDateSec(reply.created_at)}
-        </div>
+        <div className='text-12 text-fg-2 tabular-nums'>{fmtDateSec(reply.created_at)}</div>
       </div>
-      <div className='whitespace-pre-wrap text-13 leading-6 text-fg-0'>
-        {reply.content}
-      </div>
+      <div className='whitespace-pre-wrap text-13 leading-6 text-fg-0'>{reply.content}</div>
     </li>
   );
 }

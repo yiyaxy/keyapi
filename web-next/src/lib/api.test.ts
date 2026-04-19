@@ -16,9 +16,7 @@ describe('api client', () => {
   });
 
   test('throws ApiError on success: false', async () => {
-    server.use(
-      http.get('/api/fail', () => HttpResponse.json({ success: false, message: '坏了' }))
-    );
+    server.use(http.get('/api/fail', () => HttpResponse.json({ success: false, message: '坏了' })));
     await expect(api.get('/api/fail')).rejects.toMatchObject({
       name: 'ApiError',
       backendMessage: '坏了',

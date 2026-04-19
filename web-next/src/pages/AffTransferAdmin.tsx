@@ -120,9 +120,7 @@ export function AffTransferAdminPage() {
                   <th className='px-3 py-2 font-medium'>{t('admin.col.quota')}</th>
                   <th className='px-3 py-2 font-medium'>{t('admin.col.status')}</th>
                   <th className='px-3 py-2 font-medium'>{t('admin.col.created')}</th>
-                  <th className='px-3 py-2 font-medium'>
-                    {t('admin.col.admin_remark')}
-                  </th>
+                  <th className='px-3 py-2 font-medium'>{t('admin.col.admin_remark')}</th>
                   <th className='px-3 py-2' />
                 </tr>
               </thead>
@@ -133,9 +131,7 @@ export function AffTransferAdminPage() {
                       <div className='font-mono'>{r.username || `#${r.user_id}`}</div>
                       <div className='text-12 text-fg-2'>#{r.id}</div>
                     </td>
-                    <td className='px-3 py-2'>
-                      {fmtMoney(r.quota / QUOTA_PER_UNIT)}
-                    </td>
+                    <td className='px-3 py-2'>{fmtMoney(r.quota / QUOTA_PER_UNIT)}</td>
                     <td className='px-3 py-2'>
                       <Badge variant={statusVariant(r.status)}>
                         {t(
@@ -182,18 +178,10 @@ export function AffTransferAdminPage() {
               </tbody>
             </table>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
-      <Dialog
-        open={rejectTarget !== null}
-        onOpenChange={(o) => !o && setRejectTarget(null)}
-      >
+      <Dialog open={rejectTarget !== null} onOpenChange={(o) => !o && setRejectTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('admin.reject.title')}</DialogTitle>

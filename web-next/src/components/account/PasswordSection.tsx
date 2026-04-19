@@ -74,16 +74,12 @@ export function PasswordSection({ username }: { username: string }) {
           <div className='space-y-2'>
             <Label htmlFor='pw-next'>{t('password.next')}</Label>
             <Input id='pw-next' type='password' {...form.register('next')} />
-            {errors.next && (
-              <div className='text-12 text-danger'>{errors.next.message}</div>
-            )}
+            {errors.next && <div className='text-12 text-danger'>{errors.next.message}</div>}
           </div>
           <div className='space-y-2'>
             <Label htmlFor='pw-confirm'>{t('password.confirm')}</Label>
             <Input id='pw-confirm' type='password' {...form.register('confirm')} />
-            {errors.confirm && (
-              <div className='text-12 text-danger'>{errors.confirm.message}</div>
-            )}
+            {errors.confirm && <div className='text-12 text-danger'>{errors.confirm.message}</div>}
           </div>
           <div className='flex justify-end'>
             <Button type='submit' disabled={update.isPending}>

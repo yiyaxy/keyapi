@@ -35,9 +35,7 @@ describe('AuthProvider', () => {
         <Probe />
       </AuthProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
-    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'));
     expect(screen.getByTestId('user')).toHaveTextContent('anon');
   });
 
@@ -59,9 +57,7 @@ describe('AuthProvider', () => {
         <Probe />
       </AuthProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
-    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'));
     await user.click(screen.getByText('login'));
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
     expect(JSON.parse(localStorage.getItem('new-api.auth-bootstrap')!)).toEqual({
@@ -77,13 +73,9 @@ describe('AuthProvider', () => {
         <Probe />
       </AuthProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
-    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'));
     await user.click(screen.getByText('bad-login'));
-    await waitFor(() =>
-      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
-    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'));
   });
 
   test('logout clears bootstrap and user', async () => {
@@ -96,9 +88,7 @@ describe('AuthProvider', () => {
     );
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'));
     await user.click(screen.getByText('logout'));
-    await waitFor(() =>
-      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
-    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'));
     expect(localStorage.getItem('new-api.auth-bootstrap')).toBeNull();
   });
 
@@ -114,8 +104,6 @@ describe('AuthProvider', () => {
         <Probe />
       </AuthProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
-    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'));
   });
 });

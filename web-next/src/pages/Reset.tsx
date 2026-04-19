@@ -77,7 +77,11 @@ export function Reset() {
               onClick={copy}
               className='rounded-xs p-1 text-fg-1 hover:bg-bg-3 hover:text-fg-0'
             >
-              {copied ? <Check size={16} strokeWidth={1.5} /> : <Copy size={16} strokeWidth={1.5} />}
+              {copied ? (
+                <Check size={16} strokeWidth={1.5} />
+              ) : (
+                <Copy size={16} strokeWidth={1.5} />
+              )}
             </button>
           </div>
         </div>

@@ -64,12 +64,7 @@ export function RedemptionAdminPage() {
       ) : (
         <>
           <RedemptionsTable items={items} onDelete={setDeleteTarget} />
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
       <CreateRedemptionDialog open={createOpen} onOpenChange={setCreateOpen} />

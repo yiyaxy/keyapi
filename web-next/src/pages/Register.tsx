@@ -155,17 +155,11 @@ export function Register() {
           </div>
           <div className='space-y-2'>
             <Label htmlFor='password'>{t('register.step2.password_label')}</Label>
-            <PasswordField
-              id='password'
-              autoComplete='new-password'
-              {...f2.register('password')}
-            />
+            <PasswordField id='password' autoComplete='new-password' {...f2.register('password')} />
             <PasswordStrengthBar value={password} />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='password_confirm'>
-              {t('register.step2.password_confirm_label')}
-            </Label>
+            <Label htmlFor='password_confirm'>{t('register.step2.password_confirm_label')}</Label>
             <PasswordField
               id='password_confirm'
               autoComplete='new-password'

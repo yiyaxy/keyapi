@@ -21,10 +21,7 @@ function formatPrice(p: SubscriptionPlanDTO): string {
   return `${p.currency} ${p.price_amount.toFixed(2)}`;
 }
 
-function cycleLabel(
-  p: SubscriptionPlanDTO,
-  t: ReturnType<typeof useTranslation>['t']
-): string {
+function cycleLabel(p: SubscriptionPlanDTO, t: ReturnType<typeof useTranslation>['t']): string {
   const v = p.duration_value || 1;
   switch (p.duration_unit) {
     case 'year':
@@ -124,14 +121,10 @@ export function PlanPage() {
                     {isCurrent ? (
                       <Badge variant='default'>{t('plans.cta.current')}</Badge>
                     ) : soldOut ? (
-                      <Badge variant='destructive'>
-                        {t('plans.status.sold_out')}
-                      </Badge>
+                      <Badge variant='destructive'>{t('plans.status.sold_out')}</Badge>
                     ) : null}
                   </div>
-                  {p.subtitle && (
-                    <p className='text-12 text-fg-2'>{p.subtitle}</p>
-                  )}
+                  {p.subtitle && <p className='text-12 text-fg-2'>{p.subtitle}</p>}
                 </CardHeader>
                 <CardContent className='flex flex-1 flex-col gap-4'>
                   <div className='tabular-nums'>
@@ -140,7 +133,9 @@ export function PlanPage() {
                       {t('plans.price.per_cycle', {
                         price: '',
                         cycle: cycleLabel(p, t),
-                      }).replace('/', '/').trim() || cycleLabel(p, t)}
+                      })
+                        .replace('/', '/')
+                        .trim() || cycleLabel(p, t)}
                     </div>
                   </div>
                   {highlights.length > 0 && (
@@ -154,12 +149,7 @@ export function PlanPage() {
                     <Button
                       type='button'
                       className='w-full'
-                      disabled={
-                        isCurrent ||
-                        soldOut ||
-                        !p.enabled ||
-                        activate.isPending
-                      }
+                      disabled={isCurrent || soldOut || !p.enabled || activate.isPending}
                       onClick={() =>
                         activate.mutate(p.id, {
                           onSuccess: () => {
@@ -170,9 +160,7 @@ export function PlanPage() {
                         })
                       }
                     >
-                      {isCurrent
-                        ? t('plans.cta.current')
-                        : t('plans.cta.activate')}
+                      {isCurrent ? t('plans.cta.current') : t('plans.cta.activate')}
                     </Button>
                   </div>
                 </CardContent>

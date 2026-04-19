@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -43,11 +38,7 @@ export type CreateApplicationInput = {
   items: { source_type: string; source_id: number }[];
 };
 
-export function useInvoiceableOrders(q: {
-  p?: number;
-  page_size?: number;
-  keyword?: string;
-}) {
+export function useInvoiceableOrders(q: { p?: number; page_size?: number; keyword?: string }) {
   return useQuery<{ items: InvoiceableOrder[]; total: number }>({
     queryKey: ['invoice', 'orders', q] as const,
     queryFn: async () => {

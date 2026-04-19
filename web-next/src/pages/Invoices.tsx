@@ -21,9 +21,7 @@ import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 20;
 
-function statusVariant(
-  status: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'approved':
       return 'default';
@@ -38,9 +36,7 @@ function statusVariant(
   }
 }
 
-function issueVariant(
-  issue: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function issueVariant(issue: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (issue) {
     case 'issued':
       return 'default';
@@ -57,9 +53,7 @@ export function InvoicesPage() {
   const { t } = useTranslation('invoice');
   const [tab, setTab] = useState<'orders' | 'applications'>('orders');
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<
-    Record<string, InvoiceableOrder | undefined>
-  >({});
+  const [selected, setSelected] = useState<Record<string, InvoiceableOrder | undefined>>({});
   const [createOpen, setCreateOpen] = useState(false);
 
   const orders = useInvoiceableOrders({ p: page, page_size: PAGE_SIZE });
@@ -165,9 +159,7 @@ function TabButton({
       onClick={onClick}
       className={cn(
         '-mb-px border-b-2 px-3 py-2 text-13 transition-colors',
-        active
-          ? 'border-primary text-fg-0'
-          : 'border-transparent text-fg-2 hover:text-fg-1'
+        active ? 'border-primary text-fg-0' : 'border-transparent text-fg-2 hover:text-fg-1'
       )}
     >
       {label}
@@ -253,10 +245,7 @@ function OrdersTab({
                   return (
                     <tr key={key} className='border-b border-line text-13 hover:bg-bg-1'>
                       <td className='px-3 py-2'>
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => onToggle(o)}
-                        />
+                        <Checkbox checked={isSelected} onCheckedChange={() => onToggle(o)} />
                       </td>
                       <td className='px-3 py-2 font-mono text-12'>{o.trade_no}</td>
                       <td className='px-3 py-2 font-mono text-12'>{o.source_type}</td>
@@ -264,21 +253,14 @@ function OrdersTab({
                         {o.currency} {o.money.toFixed(2)}
                       </td>
                       <td className='px-3 py-2 text-fg-1'>{o.payment_method || '—'}</td>
-                      <td className='px-3 py-2 text-fg-1'>
-                        {fmtDateSec(o.complete_time)}
-                      </td>
+                      <td className='px-3 py-2 text-fg-1'>{fmtDateSec(o.complete_time)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={onPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={onPage} />
         </>
       )}
     </>
@@ -378,12 +360,7 @@ function ApplicationsTab({
               </tbody>
             </table>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={onPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={onPage} />
         </>
       )}
     </>

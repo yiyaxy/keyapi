@@ -18,11 +18,13 @@ export function useCacheSavingsSelf(startSec: number, endSec: number) {
       const res = await api.get<CacheSavingsResult>(
         `/api/log/self/cache_savings?${params.toString()}`
       );
-      return res.data ?? {
-        total_savings_quota: 0,
-        total_cache_tokens: 0,
-        cache_hit_count: 0,
-      };
+      return (
+        res.data ?? {
+          total_savings_quota: 0,
+          total_cache_tokens: 0,
+          cache_hit_count: 0,
+        }
+      );
     },
     staleTime: 30_000,
   });

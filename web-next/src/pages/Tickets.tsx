@@ -83,16 +83,10 @@ export function TicketsPage() {
                 {items.map((tkt) => {
                   const meta = statusMeta(tkt.status);
                   return (
-                    <tr
-                      key={tkt.id}
-                      className='border-b border-line text-13 hover:bg-bg-1'
-                    >
+                    <tr key={tkt.id} className='border-b border-line text-13 hover:bg-bg-1'>
                       <td className='px-3 py-2 text-fg-2'>{tkt.id}</td>
                       <td className='px-3 py-2'>
-                        <Link
-                          to={`/tickets/${tkt.id}`}
-                          className='text-fg-0 hover:underline'
-                        >
+                        <Link to={`/tickets/${tkt.id}`} className='text-fg-0 hover:underline'>
                           {tkt.subject}
                         </Link>
                       </td>
@@ -109,12 +103,7 @@ export function TicketsPage() {
               </tbody>
             </table>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
       <NewTicketDialog open={createOpen} onOpenChange={setCreateOpen} />

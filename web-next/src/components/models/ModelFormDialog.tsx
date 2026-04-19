@@ -24,11 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  useCreateModelMeta,
-  useUpdateModelMeta,
-  type ModelMeta,
-} from '@/hooks/useModelsMeta';
+import { useCreateModelMeta, useUpdateModelMeta, type ModelMeta } from '@/hooks/useModelsMeta';
 import { ApiError } from '@/lib/api';
 
 const schema = z.object({
@@ -105,9 +101,7 @@ export function ModelFormDialog({
       <DialogContent className='max-w-[540px]'>
         <DialogHeader>
           <DialogTitle>
-            {isEdit
-              ? t('form.edit_title', { name: model?.model_name })
-              : t('form.create_title')}
+            {isEdit ? t('form.edit_title', { name: model?.model_name }) : t('form.create_title')}
           </DialogTitle>
         </DialogHeader>
         {mutation.error instanceof ApiError && (
@@ -122,12 +116,7 @@ export function ModelFormDialog({
         >
           <div className='space-y-2'>
             <Label htmlFor='m-name'>{t('form.model_name')}</Label>
-            <Input
-              id='m-name'
-              autoFocus
-              disabled={isEdit}
-              {...form.register('model_name')}
-            />
+            <Input id='m-name' autoFocus disabled={isEdit} {...form.register('model_name')} />
           </div>
           <div className='space-y-2'>
             <Label htmlFor='m-desc'>{t('form.description')}</Label>

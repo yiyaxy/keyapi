@@ -25,10 +25,7 @@ describe('parseGroupChain / serializeGroupChain', () => {
 
 describe('parseAllowIps / serializeAllowIps', () => {
   test('newline-separated textarea → array, trim empty', () => {
-    expect(parseAllowIps('10.0.0.1\n\n192.168.1.0/24 ')).toEqual([
-      '10.0.0.1',
-      '192.168.1.0/24',
-    ]);
+    expect(parseAllowIps('10.0.0.1\n\n192.168.1.0/24 ')).toEqual(['10.0.0.1', '192.168.1.0/24']);
   });
 
   test('empty string → empty array', () => {

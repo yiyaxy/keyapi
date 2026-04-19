@@ -64,12 +64,8 @@ describe('integration: keys reveal', () => {
     );
     await waitFor(() => expect(screen.getByText('k')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /Reveal/ }));
-    await waitFor(() =>
-      expect(screen.getByText('sk-FULL-SECRET-VALUE')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText('sk-FULL-SECRET-VALUE')).toBeInTheDocument());
     act(() => vi.advanceTimersByTime(5000));
-    await waitFor(() =>
-      expect(screen.queryByText('sk-FULL-SECRET-VALUE')).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByText('sk-FULL-SECRET-VALUE')).not.toBeInTheDocument());
   });
 });

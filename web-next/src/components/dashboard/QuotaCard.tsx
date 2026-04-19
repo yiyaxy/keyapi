@@ -8,11 +8,7 @@ import { fmtMoney } from '@/lib/format';
 
 const QUOTA_PER_UNIT = 500_000;
 
-export function QuotaCard({
-  user,
-}: {
-  user: { quota: number; used_quota: number };
-}) {
+export function QuotaCard({ user }: { user: { quota: number; used_quota: number } }) {
   const { t } = useTranslation('dashboard');
   const total = user.quota + user.used_quota;
   const isNew = user.quota === 0 && user.used_quota === 0;

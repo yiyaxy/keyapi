@@ -38,8 +38,6 @@ describe('Login page', () => {
     await user.type(await screen.findByLabelText(/邮箱|email/i), 'alice@example.com');
     await user.type(screen.getByLabelText(/密码|password/i), 'wrong');
     await user.click(screen.getByRole('button', { name: /登录|sign in/i }));
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/密码错误|password/)
-    );
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/密码错误|password/));
   });
 });

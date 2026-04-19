@@ -4,12 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { LogsPagination } from '@/components/logs/LogsPagination';
 import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInbox, useInboxMessage, type InboxMessage } from '@/hooks/useInbox';
 import { fmtDateSec } from '@/lib/format';
@@ -56,12 +51,7 @@ export function InboxPage() {
               ))}
             </ul>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
       <Dialog open={openId !== null} onOpenChange={(o) => !o && setOpenId(null)}>
@@ -109,9 +99,7 @@ function InboxRow({
           {!message.is_read && <Badge variant='default'>{t('list.badge.new')}</Badge>}
         </div>
         <div className='flex-1 truncate'>
-          <div
-            className={message.is_read ? 'text-fg-1' : 'font-medium text-fg-0'}
-          >
+          <div className={message.is_read ? 'text-fg-1' : 'font-medium text-fg-0'}>
             {message.title}
           </div>
         </div>

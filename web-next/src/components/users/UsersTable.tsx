@@ -63,11 +63,7 @@ export function UsersTable({
                 <td className='px-3 py-2'>
                   <Badge
                     variant={
-                      role === 'root'
-                        ? 'default'
-                        : role === 'admin'
-                          ? 'secondary'
-                          : 'outline'
+                      role === 'root' ? 'default' : role === 'admin' ? 'secondary' : 'outline'
                     }
                   >
                     {t(`role.${role}`)}
@@ -97,9 +93,7 @@ export function UsersTable({
                         {t(isEnabled ? 'action.disable' : 'action.enable')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onSelect={() =>
-                          onManage(u, u.role >= ROLE_ADMIN ? 'demote' : 'promote')
-                        }
+                        onSelect={() => onManage(u, u.role >= ROLE_ADMIN ? 'demote' : 'promote')}
                         disabled={isRoot}
                       >
                         {u.role >= ROLE_ADMIN ? t('action.demote') : t('action.promote')}

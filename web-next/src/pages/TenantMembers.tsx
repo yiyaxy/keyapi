@@ -88,12 +88,7 @@ export function TenantMembersPage() {
               )
             }
           />
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
       <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} />

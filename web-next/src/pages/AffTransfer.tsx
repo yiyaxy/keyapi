@@ -40,16 +40,12 @@ export function AffTransferPage() {
   const [amount, setAmount] = useState(0);
 
   const pendingVal =
-    typeof pending.data === 'number'
-      ? pending.data
-      : (pending.data?.pending_quota ?? 0);
+    typeof pending.data === 'number' ? pending.data : (pending.data?.pending_quota ?? 0);
   const hasPending = pendingVal > 0;
 
   async function submit() {
     if (amount < QUOTA_PER_UNIT) {
-      toast.error(
-        t('form.amount.min', { amount: fmtNum(QUOTA_PER_UNIT) })
-      );
+      toast.error(t('form.amount.min', { amount: fmtNum(QUOTA_PER_UNIT) }));
       return;
     }
     try {
@@ -77,9 +73,7 @@ export function AffTransferPage() {
               {fmtMoney((user?.quota ?? 0) / QUOTA_PER_UNIT)}
             </div>
           </div>
-          {hasPending && (
-            <InlineBanner level='warn' message={t('pending.notice')} />
-          )}
+          {hasPending && <InlineBanner level='warn' message={t('pending.notice')} />}
           <div className='grid grid-cols-[1fr_auto] items-end gap-3'>
             <div className='space-y-2'>
               <Label htmlFor='aff-amount'>{t('form.amount.label')}</Label>
@@ -117,9 +111,7 @@ export function AffTransferPage() {
           {history.isPending ? (
             <Skeleton className='h-24 w-full' />
           ) : (history.data?.items ?? []).length === 0 ? (
-            <div className='py-8 text-center text-13 text-fg-2'>
-              {t('history.empty')}
-            </div>
+            <div className='py-8 text-center text-13 text-fg-2'>{t('history.empty')}</div>
           ) : (
             <>
               <div className='overflow-x-auto'>
@@ -129,9 +121,7 @@ export function AffTransferPage() {
                       <th className='py-2 font-medium'>{t('history.col.id')}</th>
                       <th className='py-2 font-medium'>{t('history.col.quota')}</th>
                       <th className='py-2 font-medium'>{t('history.col.status')}</th>
-                      <th className='py-2 font-medium'>
-                        {t('history.col.admin_remark')}
-                      </th>
+                      <th className='py-2 font-medium'>{t('history.col.admin_remark')}</th>
                       <th className='py-2 font-medium'>{t('history.col.created')}</th>
                     </tr>
                   </thead>

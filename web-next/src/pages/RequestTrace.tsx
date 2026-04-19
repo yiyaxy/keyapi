@@ -22,9 +22,7 @@ const TYPE_KEY: Record<number, string> = {
   6: 'refund',
 };
 
-function typeVariant(
-  type: number
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function typeVariant(type: number): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (type === 5) return 'destructive';
   if (type === 2) return 'secondary';
   return 'outline';
@@ -107,9 +105,7 @@ export function RequestTracePage() {
                 <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
                   <td className='px-3 py-2 text-fg-1'>{fmtDateSec(r.created_at)}</td>
                   <td className='px-3 py-2'>
-                    <Badge variant={typeVariant(r.type)}>
-                      {TYPE_KEY[r.type] ?? r.type}
-                    </Badge>
+                    <Badge variant={typeVariant(r.type)}>{TYPE_KEY[r.type] ?? r.type}</Badge>
                   </td>
                   <td className='px-3 py-2 font-mono'>{r.username || '—'}</td>
                   <td className='px-3 py-2'>{r.channel_name || r.channel || '—'}</td>
@@ -122,9 +118,7 @@ export function RequestTracePage() {
                   <td className='px-3 py-2'>
                     {r.quota > 0 ? fmtMoney(r.quota / QUOTA_PER_UNIT) : '—'}
                   </td>
-                  <td className='px-3 py-2'>
-                    {r.use_time > 0 ? `${r.use_time} ms` : '—'}
-                  </td>
+                  <td className='px-3 py-2'>{r.use_time > 0 ? `${r.use_time} ms` : '—'}</td>
                   <td className='max-w-[280px] px-3 py-2'>
                     <div className='truncate text-12 text-fg-2'>{r.content || '—'}</div>
                   </td>

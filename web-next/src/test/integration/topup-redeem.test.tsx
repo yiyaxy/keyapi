@@ -68,10 +68,7 @@ describe('integration: topup redeem', () => {
         if (body.key === 'GOODCODE') {
           return HttpResponse.json({ success: true, data: 1_500_000 });
         }
-        return HttpResponse.json(
-          { success: false, message: 'invalid' },
-          { status: 200 }
-        );
+        return HttpResponse.json({ success: false, message: 'invalid' }, { status: 200 });
       })
     );
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -87,17 +84,13 @@ describe('integration: topup redeem', () => {
         </AuthProvider>
       </QueryClientProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByText(/Used \$0\.00 of \$1\.00/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Used \$0\.00 of \$1\.00/)).toBeInTheDocument());
 
     const input = screen.getByPlaceholderText(/redemption code|兑换码/);
     await user.type(input, 'GOODCODE');
     await user.click(screen.getByRole('button', { name: /Redeem|兑换/ }));
 
-    await waitFor(() =>
-      expect(screen.getByText(/Used \$0\.00 of \$4\.00/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Used \$0\.00 of \$4\.00/)).toBeInTheDocument());
     expect(selfCalls).toBeGreaterThanOrEqual(2);
   });
 
@@ -123,9 +116,7 @@ describe('integration: topup redeem', () => {
         </AuthProvider>
       </QueryClientProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByText(/Used \$0\.00 of \$1\.00/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Used \$0\.00 of \$1\.00/)).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /Redeem|兑换/ }));
     // Give any pending microtasks a chance to run
     await new Promise((r) => setTimeout(r, 50));

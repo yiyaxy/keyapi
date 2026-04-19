@@ -131,9 +131,7 @@ export function PlanFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[560px]'>
         <DialogHeader>
-          <DialogTitle>
-            {t(isEdit ? 'admin.edit.title' : 'admin.create.title')}
-          </DialogTitle>
+          <DialogTitle>{t(isEdit ? 'admin.edit.title' : 'admin.create.title')}</DialogTitle>
         </DialogHeader>
         {mutation.error instanceof ApiError && (
           <InlineBanner
@@ -188,16 +186,12 @@ export function PlanFormDialog({
                   <SelectItem value='month'>{t('admin.field.duration_unit.month')}</SelectItem>
                   <SelectItem value='year'>{t('admin.field.duration_unit.year')}</SelectItem>
                   <SelectItem value='day'>{t('admin.field.duration_unit.day')}</SelectItem>
-                  <SelectItem value='custom'>
-                    {t('admin.field.duration_unit.custom')}
-                  </SelectItem>
+                  <SelectItem value='custom'>{t('admin.field.duration_unit.custom')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='p-duration-value'>
-                {t('admin.field.duration_value')}
-              </Label>
+              <Label htmlFor='p-duration-value'>{t('admin.field.duration_value')}</Label>
               <Input
                 id='p-duration-value'
                 type='number'
@@ -224,9 +218,7 @@ export function PlanFormDialog({
               </Select>
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='p-max-per-user'>
-                {t('admin.field.max_purchase_per_user')}
-              </Label>
+              <Label htmlFor='p-max-per-user'>{t('admin.field.max_purchase_per_user')}</Label>
               <Input
                 id='p-max-per-user'
                 type='number'
@@ -241,11 +233,7 @@ export function PlanFormDialog({
           </div>
           <div className='space-y-2'>
             <Label htmlFor='p-highlights'>{t('admin.field.promo_highlights')}</Label>
-            <Textarea
-              id='p-highlights'
-              rows={4}
-              {...form.register('promo_highlights')}
-            />
+            <Textarea id='p-highlights' rows={4} {...form.register('promo_highlights')} />
           </div>
           <DialogFooter>
             <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>

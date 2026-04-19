@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -146,8 +141,7 @@ export function useTestChannel() {
       );
       const payload = res.data;
       return {
-        response_time:
-          typeof payload?.time === 'number' ? Math.round(payload.time * 1000) : 0,
+        response_time: typeof payload?.time === 'number' ? Math.round(payload.time * 1000) : 0,
         message: payload?.message,
       } satisfies ChannelTestResult;
     },

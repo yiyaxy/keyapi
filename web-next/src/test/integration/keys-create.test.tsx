@@ -65,9 +65,7 @@ describe('integration: keys create', () => {
     );
     const user = userEvent.setup();
     mount();
-    await waitFor(() =>
-      expect(screen.getByText(/No API keys yet|暂无/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/No API keys yet|暂无/)).toBeInTheDocument());
     await user.click(screen.getAllByRole('button', { name: /Create key|创建/ })[0]);
     const nameInput = await screen.findByLabelText(/Name|名称/);
     await user.type(nameInput, 'first');

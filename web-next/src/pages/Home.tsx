@@ -9,9 +9,7 @@ export function HomePage() {
   return (
     <div className='space-y-16'>
       <section className='pt-10 text-center'>
-        <h1 className='text-40 font-semibold leading-tight tracking-tight'>
-          {t('home.tagline')}
-        </h1>
+        <h1 className='text-40 font-semibold leading-tight tracking-tight'>{t('home.tagline')}</h1>
         <p className='mx-auto mt-4 max-w-xl text-15 text-fg-2'>{t('home.sub')}</p>
         <div className='mt-8 flex justify-center gap-3'>
           <Link to='/register'>
@@ -26,9 +24,7 @@ export function HomePage() {
       </section>
 
       <section>
-        <h2 className='text-center text-20 font-semibold'>
-          {t('home.features.title')}
-        </h2>
+        <h2 className='text-center text-20 font-semibold'>{t('home.features.title')}</h2>
         <div className='mt-8 grid grid-cols-1 gap-4 md:grid-cols-2'>
           <Feature
             icon={Plug}
@@ -56,15 +52,7 @@ export function HomePage() {
   );
 }
 
-function Feature({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: typeof Plug;
-  title: string;
-  body: string;
-}) {
+function Feature({ icon: Icon, title, body }: { icon: typeof Plug; title: string; body: string }) {
   return (
     <div className='rounded-md border border-line bg-bg-1 p-5'>
       <Icon className='text-primary' size={20} strokeWidth={1.5} />

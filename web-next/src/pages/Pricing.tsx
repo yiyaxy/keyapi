@@ -77,10 +77,7 @@ export function PricingPage() {
             </thead>
             <tbody>
               {items.map((row) => (
-                <tr
-                  key={row.model_name}
-                  className='border-b border-line text-13 hover:bg-bg-1'
-                >
+                <tr key={row.model_name} className='border-b border-line text-13 hover:bg-bg-1'>
                   <td className='px-3 py-2 font-mono'>{row.model_name}</td>
                   <td className='px-3 py-2 text-fg-1'>{row.owner_by || '—'}</td>
                   <td className='px-3 py-2'>

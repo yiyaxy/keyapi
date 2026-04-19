@@ -41,10 +41,7 @@ export function TenantMembersTable({
 }: {
   items: TenantMember[];
   onRemove: (m: TenantMember) => void;
-  onManage: (
-    m: TenantMember,
-    change: { role?: number; status?: number }
-  ) => void;
+  onManage: (m: TenantMember, change: { role?: number; status?: number }) => void;
 }) {
   const { t } = useTranslation('tenant');
   return (
@@ -92,29 +89,14 @@ export function TenantMembersTable({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align='end'>
                       <DropdownMenuItem
-                        onSelect={() =>
-                          onManage(m, { role: isAdmin ? ROLE_MEMBER : ROLE_ADMIN })
-                        }
+                        onSelect={() => onManage(m, { role: isAdmin ? ROLE_MEMBER : ROLE_ADMIN })}
                       >
-                        {t(
-                          isAdmin
-                            ? 'members.action.demote'
-                            : 'members.action.promote'
-                        )}
+                        {t(isAdmin ? 'members.action.demote' : 'members.action.promote')}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => onManage(m, { status: isEnabled ? 2 : 1 })}
-                      >
-                        {t(
-                          isEnabled
-                            ? 'members.action.disable'
-                            : 'members.action.enable'
-                        )}
+                      <DropdownMenuItem onSelect={() => onManage(m, { status: isEnabled ? 2 : 1 })}>
+                        {t(isEnabled ? 'members.action.disable' : 'members.action.enable')}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => onRemove(m)}
-                        className='text-danger'
-                      >
+                      <DropdownMenuItem onSelect={() => onRemove(m)} className='text-danger'>
                         {t('members.action.remove')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>

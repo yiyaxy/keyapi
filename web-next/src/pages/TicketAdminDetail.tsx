@@ -142,31 +142,17 @@ export function TicketAdminDetailPage() {
   );
 }
 
-function AdminReplyBlock({
-  reply,
-  t,
-}: {
-  reply: TicketReply;
-  t: (k: string) => string;
-}) {
+function AdminReplyBlock({ reply, t }: { reply: TicketReply; t: (k: string) => string }) {
   const isUser = reply.role === 'user';
   return (
-    <li
-      className={
-        'rounded-md border border-line p-3 ' + (isUser ? 'bg-bg-1' : 'bg-bg-0')
-      }
-    >
+    <li className={'rounded-md border border-line p-3 ' + (isUser ? 'bg-bg-1' : 'bg-bg-0')}>
       <div className='mb-2 flex items-center justify-between'>
         <div className='text-12 font-medium text-fg-1'>
           {t(isUser ? 'admin.role.user' : 'admin.role.admin')}
         </div>
-        <div className='text-12 text-fg-2 tabular-nums'>
-          {fmtDateSec(reply.created_at)}
-        </div>
+        <div className='text-12 text-fg-2 tabular-nums'>{fmtDateSec(reply.created_at)}</div>
       </div>
-      <div className='whitespace-pre-wrap text-13 leading-6 text-fg-0'>
-        {reply.content}
-      </div>
+      <div className='whitespace-pre-wrap text-13 leading-6 text-fg-0'>{reply.content}</div>
     </li>
   );
 }

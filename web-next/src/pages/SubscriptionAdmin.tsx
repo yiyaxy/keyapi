@@ -15,9 +15,7 @@ import {
 } from '@/hooks/useSubscription';
 import { fmtMoney } from '@/lib/format';
 
-function statusVariant(
-  status: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'active':
       return 'default';

@@ -12,12 +12,7 @@ import { CreateUserDialog } from '@/components/users/CreateUserDialog';
 import { EditUserDialog } from '@/components/users/EditUserDialog';
 import { UsersTable } from '@/components/users/UsersTable';
 import { PageAction } from '@/hooks/usePageAction';
-import {
-  useAdminUsers,
-  useManageUser,
-  type AdminUser,
-  type ManageAction,
-} from '@/hooks/useUsers';
+import { useAdminUsers, useManageUser, type AdminUser, type ManageAction } from '@/hooks/useUsers';
 
 const PAGE_SIZE = 50;
 
@@ -103,21 +98,12 @@ export function UsersAdminPage() {
             onDelete={setDeleteTarget}
             onManage={runManage}
           />
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
       <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
       {editTarget && (
-        <EditUserDialog
-          open
-          user={editTarget}
-          onOpenChange={(o) => !o && setEditTarget(null)}
-        />
+        <EditUserDialog open user={editTarget} onOpenChange={(o) => !o && setEditTarget(null)} />
       )}
       {deleteTarget && (
         <ConfirmDialog

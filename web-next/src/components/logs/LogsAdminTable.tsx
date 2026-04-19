@@ -7,16 +7,15 @@ import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
 
 const QUOTA_PER_UNIT = 500_000;
 
-const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> =
-  {
-    0: 'outline',
-    1: 'default',
-    2: 'secondary',
-    3: 'outline',
-    4: 'outline',
-    5: 'destructive',
-    6: 'default',
-  };
+const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  0: 'outline',
+  1: 'default',
+  2: 'secondary',
+  3: 'outline',
+  4: 'outline',
+  5: 'destructive',
+  6: 'default',
+};
 
 const TYPE_KEY: Record<LogType, string> = {
   0: 'filters.type.all',
@@ -77,12 +76,7 @@ export function LogsAdminTable({
               </td>
               <td className='px-3 py-2 font-mono text-12 text-fg-2'>{r.ip || '—'}</td>
               <td className='px-3 py-2'>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='sm'
-                  onClick={() => onRowClick(r)}
-                >
+                <Button type='button' variant='ghost' size='sm' onClick={() => onRowClick(r)}>
                   {t('table.col.detail')}
                 </Button>
               </td>

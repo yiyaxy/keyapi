@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -89,10 +84,10 @@ export function useCreateTicket() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: { subject: string; content: string }) => {
-      const res = await api.post<{ ticket: Ticket; reply: TicketReply }>(
-        '/api/ticket',
-        { ...body, object_keys: [] }
-      );
+      const res = await api.post<{ ticket: Ticket; reply: TicketReply }>('/api/ticket', {
+        ...body,
+        object_keys: [],
+      });
       return res.data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['tickets', 'list'] }),
@@ -123,9 +118,7 @@ export function useAdminTickets(q: TicketsQuery) {
       const params = new URLSearchParams();
       params.set('p', String(q.p ?? 1));
       params.set('page_size', String(q.page_size ?? 30));
-      const res = await api.get<TicketsPage>(
-        `/api/ticket/admin?${params.toString()}`
-      );
+      const res = await api.get<TicketsPage>(`/api/ticket/admin?${params.toString()}`);
       return res.data;
     },
     placeholderData: keepPreviousData,
@@ -149,10 +142,10 @@ export function useAdminReplyTicket(ticketId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (content: string) => {
-      const res = await api.post<TicketReply>(
-        `/api/ticket/admin/${ticketId}/reply`,
-        { content, object_keys: [] }
-      );
+      const res = await api.post<TicketReply>(`/api/ticket/admin/${ticketId}/reply`, {
+        content,
+        object_keys: [],
+      });
       return res.data;
     },
     onSuccess: () => {

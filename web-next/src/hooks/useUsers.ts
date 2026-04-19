@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -65,8 +60,7 @@ export function useCreateUser() {
       const res = await api.post('/api/user/', input);
       return res.data;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['admin-users', 'list'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-users', 'list'] }),
   });
 }
 
@@ -88,8 +82,7 @@ export function useUpdateUser() {
       const res = await api.put('/api/user/', input);
       return res.data;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['admin-users', 'list'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-users', 'list'] }),
   });
 }
 
@@ -102,7 +95,6 @@ export function useManageUser() {
       const res = await api.post('/api/user/manage', { id, action });
       return res.data;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['admin-users', 'list'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-users', 'list'] }),
   });
 }

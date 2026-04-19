@@ -27,11 +27,7 @@ export function useTenantAlerts() {
   });
 }
 
-export function useTenantAlertHistory(q: {
-  p?: number;
-  page_size?: number;
-  status?: string;
-}) {
+export function useTenantAlertHistory(q: { p?: number; page_size?: number; status?: string }) {
   return useQuery<{ items: TenantAlert[]; total: number }>({
     queryKey: ['tenant', 'alerts', 'history', q] as const,
     queryFn: async () => {

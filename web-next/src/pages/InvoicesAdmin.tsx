@@ -25,9 +25,7 @@ import { fmtDateSec } from '@/lib/format';
 
 const PAGE_SIZE = 30;
 
-function statusVariant(
-  status: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'approved':
       return 'default';
@@ -42,9 +40,7 @@ function statusVariant(
   }
 }
 
-function issueVariant(
-  issue: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function issueVariant(issue: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (issue) {
     case 'issued':
       return 'default';
@@ -190,18 +186,10 @@ export function InvoicesAdminPage() {
               </tbody>
             </table>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
-      <Dialog
-        open={rejectTarget !== null}
-        onOpenChange={(o) => !o && setRejectTarget(null)}
-      >
+      <Dialog open={rejectTarget !== null} onOpenChange={(o) => !o && setRejectTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('admin.reject.title')}</DialogTitle>
@@ -216,11 +204,7 @@ export function InvoicesAdminPage() {
             />
           </div>
           <DialogFooter>
-            <Button
-              type='button'
-              variant='secondary'
-              onClick={() => setRejectTarget(null)}
-            >
+            <Button type='button' variant='secondary' onClick={() => setRejectTarget(null)}>
               {t('admin.reject.cancel')}
             </Button>
             <Button

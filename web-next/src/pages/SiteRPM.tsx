@@ -21,9 +21,7 @@ export function SiteRPMPage() {
   return (
     <div className='space-y-4'>
       <div className='flex items-center justify-between'>
-        <p className='text-13 text-fg-2'>
-          {t('rpm.sub', { seconds: window })}
-        </p>
+        <p className='text-13 text-fg-2'>{t('rpm.sub', { seconds: window })}</p>
         <Select
           value={String(window)}
           onValueChange={(v) => setWindow(Number(v) as 60 | 300 | 900)}
@@ -71,20 +69,13 @@ export function SiteRPMPage() {
             <thead>
               <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
                 <th className='px-3 py-2 font-medium'>{t('rpm.col.site')}</th>
-                <th className='px-3 py-2 text-right font-medium'>
-                  {t('rpm.col.rpm')}
-                </th>
+                <th className='px-3 py-2 text-right font-medium'>{t('rpm.col.rpm')}</th>
               </tr>
             </thead>
             <tbody>
               {(rpm.data?.sites ?? []).map((s) => (
-                <tr
-                  key={s.site_label}
-                  className='border-b border-line text-13 hover:bg-bg-1'
-                >
-                  <td className='px-3 py-2 font-mono text-12'>
-                    {s.site_label || '—'}
-                  </td>
+                <tr key={s.site_label} className='border-b border-line text-13 hover:bg-bg-1'>
+                  <td className='px-3 py-2 font-mono text-12'>{s.site_label || '—'}</td>
                   <td className='px-3 py-2 text-right'>{s.rpm.toFixed(1)}</td>
                 </tr>
               ))}

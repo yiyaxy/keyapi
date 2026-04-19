@@ -66,9 +66,7 @@ export function LogsFilters({
         <Label>{t('filters.type.all')}</Label>
         <Select
           value={String(draft.type)}
-          onValueChange={(v) =>
-            setDraft((d) => ({ ...d, type: Number(v) as LogType }))
-          }
+          onValueChange={(v) => setDraft((d) => ({ ...d, type: Number(v) as LogType }))}
         >
           <SelectTrigger>
             <SelectValue />

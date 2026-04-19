@@ -43,9 +43,7 @@ export function useTenantUsageTrend(days: number) {
   return useQuery<TenantUsageTrendPoint[]>({
     queryKey: ['tenant', 'usage-trend', days] as const,
     queryFn: async () => {
-      const res = await api.get<TenantUsageTrendPoint[]>(
-        `/api/tenant/usage/trend?days=${days}`
-      );
+      const res = await api.get<TenantUsageTrendPoint[]>(`/api/tenant/usage/trend?days=${days}`);
       return Array.isArray(res.data) ? res.data : [];
     },
     staleTime: 30_000,

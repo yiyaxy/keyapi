@@ -4,10 +4,7 @@ import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ChannelFormDialog } from '@/components/channels/ChannelFormDialog';
-import {
-  ChannelsFilters,
-  type ChannelsFilterState,
-} from '@/components/channels/ChannelsFilters';
+import { ChannelsFilters, type ChannelsFilterState } from '@/components/channels/ChannelsFilters';
 import { ChannelsTable } from '@/components/channels/ChannelsTable';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LogsPagination } from '@/components/logs/LogsPagination';
@@ -98,19 +95,12 @@ export function ChannelsAdminPage() {
               setTestingId(c.id);
               test.mutate(c.id, {
                 onSettled: () => setTestingId(null),
-                onSuccess: (r) =>
-                  toast.success(t('test.ok', { latency: r.response_time })),
-                onError: (e) =>
-                  toast.error(t('test.fail', { message: (e as Error).message })),
+                onSuccess: (r) => toast.success(t('test.ok', { latency: r.response_time })),
+                onError: (e) => toast.error(t('test.fail', { message: (e as Error).message })),
               });
             }}
           />
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
       <ChannelFormDialog

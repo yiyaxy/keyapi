@@ -11,11 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageAction } from '@/hooks/usePageAction';
-import {
-  useDeleteModelMeta,
-  useModelsMeta,
-  type ModelMeta,
-} from '@/hooks/useModelsMeta';
+import { useDeleteModelMeta, useModelsMeta, type ModelMeta } from '@/hooks/useModelsMeta';
 import { fmtDateSec, fmtNum } from '@/lib/format';
 
 const PAGE_SIZE = 30;
@@ -101,9 +97,7 @@ export function ModelsAdminPage() {
                       </Badge>
                     </td>
                     <td className='px-3 py-2'>{fmtNum(m.matched_count ?? 0)}</td>
-                    <td className='px-3 py-2 text-fg-1'>
-                      {fmtDateSec(m.updated_time)}
-                    </td>
+                    <td className='px-3 py-2 text-fg-1'>{fmtDateSec(m.updated_time)}</td>
                     <td className='px-3 py-2'>
                       <div className='flex gap-1'>
                         <Button
@@ -130,12 +124,7 @@ export function ModelsAdminPage() {
               </tbody>
             </table>
           </div>
-          <LogsPagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={setPage}
-          />
+          <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
       <ModelFormDialog

@@ -75,9 +75,7 @@ describe('integration: account change password', () => {
     await user.type(next, 'newpass12');
     await user.type(confirm, 'different1');
     await user.click(screen.getByRole('button', { name: /Update password|更新密码/ }));
-    await waitFor(() =>
-      expect(screen.getByText(/do not match|不一致/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/do not match|不一致/)).toBeInTheDocument());
     expect(putBody).toBeNull();
 
     await user.clear(confirm);

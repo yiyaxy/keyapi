@@ -70,9 +70,7 @@ export function LogsAdminFilters({
         <Label>{t('filters.type.all')}</Label>
         <Select
           value={String(draft.type)}
-          onValueChange={(v) =>
-            setDraft((d) => ({ ...d, type: Number(v) as LogType }))
-          }
+          onValueChange={(v) => setDraft((d) => ({ ...d, type: Number(v) as LogType }))}
         >
           <SelectTrigger>
             <SelectValue />
@@ -111,10 +109,7 @@ export function LogsAdminFilters({
       </div>
       <div className='space-y-1'>
         <Label>{t('admin.filters.ip')}</Label>
-        <Input
-          value={draft.ip}
-          onChange={(e) => setDraft((d) => ({ ...d, ip: e.target.value }))}
-        />
+        <Input value={draft.ip} onChange={(e) => setDraft((d) => ({ ...d, ip: e.target.value }))} />
       </div>
       <div className='space-y-1'>
         <Label>{t('admin.filters.channel')}</Label>
@@ -122,9 +117,7 @@ export function LogsAdminFilters({
           type='number'
           min={0}
           value={draft.channel || ''}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, channel: Number(e.target.value) || 0 }))
-          }
+          onChange={(e) => setDraft((d) => ({ ...d, channel: Number(e.target.value) || 0 }))}
         />
       </div>
       <div className='space-y-1'>

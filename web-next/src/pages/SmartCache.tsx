@@ -53,9 +53,7 @@ export function SmartCachePage() {
       <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
         <Card>
           <CardHeader className='pb-2'>
-            <CardTitle className='text-13 text-fg-2'>
-              {t('cache.total_savings')}
-            </CardTitle>
+            <CardTitle className='text-13 text-fg-2'>{t('cache.total_savings')}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.isPending ? (
@@ -69,9 +67,7 @@ export function SmartCachePage() {
         </Card>
         <Card>
           <CardHeader className='pb-2'>
-            <CardTitle className='text-13 text-fg-2'>
-              {t('cache.cache_tokens')}
-            </CardTitle>
+            <CardTitle className='text-13 text-fg-2'>{t('cache.cache_tokens')}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.isPending ? (

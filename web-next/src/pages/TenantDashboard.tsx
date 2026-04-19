@@ -74,9 +74,7 @@ export function TenantDashboardPage() {
           title={t('dashboard.usage')}
           loading={summary.isPending}
           primary={
-            summary.data
-              ? fmtMoney(summary.data.today_quota_used / QUOTA_PER_UNIT)
-              : undefined
+            summary.data ? fmtMoney(summary.data.today_quota_used / QUOTA_PER_UNIT) : undefined
           }
           secondary={
             summary.data
@@ -100,9 +98,7 @@ export function TenantDashboardPage() {
       <div className='grid grid-cols-1 gap-4 lg:grid-cols-3'>
         <Card className='lg:col-span-2'>
           <CardHeader>
-            <CardTitle>
-              {t('dashboard.trend.title', { days: TREND_DAYS })}
-            </CardTitle>
+            <CardTitle>{t('dashboard.trend.title', { days: TREND_DAYS })}</CardTitle>
           </CardHeader>
           <CardContent>
             {trend.isPending ? (
@@ -114,22 +110,13 @@ export function TenantDashboardPage() {
             ) : (
               <div className='h-[260px]'>
                 <ResponsiveContainer width='100%' height='100%'>
-                  <LineChart
-                    data={trend.data}
-                    margin={{ top: 12, right: 16, left: 4, bottom: 4 }}
-                  >
+                  <LineChart data={trend.data} margin={{ top: 12, right: 16, left: 4, bottom: 4 }}>
                     <CartesianGrid strokeDasharray='2 4' stroke='var(--line)' />
-                    <XAxis
-                      dataKey='date'
-                      stroke='var(--fg-2)'
-                      tick={{ fontSize: 11 }}
-                    />
+                    <XAxis dataKey='date' stroke='var(--fg-2)' tick={{ fontSize: 11 }} />
                     <YAxis
                       stroke='var(--fg-2)'
                       tick={{ fontSize: 11 }}
-                      tickFormatter={(v: number) =>
-                        fmtMoney(v / QUOTA_PER_UNIT)
-                      }
+                      tickFormatter={(v: number) => fmtMoney(v / QUOTA_PER_UNIT)}
                     />
                     <Tooltip
                       formatter={(value: number) => [
@@ -184,9 +171,7 @@ export function TenantDashboardPage() {
                     <tr key={m.model_name} className='border-b border-line text-13'>
                       <td className='py-2 font-mono'>{m.model_name}</td>
                       <td className='py-2 text-right'>{fmtNum(m.request_count)}</td>
-                      <td className='py-2 text-right'>
-                        {fmtMoney(m.quota_used / QUOTA_PER_UNIT)}
-                      </td>
+                      <td className='py-2 text-right'>{fmtMoney(m.quota_used / QUOTA_PER_UNIT)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -220,12 +205,8 @@ function MetricCard({
           <Skeleton className='h-10 w-full' />
         ) : (
           <>
-            <div className='text-24 font-semibold tabular-nums'>
-              {primary ?? '—'}
-            </div>
-            {secondary && (
-              <div className='mt-1 text-12 text-fg-2'>{secondary}</div>
-            )}
+            <div className='text-24 font-semibold tabular-nums'>{primary ?? '—'}</div>
+            {secondary && <div className='mt-1 text-12 text-fg-2'>{secondary}</div>}
           </>
         )}
       </CardContent>

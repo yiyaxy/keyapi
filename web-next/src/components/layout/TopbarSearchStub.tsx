@@ -1,12 +1,7 @@
 import { Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export function TopbarSearchStub() {
   const { t } = useTranslation('shell');

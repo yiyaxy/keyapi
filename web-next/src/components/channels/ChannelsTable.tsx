@@ -13,8 +13,7 @@ import { channelTypeName } from '@/lib/channelTypes';
 
 function statusBadge(status: number) {
   if (status === 1) return { label: 'status.enabled', variant: 'default' as const };
-  if (status === 3)
-    return { label: 'status.auto_disabled', variant: 'destructive' as const };
+  if (status === 3) return { label: 'status.auto_disabled', variant: 'destructive' as const };
   return { label: 'status.manually_disabled', variant: 'secondary' as const };
 }
 
@@ -87,10 +86,7 @@ export function ChannelsTable({
                       <DropdownMenuItem onSelect={() => onToggle(ch)}>
                         {ch.status === 1 ? t('action.disable') : t('action.enable')}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => onDelete(ch)}
-                        className='text-danger'
-                      >
+                      <DropdownMenuItem onSelect={() => onDelete(ch)} className='text-danger'>
                         {t('action.delete')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>

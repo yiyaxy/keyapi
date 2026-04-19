@@ -15,10 +15,7 @@ export function ActivityCard({ stat }: { stat: LogSelfStat | undefined }) {
         label={t('activity.requests')}
         value={stat ? fmtNum(stat.total_requests) : undefined}
       />
-      <StatTile
-        label={t('activity.tokens')}
-        value={stat ? fmtNum(stat.total_tokens) : undefined}
-      />
+      <StatTile label={t('activity.tokens')} value={stat ? fmtNum(stat.total_tokens) : undefined} />
       <StatTile
         label={t('activity.consumed')}
         value={stat ? fmtMoney(stat.quota / QUOTA_PER_UNIT) : undefined}

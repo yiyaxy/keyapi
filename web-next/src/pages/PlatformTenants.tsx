@@ -9,10 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageAction } from '@/hooks/usePageAction';
-import {
-  useDeleteTenant,
-  usePlatformTenants,
-} from '@/hooks/usePlatformTenants';
+import { useDeleteTenant, usePlatformTenants } from '@/hooks/usePlatformTenants';
 import type { Tenant } from '@/hooks/useTenant';
 import { fmtDateSec } from '@/lib/format';
 
@@ -61,9 +58,7 @@ export function PlatformTenantsPage() {
         </div>
       ) : items.length === 0 ? (
         <div className='rounded-md border border-line bg-bg-1 p-8 text-center'>
-          <div className='text-15 font-medium text-fg-0'>
-            {t('tenants.empty.title')}
-          </div>
+          <div className='text-15 font-medium text-fg-0'>{t('tenants.empty.title')}</div>
           <div className='mt-1 text-13 text-fg-2'>{t('tenants.empty.body')}</div>
         </div>
       ) : (

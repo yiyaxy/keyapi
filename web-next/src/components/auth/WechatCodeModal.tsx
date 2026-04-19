@@ -78,9 +78,7 @@ export function WechatCodeModal({
               {...form.register('code')}
             />
           </div>
-          {error && (
-            <InlineBanner level='danger' message={error} onClose={() => setError(null)} />
-          )}
+          {error && <InlineBanner level='danger' message={error} onClose={() => setError(null)} />}
           <Button type='submit' className='w-full' disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? t('wechat.submitting') : t('wechat.submit')}
           </Button>

@@ -19,9 +19,7 @@ import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 30;
 
-function severityVariant(
-  severity: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function severityVariant(severity: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (severity) {
     case 'critical':
       return 'destructive';
@@ -34,9 +32,7 @@ function severityVariant(
   }
 }
 
-function statusVariant(
-  status: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'active':
       return 'destructive';
@@ -59,8 +55,7 @@ export function TenantAlertsPage() {
   const ack = useAckAlert();
   const resolve = useResolveAlert();
 
-  const items: TenantAlert[] =
-    tab === 'active' ? (active.data ?? []) : (history.data?.items ?? []);
+  const items: TenantAlert[] = tab === 'active' ? (active.data ?? []) : (history.data?.items ?? []);
   const total = tab === 'history' ? (history.data?.total ?? 0) : items.length;
   const isPending = tab === 'active' ? active.isPending : history.isPending;
   const isError = tab === 'active' ? active.isError : history.isError;
@@ -69,8 +64,19 @@ export function TenantAlertsPage() {
   return (
     <div className='space-y-4'>
       <div className='flex items-center gap-2 border-b border-line'>
-        <TabButton label={t('alerts.tab.active')} active={tab === 'active'} onClick={() => setTab('active')} />
-        <TabButton label={t('alerts.tab.history')} active={tab === 'history'} onClick={() => { setTab('history'); setPage(1); }} />
+        <TabButton
+          label={t('alerts.tab.active')}
+          active={tab === 'active'}
+          onClick={() => setTab('active')}
+        />
+        <TabButton
+          label={t('alerts.tab.history')}
+          active={tab === 'history'}
+          onClick={() => {
+            setTab('history');
+            setPage(1);
+          }}
+        />
       </div>
       {isError && (
         <InlineBanner
@@ -160,12 +166,7 @@ export function TenantAlertsPage() {
             </table>
           </div>
           {tab === 'history' && (
-            <LogsPagination
-              page={page}
-              pageSize={PAGE_SIZE}
-              total={total}
-              onChange={setPage}
-            />
+            <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
           )}
         </>
       )}
@@ -188,9 +189,7 @@ function TabButton({
       onClick={onClick}
       className={cn(
         '-mb-px border-b-2 px-3 py-2 text-13 transition-colors',
-        active
-          ? 'border-primary text-fg-0'
-          : 'border-transparent text-fg-2 hover:text-fg-1'
+        active ? 'border-primary text-fg-0' : 'border-transparent text-fg-2 hover:text-fg-1'
       )}
     >
       {label}

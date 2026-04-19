@@ -11,11 +11,7 @@ export function loadBootstrap(): AuthBootstrap | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof (parsed as AuthBootstrap).id === 'number'
-    ) {
+    if (parsed && typeof parsed === 'object' && typeof (parsed as AuthBootstrap).id === 'number') {
       const tenantId =
         typeof (parsed as AuthBootstrap).tenant_id === 'number'
           ? (parsed as AuthBootstrap).tenant_id

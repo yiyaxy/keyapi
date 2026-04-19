@@ -5,16 +5,15 @@ import { Button } from '@/components/ui/button';
 import type { LogRow, LogType } from '@/hooks/useLogs';
 import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
 
-const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> =
-  {
-    0: 'outline',
-    1: 'default',
-    2: 'secondary',
-    3: 'outline',
-    4: 'outline',
-    5: 'destructive',
-    6: 'default',
-  };
+const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  0: 'outline',
+  1: 'default',
+  2: 'secondary',
+  3: 'outline',
+  4: 'outline',
+  5: 'destructive',
+  6: 'default',
+};
 
 const TYPE_KEY: Record<LogType, string> = {
   0: 'filters.type.all',
@@ -61,10 +60,7 @@ export function LogsTable({
           {rows.map((r) => {
             const usd = r.quota / QUOTA_PER_UNIT;
             return (
-              <tr
-                key={r.id}
-                className='border-b border-line text-13 hover:bg-bg-1'
-              >
+              <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
                 <td className='px-3 py-2 text-fg-1'>{fmtDateSec(r.created_at)}</td>
                 <td className='px-3 py-2'>
                   <Badge variant={TYPE_VARIANT[r.type]}>{t(TYPE_KEY[r.type])}</Badge>
@@ -79,17 +75,10 @@ export function LogsTable({
                       })
                     : '—'}
                 </td>
-                <td className='px-3 py-2'>
-                  {r.quota > 0 ? fmtMoney(usd) : t('table.unit.free')}
-                </td>
+                <td className='px-3 py-2'>{r.quota > 0 ? fmtMoney(usd) : t('table.unit.free')}</td>
                 <td className='px-3 py-2'>{formatLatency(t, r.use_time)}</td>
                 <td className='px-3 py-2'>
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => onRowClick(r)}
-                  >
+                  <Button type='button' variant='ghost' size='sm' onClick={() => onRowClick(r)}>
                     {t('table.col.detail')}
                   </Button>
                 </td>

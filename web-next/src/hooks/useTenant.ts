@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -74,9 +69,7 @@ export function useTenantMembers(q: TenantMembersQuery) {
       params.set('p', String(q.p ?? 1));
       params.set('page_size', String(q.page_size ?? 50));
       if (q.keyword) params.set('keyword', q.keyword);
-      const res = await api.get<TenantMembersPage>(
-        `/api/tenant/members?${params.toString()}`
-      );
+      const res = await api.get<TenantMembersPage>(`/api/tenant/members?${params.toString()}`);
       return res.data;
     },
     placeholderData: keepPreviousData,
@@ -91,8 +84,7 @@ export function useInviteMember() {
       const res = await api.post('/api/tenant/invite', body);
       return res.data;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['tenant', 'members'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tenant', 'members'] }),
   });
 }
 
@@ -103,8 +95,7 @@ export function useUpdateMember() {
       const res = await api.put('/api/tenant/members', body);
       return res.data;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['tenant', 'members'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tenant', 'members'] }),
   });
 }
 
@@ -115,7 +106,6 @@ export function useRemoveMember() {
       await api.delete(`/api/tenant/members?user_id=${user_id}`);
       return user_id;
     },
-    onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: ['tenant', 'members'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tenant', 'members'] }),
   });
 }

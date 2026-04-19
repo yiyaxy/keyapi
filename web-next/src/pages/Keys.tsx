@@ -77,11 +77,7 @@ export function KeysPage() {
       )}
       <CreateTokenDialog open={createOpen} onOpenChange={setCreateOpen} />
       {editTarget && (
-        <EditTokenSheet
-          open
-          token={editTarget}
-          onOpenChange={(o) => !o && setEditTarget(null)}
-        />
+        <EditTokenSheet open token={editTarget} onOpenChange={(o) => !o && setEditTarget(null)} />
       )}
       {deleteTarget && (
         <DeleteConfirmDialog

@@ -2,11 +2,7 @@ import { useMemo } from 'react';
 
 import { ActivityCard } from '@/components/dashboard/ActivityCard';
 import { QuotaCard } from '@/components/dashboard/QuotaCard';
-import {
-  RangeSelect,
-  rangeToSeconds,
-  useRange,
-} from '@/components/dashboard/RangeSelect';
+import { RangeSelect, rangeToSeconds, useRange } from '@/components/dashboard/RangeSelect';
 import { UsageTrendCard } from '@/components/dashboard/UsageTrendCard';
 import { useAuth } from '@/hooks/useAuth';
 import { PageAction } from '@/hooks/usePageAction';

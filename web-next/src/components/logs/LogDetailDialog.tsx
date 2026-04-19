@@ -1,11 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { LogRow } from '@/hooks/useLogs';
 import { fmtDateSec } from '@/lib/format';
 

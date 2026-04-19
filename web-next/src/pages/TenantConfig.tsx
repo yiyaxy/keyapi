@@ -94,21 +94,16 @@ export function TenantConfigPage() {
                 .slice()
                 .sort((a, b) => a.key.localeCompare(b.key))
                 .map((item) => (
-                  <tr
-                    key={item.key}
-                    className='border-b border-line text-13 hover:bg-bg-1'
-                  >
+                  <tr key={item.key} className='border-b border-line text-13 hover:bg-bg-1'>
                     <td className='px-3 py-2 font-mono text-12'>{item.key}</td>
                     <td className='max-w-[400px] px-3 py-2 font-mono text-12'>
-                      <div className='truncate'>{item.value || <span className='text-fg-2'>—</span>}</div>
+                      <div className='truncate'>
+                        {item.value || <span className='text-fg-2'>—</span>}
+                      </div>
                     </td>
                     <td className='px-3 py-2'>
                       <Badge variant={item.overridden ? 'default' : 'outline'}>
-                        {t(
-                          item.overridden
-                            ? 'config.source.override'
-                            : 'config.source.platform'
-                        )}
+                        {t(item.overridden ? 'config.source.override' : 'config.source.platform')}
                       </Badge>
                     </td>
                     <td className='px-3 py-2'>
@@ -141,10 +136,7 @@ export function TenantConfigPage() {
           </table>
         </div>
       )}
-      <Dialog
-        open={editing !== null}
-        onOpenChange={(o) => !o && setEditing(null)}
-      >
+      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className='max-w-[520px]'>
           {editing && (
             <>
@@ -166,18 +158,10 @@ export function TenantConfigPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button
-                  type='button'
-                  variant='secondary'
-                  onClick={() => setEditing(null)}
-                >
+                <Button type='button' variant='secondary' onClick={() => setEditing(null)}>
                   {t('config.edit.cancel')}
                 </Button>
-                <Button
-                  type='button'
-                  onClick={() => void save()}
-                  disabled={setOverride.isPending}
-                >
+                <Button type='button' onClick={() => void save()} disabled={setOverride.isPending}>
                   {t('config.edit.save')}
                 </Button>
               </DialogFooter>
