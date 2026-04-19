@@ -11,6 +11,7 @@ build
 logs-slave/
 test-logs/
 web/dist
+web-next/dist
 .env
 camel-api
 new-api

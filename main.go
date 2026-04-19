@@ -37,10 +37,14 @@ import (
 	_ "net/http/pprof"
 )
 
-//go:embed web/dist
+// Frontend is web-next (the React 19 rewrite). web/dist is the legacy
+// build and is no longer embedded — `cd web-next && bun run build` must
+// run before `go build` so this embed has something to pick up.
+//
+//go:embed web-next/dist
 var buildFS embed.FS
 
-//go:embed web/dist/index.html
+//go:embed web-next/dist/index.html
 var indexPage []byte
 
 func main() {

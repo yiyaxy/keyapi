@@ -1,12 +1,12 @@
 FROM oven/bun:1 AS builder
 
 WORKDIR /build
-COPY web/package.json .
-COPY web/bun.lock .
+COPY web-next/package.json .
+COPY web-next/bun.lock .
 RUN bun install
-COPY ./web .
+COPY ./web-next .
 COPY ./VERSION .
-RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat VERSION) bun run build
+RUN bun run build
 
 FROM oven/bun:latest AS builder3
 
@@ -30,7 +30,7 @@ ADD go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-COPY --from=builder /build/dist ./web/dist
+COPY --from=builder /build/dist ./web-next/dist
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
 FROM debian:bookworm-slim
