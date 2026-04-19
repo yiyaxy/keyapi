@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
@@ -20,13 +21,13 @@ import {
   SECRET_FIELDS,
   SETTINGS_GROUPS,
   type FieldDef,
-  type Group,
 } from '@/lib/settingsSchema';
 
-function labelFor(
-  label: { zh: string; en: string },
-  lang: string
-): string {
+type TabId = string;
+const SECRETS_TAB = '__secrets';
+const ADVANCED_TAB = '__advanced';
+
+function labelFor(label: { zh: string; en: string }, lang: string): string {
   return lang.startsWith('zh') ? label.zh : label.en;
 }
 
@@ -56,7 +57,7 @@ function BoolRow({
   const update = useUpdateOption();
   const checked = coerceBool(value);
   return (
-    <div className='flex items-center justify-between gap-4 border-b border-line py-2 last:border-b-0'>
+    <div className='flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0'>
       <div className='min-w-0'>
         <div className='text-13'>{labelFor(field.label, i18n.language)}</div>
         <div className='font-mono text-11 text-fg-2'>{field.key}</div>
@@ -92,15 +93,12 @@ function TextRow({
 }) {
   const { t, i18n } = useTranslation('settings');
   const update = useUpdateOption();
-  const initial =
-    field.kind === 'json' ? isPrettyJson(value) : value;
+  const initial = field.kind === 'json' ? isPrettyJson(value) : value;
   const [draft, setDraft] = useState(initial);
   const dirty = draft !== initial;
-
   const long = field.kind === 'longText' || field.kind === 'json';
 
   function save() {
-    // Normalise JSON on save so backend stores compact form when valid
     let payload = draft;
     if (field.kind === 'json') {
       try {
@@ -163,9 +161,7 @@ function TextRow({
           rows={field.kind === 'json' ? 8 : 4}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className={
-            field.kind === 'json' ? 'font-mono text-12' : undefined
-          }
+          className={field.kind === 'json' ? 'font-mono text-12' : undefined}
         />
       ) : (
         <Input
@@ -223,109 +219,64 @@ function SecretRow({ field }: { field: FieldDef }) {
   );
 }
 
-function GroupCard({
-  group,
+function FieldList({
+  fields,
   values,
   onSaved,
   searchTerm,
 }: {
-  group: Group;
+  fields: FieldDef[];
   values: Record<string, string>;
   onSaved: (key: string, next: string) => void;
   searchTerm: string;
 }) {
-  const { t, i18n } = useTranslation('settings');
-  const [open, setOpen] = useState(true);
-
-  const fields = useMemo(() => {
-    const present = group.fields.filter((f) =>
+  const { t } = useTranslation('settings');
+  const filtered = useMemo(() => {
+    const present = fields.filter((f) =>
       Object.prototype.hasOwnProperty.call(values, f.key)
     );
     if (!searchTerm) return present;
     const q = searchTerm.toLowerCase();
-    return present.filter((f) => {
-      if (f.key.toLowerCase().includes(q)) return true;
-      const zh = f.label.zh.toLowerCase();
-      const en = f.label.en.toLowerCase();
-      return zh.includes(q) || en.includes(q);
-    });
-  }, [group.fields, values, searchTerm]);
+    return present.filter(
+      (f) =>
+        f.key.toLowerCase().includes(q) ||
+        f.label.zh.toLowerCase().includes(q) ||
+        f.label.en.toLowerCase().includes(q)
+    );
+  }, [fields, values, searchTerm]);
 
-  if (fields.length === 0) return null;
+  if (filtered.length === 0) {
+    return (
+      <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
+        {searchTerm ? t('empty.search') : t('empty.group')}
+      </div>
+    );
+  }
 
   return (
-    <section className='rounded-md border border-line bg-bg-1'>
-      <button
-        type='button'
-        className='flex w-full items-center justify-between gap-2 px-4 py-3 text-left'
-        onClick={() => setOpen((v) => !v)}
-      >
-        <h3 className='text-14 font-medium'>
-          {labelFor(group.title, i18n.language)}
-        </h3>
-        <span className='text-12 text-fg-2'>
-          {fields.length} · {open ? '▾' : '▸'}
-        </span>
-      </button>
-      {open && (
-        <div className='divide-y divide-line border-t border-line px-4 py-1'>
-          {fields.map((f) =>
-            f.kind === 'bool' ? (
-              <BoolRow
-                key={f.key}
-                field={f}
-                value={values[f.key]!}
-                onSaved={(next) => onSaved(f.key, next)}
-              />
-            ) : (
-              <TextRow
-                key={f.key}
-                field={f}
-                value={values[f.key]!}
-                onSaved={(next) => onSaved(f.key, next)}
-              />
-            )
-          )}
-        </div>
+    <div className='rounded-md border border-line bg-bg-1 px-4'>
+      {filtered.map((f) =>
+        f.kind === 'bool' ? (
+          <BoolRow
+            key={f.key}
+            field={f}
+            value={values[f.key]!}
+            onSaved={(next) => onSaved(f.key, next)}
+          />
+        ) : (
+          <TextRow
+            key={f.key}
+            field={f}
+            value={values[f.key]!}
+            onSaved={(next) => onSaved(f.key, next)}
+          />
+        )
       )}
-      {fields.length === 0 && (
-        <div className='px-4 py-6 text-13 text-fg-2'>{t('empty.group')}</div>
-      )}
-    </section>
+    </div>
   );
 }
 
-function SecretsCard() {
-  const { t } = useTranslation('settings');
-  const [open, setOpen] = useState(false);
-
-  return (
-    <section className='rounded-md border border-line bg-bg-1'>
-      <button
-        type='button'
-        className='flex w-full items-center justify-between gap-2 px-4 py-3 text-left'
-        onClick={() => setOpen((v) => !v)}
-      >
-        <div>
-          <h3 className='text-14 font-medium'>{t('secrets.title')}</h3>
-          <p className='text-12 text-fg-2'>{t('secrets.sub')}</p>
-        </div>
-        <span className='text-12 text-fg-2'>
-          {SECRET_FIELDS.length} · {open ? '▾' : '▸'}
-        </span>
-      </button>
-      {open && (
-        <div className='divide-y divide-line border-t border-line px-4 py-1'>
-          {SECRET_FIELDS.map((f) => (
-            <SecretRow key={f.key} field={f} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function AdvancedCard({
+function AdvancedList({
   unknown,
   onSaved,
   searchTerm,
@@ -335,77 +286,98 @@ function AdvancedCard({
   searchTerm: string;
 }) {
   const { t } = useTranslation('settings');
-  const [open, setOpen] = useState(false);
-
   const filtered = useMemo(() => {
     if (!searchTerm) return unknown;
     const q = searchTerm.toLowerCase();
     return unknown.filter(
       (o) =>
-        o.key.toLowerCase().includes(q) ||
-        o.value.toLowerCase().includes(q)
+        o.key.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
     );
   }, [unknown, searchTerm]);
 
-  if (unknown.length === 0) return null;
+  if (filtered.length === 0) {
+    return (
+      <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
+        {searchTerm ? t('empty.search') : t('empty.group')}
+      </div>
+    );
+  }
 
   return (
-    <section className='rounded-md border border-line bg-bg-1'>
-      <button
-        type='button'
-        className='flex w-full items-center justify-between gap-2 px-4 py-3 text-left'
-        onClick={() => setOpen((v) => !v)}
-      >
-        <div>
-          <h3 className='text-14 font-medium'>{t('advanced.title')}</h3>
-          <p className='text-12 text-fg-2'>{t('advanced.sub')}</p>
-        </div>
-        <span className='text-12 text-fg-2'>
-          {filtered.length} · {open ? '▾' : '▸'}
-        </span>
-      </button>
-      {open && (
-        <div className='divide-y divide-line border-t border-line px-4 py-1'>
-          {filtered.map((o) => {
-            const isBool = o.value === 'true' || o.value === 'false';
-            const field: FieldDef = {
-              key: o.key,
-              kind: isBool
-                ? 'bool'
-                : o.value.length > 80 || o.value.includes('\n')
-                  ? 'longText'
-                  : 'text',
-              label: { zh: o.key, en: o.key },
-            };
-            return field.kind === 'bool' ? (
-              <BoolRow
-                key={o.key}
-                field={field}
-                value={o.value}
-                onSaved={(next) => onSaved(o.key, next)}
-              />
-            ) : (
-              <TextRow
-                key={o.key}
-                field={field}
-                value={o.value}
-                onSaved={(next) => onSaved(o.key, next)}
-              />
-            );
-          })}
-        </div>
-      )}
-    </section>
+    <div className='rounded-md border border-line bg-bg-1 px-4'>
+      {filtered.map((o) => {
+        const isBool = o.value === 'true' || o.value === 'false';
+        const field: FieldDef = {
+          key: o.key,
+          kind: isBool
+            ? 'bool'
+            : o.value.length > 80 || o.value.includes('\n')
+              ? 'longText'
+              : 'text',
+          label: { zh: o.key, en: o.key },
+        };
+        return field.kind === 'bool' ? (
+          <BoolRow
+            key={o.key}
+            field={field}
+            value={o.value}
+            onSaved={(next) => onSaved(o.key, next)}
+          />
+        ) : (
+          <TextRow
+            key={o.key}
+            field={field}
+            value={o.value}
+            onSaved={(next) => onSaved(o.key, next)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function TabLink({
+  active,
+  onClick,
+  children,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  count: number;
+}) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-13 ${
+        active
+          ? 'bg-bg-1 text-fg-0'
+          : 'text-fg-1 hover:bg-bg-1'
+      }`}
+    >
+      <span className='truncate'>{children}</span>
+      <span className='shrink-0 text-11 text-fg-2'>{count}</span>
+    </button>
   );
 }
 
 export function SettingsAdminPage() {
-  const { t } = useTranslation('settings');
+  const { t, i18n } = useTranslation('settings');
   const list = useOptions();
   const forceLogout = useForceLogoutAll();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [keyword, setKeyword] = useState('');
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [forceLogoutOpen, setForceLogoutOpen] = useState(false);
+
+  const activeTab: TabId = searchParams.get('tab') ?? SETTINGS_GROUPS[0]!.id;
+  function setActiveTab(id: TabId) {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', id);
+    setSearchParams(next, { replace: true });
+  }
 
   const known = useMemo(() => allKnownKeys(), []);
 
@@ -415,13 +387,40 @@ export function SettingsAdminPage() {
     return { ...m, ...overrides };
   }, [list.data, overrides]);
 
-  const unknown = useMemo(() => {
-    return (list.data ?? []).filter((o) => !known.has(o.key));
-  }, [list.data, known]);
+  const unknown = useMemo(
+    () => (list.data ?? []).filter((o) => !known.has(o.key)),
+    [list.data, known]
+  );
+
+  const groupCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const g of SETTINGS_GROUPS) {
+      m[g.id] = g.fields.filter((f) =>
+        Object.prototype.hasOwnProperty.call(values, f.key)
+      ).length;
+    }
+    return m;
+  }, [values]);
 
   function onSaved(key: string, next: string) {
     setOverrides((prev) => ({ ...prev, [key]: next }));
   }
+
+  const activeGroup = SETTINGS_GROUPS.find((g) => g.id === activeTab);
+  const activeTitle =
+    activeTab === SECRETS_TAB
+      ? t('secrets.title')
+      : activeTab === ADVANCED_TAB
+        ? t('advanced.title')
+        : activeGroup
+          ? labelFor(activeGroup.title, i18n.language)
+          : '';
+  const activeSub =
+    activeTab === SECRETS_TAB
+      ? t('secrets.sub')
+      : activeTab === ADVANCED_TAB
+        ? t('advanced.sub')
+        : '';
 
   return (
     <div className='space-y-4'>
@@ -457,18 +456,60 @@ export function SettingsAdminPage() {
           ))}
         </div>
       ) : (
-        <div className='space-y-3'>
-          {SETTINGS_GROUPS.map((g) => (
-            <GroupCard
-              key={g.id}
-              group={g}
-              values={values}
-              onSaved={onSaved}
-              searchTerm={keyword}
-            />
-          ))}
-          <SecretsCard />
-          <AdvancedCard unknown={unknown} onSaved={onSaved} searchTerm={keyword} />
+        <div className='grid gap-4 md:grid-cols-[220px_1fr]'>
+          <aside className='space-y-1 rounded-md border border-line bg-bg-0 p-2'>
+            {SETTINGS_GROUPS.map((g) => (
+              <TabLink
+                key={g.id}
+                active={activeTab === g.id}
+                onClick={() => setActiveTab(g.id)}
+                count={groupCounts[g.id] ?? 0}
+              >
+                {labelFor(g.title, i18n.language)}
+              </TabLink>
+            ))}
+            <div className='my-2 border-t border-line' />
+            <TabLink
+              active={activeTab === SECRETS_TAB}
+              onClick={() => setActiveTab(SECRETS_TAB)}
+              count={SECRET_FIELDS.length}
+            >
+              {t('secrets.title')}
+            </TabLink>
+            <TabLink
+              active={activeTab === ADVANCED_TAB}
+              onClick={() => setActiveTab(ADVANCED_TAB)}
+              count={unknown.length}
+            >
+              {t('advanced.title')}
+            </TabLink>
+          </aside>
+          <div className='min-w-0 space-y-3'>
+            <div>
+              <h2 className='text-16 font-semibold'>{activeTitle}</h2>
+              {activeSub && <p className='text-12 text-fg-2'>{activeSub}</p>}
+            </div>
+            {activeTab === SECRETS_TAB ? (
+              <div className='rounded-md border border-line bg-bg-1 px-4'>
+                {SECRET_FIELDS.map((f) => (
+                  <SecretRow key={f.key} field={f} />
+                ))}
+              </div>
+            ) : activeTab === ADVANCED_TAB ? (
+              <AdvancedList
+                unknown={unknown}
+                onSaved={onSaved}
+                searchTerm={keyword}
+              />
+            ) : activeGroup ? (
+              <FieldList
+                fields={activeGroup.fields}
+                values={values}
+                onSaved={onSaved}
+                searchTerm={keyword}
+              />
+            ) : null}
+          </div>
         </div>
       )}
       <ConfirmDialog
