@@ -4,7 +4,9 @@ export type FieldKind =
   | 'text'
   | 'longText'
   | 'json'
-  | 'secret';
+  | 'secret'
+  | 'kvMap' // {key: number | string}
+  | 'stringList'; // ["a", "b"]
 
 export type FieldDef = {
   key: string;
@@ -12,6 +14,12 @@ export type FieldDef = {
   label: { zh: string; en: string };
   help?: { zh: string; en: string };
   placeholder?: string;
+  /** for kvMap: key column label */
+  kvKeyLabel?: { zh: string; en: string };
+  /** for kvMap: value column label */
+  kvValueLabel?: { zh: string; en: string };
+  /** for kvMap: value type */
+  kvValueType?: 'number' | 'string';
 };
 
 export type Group = {
@@ -27,6 +35,27 @@ function f(
   help?: { zh: string; en: string }
 ): FieldDef {
   return { key, kind, label, help };
+}
+
+function kv(
+  key: string,
+  label: { zh: string; en: string },
+  opts: {
+    keyLabel: { zh: string; en: string };
+    valueLabel: { zh: string; en: string };
+    valueType: 'number' | 'string';
+    help?: { zh: string; en: string };
+  }
+): FieldDef {
+  return {
+    key,
+    kind: 'kvMap',
+    label,
+    help: opts.help,
+    kvKeyLabel: opts.keyLabel,
+    kvValueLabel: opts.valueLabel,
+    kvValueType: opts.valueType,
+  };
 }
 
 export const SETTINGS_GROUPS: Group[] = [
@@ -177,37 +206,136 @@ export const SETTINGS_GROUPS: Group[] = [
     id: 'ratios',
     title: { zh: '分组与模型倍率', en: 'Groups & ratios' },
     fields: [
-      f('ModelPrice', 'json', { zh: '模型价格', en: 'Model price' }),
-      f('ModelRatio', 'json', { zh: '模型倍率', en: 'Model ratio' }),
-      f('CompletionRatio', 'json', { zh: '补全倍率', en: 'Completion ratio' }),
-      f('CacheRatio', 'json', { zh: '缓存倍率', en: 'Cache ratio' }),
-      f('CreateCacheRatio', 'json', {
-        zh: '创建缓存倍率',
-        en: 'Create cache ratio',
-      }),
-      f('ImageRatio', 'json', { zh: '图片倍率', en: 'Image ratio' }),
-      f('AudioRatio', 'json', { zh: '音频倍率', en: 'Audio ratio' }),
-      f('AudioCompletionRatio', 'json', {
-        zh: '音频补全倍率',
-        en: 'Audio completion ratio',
-      }),
-      f('GroupRatio', 'json', { zh: '用户分组倍率', en: 'Group ratio' }),
-      f('GroupGroupRatio', 'json', {
-        zh: '分组-分组倍率',
-        en: 'Group→group ratio',
-      }),
-      f('TopupGroupRatio', 'json', { zh: '充值分组倍率', en: 'Topup group ratio' }),
-      f('UserUsableGroups', 'json', {
-        zh: '用户可用分组',
-        en: 'User usable groups',
-      }),
-      f('AutoGroups', 'text', {
-        zh: '自动分组（逗号分隔）',
-        en: 'Auto groups (comma-separated)',
-      }),
+      kv(
+        'GroupRatio',
+        { zh: '用户分组倍率', en: 'Group ratio' },
+        {
+          keyLabel: { zh: '分组', en: 'Group' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+          help: {
+            zh: '键为分组名，值为倍率。例如 vip = 0.5',
+            en: 'Key = group name, value = ratio (e.g. vip = 0.5)',
+          },
+        }
+      ),
+      kv(
+        'UserUsableGroups',
+        { zh: '用户可用分组', en: 'User usable groups' },
+        {
+          keyLabel: { zh: '分组', en: 'Group' },
+          valueLabel: { zh: '描述', en: 'Description' },
+          valueType: 'string',
+          help: {
+            zh: '用户新建令牌时可选的分组',
+            en: 'Groups users can pick when creating tokens',
+          },
+        }
+      ),
+      kv(
+        'TopupGroupRatio',
+        { zh: '充值分组倍率', en: 'Top-up group ratio' },
+        {
+          keyLabel: { zh: '分组', en: 'Group' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      {
+        key: 'AutoGroups',
+        kind: 'stringList',
+        label: {
+          zh: '自动分组优先级',
+          en: 'Auto group priority',
+        },
+        help: {
+          zh: '按顺序尝试，越前越优先',
+          en: 'Tried in order, first has highest priority',
+        },
+      },
       f('DefaultUseAutoGroup', 'bool', {
-        zh: '默认使用自动分组',
-        en: 'Default use auto group',
+        zh: '默认使用 auto 分组',
+        en: 'Default to auto group',
+      }),
+      kv(
+        'ModelPrice',
+        { zh: '模型价格（每次固定 $）', en: 'Model price (fixed $ per call)' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '价格 ($)', en: 'Price ($)' },
+          valueType: 'number',
+          help: {
+            zh: '设置后该模型按固定价格计费，不再按 token',
+            en: 'When set, the model is priced per call instead of per token',
+          },
+        }
+      ),
+      kv(
+        'ModelRatio',
+        { zh: '模型倍率', en: 'Model ratio' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      kv(
+        'CompletionRatio',
+        { zh: '补全倍率', en: 'Completion ratio' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      kv(
+        'CacheRatio',
+        { zh: '缓存倍率', en: 'Cache ratio' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      kv(
+        'CreateCacheRatio',
+        { zh: '创建缓存倍率', en: 'Create cache ratio' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      kv(
+        'ImageRatio',
+        { zh: '图片倍率', en: 'Image ratio' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      kv(
+        'AudioRatio',
+        { zh: '音频倍率', en: 'Audio ratio' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      kv(
+        'AudioCompletionRatio',
+        { zh: '音频补全倍率', en: 'Audio completion ratio' },
+        {
+          keyLabel: { zh: '模型', en: 'Model' },
+          valueLabel: { zh: '倍率', en: 'Ratio' },
+          valueType: 'number',
+        }
+      ),
+      f('GroupGroupRatio', 'json', {
+        zh: '分组-分组特殊倍率',
+        en: 'Group→group special ratio',
       }),
     ],
   },

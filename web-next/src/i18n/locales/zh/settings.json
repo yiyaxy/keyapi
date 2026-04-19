@@ -20,5 +20,13 @@
   "advanced.sub": "未被分组识别的键。",
   "empty.group": "该分类当前没有可配置项（后端未返回值）。",
   "empty.search": "没有找到匹配的设置项。",
-  "unknown_hint": "（未在分类中）"
+  "unknown_hint": "（未在分类中）",
+  "kv.search": "搜索",
+  "kv.add": "添加",
+  "kv.delete": "删除",
+  "kv.rows": "条",
+  "kv.empty": "暂无条目，点击上方添加按钮新增一行",
+  "kv.empty_search": "没有匹配的条目",
+  "list.add_placeholder": "输入后按回车添加",
+  "list.empty": "暂无条目"
 }

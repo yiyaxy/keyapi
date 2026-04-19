@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { KvMapEditor } from '@/components/settings/KvMapEditor';
+import { StringListEditor } from '@/components/settings/StringListEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -255,23 +257,46 @@ function FieldList({
 
   return (
     <div className='rounded-md border border-line bg-bg-1 px-4'>
-      {filtered.map((f) =>
-        f.kind === 'bool' ? (
-          <BoolRow
-            key={f.key}
-            field={f}
-            value={values[f.key]!}
-            onSaved={(next) => onSaved(f.key, next)}
-          />
-        ) : (
+      {filtered.map((f) => {
+        if (f.kind === 'bool') {
+          return (
+            <BoolRow
+              key={f.key}
+              field={f}
+              value={values[f.key]!}
+              onSaved={(next) => onSaved(f.key, next)}
+            />
+          );
+        }
+        if (f.kind === 'kvMap') {
+          return (
+            <KvMapEditor
+              key={f.key}
+              field={f}
+              value={values[f.key]!}
+              onSaved={(next) => onSaved(f.key, next)}
+            />
+          );
+        }
+        if (f.kind === 'stringList') {
+          return (
+            <StringListEditor
+              key={f.key}
+              field={f}
+              value={values[f.key]!}
+              onSaved={(next) => onSaved(f.key, next)}
+            />
+          );
+        }
+        return (
           <TextRow
             key={f.key}
             field={f}
             value={values[f.key]!}
             onSaved={(next) => onSaved(f.key, next)}
           />
-        )
-      )}
+        );
+      })}
     </div>
   );
 }

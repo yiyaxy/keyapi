@@ -20,5 +20,13 @@
   "advanced.sub": "Options that are not recognised by a category.",
   "empty.group": "No options in this category were returned by the server.",
   "empty.search": "No matching settings.",
-  "unknown_hint": "(uncategorised)"
+  "unknown_hint": "(uncategorised)",
+  "kv.search": "Search",
+  "kv.add": "Add",
+  "kv.delete": "Delete",
+  "kv.rows": "rows",
+  "kv.empty": "No entries. Click Add to insert a row.",
+  "kv.empty_search": "No matching entries",
+  "list.add_placeholder": "Type and press Enter to add",
+  "list.empty": "No items"
 }
