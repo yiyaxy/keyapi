@@ -1,0 +1,23 @@
+{
+  "page.title": "System settings",
+  "page.sub": "Raw key/value view of platform options. Category-specific forms are coming later.",
+  "notice": "This admin only exposes generic key/value editing. Typed forms for payment / email / OAuth integrations are deferred.",
+  "search.placeholder": "Search keys",
+  "col.key": "Key",
+  "col.value": "Value",
+  "col.actions": "Actions",
+  "action.edit": "Edit",
+  "action.force_logout": "Force all users to log out",
+  "empty": "No matching option",
+  "form.title": "Edit {{key}}",
+  "form.value.label": "Value",
+  "form.bool.true": "Enabled",
+  "form.bool.false": "Disabled",
+  "form.submit": "Save",
+  "form.cancel": "Cancel",
+  "toast.save.success": "Saved",
+  "toast.force_logout.success": "All users logged out",
+  "force_logout.title": "Force logout all users",
+  "force_logout.body": "Force every logged-in user to sign out immediately? This can't be undone.",
+  "force_logout.confirm": "Confirm"
+}

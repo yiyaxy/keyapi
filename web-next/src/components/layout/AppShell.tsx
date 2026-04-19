@@ -36,6 +36,7 @@ const TITLES: Record<string, string> = {
   '/admin/analytics': 'nav.admin.analytics',
   '/admin/purchase-analytics': 'nav.admin.purchase_analytics',
   '/admin/purchase': 'nav.admin.purchase',
+  '/admin/settings': 'nav.admin.settings',
   '/admin/aff-transfer': 'nav.admin.aff_transfer',
   '/admin/platform-tenants': 'nav.admin.platform_tenants',
   '/admin/models': 'nav.admin.models',

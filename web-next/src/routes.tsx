@@ -40,6 +40,7 @@ import { PurchaseAnalyticsPage } from '@/pages/PurchaseAnalytics';
 import { RebateSettingsAdminPage } from '@/pages/RebateSettingsAdmin';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { RequestTracePage } from '@/pages/RequestTrace';
+import { SettingsAdminPage } from '@/pages/SettingsAdmin';
 import { SiteRPMPage } from '@/pages/SiteRPM';
 import { SmartCachePage } from '@/pages/SmartCache';
 import { SubscriptionAdminPage } from '@/pages/SubscriptionAdmin';
@@ -153,10 +154,7 @@ export const router = createBrowserRouter([
                     path: '/admin/request-trace/:requestId',
                     element: <RequestTracePage />,
                   },
-                  {
-                    path: '/admin/settings',
-                    element: <ComingSoon feature='System settings' />,
-                  },
+                  { path: '/admin/settings', element: <SettingsAdminPage /> },
                   { path: '/tenant/dashboard', element: <TenantDashboardPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },

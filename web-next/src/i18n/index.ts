@@ -25,6 +25,7 @@ import enPrompt from './locales/en/prompt.json';
 import enPublic from './locales/en/public.json';
 import enRebate from './locales/en/rebate.json';
 import enRedemption from './locales/en/redemption.json';
+import enSettings from './locales/en/settings.json';
 import enSetup from './locales/en/setup.json';
 import enShell from './locales/en/shell.json';
 import enTenant from './locales/en/tenant.json';
@@ -54,6 +55,7 @@ import zhPrompt from './locales/zh/prompt.json';
 import zhPublic from './locales/zh/public.json';
 import zhRebate from './locales/zh/rebate.json';
 import zhRedemption from './locales/zh/redemption.json';
+import zhSettings from './locales/zh/settings.json';
 import zhSetup from './locales/zh/setup.json';
 import zhShell from './locales/zh/shell.json';
 import zhTenant from './locales/zh/tenant.json';
@@ -96,6 +98,7 @@ void i18n
         agent: zhAgent,
         ip: zhIp,
         analytics: zhAnalytics,
+        settings: zhSettings,
       },
       en: {
         common: enCommon,
@@ -127,6 +130,7 @@ void i18n
         agent: enAgent,
         ip: enIp,
         analytics: enAnalytics,
+        settings: enSettings,
       },
     },
     fallbackLng: 'zh',
@@ -161,6 +165,7 @@ void i18n
       'agent',
       'ip',
       'analytics',
+      'settings',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

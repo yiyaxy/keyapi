@@ -25,6 +25,7 @@ import {
   Plug,
   Receipt,
   ScrollText,
+  Settings,
   Settings2,
   Ticket,
   Users,
@@ -135,6 +136,11 @@ export function Sidebar() {
                 to='/admin/purchase-analytics'
                 label={t('nav.admin.purchase_analytics')}
                 icon={PieChart}
+              />
+              <NavItem
+                to='/admin/settings'
+                label={t('nav.admin.settings')}
+                icon={Settings}
               />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>

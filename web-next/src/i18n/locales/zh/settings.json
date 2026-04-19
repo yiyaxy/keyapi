@@ -1,0 +1,23 @@
+{
+  "page.title": "系统设置",
+  "page.sub": "平台级参数的原始键值表。新的分类设置页将在后续版本接入。",
+  "notice": "当前仅暴露通用的键值编辑，不支持付款 / 邮件 / OAuth 等专项表单。",
+  "search.placeholder": "搜索键名",
+  "col.key": "Key",
+  "col.value": "Value",
+  "col.actions": "操作",
+  "action.edit": "编辑",
+  "action.force_logout": "强制所有用户登出",
+  "empty": "无匹配项",
+  "form.title": "编辑 {{key}}",
+  "form.value.label": "Value",
+  "form.bool.true": "启用",
+  "form.bool.false": "关闭",
+  "form.submit": "保存",
+  "form.cancel": "取消",
+  "toast.save.success": "已保存",
+  "toast.force_logout.success": "已强制登出",
+  "force_logout.title": "强制登出所有用户",
+  "force_logout.body": "确认让所有当前登录的用户立即登出？此操作不可撤销。",
+  "force_logout.confirm": "确认"
+}
