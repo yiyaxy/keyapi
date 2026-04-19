@@ -20,6 +20,7 @@ import { KeysPage } from '@/pages/Keys';
 import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
 import { LogsPage } from '@/pages/Logs';
+import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { Register } from '@/pages/Register';
@@ -79,6 +80,15 @@ export const router = createBrowserRouter([
                   { path: '/admin/redemption', element: <RedemptionAdminPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },
+                ],
+              },
+              {
+                element: <AdminRoute minRole={100} />,
+                children: [
+                  {
+                    path: '/admin/platform-tenants',
+                    element: <PlatformTenantsPage />,
+                  },
                 ],
               },
               { path: '*', element: <NotFound /> },

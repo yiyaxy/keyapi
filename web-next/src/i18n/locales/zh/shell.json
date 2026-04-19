@@ -12,6 +12,8 @@
   "nav.admin.channels": "渠道",
   "nav.admin.users": "用户",
   "nav.admin.redemption": "兑换码",
+  "nav.admin.platform_tenants": "平台租户",
+  "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
   "nav.tenant.info": "租户设置",
   "nav.tenant.members": "租户成员",

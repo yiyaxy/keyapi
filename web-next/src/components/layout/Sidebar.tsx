@@ -1,5 +1,6 @@
 import {
   Building2,
+  Globe,
   Inbox,
   KeyRound,
   LayoutDashboard,
@@ -23,6 +24,7 @@ import { SidebarGroup } from './SidebarGroup';
 import { UserChip } from './UserChip';
 
 const ROLE_ADMIN = 10;
+const ROLE_PLATFORM = 100;
 
 export function Sidebar() {
   const { t } = useTranslation('shell');
@@ -30,6 +32,9 @@ export function Sidebar() {
   const isAdmin =
     user !== null &&
     Math.max(user.role, user.platform_role, user.tenant_role) >= ROLE_ADMIN;
+  const isPlatform =
+    user !== null &&
+    Math.max(user.role, user.platform_role, user.tenant_role) >= ROLE_PLATFORM;
   const unread = useUnreadCount();
 
   return (
@@ -83,6 +88,15 @@ export function Sidebar() {
               />
             </SidebarGroup>
           </>
+        )}
+        {isPlatform && (
+          <SidebarGroup label={t('nav.platform')}>
+            <NavItem
+              to='/admin/platform-tenants'
+              label={t('nav.admin.platform_tenants')}
+              icon={Globe}
+            />
+          </SidebarGroup>
         )}
       </nav>
       <div className='border-t border-line p-3'>

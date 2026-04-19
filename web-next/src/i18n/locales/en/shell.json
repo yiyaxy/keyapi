@@ -12,6 +12,8 @@
   "nav.admin.channels": "Channels",
   "nav.admin.users": "Users",
   "nav.admin.redemption": "Redemption",
+  "nav.admin.platform_tenants": "Platform tenants",
+  "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
   "nav.tenant.info": "Settings",
   "nav.tenant.members": "Members",

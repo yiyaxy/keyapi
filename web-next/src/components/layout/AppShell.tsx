@@ -18,6 +18,7 @@ const TITLES: Record<string, string> = {
   '/admin/channels': 'nav.admin.channels',
   '/admin/users': 'nav.admin.users',
   '/admin/redemption': 'nav.admin.redemption',
+  '/admin/platform-tenants': 'nav.admin.platform_tenants',
   '/tenant/info': 'nav.tenant.info',
   '/tenant/members': 'nav.tenant.members',
 };
