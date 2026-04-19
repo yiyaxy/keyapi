@@ -29,7 +29,9 @@ import { Reset } from '@/pages/Reset';
 import { SetupPage } from '@/pages/Setup';
 import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
+import { TicketAdminDetailPage } from '@/pages/TicketAdminDetail';
 import { TicketDetailPage } from '@/pages/TicketDetail';
+import { TicketsAdminPage } from '@/pages/TicketsAdmin';
 import { TicketsPage } from '@/pages/Tickets';
 import { TopupPage } from '@/pages/Topup';
 import { UsersAdminPage } from '@/pages/UsersAdmin';
@@ -80,6 +82,8 @@ export const router = createBrowserRouter([
                   { path: '/admin/users', element: <UsersAdminPage /> },
                   { path: '/admin/redemption', element: <RedemptionAdminPage /> },
                   { path: '/admin/logs', element: <LogsAdminPage /> },
+                  { path: '/admin/tickets', element: <TicketsAdminPage /> },
+                  { path: '/admin/tickets/:id', element: <TicketAdminDetailPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },
                 ],

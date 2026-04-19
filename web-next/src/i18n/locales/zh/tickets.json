@@ -26,5 +26,11 @@
   "detail.reply.success": "回复已发送",
   "detail.closed.body": "本工单已关闭，如需进一步帮助请新建工单。",
   "detail.role.user": "我",
-  "detail.role.admin": "客服"
+  "detail.role.admin": "客服",
+  "admin.page.title": "全部工单",
+  "admin.table.col.user": "用户",
+  "admin.action.close": "关闭工单",
+  "admin.action.reopen": "重新打开",
+  "admin.role.user": "用户",
+  "admin.role.admin": "我（客服）"
 }

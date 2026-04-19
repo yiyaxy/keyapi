@@ -115,3 +115,60 @@ export function useReplyTicket(ticketId: number) {
     },
   });
 }
+
+export function useAdminTickets(q: TicketsQuery) {
+  return useQuery<TicketsPage>({
+    queryKey: ['tickets-admin', 'list', q] as const,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('p', String(q.p ?? 1));
+      params.set('page_size', String(q.page_size ?? 30));
+      const res = await api.get<TicketsPage>(
+        `/api/ticket/admin?${params.toString()}`
+      );
+      return res.data;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}
+
+export function useAdminTicketDetail(id: number | null) {
+  return useQuery<TicketDetail>({
+    queryKey: ['tickets-admin', 'detail', id ?? 0] as const,
+    enabled: id !== null && id > 0,
+    queryFn: async () => {
+      const res = await api.get<TicketDetail>(`/api/ticket/admin/${id}`);
+      return res.data;
+    },
+    staleTime: 5_000,
+  });
+}
+
+export function useAdminReplyTicket(ticketId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (content: string) => {
+      const res = await api.post<TicketReply>(
+        `/api/ticket/admin/${ticketId}/reply`,
+        { content, object_keys: [] }
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tickets-admin'] });
+    },
+  });
+}
+
+export function useAdminUpdateTicketStatus(ticketId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (status: string) => {
+      await api.post(`/api/ticket/admin/${ticketId}/status`, { status });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tickets-admin'] });
+    },
+  });
+}

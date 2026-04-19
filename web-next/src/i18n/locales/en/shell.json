@@ -13,6 +13,7 @@
   "nav.admin.users": "Users",
   "nav.admin.redemption": "Redemption",
   "nav.admin.logs": "All logs",
+  "nav.admin.tickets": "All tickets",
   "nav.admin.platform_tenants": "Platform tenants",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",

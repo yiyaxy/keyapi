@@ -26,5 +26,11 @@
   "detail.reply.success": "Reply sent",
   "detail.closed.body": "This ticket is closed; open a new one if you need further help.",
   "detail.role.user": "You",
-  "detail.role.admin": "Support"
+  "detail.role.admin": "Support",
+  "admin.page.title": "All tickets",
+  "admin.table.col.user": "User",
+  "admin.action.close": "Close ticket",
+  "admin.action.reopen": "Reopen ticket",
+  "admin.role.user": "User",
+  "admin.role.admin": "You (admin)"
 }

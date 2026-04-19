@@ -13,6 +13,7 @@
   "nav.admin.users": "用户",
   "nav.admin.redemption": "兑换码",
   "nav.admin.logs": "全部日志",
+  "nav.admin.tickets": "全部工单",
   "nav.admin.platform_tenants": "平台租户",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
