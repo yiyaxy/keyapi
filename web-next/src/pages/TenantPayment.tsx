@@ -6,6 +6,13 @@ import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -19,16 +26,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  useCreateRefund,
   useDeleteWechatConfig,
   useTenantPaymentOrders,
+  useTenantPaymentRefunds,
   useTestWechatConfig,
   useUpdateWechatConfig,
   useWechatConfig,
+  type PaymentRefundView,
   type WechatConfigView,
 } from '@/hooks/useTenantPayment';
 import { fmtDateSec, fmtMoney } from '@/lib/format';
 
-type Tab = 'config' | 'orders';
+type Tab = 'config' | 'orders' | 'refunds';
 const PAGE_SIZE = 20;
 
 function TabBtn({
@@ -440,6 +450,268 @@ function OrdersPanel() {
   );
 }
 
+// ─── Refunds ─────────────────────────────────────────────────────────
+
+function refundStatusVariant(
+  s: string
+): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (s === 'succeeded') return 'default';
+  if (s === 'failed' || s === 'closed') return 'destructive';
+  if (s === 'pending' || s === 'processing') return 'secondary';
+  return 'outline';
+}
+
+function RefundInitiateDialog({
+  open,
+  onOpenChange,
+  initialOutTradeNo = '',
+  initialMaxAmountCents,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  initialOutTradeNo?: string;
+  initialMaxAmountCents?: number;
+}) {
+  const { t } = useTranslation('tenantpay');
+  const createRefund = useCreateRefund();
+  const [outTradeNo, setOutTradeNo] = useState(initialOutTradeNo);
+  const [amountYuan, setAmountYuan] = useState('');
+  const [reason, setReason] = useState('');
+
+  // Reset inputs whenever the dialog re-opens with a fresh prefill.
+  // We deliberately don't cache user-typed values across closes — a stale
+  // out_trade_no is a recipe for accidental cross-order refunds.
+  useState(() => {
+    setOutTradeNo(initialOutTradeNo);
+    setAmountYuan(initialMaxAmountCents ? (initialMaxAmountCents / 100).toFixed(2) : '');
+    setReason('');
+    return null;
+  });
+
+  const amount = Number(amountYuan);
+  const amountCents =
+    Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : 0;
+
+  async function submit() {
+    if (!outTradeNo.trim()) {
+      toast.error(t('refunds.error.no_order'));
+      return;
+    }
+    if (amountCents <= 0) {
+      toast.error(t('refunds.error.invalid_amount'));
+      return;
+    }
+    if (initialMaxAmountCents && amountCents > initialMaxAmountCents) {
+      toast.error(t('refunds.error.over_max'));
+      return;
+    }
+    try {
+      await createRefund.mutateAsync({
+        out_trade_no: outTradeNo.trim(),
+        amount_cents: amountCents,
+        reason: reason.trim() || undefined,
+      });
+      toast.success(t('refunds.submitted'));
+      onOpenChange(false);
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='max-w-[460px]'>
+        <DialogHeader>
+          <DialogTitle>{t('refunds.dialog.title')}</DialogTitle>
+          <DialogDescription>{t('refunds.dialog.body')}</DialogDescription>
+        </DialogHeader>
+        <div className='space-y-3'>
+          <div className='space-y-2'>
+            <Label>{t('refunds.field.out_trade_no')}</Label>
+            <Input
+              value={outTradeNo}
+              onChange={(e) => setOutTradeNo(e.target.value)}
+              placeholder='wx_t1_T_...'
+              className='font-mono text-12'
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('refunds.field.amount')}</Label>
+            <div className='flex items-center gap-2'>
+              <span className='text-14 text-fg-2'>¥</span>
+              <Input
+                type='number'
+                min={0}
+                step='0.01'
+                inputMode='decimal'
+                value={amountYuan}
+                onChange={(e) => setAmountYuan(e.target.value)}
+                className='tabular-nums'
+              />
+            </div>
+            {initialMaxAmountCents != null && (
+              <p className='text-12 text-fg-2'>
+                {t('refunds.field.amount_max', {
+                  max: (initialMaxAmountCents / 100).toFixed(2),
+                })}
+              </p>
+            )}
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('refunds.field.reason')}</Label>
+            <Textarea
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder={t('refunds.field.reason_hint')}
+            />
+          </div>
+          <div className='flex justify-end gap-2 pt-1'>
+            <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>
+              {t('refunds.cancel')}
+            </Button>
+            <Button type='button' onClick={submit} disabled={createRefund.isPending}>
+              {t('refunds.submit')}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RefundsPanel() {
+  const { t } = useTranslation('tenantpay');
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('0');
+  const [initiateOpen, setInitiateOpen] = useState(false);
+
+  const list = useTenantPaymentRefunds({
+    page,
+    page_size: PAGE_SIZE,
+    status: status === '0' ? undefined : status,
+  });
+
+  const items: PaymentRefundView[] = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
+
+  return (
+    <div className='space-y-4'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Select
+          value={status}
+          onValueChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className='max-w-[180px]'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='0'>{t('refunds.filter.status.all')}</SelectItem>
+            <SelectItem value='pending'>{t('refunds.filter.status.pending')}</SelectItem>
+            <SelectItem value='succeeded'>
+              {t('refunds.filter.status.succeeded')}
+            </SelectItem>
+            <SelectItem value='failed'>{t('refunds.filter.status.failed')}</SelectItem>
+            <SelectItem value='closed'>{t('refunds.filter.status.closed')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className='ml-auto' />
+        <Button type='button' size='sm' onClick={() => setInitiateOpen(true)}>
+          {t('refunds.initiate')}
+        </Button>
+      </div>
+
+      {list.isPending ? (
+        <div className='space-y-2'>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className='h-10 w-full' />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
+          {t('refunds.empty')}
+        </div>
+      ) : (
+        <div className='overflow-x-auto rounded-md border border-line'>
+          <table className='w-full border-collapse tabular-nums'>
+            <thead>
+              <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
+                <th className='px-3 py-2 font-medium'>{t('refunds.col.out_refund_no')}</th>
+                <th className='px-3 py-2 font-medium'>{t('refunds.col.out_trade_no')}</th>
+                <th className='px-3 py-2 font-medium text-right'>
+                  {t('refunds.col.amount')}
+                </th>
+                <th className='px-3 py-2 font-medium'>{t('refunds.col.status')}</th>
+                <th className='px-3 py-2 font-medium'>{t('refunds.col.created')}</th>
+                <th className='px-3 py-2 font-medium'>{t('refunds.col.refunded_at')}</th>
+                <th className='px-3 py-2 font-medium'>{t('refunds.col.reason')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((r) => (
+                <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
+                  <td className='max-w-[200px] truncate px-3 py-2 font-mono text-12'>
+                    {r.out_refund_no}
+                  </td>
+                  <td className='max-w-[200px] truncate px-3 py-2 font-mono text-12'>
+                    {r.out_trade_no}
+                  </td>
+                  <td className='px-3 py-2 text-right'>
+                    {fmtMoney(r.amount / 100, r.currency || 'CNY')}
+                  </td>
+                  <td className='px-3 py-2'>
+                    <Badge variant={refundStatusVariant(r.status)}>{r.status}</Badge>
+                    {r.last_error && (
+                      <p className='mt-1 max-w-[220px] truncate text-11 text-danger'>
+                        {r.last_error}
+                      </p>
+                    )}
+                  </td>
+                  <td className='px-3 py-2 text-fg-1'>{fmtDateSec(r.created_at)}</td>
+                  <td className='px-3 py-2 text-fg-1'>
+                    {r.refunded_at ? fmtDateSec(r.refunded_at) : '—'}
+                  </td>
+                  <td className='max-w-[200px] truncate px-3 py-2 text-fg-1'>
+                    {r.reason || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className='flex items-center justify-end gap-2'>
+        <Button
+          type='button'
+          variant='secondary'
+          size='sm'
+          disabled={page <= 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+        >
+          {t('pagination.prev')}
+        </Button>
+        <span className='text-12 text-fg-2'>
+          {page} · {total}
+        </span>
+        <Button
+          type='button'
+          variant='secondary'
+          size='sm'
+          disabled={page * PAGE_SIZE >= total}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          {t('pagination.next')}
+        </Button>
+      </div>
+
+      <RefundInitiateDialog open={initiateOpen} onOpenChange={setInitiateOpen} />
+    </div>
+  );
+}
+
 export function TenantPaymentPage() {
   const { t } = useTranslation('tenantpay');
   const [tab, setTab] = useState<Tab>('config');
@@ -453,6 +725,9 @@ export function TenantPaymentPage() {
         </TabBtn>
         <TabBtn active={tab === 'orders'} onClick={() => setTab('orders')}>
           {t('tab.orders')}
+        </TabBtn>
+        <TabBtn active={tab === 'refunds'} onClick={() => setTab('refunds')}>
+          {t('tab.refunds')}
         </TabBtn>
       </div>
       {tab === 'config' ? (
@@ -469,8 +744,10 @@ export function TenantPaymentPage() {
             data={config.data ?? null}
           />
         )
-      ) : (
+      ) : tab === 'orders' ? (
         <OrdersPanel />
+      ) : (
+        <RefundsPanel />
       )}
     </div>
   );

@@ -126,3 +126,62 @@ export function useTenantPaymentOrders(q: {
     staleTime: 15_000,
   });
 }
+
+export type PaymentRefundView = {
+  id: number;
+  out_trade_no: string;
+  out_refund_no: string;
+  refund_id?: string;
+  payment_order_id: number;
+  amount: number; // cents
+  currency: string;
+  reason: string;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'closed';
+  last_error?: string;
+  initiated_by: number;
+  refunded_at: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export function useTenantPaymentRefunds(q: {
+  page?: number;
+  page_size?: number;
+  status?: string;
+}) {
+  return useQuery<{ items: PaymentRefundView[]; total: number }>({
+    queryKey: ['tenant-payment', 'refunds', q] as const,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('page', String(q.page ?? 1));
+      params.set('page_size', String(q.page_size ?? 20));
+      if (q.status) params.set('status', q.status);
+      const res = await api.get<{ items: PaymentRefundView[]; total: number }>(
+        `/api/tenant/payment/refunds?${params.toString()}`
+      );
+      return res.data;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}
+
+export type CreateRefundPayload = {
+  out_trade_no: string;
+  amount_cents: number;
+  reason?: string;
+};
+
+export function useCreateRefund() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CreateRefundPayload) => {
+      const res = await api.post<PaymentRefundView>('/api/tenant/payment/refunds', body);
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenant-payment', 'refunds'] });
+      void qc.invalidateQueries({ queryKey: ['tenant-payment', 'orders'] });
+    },
+  });
+}
