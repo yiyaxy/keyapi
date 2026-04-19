@@ -23,6 +23,7 @@
   "nav.tenant.plan": "Plan",
   "nav.tenant.bills": "Bills",
   "nav.tenant.alerts": "Alerts",
+  "nav.tenant.config": "Config",
   "nav.tenant.audit": "Audit log",
   "search.placeholder": "Find anything",
   "search.coming_soon": "Command palette · coming soon",

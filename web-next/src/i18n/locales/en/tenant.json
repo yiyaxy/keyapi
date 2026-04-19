@@ -107,5 +107,21 @@
   "alerts.severity.critical": "Critical",
   "alerts.action.ack": "Acknowledge",
   "alerts.action.resolve": "Resolve",
-  "alerts.empty": "No alerts"
+  "alerts.empty": "No alerts",
+  "config.title": "Tenant configuration",
+  "config.sub": "Override platform defaults for this tenant. Unset items fall back to the platform value.",
+  "config.col.key": "Key",
+  "config.col.value": "Value",
+  "config.col.source": "Source",
+  "config.source.override": "Override",
+  "config.source.platform": "Platform default",
+  "config.action.edit": "Edit",
+  "config.action.reset": "Reset to default",
+  "config.edit.title": "Override {{key}}",
+  "config.edit.value": "Value",
+  "config.edit.save": "Save override",
+  "config.edit.cancel": "Cancel",
+  "config.edit.success": "Override saved",
+  "config.reset.success": "Override removed",
+  "config.empty": "No overridable keys exposed for this tenant"
 }

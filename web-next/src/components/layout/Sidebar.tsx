@@ -13,6 +13,7 @@ import {
   Play,
   Plug,
   Receipt,
+  Settings2,
   Ticket,
   Users,
   UserCog,
@@ -111,6 +112,11 @@ export function Sidebar() {
                 to='/tenant/alerts'
                 label={t('nav.tenant.alerts')}
                 icon={AlertCircle}
+              />
+              <NavItem
+                to='/tenant/config'
+                label={t('nav.tenant.config')}
+                icon={Settings2}
               />
               <NavItem
                 to='/tenant/audit'

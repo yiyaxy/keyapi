@@ -27,6 +27,7 @@ const TITLES: Record<string, string> = {
   '/tenant/plan': 'nav.tenant.plan',
   '/tenant/bills': 'nav.tenant.bills',
   '/tenant/alerts': 'nav.tenant.alerts',
+  '/tenant/config': 'nav.tenant.config',
   '/tenant/audit': 'nav.tenant.audit',
 };
 

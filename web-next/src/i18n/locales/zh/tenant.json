@@ -107,5 +107,21 @@
   "alerts.severity.critical": "严重",
   "alerts.action.ack": "确认",
   "alerts.action.resolve": "解决",
-  "alerts.empty": "暂无告警"
+  "alerts.empty": "暂无告警",
+  "config.title": "租户配置",
+  "config.sub": "覆盖平台默认配置。未覆盖的键使用平台值。",
+  "config.col.key": "键",
+  "config.col.value": "值",
+  "config.col.source": "来源",
+  "config.source.override": "租户覆盖",
+  "config.source.platform": "平台默认",
+  "config.action.edit": "编辑",
+  "config.action.reset": "恢复默认",
+  "config.edit.title": "覆盖 {{key}}",
+  "config.edit.value": "值",
+  "config.edit.save": "保存覆盖",
+  "config.edit.cancel": "取消",
+  "config.edit.success": "已保存",
+  "config.reset.success": "已恢复默认",
+  "config.empty": "当前租户没有可覆盖的配置项"
 }

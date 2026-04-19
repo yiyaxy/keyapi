@@ -30,6 +30,7 @@ import { SetupPage } from '@/pages/Setup';
 import { TenantAlertsPage } from '@/pages/TenantAlerts';
 import { TenantAuditPage } from '@/pages/TenantAudit';
 import { TenantBillsPage } from '@/pages/TenantBills';
+import { TenantConfigPage } from '@/pages/TenantConfig';
 import { TenantDashboardPage } from '@/pages/TenantDashboard';
 import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
@@ -95,6 +96,7 @@ export const router = createBrowserRouter([
                   { path: '/tenant/plan', element: <TenantPlanPage /> },
                   { path: '/tenant/bills', element: <TenantBillsPage /> },
                   { path: '/tenant/alerts', element: <TenantAlertsPage /> },
+                  { path: '/tenant/config', element: <TenantConfigPage /> },
                   { path: '/tenant/audit', element: <TenantAuditPage /> },
                 ],
               },
