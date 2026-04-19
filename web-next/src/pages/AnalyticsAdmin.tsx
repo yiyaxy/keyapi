@@ -66,7 +66,9 @@ function SummaryStrip({ result }: { result: AnalyticsResult }) {
 
 function AnalyticsTable({ result }: { result: AnalyticsResult }) {
   const { t } = useTranslation('analytics');
-  const items = [...result.items].sort((a, b) => b.quota - a.quota);
+  // Backend returns items: null on empty result sets from older builds —
+  // guard so the spread doesn't throw before the Go-side fix has shipped.
+  const items = [...(result.items ?? [])].sort((a, b) => b.quota - a.quota);
   if (items.length === 0) {
     return (
       <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>

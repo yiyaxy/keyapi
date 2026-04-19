@@ -645,7 +645,9 @@ func buildAnalyticsSummary(items []AnalyticsItem, startTs, endTs int64, tenantId
 }
 
 func SumQuotaByChannel(startTs, endTs int64, tenantId int) (*AnalyticsResult, error) {
-	var items []AnalyticsItem
+	// Use an initialized slice so an empty result set marshals to [] instead
+	// of null — the frontend spreads items and would TypeError otherwise.
+	items := []AnalyticsItem{}
 	tx := LOG_DB.Table("logs").
 		Select("logs.channel_id as cid, COALESCE(sum(logs.quota),0) as quota, count(*) as count, COALESCE(sum(logs.prompt_tokens),0) + COALESCE(sum(logs.completion_tokens),0) as tokens").
 		Where("logs.type = ?", LogTypeConsume).
@@ -707,7 +709,7 @@ func SumQuotaByChannel(startTs, endTs int64, tenantId int) (*AnalyticsResult, er
 }
 
 func SumQuotaByModel(startTs, endTs int64, tenantId int) (*AnalyticsResult, error) {
-	var items []AnalyticsItem
+	items := []AnalyticsItem{}
 	tx := LOG_DB.Table("logs").
 		Select("model_name as name, COALESCE(sum(quota),0) as quota, count(*) as count, COALESCE(sum(prompt_tokens),0) + COALESCE(sum(completion_tokens),0) as tokens").
 		Where("type = ?", LogTypeConsume).
@@ -729,7 +731,7 @@ func SumQuotaByModel(startTs, endTs int64, tenantId int) (*AnalyticsResult, erro
 }
 
 func SumQuotaByUser(startTs, endTs int64, tenantId int) (*AnalyticsResult, error) {
-	var items []AnalyticsItem
+	items := []AnalyticsItem{}
 	tx := LOG_DB.Table("logs").
 		Select("logs.user_id as uid, COALESCE(sum(logs.quota),0) as quota, count(*) as count, COALESCE(sum(logs.prompt_tokens),0) + COALESCE(sum(logs.completion_tokens),0) as tokens").
 		Where("logs.type = ?", LogTypeConsume).
