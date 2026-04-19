@@ -10,36 +10,28 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { fromDisplay, toDisplay, usePublicConfig } from '@/hooks/usePublicConfig';
 import { useUpdateUser, type AdminUser } from '@/hooks/useUsers';
 import { ApiError } from '@/lib/api';
-import { fmtMoney } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
-const QUICK_TOPUPS = [1, 5, 10, 50, 100]; // USD
+// Quick-add presets. Values are in the site's display unit (so a CNY-
+// configured site gets ¥1/5/10 chips, a USD one gets $1/5/10, a TOKENS
+// one gets 500k/2M chips).
+const QUICK_PRESETS_CURRENCY = [1, 5, 10, 50, 100];
+const QUICK_PRESETS_TOKENS = [500_000, 2_000_000, 10_000_000];
 
-// Admin-side edit. Quota is handled in two complementary lanes:
-//   - "Set to" — absolute value in USD (drives the final quota payload)
-//   - "Quick add" — buttons that bump the "Set to" field by +$N
-// The raw quota number is computed on submit and sent to the backend
-// unchanged, so the wire format stays byte-identical to what the old
-// form produced.
 const schema = z.object({
   display_name: z.string().max(20),
   email: z.string().email().or(z.literal('')),
   group: z.string().max(64),
-  // quota_usd is stored as a stringified decimal to preserve the user's
-  // typed precision (avoids 9.999999 drift from float round-trips).
-  quota_usd: z
+  // Display-unit value as a string to preserve user-typed precision.
+  quota_display: z
     .string()
     .refine((v) => v === '' || !Number.isNaN(Number(v)), 'not a number')
     .refine((v) => v === '' || Number(v) >= 0, 'must be ≥ 0'),
   password: z.string().max(20),
 });
 type Values = z.infer<typeof schema>;
-
-function quotaToUsd(raw: number): string {
-  return (raw / QUOTA_PER_UNIT).toFixed(2);
-}
 
 export function EditUserDialog({
   open,
@@ -51,62 +43,69 @@ export function EditUserDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { t } = useTranslation('users');
+  const cfg = usePublicConfig();
   const update = useUpdateUser();
+
+  // Preformat the current balance into display unit with the right digits.
+  const currentDisp = toDisplay(user.quota, cfg);
+  const currentStr = currentDisp.digits === 0
+    ? String(currentDisp.value)
+    : currentDisp.value.toFixed(currentDisp.digits);
+
   const form = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
       display_name: user.display_name ?? '',
       email: user.email ?? '',
       group: user.group ?? 'default',
-      quota_usd: quotaToUsd(user.quota),
+      quota_display: currentStr,
       password: '',
     },
   });
 
-  // Keep this in sync with the form so quick-add / preview can read it
-  // without triggering a re-render cascade on every keystroke.
-  const [quotaUsdInput, setQuotaUsdInput] = useState(quotaToUsd(user.quota));
+  const [displayInput, setDisplayInput] = useState(currentStr);
 
   useEffect(() => {
+    const next = toDisplay(user.quota, cfg);
+    const str = next.digits === 0 ? String(next.value) : next.value.toFixed(next.digits);
     form.reset({
       display_name: user.display_name ?? '',
       email: user.email ?? '',
       group: user.group ?? 'default',
-      quota_usd: quotaToUsd(user.quota),
+      quota_display: str,
       password: '',
     });
-    setQuotaUsdInput(quotaToUsd(user.quota));
-  }, [user, form]);
+    setDisplayInput(str);
+  }, [user, cfg, form]);
 
-  // Computed preview values — recomputed on every quotaUsdInput change.
   const preview = useMemo(() => {
-    const parsed = Number(quotaUsdInput);
+    const parsed = Number(displayInput);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      return { usd: null as number | null, raw: null as number | null, delta: null as number | null };
+      return { raw: null as number | null, delta: null as number | null };
     }
-    const raw = Math.round(parsed * QUOTA_PER_UNIT);
-    return {
-      usd: parsed,
-      raw,
-      delta: raw - user.quota,
-    };
-  }, [quotaUsdInput, user.quota]);
+    const raw = fromDisplay(parsed, cfg);
+    return { raw, delta: raw - user.quota };
+  }, [displayInput, cfg, user.quota]);
 
-  function applyQuickAdd(usd: number) {
-    const current = Number(quotaUsdInput);
+  const presets =
+    cfg.quota_display_type === 'TOKENS' ? QUICK_PRESETS_TOKENS : QUICK_PRESETS_CURRENCY;
+
+  function applyQuickAdd(amount: number) {
+    const current = Number(displayInput);
     const base = Number.isFinite(current) && current >= 0 ? current : 0;
-    const next = (base + usd).toFixed(2);
-    setQuotaUsdInput(next);
-    form.setValue('quota_usd', next, { shouldValidate: true, shouldDirty: true });
+    const summed = base + amount;
+    const next = currentDisp.digits === 0 ? String(Math.round(summed)) : summed.toFixed(currentDisp.digits);
+    setDisplayInput(next);
+    form.setValue('quota_display', next, { shouldValidate: true, shouldDirty: true });
   }
 
   async function onSubmit(values: Values) {
-    const parsed = Number(values.quota_usd);
+    const parsed = Number(values.quota_display);
     if (!Number.isFinite(parsed) || parsed < 0) {
       toast.error(t('edit.quota_invalid'));
       return;
     }
-    const rawQuota = Math.round(parsed * QUOTA_PER_UNIT);
+    const rawQuota = fromDisplay(parsed, cfg);
     try {
       const payload: Parameters<typeof update.mutateAsync>[0] = {
         id: user.id,
@@ -125,15 +124,26 @@ export function EditUserDialog({
     }
   }
 
-  const currentUsd = quotaToUsd(user.quota);
+  function formatPreset(amount: number): string {
+    if (cfg.quota_display_type === 'TOKENS') {
+      return `+${amount.toLocaleString()}`;
+    }
+    return `+${currentDisp.symbol}${amount}`;
+  }
+
+  function formatDelta(raw: number): string {
+    if (raw === 0) return '';
+    const disp = toDisplay(Math.abs(raw), cfg);
+    const body = disp.digits === 0
+      ? disp.value.toLocaleString()
+      : disp.value.toFixed(disp.digits);
+    const prefix = raw > 0 ? '+' : '-';
+    if (cfg.quota_display_type === 'TOKENS') return `${prefix}${body}`;
+    return `${prefix}${disp.symbol}${body}`;
+  }
+
   const deltaText =
-    preview.delta == null
-      ? null
-      : preview.delta === 0
-        ? null
-        : preview.delta > 0
-          ? `+${fmtMoney(preview.delta / QUOTA_PER_UNIT)}`
-          : `-${fmtMoney(Math.abs(preview.delta) / QUOTA_PER_UNIT)}`;
+    preview.delta == null || preview.delta === 0 ? null : formatDelta(preview.delta);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -161,46 +171,52 @@ export function EditUserDialog({
             <Input id='eu-group' {...form.register('group')} />
           </div>
 
-          {/* Quota block — friendly USD input + quick-add buttons + preview */}
+          {/* Quota block — adapts to the site's quota_display_type */}
           <div className='space-y-2 rounded-md border border-line bg-bg-1 p-3'>
             <div className='flex items-baseline justify-between'>
               <Label htmlFor='eu-quota' className='text-13'>
                 {t('edit.quota')}
               </Label>
               <span className='text-12 text-fg-2 tabular-nums'>
-                {t('edit.quota_current', { amount: currentUsd })}
+                {t('edit.quota_current', {
+                  amount: cfg.quota_display_type === 'TOKENS'
+                    ? Number(currentStr).toLocaleString()
+                    : `${currentDisp.symbol}${currentStr}`,
+                })}
               </span>
             </div>
             <div className='flex items-center gap-2'>
-              <span className='text-14 text-fg-2'>$</span>
+              {cfg.quota_display_type !== 'TOKENS' && (
+                <span className='text-14 text-fg-2'>{currentDisp.symbol}</span>
+              )}
               <Input
                 id='eu-quota'
                 type='number'
                 min={0}
-                step='0.01'
+                step={cfg.quota_display_type === 'TOKENS' ? '1' : '0.01'}
                 inputMode='decimal'
                 className='tabular-nums'
-                {...form.register('quota_usd', {
-                  onChange: (e) => setQuotaUsdInput(e.target.value),
+                {...form.register('quota_display', {
+                  onChange: (e) => setDisplayInput(e.target.value),
                 })}
               />
             </div>
             <div className='flex flex-wrap gap-1.5'>
-              {QUICK_TOPUPS.map((v) => (
+              {presets.map((v) => (
                 <button
                   key={v}
                   type='button'
                   onClick={() => applyQuickAdd(v)}
                   className='rounded-sm border border-line px-2 py-0.5 text-12 tabular-nums text-fg-1 hover:border-primary hover:text-fg-0'
                 >
-                  +${v}
+                  {formatPreset(v)}
                 </button>
               ))}
               <button
                 type='button'
                 onClick={() => {
-                  setQuotaUsdInput(currentUsd);
-                  form.setValue('quota_usd', currentUsd, {
+                  setDisplayInput(currentStr);
+                  form.setValue('quota_display', currentStr, {
                     shouldDirty: false,
                     shouldValidate: true,
                   });
