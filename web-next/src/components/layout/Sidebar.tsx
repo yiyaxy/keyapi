@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   List,
+  Megaphone,
   Play,
   Plug,
   Receipt,
@@ -100,6 +101,11 @@ export function Sidebar() {
                 to='/admin/prompt-rule'
                 label={t('nav.admin.prompt_rule')}
                 icon={FilterX}
+              />
+              <NavItem
+                to='/admin/message'
+                label={t('nav.admin.message')}
+                icon={Megaphone}
               />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>

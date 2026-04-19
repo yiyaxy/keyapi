@@ -26,6 +26,7 @@ import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
 import { LogsAdminPage } from '@/pages/LogsAdmin';
 import { LogsPage } from '@/pages/Logs';
+import { MessageAdminPage } from '@/pages/MessageAdmin';
 import { ModelsAdminPage } from '@/pages/ModelsAdmin';
 import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
@@ -145,10 +146,7 @@ export const router = createBrowserRouter([
                     path: '/admin/rebate-settings',
                     element: <RebateSettingsAdminPage />,
                   },
-                  {
-                    path: '/admin/message',
-                    element: <ComingSoon feature='Message center' />,
-                  },
+                  { path: '/admin/message', element: <MessageAdminPage /> },
                   {
                     path: '/admin/agent-log',
                     element: <ComingSoon feature='Agent log' />,
