@@ -11,6 +11,8 @@ import { AppShell } from '@/components/layout/AppShell';
 import { AccountPage } from '@/pages/Account';
 import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
+import { TenantInfoPage } from '@/pages/TenantInfo';
+import { TenantMembersPage } from '@/pages/TenantMembers';
 import { UsersAdminPage } from '@/pages/UsersAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
@@ -52,6 +54,8 @@ export const router = createBrowserRouter([
                   { path: '/admin/channels', element: <ChannelsAdminPage /> },
                   { path: '/admin/users', element: <UsersAdminPage /> },
                   { path: '/admin/redemption', element: <RedemptionAdminPage /> },
+                  { path: '/tenant/info', element: <TenantInfoPage /> },
+                  { path: '/tenant/members', element: <TenantMembersPage /> },
                 ],
               },
               { path: '*', element: <NotFound /> },

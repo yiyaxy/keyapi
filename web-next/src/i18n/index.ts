@@ -12,6 +12,7 @@ import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
 import enRedemption from './locales/en/redemption.json';
 import enShell from './locales/en/shell.json';
+import enTenant from './locales/en/tenant.json';
 import enTopup from './locales/en/topup.json';
 import enUsers from './locales/en/users.json';
 import zhAccount from './locales/zh/account.json';
@@ -24,6 +25,7 @@ import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
 import zhRedemption from './locales/zh/redemption.json';
 import zhShell from './locales/zh/shell.json';
+import zhTenant from './locales/zh/tenant.json';
 import zhTopup from './locales/zh/topup.json';
 import zhUsers from './locales/zh/users.json';
 
@@ -45,6 +47,7 @@ void i18n
         channels: zhChannels,
         users: zhUsers,
         redemption: zhRedemption,
+        tenant: zhTenant,
       },
       en: {
         common: enCommon,
@@ -59,6 +62,7 @@ void i18n
         channels: enChannels,
         users: enUsers,
         redemption: enRedemption,
+        tenant: enTenant,
       },
     },
     fallbackLng: 'zh',
@@ -76,6 +80,7 @@ void i18n
       'channels',
       'users',
       'redemption',
+      'tenant',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

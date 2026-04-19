@@ -1,4 +1,5 @@
 import {
+  Building2,
   KeyRound,
   LayoutDashboard,
   List,
@@ -7,6 +8,7 @@ import {
   Receipt,
   Ticket,
   Users,
+  UserCog,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -43,19 +45,33 @@ export function Sidebar() {
           <NavItem to='/topup' label={t('nav.topup')} icon={Receipt} />
         </SidebarGroup>
         {isAdmin && (
-          <SidebarGroup label={t('nav.admin')}>
-            <NavItem
-              to='/admin/channels'
-              label={t('nav.admin.channels')}
-              icon={Plug}
-            />
-            <NavItem to='/admin/users' label={t('nav.admin.users')} icon={Users} />
-            <NavItem
-              to='/admin/redemption'
-              label={t('nav.admin.redemption')}
-              icon={Ticket}
-            />
-          </SidebarGroup>
+          <>
+            <SidebarGroup label={t('nav.admin')}>
+              <NavItem
+                to='/admin/channels'
+                label={t('nav.admin.channels')}
+                icon={Plug}
+              />
+              <NavItem to='/admin/users' label={t('nav.admin.users')} icon={Users} />
+              <NavItem
+                to='/admin/redemption'
+                label={t('nav.admin.redemption')}
+                icon={Ticket}
+              />
+            </SidebarGroup>
+            <SidebarGroup label={t('nav.tenant')}>
+              <NavItem
+                to='/tenant/info'
+                label={t('nav.tenant.info')}
+                icon={Building2}
+              />
+              <NavItem
+                to='/tenant/members'
+                label={t('nav.tenant.members')}
+                icon={UserCog}
+              />
+            </SidebarGroup>
+          </>
         )}
       </nav>
       <div className='border-t border-line p-3'>
