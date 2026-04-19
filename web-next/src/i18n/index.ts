@@ -5,6 +5,7 @@ import { initReactI18next } from 'react-i18next';
 import enAccount from './locales/en/account.json';
 import enAff from './locales/en/aff.json';
 import enAgent from './locales/en/agent.json';
+import enAnalytics from './locales/en/analytics.json';
 import enAuth from './locales/en/auth.json';
 import enChannels from './locales/en/channels.json';
 import enCommon from './locales/en/common.json';
@@ -33,6 +34,7 @@ import enUsers from './locales/en/users.json';
 import zhAccount from './locales/zh/account.json';
 import zhAff from './locales/zh/aff.json';
 import zhAgent from './locales/zh/agent.json';
+import zhAnalytics from './locales/zh/analytics.json';
 import zhAuth from './locales/zh/auth.json';
 import zhChannels from './locales/zh/channels.json';
 import zhCommon from './locales/zh/common.json';
@@ -93,6 +95,7 @@ void i18n
         message: zhMessage,
         agent: zhAgent,
         ip: zhIp,
+        analytics: zhAnalytics,
       },
       en: {
         common: enCommon,
@@ -123,6 +126,7 @@ void i18n
         message: enMessage,
         agent: enAgent,
         ip: enIp,
+        analytics: enAnalytics,
       },
     },
     fallbackLng: 'zh',
@@ -156,6 +160,7 @@ void i18n
       'message',
       'agent',
       'ip',
+      'analytics',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

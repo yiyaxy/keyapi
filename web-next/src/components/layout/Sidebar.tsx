@@ -20,6 +20,7 @@ import {
   List,
   Megaphone,
   Network,
+  PieChart,
   Play,
   Plug,
   Receipt,
@@ -124,6 +125,16 @@ export function Sidebar() {
                 to='/admin/ip-analysis'
                 label={t('nav.admin.ip_analysis')}
                 icon={Network}
+              />
+              <NavItem
+                to='/admin/analytics'
+                label={t('nav.admin.analytics')}
+                icon={Gauge}
+              />
+              <NavItem
+                to='/admin/purchase-analytics'
+                label={t('nav.admin.purchase_analytics')}
+                icon={PieChart}
               />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>

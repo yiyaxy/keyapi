@@ -12,6 +12,7 @@ import { PublicLayout } from '@/components/public/PublicLayout';
 import { AboutPage } from '@/pages/About';
 import { AccountPage } from '@/pages/Account';
 import { AffTransferAdminPage } from '@/pages/AffTransferAdmin';
+import { AnalyticsAdminPage } from '@/pages/AnalyticsAdmin';
 import { AffTransferPage } from '@/pages/AffTransfer';
 import { AgentLogAdminPage } from '@/pages/AgentLogAdmin';
 import { AgentReportAdminPage } from '@/pages/AgentReportAdmin';
@@ -35,6 +36,7 @@ import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
 import { PromptRuleAdminPage } from '@/pages/PromptRuleAdmin';
+import { PurchaseAnalyticsPage } from '@/pages/PurchaseAnalytics';
 import { RebateSettingsAdminPage } from '@/pages/RebateSettingsAdmin';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { RequestTracePage } from '@/pages/RequestTrace';
@@ -124,17 +126,11 @@ export const router = createBrowserRouter([
                     path: '/admin/channel-monitor',
                     element: <ChannelMonitorPage />,
                   },
-                  {
-                    path: '/admin/analytics',
-                    element: <ComingSoon feature='Analytics' />,
-                  },
-                  {
-                    path: '/admin/purchase',
-                    element: <ComingSoon feature='Purchase orders' />,
-                  },
+                  { path: '/admin/analytics', element: <AnalyticsAdminPage /> },
+                  { path: '/admin/purchase', element: <PurchaseAnalyticsPage /> },
                   {
                     path: '/admin/purchase-analytics',
-                    element: <ComingSoon feature='Purchase analytics' />,
+                    element: <PurchaseAnalyticsPage />,
                   },
                   { path: '/admin/ip-analysis', element: <IpAnalysisAdminPage /> },
                   { path: '/admin/prompt-rule', element: <PromptRuleAdminPage /> },
