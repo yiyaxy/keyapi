@@ -12,6 +12,7 @@ import enInbox from './locales/en/inbox.json';
 import enInvoice from './locales/en/invoice.json';
 import enKeys from './locales/en/keys.json';
 import enLogs from './locales/en/logs.json';
+import enModels from './locales/en/models.json';
 import enOps from './locales/en/ops.json';
 import enPlan from './locales/en/plan.json';
 import enPlatform from './locales/en/platform.json';
@@ -33,6 +34,7 @@ import zhInbox from './locales/zh/inbox.json';
 import zhInvoice from './locales/zh/invoice.json';
 import zhKeys from './locales/zh/keys.json';
 import zhLogs from './locales/zh/logs.json';
+import zhModels from './locales/zh/models.json';
 import zhOps from './locales/zh/ops.json';
 import zhPlan from './locales/zh/plan.json';
 import zhPlatform from './locales/zh/platform.json';
@@ -72,6 +74,7 @@ void i18n
         invoice: zhInvoice,
         plan: zhPlan,
         ops: zhOps,
+        models: zhModels,
       },
       en: {
         common: enCommon,
@@ -95,6 +98,7 @@ void i18n
         invoice: enInvoice,
         plan: enPlan,
         ops: enOps,
+        models: enModels,
       },
     },
     fallbackLng: 'zh',
@@ -121,6 +125,7 @@ void i18n
       'invoice',
       'plan',
       'ops',
+      'models',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

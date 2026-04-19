@@ -164,6 +164,11 @@ export function Sidebar() {
               label={t('nav.admin.platform_tenants')}
               icon={Globe}
             />
+            <NavItem
+              to='/admin/models'
+              label={t('nav.admin.models')}
+              icon={Database}
+            />
           </SidebarGroup>
         )}
       </nav>

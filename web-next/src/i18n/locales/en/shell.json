@@ -22,6 +22,7 @@
   "nav.admin.site_rpm": "Site RPM",
   "nav.admin.channel_monitor": "Channel monitor",
   "nav.admin.platform_tenants": "Platform tenants",
+  "nav.admin.models": "Model registry",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
   "nav.tenant.dashboard": "Overview",

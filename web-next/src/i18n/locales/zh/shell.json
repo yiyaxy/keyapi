@@ -22,6 +22,7 @@
   "nav.admin.site_rpm": "站点 RPM",
   "nav.admin.channel_monitor": "渠道监控",
   "nav.admin.platform_tenants": "平台租户",
+  "nav.admin.models": "模型注册表",
   "nav.platform": "PLATFORM",
   "nav.tenant": "TENANT",
   "nav.tenant.dashboard": "总览",

@@ -27,6 +27,7 @@ const TITLES: Record<string, string> = {
   '/admin/site-rpm': 'nav.admin.site_rpm',
   '/admin/channel-monitor': 'nav.admin.channel_monitor',
   '/admin/platform-tenants': 'nav.admin.platform_tenants',
+  '/admin/models': 'nav.admin.models',
   '/tenant/dashboard': 'nav.tenant.dashboard',
   '/tenant/info': 'nav.tenant.info',
   '/tenant/members': 'nav.tenant.members',

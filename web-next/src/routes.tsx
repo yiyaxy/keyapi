@@ -24,6 +24,7 @@ import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
 import { LogsAdminPage } from '@/pages/LogsAdmin';
 import { LogsPage } from '@/pages/Logs';
+import { ModelsAdminPage } from '@/pages/ModelsAdmin';
 import { PlanPage } from '@/pages/PlanPage';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
@@ -126,6 +127,7 @@ export const router = createBrowserRouter([
                     path: '/admin/platform-tenants',
                     element: <PlatformTenantsPage />,
                   },
+                  { path: '/admin/models', element: <ModelsAdminPage /> },
                 ],
               },
               { path: '*', element: <NotFound /> },
