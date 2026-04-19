@@ -91,6 +91,11 @@ export const router = createBrowserRouter([
               { path: '/smart-cache', element: <SmartCachePage /> },
               { path: '/tickets', element: <TicketsPage /> },
               { path: '/tickets/:id', element: <TicketDetailPage /> },
+              { path: '/aff-transfer', element: <ComingSoon feature='Affiliate transfer' /> },
+              { path: '/midjourney', element: <ComingSoon feature='Midjourney' /> },
+              { path: '/task', element: <ComingSoon feature='Async tasks' /> },
+              { path: '/chat/:id?', element: <ComingSoon feature='Chat' /> },
+              { path: '/chat2link', element: <ComingSoon feature='Chat2Link' /> },
               {
                 element: <AdminRoute />,
                 children: [
@@ -110,6 +115,58 @@ export const router = createBrowserRouter([
                     path: '/admin/channel-monitor',
                     element: <ChannelMonitorPage />,
                   },
+                  {
+                    path: '/admin/analytics',
+                    element: <ComingSoon feature='Analytics' />,
+                  },
+                  {
+                    path: '/admin/purchase',
+                    element: <ComingSoon feature='Purchase orders' />,
+                  },
+                  {
+                    path: '/admin/purchase-analytics',
+                    element: <ComingSoon feature='Purchase analytics' />,
+                  },
+                  {
+                    path: '/admin/ip-analysis',
+                    element: <ComingSoon feature='IP analysis' />,
+                  },
+                  {
+                    path: '/admin/prompt-rule',
+                    element: <ComingSoon feature='Prompt rule' />,
+                  },
+                  {
+                    path: '/admin/aff-transfer',
+                    element: <ComingSoon feature='Affiliate transfer admin' />,
+                  },
+                  {
+                    path: '/admin/rebate-settings',
+                    element: <ComingSoon feature='Rebate settings' />,
+                  },
+                  {
+                    path: '/admin/message',
+                    element: <ComingSoon feature='Message center' />,
+                  },
+                  {
+                    path: '/admin/agent-log',
+                    element: <ComingSoon feature='Agent log' />,
+                  },
+                  {
+                    path: '/admin/agent-report',
+                    element: <ComingSoon feature='Agent report' />,
+                  },
+                  {
+                    path: '/admin/request-trace',
+                    element: <ComingSoon feature='Request trace' />,
+                  },
+                  {
+                    path: '/admin/request-trace/:requestId',
+                    element: <ComingSoon feature='Request trace' />,
+                  },
+                  {
+                    path: '/admin/settings',
+                    element: <ComingSoon feature='System settings' />,
+                  },
                   { path: '/tenant/dashboard', element: <TenantDashboardPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },
@@ -128,6 +185,14 @@ export const router = createBrowserRouter([
                     element: <PlatformTenantsPage />,
                   },
                   { path: '/admin/models', element: <ModelsAdminPage /> },
+                  {
+                    path: '/admin/deployment',
+                    element: <ComingSoon feature='Model deployment' />,
+                  },
+                  {
+                    path: '/admin/ticket-storage',
+                    element: <ComingSoon feature='Ticket storage' />,
+                  },
                 ],
               },
               { path: '*', element: <NotFound /> },
