@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
+import { JsonEditor } from '@/components/common/JsonEditor';
+import { KeyValueEditor } from '@/components/common/KeyValueEditor';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -347,17 +349,16 @@ export function ChannelFormDialog({
               <Input id='ch-test-model' {...form.register('test_model')} />
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='ch-mm'>{t('form.field.model_mapping')}</Label>
-              <Textarea
-                id='ch-mm'
-                rows={4}
-                placeholder='{"gpt-4-1106-preview": "gpt-4o"}'
-                className='font-mono text-12'
-                {...form.register('model_mapping')}
+              <Label>{t('form.field.model_mapping')}</Label>
+              <KeyValueEditor
+                value={form.watch('model_mapping')}
+                onChange={(v) =>
+                  form.setValue('model_mapping', v, { shouldValidate: true, shouldDirty: true })
+                }
+                keyPlaceholder='gpt-4-1106-preview'
+                valuePlaceholder='gpt-4o'
               />
-              {form.formState.errors.model_mapping && (
-                <p className='text-12 text-danger'>{t('form.error.invalid_json')}</p>
-              )}
+              <p className='text-12 text-fg-2'>{t('form.field.model_mapping_hint')}</p>
             </div>
           </Section>
 
@@ -384,17 +385,19 @@ export function ChannelFormDialog({
               </div>
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='ch-scm'>{t('form.field.status_code_mapping')}</Label>
-              <Textarea
-                id='ch-scm'
-                rows={3}
-                placeholder='{"500": "503"}'
-                className='font-mono text-12'
-                {...form.register('status_code_mapping')}
+              <Label>{t('form.field.status_code_mapping')}</Label>
+              <KeyValueEditor
+                value={form.watch('status_code_mapping')}
+                onChange={(v) =>
+                  form.setValue('status_code_mapping', v, {
+                    shouldValidate: true,
+                    shouldDirty: true,
+                  })
+                }
+                keyPlaceholder='500'
+                valuePlaceholder='503'
               />
-              {form.formState.errors.status_code_mapping && (
-                <p className='text-12 text-danger'>{t('form.error.invalid_json')}</p>
-              )}
+              <p className='text-12 text-fg-2'>{t('form.field.status_code_mapping_hint')}</p>
             </div>
           </Section>
 
@@ -409,30 +412,27 @@ export function ChannelFormDialog({
               <Textarea id='ch-sys' rows={3} {...form.register('system_prompt')} />
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='ch-po'>{t('form.field.param_override')}</Label>
-              <Textarea
-                id='ch-po'
-                rows={3}
-                placeholder='{"temperature": 0.7}'
-                className='font-mono text-12'
-                {...form.register('param_override')}
+              <Label>{t('form.field.param_override')}</Label>
+              <JsonEditor
+                value={form.watch('param_override')}
+                onChange={(v) =>
+                  form.setValue('param_override', v, { shouldValidate: true, shouldDirty: true })
+                }
+                rows={4}
+                placeholder='{\n  "temperature": 0.7\n}'
               />
-              {form.formState.errors.param_override && (
-                <p className='text-12 text-danger'>{t('form.error.invalid_json')}</p>
-              )}
+              <p className='text-12 text-fg-2'>{t('form.field.param_override_hint')}</p>
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='ch-ho'>{t('form.field.header_override')}</Label>
-              <Textarea
-                id='ch-ho'
-                rows={3}
-                placeholder='{"X-Custom-Header": "value"}'
-                className='font-mono text-12'
-                {...form.register('header_override')}
+              <Label>{t('form.field.header_override')}</Label>
+              <KeyValueEditor
+                value={form.watch('header_override')}
+                onChange={(v) =>
+                  form.setValue('header_override', v, { shouldValidate: true, shouldDirty: true })
+                }
+                keyPlaceholder='X-Custom-Header'
+                valuePlaceholder='value'
               />
-              {form.formState.errors.header_override && (
-                <p className='text-12 text-danger'>{t('form.error.invalid_json')}</p>
-              )}
             </div>
             <div className='space-y-2'>
               <Label htmlFor='ch-remark'>{t('form.field.remark')}</Label>
