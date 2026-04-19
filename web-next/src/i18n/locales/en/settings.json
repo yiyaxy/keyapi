@@ -28,5 +28,17 @@
   "kv.empty": "No entries. Click Add to insert a row.",
   "kv.empty_search": "No matching entries",
   "list.add_placeholder": "Type and press Enter to add",
-  "list.empty": "No items"
+  "list.empty": "No items",
+  "model_pricing.title": "Per-model pricing",
+  "model_pricing.sub": "Pick a model on the left and edit its fixed price and all ratios on the right; only changed fields are PUT on save.",
+  "model_pricing.search": "Search models",
+  "model_pricing.new_placeholder": "New model name",
+  "model_pricing.total": "models",
+  "model_pricing.empty": "No matching models",
+  "model_pricing.pick_hint": "Select a model on the left or add a new one.",
+  "model_pricing.unset": "empty = remove",
+  "model_pricing.changed": "changed",
+  "model_pricing.dirty": "{{count}} field(s) pending",
+  "model_pricing.clean": "In sync with server",
+  "model_pricing.delete": "Remove from all ratios"
 }

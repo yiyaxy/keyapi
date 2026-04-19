@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { KvMapEditor } from '@/components/settings/KvMapEditor';
+import { ModelPricingPanel } from '@/components/settings/ModelPricingPanel';
+import { MODEL_PRICING_KEYS } from '@/components/settings/modelPricingKeys';
 import { StringListEditor } from '@/components/settings/StringListEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -226,17 +228,23 @@ function FieldList({
   values,
   onSaved,
   searchTerm,
+  groupId,
 }: {
   fields: FieldDef[];
   values: Record<string, string>;
   onSaved: (key: string, next: string) => void;
   searchTerm: string;
+  groupId: string;
 }) {
   const { t } = useTranslation('settings');
+  const isRatios = groupId === 'ratios';
   const filtered = useMemo(() => {
-    const present = fields.filter((f) =>
-      Object.prototype.hasOwnProperty.call(values, f.key)
-    );
+    const present = fields.filter((f) => {
+      // In the ratios tab, per-model fields are owned by ModelPricingPanel
+      if (isRatios && MODEL_PRICING_KEYS.includes(f.key as never))
+        return false;
+      return Object.prototype.hasOwnProperty.call(values, f.key);
+    });
     if (!searchTerm) return present;
     const q = searchTerm.toLowerCase();
     return present.filter(
@@ -245,9 +253,16 @@ function FieldList({
         f.label.zh.toLowerCase().includes(q) ||
         f.label.en.toLowerCase().includes(q)
     );
-  }, [fields, values, searchTerm]);
+  }, [fields, values, searchTerm, isRatios]);
 
-  if (filtered.length === 0) {
+  const showModelPanel =
+    isRatios &&
+    !searchTerm &&
+    MODEL_PRICING_KEYS.some((k) =>
+      Object.prototype.hasOwnProperty.call(values, k)
+    );
+
+  if (filtered.length === 0 && !showModelPanel) {
     return (
       <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
         {searchTerm ? t('empty.search') : t('empty.group')}
@@ -256,7 +271,14 @@ function FieldList({
   }
 
   return (
-    <div className='rounded-md border border-line bg-bg-1 px-4'>
+    <div className='space-y-3'>
+      {showModelPanel && (
+        <div className='rounded-md border border-line bg-bg-1 px-4'>
+          <ModelPricingPanel values={values} onSaved={onSaved} />
+        </div>
+      )}
+      {filtered.length > 0 && (
+        <div className='rounded-md border border-line bg-bg-1 px-4'>
       {filtered.map((f) => {
         if (f.kind === 'bool') {
           return (
@@ -297,6 +319,8 @@ function FieldList({
           />
         );
       })}
+        </div>
+      )}
     </div>
   );
 }
@@ -528,6 +552,7 @@ export function SettingsAdminPage() {
               />
             ) : activeGroup ? (
               <FieldList
+                groupId={activeGroup.id}
                 fields={activeGroup.fields}
                 values={values}
                 onSaved={onSaved}
