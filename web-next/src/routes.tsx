@@ -24,6 +24,7 @@ import { PricingPage } from '@/pages/Pricing';
 import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
+import { SetupPage } from '@/pages/Setup';
 import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
 import { TicketDetailPage } from '@/pages/TicketDetail';
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       { path: '/reset', element: <Reset /> },
       { path: '/user/reset', element: <Reset /> },
       { path: '/forbidden', element: <Forbidden /> },
+      { path: '/setup', element: <SetupPage /> },
       {
         element: <PublicLayout />,
         children: [
