@@ -29,6 +29,7 @@ import enSettings from './locales/en/settings.json';
 import enSetup from './locales/en/setup.json';
 import enShell from './locales/en/shell.json';
 import enTenant from './locales/en/tenant.json';
+import enTenantPay from './locales/en/tenantpay.json';
 import enTickets from './locales/en/tickets.json';
 import enTopup from './locales/en/topup.json';
 import enUsers from './locales/en/users.json';
@@ -59,6 +60,7 @@ import zhSettings from './locales/zh/settings.json';
 import zhSetup from './locales/zh/setup.json';
 import zhShell from './locales/zh/shell.json';
 import zhTenant from './locales/zh/tenant.json';
+import zhTenantPay from './locales/zh/tenantpay.json';
 import zhTickets from './locales/zh/tickets.json';
 import zhTopup from './locales/zh/topup.json';
 import zhUsers from './locales/zh/users.json';
@@ -99,6 +101,7 @@ void i18n
         ip: zhIp,
         analytics: zhAnalytics,
         settings: zhSettings,
+        tenantpay: zhTenantPay,
       },
       en: {
         common: enCommon,
@@ -131,6 +134,7 @@ void i18n
         ip: enIp,
         analytics: enAnalytics,
         settings: enSettings,
+        tenantpay: enTenantPay,
       },
     },
     fallbackLng: 'zh',
@@ -166,6 +170,7 @@ void i18n
       'ip',
       'analytics',
       'settings',
+      'tenantpay',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

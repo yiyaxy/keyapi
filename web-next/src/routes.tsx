@@ -54,6 +54,7 @@ import { TenantConfigPage } from '@/pages/TenantConfig';
 import { TenantDashboardPage } from '@/pages/TenantDashboard';
 import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
+import { TenantPaymentPage } from '@/pages/TenantPayment';
 import { TenantPlanPage } from '@/pages/TenantPlan';
 import { TicketAdminDetailPage } from '@/pages/TicketAdminDetail';
 import { TicketDetailPage } from '@/pages/TicketDetail';
@@ -158,6 +159,7 @@ export const router = createBrowserRouter([
                   { path: '/tenant/dashboard', element: <TenantDashboardPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },
+                  { path: '/tenant/payment', element: <TenantPaymentPage /> },
                   { path: '/tenant/plan', element: <TenantPlanPage /> },
                   { path: '/tenant/bills', element: <TenantBillsPage /> },
                   { path: '/tenant/alerts', element: <TenantAlertsPage /> },

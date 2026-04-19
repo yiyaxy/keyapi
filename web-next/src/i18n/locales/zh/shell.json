@@ -41,6 +41,7 @@
   "nav.tenant.dashboard": "总览",
   "nav.tenant.info": "租户设置",
   "nav.tenant.members": "租户成员",
+  "nav.tenant.payment": "支付配置",
   "nav.tenant.plan": "套餐",
   "nav.tenant.bills": "账单",
   "nav.tenant.alerts": "告警",

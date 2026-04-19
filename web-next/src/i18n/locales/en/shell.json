@@ -41,6 +41,7 @@
   "nav.tenant.dashboard": "Overview",
   "nav.tenant.info": "Settings",
   "nav.tenant.members": "Members",
+  "nav.tenant.payment": "Payment",
   "nav.tenant.plan": "Plan",
   "nav.tenant.bills": "Bills",
   "nav.tenant.alerts": "Alerts",

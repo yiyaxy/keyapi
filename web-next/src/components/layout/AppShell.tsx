@@ -43,6 +43,7 @@ const TITLES: Record<string, string> = {
   '/tenant/dashboard': 'nav.tenant.dashboard',
   '/tenant/info': 'nav.tenant.info',
   '/tenant/members': 'nav.tenant.members',
+  '/tenant/payment': 'nav.tenant.payment',
   '/tenant/plan': 'nav.tenant.plan',
   '/tenant/bills': 'nav.tenant.bills',
   '/tenant/alerts': 'nav.tenant.alerts',

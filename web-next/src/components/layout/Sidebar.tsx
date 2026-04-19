@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Bot,
   Building2,
+  CircleDollarSign,
   ClipboardList,
   FileBarChart,
   Coins,
@@ -151,6 +152,11 @@ export function Sidebar() {
               />
               <NavItem to='/tenant/info' label={t('nav.tenant.info')} icon={Building2} />
               <NavItem to='/tenant/members' label={t('nav.tenant.members')} icon={UserCog} />
+              <NavItem
+                to='/tenant/payment'
+                label={t('nav.tenant.payment')}
+                icon={CircleDollarSign}
+              />
               <NavItem to='/tenant/plan' label={t('nav.tenant.plan')} icon={Gem} />
               <NavItem to='/tenant/bills' label={t('nav.tenant.bills')} icon={FileText} />
               <NavItem to='/tenant/alerts' label={t('nav.tenant.alerts')} icon={AlertCircle} />
