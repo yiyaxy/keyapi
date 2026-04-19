@@ -39,5 +39,11 @@
   "pagination.prev": "Previous",
   "pagination.next": "Next",
   "pagination.page": "Page {{page}}",
-  "pagination.total": "{{total}} entries"
+  "pagination.total": "{{total}} entries",
+  "admin.filters.username": "Username",
+  "admin.filters.ip": "Client IP",
+  "admin.filters.channel": "Channel ID",
+  "admin.table.col.username": "User",
+  "admin.table.col.channel": "Channel",
+  "admin.table.col.ip": "IP"
 }

@@ -19,6 +19,7 @@ import { InboxPage } from '@/pages/Inbox';
 import { KeysPage } from '@/pages/Keys';
 import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
+import { LogsAdminPage } from '@/pages/LogsAdmin';
 import { LogsPage } from '@/pages/Logs';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
                   { path: '/admin/channels', element: <ChannelsAdminPage /> },
                   { path: '/admin/users', element: <UsersAdminPage /> },
                   { path: '/admin/redemption', element: <RedemptionAdminPage /> },
+                  { path: '/admin/logs', element: <LogsAdminPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },
                 ],

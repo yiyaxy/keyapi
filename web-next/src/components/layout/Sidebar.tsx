@@ -74,6 +74,7 @@ export function Sidebar() {
                 label={t('nav.admin.redemption')}
                 icon={Ticket}
               />
+              <NavItem to='/admin/logs' label={t('nav.admin.logs')} icon={List} />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>
               <NavItem

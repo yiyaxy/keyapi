@@ -80,3 +80,42 @@ export function useUserLogs(query: LogsQuery) {
     staleTime: 15_000,
   });
 }
+
+export type AdminLogsQuery = LogsQuery & {
+  username?: string;
+  channel?: number;
+  ip?: string;
+};
+
+export function useAdminLogs(query: AdminLogsQuery) {
+  return useQuery<LogsPage>({
+    queryKey: ['logs', 'admin', query],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (query.type !== undefined && query.type !== 0) {
+        params.set('type', String(query.type));
+      }
+      if (query.token_name) params.set('token_name', query.token_name);
+      if (query.model_name) params.set('model_name', query.model_name);
+      if (query.group) params.set('group', query.group);
+      if (query.request_id) params.set('request_id', query.request_id);
+      if (query.username) params.set('username', query.username);
+      if (query.ip) params.set('ip', query.ip);
+      if (query.channel !== undefined && query.channel > 0) {
+        params.set('channel', String(query.channel));
+      }
+      if (query.start_timestamp) {
+        params.set('start_timestamp', String(query.start_timestamp));
+      }
+      if (query.end_timestamp) {
+        params.set('end_timestamp', String(query.end_timestamp));
+      }
+      params.set('p', String(query.p ?? 1));
+      params.set('page_size', String(query.page_size ?? 50));
+      const res = await api.get<LogsPage>(`/api/log/?${params.toString()}`);
+      return res.data;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}

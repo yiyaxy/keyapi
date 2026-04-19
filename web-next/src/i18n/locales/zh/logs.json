@@ -39,5 +39,11 @@
   "pagination.prev": "上一页",
   "pagination.next": "下一页",
   "pagination.page": "第 {{page}} 页",
-  "pagination.total": "共 {{total}} 条"
+  "pagination.total": "共 {{total}} 条",
+  "admin.filters.username": "用户名",
+  "admin.filters.ip": "客户端 IP",
+  "admin.filters.channel": "渠道 ID",
+  "admin.table.col.username": "用户",
+  "admin.table.col.channel": "渠道",
+  "admin.table.col.ip": "IP"
 }
