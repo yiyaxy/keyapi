@@ -1,5 +1,8 @@
 import {
   Building2,
+  ClipboardList,
+  FileText,
+  Gem,
   Globe,
   Inbox,
   KeyRound,
@@ -96,6 +99,17 @@ export function Sidebar() {
                 to='/tenant/members'
                 label={t('nav.tenant.members')}
                 icon={UserCog}
+              />
+              <NavItem to='/tenant/plan' label={t('nav.tenant.plan')} icon={Gem} />
+              <NavItem
+                to='/tenant/bills'
+                label={t('nav.tenant.bills')}
+                icon={FileText}
+              />
+              <NavItem
+                to='/tenant/audit'
+                label={t('nav.tenant.audit')}
+                icon={ClipboardList}
               />
             </SidebarGroup>
           </>

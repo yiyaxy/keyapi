@@ -24,6 +24,9 @@ const TITLES: Record<string, string> = {
   '/tenant/dashboard': 'nav.tenant.dashboard',
   '/tenant/info': 'nav.tenant.info',
   '/tenant/members': 'nav.tenant.members',
+  '/tenant/plan': 'nav.tenant.plan',
+  '/tenant/bills': 'nav.tenant.bills',
+  '/tenant/audit': 'nav.tenant.audit',
 };
 
 export function AppShell() {

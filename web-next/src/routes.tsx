@@ -27,9 +27,12 @@ import { RedemptionAdminPage } from '@/pages/RedemptionAdmin';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
 import { SetupPage } from '@/pages/Setup';
+import { TenantAuditPage } from '@/pages/TenantAudit';
+import { TenantBillsPage } from '@/pages/TenantBills';
 import { TenantDashboardPage } from '@/pages/TenantDashboard';
 import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
+import { TenantPlanPage } from '@/pages/TenantPlan';
 import { TicketAdminDetailPage } from '@/pages/TicketAdminDetail';
 import { TicketDetailPage } from '@/pages/TicketDetail';
 import { TicketsAdminPage } from '@/pages/TicketsAdmin';
@@ -88,6 +91,9 @@ export const router = createBrowserRouter([
                   { path: '/tenant/dashboard', element: <TenantDashboardPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },
+                  { path: '/tenant/plan', element: <TenantPlanPage /> },
+                  { path: '/tenant/bills', element: <TenantBillsPage /> },
+                  { path: '/tenant/audit', element: <TenantAuditPage /> },
                 ],
               },
               {
