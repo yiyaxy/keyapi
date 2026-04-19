@@ -4,6 +4,7 @@ import { initReactI18next } from 'react-i18next';
 
 import enAccount from './locales/en/account.json';
 import enAuth from './locales/en/auth.json';
+import enChannels from './locales/en/channels.json';
 import enCommon from './locales/en/common.json';
 import enDashboard from './locales/en/dashboard.json';
 import enErrors from './locales/en/errors.json';
@@ -13,6 +14,7 @@ import enShell from './locales/en/shell.json';
 import enTopup from './locales/en/topup.json';
 import zhAccount from './locales/zh/account.json';
 import zhAuth from './locales/zh/auth.json';
+import zhChannels from './locales/zh/channels.json';
 import zhCommon from './locales/zh/common.json';
 import zhDashboard from './locales/zh/dashboard.json';
 import zhErrors from './locales/zh/errors.json';
@@ -36,6 +38,7 @@ void i18n
         logs: zhLogs,
         account: zhAccount,
         topup: zhTopup,
+        channels: zhChannels,
       },
       en: {
         common: enCommon,
@@ -47,6 +50,7 @@ void i18n
         logs: enLogs,
         account: enAccount,
         topup: enTopup,
+        channels: enChannels,
       },
     },
     fallbackLng: 'zh',
@@ -61,6 +65,7 @@ void i18n
       'logs',
       'account',
       'topup',
+      'channels',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

@@ -13,6 +13,7 @@ const TITLES: Record<string, string> = {
   '/topup': 'nav.topup',
   '/plan': 'nav.topup',
   '/account': 'usermenu.account',
+  '/admin/channels': 'nav.admin.channels',
 };
 
 export function AppShell() {

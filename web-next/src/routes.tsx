@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 
+import { AdminRoute } from '@/components/common/AdminRoute';
 import { ComingSoon } from '@/components/common/ComingSoon';
 import { Forbidden } from '@/components/common/Forbidden';
 import { NotFound } from '@/components/common/NotFound';
@@ -7,15 +8,16 @@ import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { RootLayout } from '@/components/common/RootLayout';
 import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
+import { AccountPage } from '@/pages/Account';
+import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
-import { AccountPage } from '@/pages/Account';
 import { KeysPage } from '@/pages/Keys';
-import { LogsPage } from '@/pages/Logs';
-import { TopupPage } from '@/pages/Topup';
 import { Login } from '@/pages/Login';
+import { LogsPage } from '@/pages/Logs';
 import { Register } from '@/pages/Register';
 import { Reset } from '@/pages/Reset';
+import { TopupPage } from '@/pages/Topup';
 
 export const router = createBrowserRouter([
   {
@@ -42,6 +44,12 @@ export const router = createBrowserRouter([
               { path: '/topup', element: <TopupPage /> },
               { path: '/plan', element: <ComingSoon feature='Plan' /> },
               { path: '/account', element: <AccountPage /> },
+              {
+                element: <AdminRoute />,
+                children: [
+                  { path: '/admin/channels', element: <ChannelsAdminPage /> },
+                ],
+              },
               { path: '*', element: <NotFound /> },
             ],
           },

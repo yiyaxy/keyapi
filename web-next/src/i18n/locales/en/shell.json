@@ -1,11 +1,13 @@
 {
   "nav.build": "BUILD",
   "nav.billing": "BILLING",
+  "nav.admin": "ADMIN",
   "nav.dashboard": "Dashboard",
   "nav.keys": "API keys",
   "nav.playground": "Playground",
   "nav.logs": "Logs",
   "nav.topup": "Top up · invoices",
+  "nav.admin.channels": "Channels",
   "search.placeholder": "Find anything",
   "search.coming_soon": "Command palette · coming soon",
   "usermenu.theme": "Theme",
