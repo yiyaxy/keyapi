@@ -87,6 +87,11 @@ export function Sidebar() {
                 label={t('nav.admin.tickets')}
                 icon={LifeBuoy}
               />
+              <NavItem
+                to='/admin/invoices'
+                label={t('nav.admin.invoices')}
+                icon={ScrollText}
+              />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>
               <NavItem

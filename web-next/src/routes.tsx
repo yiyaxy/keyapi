@@ -16,6 +16,7 @@ import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
 import { HomePage } from '@/pages/Home';
 import { InboxPage } from '@/pages/Inbox';
+import { InvoicesAdminPage } from '@/pages/InvoicesAdmin';
 import { InvoicesPage } from '@/pages/Invoices';
 import { KeysPage } from '@/pages/Keys';
 import { LegalPage } from '@/pages/Legal';
@@ -92,6 +93,7 @@ export const router = createBrowserRouter([
                   { path: '/admin/logs', element: <LogsAdminPage /> },
                   { path: '/admin/tickets', element: <TicketsAdminPage /> },
                   { path: '/admin/tickets/:id', element: <TicketAdminDetailPage /> },
+                  { path: '/admin/invoices', element: <InvoicesAdminPage /> },
                   { path: '/tenant/dashboard', element: <TenantDashboardPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },

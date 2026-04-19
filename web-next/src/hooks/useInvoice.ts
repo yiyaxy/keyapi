@@ -112,3 +112,50 @@ export function useCancelInvoiceApplication() {
     },
   });
 }
+
+export function useAdminInvoiceApplications(q: {
+  p?: number;
+  page_size?: number;
+  status?: string;
+  keyword?: string;
+}) {
+  return useQuery<{ items: InvoiceApplication[]; total: number }>({
+    queryKey: ['invoice-admin', 'applications', q] as const,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('p', String(q.p ?? 1));
+      params.set('page_size', String(q.page_size ?? 30));
+      if (q.status) params.set('status', q.status);
+      if (q.keyword) params.set('keyword', q.keyword);
+      const res = await api.get<{ items: InvoiceApplication[]; total: number }>(
+        `/api/invoice/admin/applications?${params.toString()}`
+      );
+      return res.data;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}
+
+export type AdminUpdateInvoiceStatusInput = {
+  id: number;
+  status: string;
+  admin_remark?: string;
+  reject_reason?: string;
+};
+
+export function useAdminUpdateInvoiceStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: AdminUpdateInvoiceStatusInput) => {
+      await api.post(`/api/invoice/admin/applications/${body.id}/status`, {
+        status: body.status,
+        admin_remark: body.admin_remark ?? '',
+        reject_reason: body.reject_reason ?? '',
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['invoice-admin'] });
+    },
+  });
+}

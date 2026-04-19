@@ -40,5 +40,21 @@
   "create.items.preview": "{{count}} 条订单 · 合计 {{amount}}",
   "create.submit": "提交申请",
   "create.cancel": "取消",
-  "create.success": "申请已提交"
+  "create.success": "申请已提交",
+  "admin.page.title": "发票申请",
+  "admin.col.id": "ID",
+  "admin.col.user": "用户",
+  "admin.col.title": "抬头",
+  "admin.col.amount": "金额",
+  "admin.col.status": "状态",
+  "admin.col.issue": "开票状态",
+  "admin.col.created": "申请时间",
+  "admin.action.approve": "通过",
+  "admin.action.reject": "驳回",
+  "admin.approve.success": "已通过",
+  "admin.reject.title": "驳回申请",
+  "admin.reject.reason": "驳回原因（选填）",
+  "admin.reject.confirm": "驳回",
+  "admin.reject.cancel": "取消",
+  "admin.reject.success": "已驳回"
 }
