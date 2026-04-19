@@ -24,6 +24,11 @@ const (
 	TenantAlertTypePlanExpiring        = "plan_expiring"
 	TenantAlertTypePlanInGracePeriod   = "plan_in_grace_period"   // severity=warning
 	TenantAlertTypePlanExpiredDisabled = "plan_expired_disabled" // severity=critical
+	// Renewal-specific alerts (fire only when the plan is renewable via
+	// WeChat Pay, i.e. RenewPriceAmount > 0). The existing plan_expiring
+	// covers the 7-day middle tier; these two bracket it.
+	TenantAlertTypePlanRenewAvailable = "plan_renew_available" // 30 days out, severity=warning
+	TenantAlertTypePlanRenewFinal     = "plan_renew_final"     // 1 day out, severity=critical
 	TenantAlertTypeQuota80             = "quota_80"
 	TenantAlertTypeQuota100            = "quota_100"
 	TenantAlertTypeRPMHigh             = "rpm_high"
@@ -72,14 +77,49 @@ func CheckTenantAlerts(tenantId int) ([]TenantAlert, error) {
 				TriggeredAt: now,
 			})
 		} else {
-			sevenDays := int64(7 * 24 * 60 * 60)
-			remaining := plan.ExpiresAt - time.Now().Unix()
-			if remaining <= sevenDays {
-				days := remaining / (24 * 60 * 60)
+			// Three-tier escalation for renewal. We tier on remaining seconds
+			// rather than day-integer math so a plan that's e.g. 6.5 days
+			// away fires the 7-day tier (not the 30-day one).
+			oneDay := int64(24 * 60 * 60)
+			sevenDays := 7 * oneDay
+			thirtyDays := 30 * oneDay
+			remaining := plan.ExpiresAt - now
+			renewable := plan.RenewPriceAmount > 0
+
+			switch {
+			case remaining <= oneDay:
+				// Final call — always fire (even for non-renewable plans the
+				// tenant admin needs to know their plan is about to go dark).
+				days := remaining / oneDay
+				alertType := "plan_expiring"
+				severity := "critical"
+				if renewable {
+					alertType = "plan_renew_final"
+				}
+				alerts = append(alerts, TenantAlert{
+					TenantId:    tenantId,
+					AlertType:   alertType,
+					Message:     fmt.Sprintf("租户套餐将在 %d 天内过期，请尽快续费", days),
+					Severity:    severity,
+					TriggeredAt: now,
+				})
+			case remaining <= sevenDays:
+				days := remaining / oneDay
 				alerts = append(alerts, TenantAlert{
 					TenantId:    tenantId,
 					AlertType:   "plan_expiring",
 					Message:     fmt.Sprintf("租户套餐将在 %d 天内过期", days),
+					Severity:    "warning",
+					TriggeredAt: now,
+				})
+			case remaining <= thirtyDays && renewable:
+				// Only fire the 30-day heads-up when the plan can actually
+				// be renewed via WeChat Pay; otherwise it's noise.
+				days := remaining / oneDay
+				alerts = append(alerts, TenantAlert{
+					TenantId:    tenantId,
+					AlertType:   "plan_renew_available",
+					Message:     fmt.Sprintf("租户套餐将在 %d 天后过期，可提前续费", days),
 					Severity:    "warning",
 					TriggeredAt: now,
 				})
