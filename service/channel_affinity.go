@@ -237,6 +237,24 @@ func ClearChannelAffinityCacheByRuleName(ruleName string) (int, error) {
 	return deleted, nil
 }
 
+// PurgeTenantAffinityCache deletes affinity entries whose keys belong to the
+// given tenant. Called when tenant-side routing preferences change.
+func PurgeTenantAffinityCache(tenantId int) {
+	if tenantId <= 0 {
+		return
+	}
+	cache := getChannelAffinityCache()
+	prefix := fmt.Sprintf("t%d", tenantId)
+	deleted, err := cache.DeleteByPrefix(prefix)
+	if err != nil {
+		common.SysError(fmt.Sprintf("channel affinity cache delete by tenant prefix failed: tenant=%d, err=%v", tenantId, err))
+		return
+	}
+	if deleted > 0 {
+		common.SysLog(fmt.Sprintf("channel affinity cache purged for tenant %d: %d entries", tenantId, deleted))
+	}
+}
+
 func matchAnyRegexCached(patterns []string, s string) bool {
 	if len(patterns) == 0 || s == "" {
 		return false

@@ -2,10 +2,14 @@ package helper
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -132,6 +136,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		CacheCreation1hRatio: cacheCreationRatio1h,
 		QuotaToPreConsume:    preConsumedQuota,
 	}
+	applyPlatformMarkup(c, info, &priceData, true)
 
 	if common.DebugEnabled {
 		println(fmt.Sprintf("model_price_helper result: %s", priceData.ToSetting()))
@@ -229,7 +234,47 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 		Quota:          quota,
 		GroupRatioInfo: groupRatioInfo,
 	}
+	applyPlatformMarkup(c, info, &priceData, false)
 	return priceData, nil
+}
+
+func applyPlatformMarkup(c *gin.Context, info *relaycommon.RelayInfo, priceData *types.PriceData, usePreConsumed bool) {
+	if info == nil || priceData == nil {
+		return
+	}
+	channelID := info.ChannelId
+	if channelID <= 0 && c != nil {
+		channelID = common.GetContextKeyInt(c, constant.ContextKeyChannelId)
+	}
+	if channelID <= 0 {
+		info.PriceMarkupRatio = 1.0
+		info.PriceMarkupSource = "none"
+		return
+	}
+	info.ChannelId = channelID
+
+	ch, err := model.CacheGetChannel(channelID)
+	if err != nil || ch == nil {
+		info.PriceMarkupRatio = 1.0
+		info.PriceMarkupSource = "none"
+		return
+	}
+	plan, _ := model.GetTenantPlan(info.TenantId)
+	mk, src := service.EffectiveMarkup(ch, plan)
+	if mk <= 0 {
+		mk = 1.0
+		src = "none"
+	}
+	if mk != 1.0 {
+		if usePreConsumed {
+			priceData.QuotaToPreConsume = int(math.Ceil(float64(priceData.QuotaToPreConsume) * mk))
+		} else {
+			priceData.Quota = int(math.Ceil(float64(priceData.Quota) * mk))
+		}
+		priceData.AddOtherRatio("platform_markup", mk)
+	}
+	info.PriceMarkupRatio = mk
+	info.PriceMarkupSource = src
 }
 
 func ContainPriceOrRatio(modelName string) bool {

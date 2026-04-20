@@ -496,10 +496,20 @@ func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, e
 // be swallowed silently and the caller would see `nil` — which for this
 // handler means reporting success to the admin with zero rows inserted.
 func BatchInsertChannels(channels []Channel) (retErr error) {
+	return batchInsertChannels(DB, channels)
+}
+
+// BatchInsertChannelsBypass inserts channels with tenant guardrail bypass enabled.
+// Used for root-created platform channels (tenant_id=0).
+func BatchInsertChannelsBypass(channels []Channel) (retErr error) {
+	return batchInsertChannels(WithTenantBypass(DB), channels)
+}
+
+func batchInsertChannels(db *gorm.DB, channels []Channel) (retErr error) {
 	if len(channels) == 0 {
 		return nil
 	}
-	tx := DB.Begin()
+	tx := db.Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -1121,6 +1131,39 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	}
 
 	// 提交事务
+	return tx.Commit().Error
+}
+
+// BatchSetChannelTagForTenant updates tags only for channels owned by the tenant.
+// Platform channels and other tenants' channels are not touched.
+func BatchSetChannelTagForTenant(ids []int, tag *string, tenantId int) error {
+	if tenantId <= 0 {
+		return fmt.Errorf("invalid tenantId: %d", tenantId)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := tx.Model(&Channel{}).
+		Where("id IN ? AND tenant_id = ? AND scope = ?", ids, tenantId, ChannelScopeTenant).
+		Update("tag", tag).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	var channels []*Channel
+	if err := tx.Where("id IN ? AND tenant_id = ? AND scope = ?", ids, tenantId, ChannelScopeTenant).Find(&channels).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, channel := range channels {
+		if err := channel.UpdateAbilities(tx); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
 	return tx.Commit().Error
 }
 

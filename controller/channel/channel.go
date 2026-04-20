@@ -70,6 +70,7 @@ func clearChannelInfo(channel *model.Channel) {
 }
 
 func GetAllChannels(c *gin.Context) {
+	role := c.GetInt("platform_role")
 	pageInfo := common.GetPageQuery(c)
 	channelData := make([]*model.Channel, 0)
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
@@ -85,11 +86,21 @@ func GetAllChannels(c *gin.Context) {
 			typeFilter = t
 		}
 	}
+	scopeFilter := strings.TrimSpace(c.Query("scope"))
+	if scopeFilter != "" && scopeFilter != model.ChannelScopePlatform && scopeFilter != model.ChannelScopeTenant {
+		scopeFilter = ""
+	}
 
 	var total int64
 
 	if enableTagMode {
-		tags, err := model.GetPaginatedTags(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		var tags []*string
+		var err error
+		if role >= common.RoleRootUser {
+			tags, err = model.GetPaginatedTags(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		} else {
+			tags, err = model.GetPaginatedTagsForTenant(middleware.GetTenantId(c), pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		}
 		if err != nil {
 			common.SysError("failed to get paginated tags: " + err.Error())
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取标签失败，请稍后重试"})
@@ -99,7 +110,12 @@ func GetAllChannels(c *gin.Context) {
 			if tag == nil || *tag == "" {
 				continue
 			}
-			tagChannels, err := model.GetChannelsByTag(*tag, idSort, false)
+			var tagChannels []*model.Channel
+			if role >= common.RoleRootUser {
+				tagChannels, err = model.GetChannelsByTag(*tag, idSort, false)
+			} else {
+				tagChannels, err = model.GetChannelsByTagForTenant(*tag, middleware.GetTenantId(c), idSort, false)
+			}
 			if err != nil {
 				continue
 			}
@@ -118,11 +134,21 @@ func GetAllChannels(c *gin.Context) {
 			}
 			channelData = append(channelData, filtered...)
 		}
-		total, _ = model.CountAllTags()
+		if role >= common.RoleRootUser {
+			total, _ = model.CountAllTags()
+		} else {
+			total = int64(len(channelData))
+		}
 	} else {
-		baseQuery := model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
+		baseQuery := model.DB.Model(&model.Channel{})
+		if role < common.RoleRootUser {
+			baseQuery = baseQuery.Where("tenant_id = ?", middleware.GetTenantId(c))
+		}
 		if typeFilter >= 0 {
 			baseQuery = baseQuery.Where("type = ?", typeFilter)
+		}
+		if scopeFilter != "" {
+			baseQuery = baseQuery.Where("scope = ?", scopeFilter)
 		}
 		if statusFilter == common.ChannelStatusEnabled {
 			baseQuery = baseQuery.Where("status = ?", common.ChannelStatusEnabled)
@@ -149,7 +175,13 @@ func GetAllChannels(c *gin.Context) {
 		clearChannelInfo(datum)
 	}
 
-	countQuery := model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
+	countQuery := model.DB.Model(&model.Channel{})
+	if role < common.RoleRootUser {
+		countQuery = countQuery.Where("tenant_id = ?", middleware.GetTenantId(c))
+	}
+	if scopeFilter != "" {
+		countQuery = countQuery.Where("scope = ?", scopeFilter)
+	}
 	if statusFilter == common.ChannelStatusEnabled {
 		countQuery = countQuery.Where("status = ?", common.ChannelStatusEnabled)
 	} else if statusFilter == 0 {
@@ -208,7 +240,13 @@ func FetchUpstreamModels(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelByIdWithTenant(id, middleware.GetTenantId(c), true)
+	role := c.GetInt("platform_role")
+	var channel *model.Channel
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(id, true)
+	} else {
+		channel, err = model.GetVisibleChannelForTenant(id, middleware.GetTenantId(c), true)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -231,6 +269,10 @@ func FetchUpstreamModels(c *gin.Context) {
 }
 
 func FixChannelsAbilities(c *gin.Context) {
+	if c.GetInt("platform_role") < common.RoleRootUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "root only"})
+		return
+	}
 	success, fails, err := model.FixAbility()
 	if err != nil {
 		common.ApiError(c, err)
@@ -247,6 +289,7 @@ func FixChannelsAbilities(c *gin.Context) {
 }
 
 func SearchChannels(c *gin.Context) {
+	role := c.GetInt("platform_role")
 	keyword := c.Query("keyword")
 	group := c.Query("group")
 	modelKeyword := c.Query("model")
@@ -256,7 +299,13 @@ func SearchChannels(c *gin.Context) {
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
 	channelData := make([]*model.Channel, 0)
 	if enableTagMode {
-		tags, err := model.SearchTags(keyword, group, modelKeyword, idSort)
+		var tags []*string
+		var err error
+		if role >= common.RoleRootUser {
+			tags, err = model.SearchTags(keyword, group, modelKeyword, idSort)
+		} else {
+			tags, err = model.SearchTagsForTenant(middleware.GetTenantId(c), keyword, group, modelKeyword, idSort)
+		}
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -266,14 +315,25 @@ func SearchChannels(c *gin.Context) {
 		}
 		for _, tag := range tags {
 			if tag != nil && *tag != "" {
-				tagChannel, err := model.GetChannelsByTag(*tag, idSort, false)
+				var tagChannel []*model.Channel
+				if role >= common.RoleRootUser {
+					tagChannel, err = model.GetChannelsByTag(*tag, idSort, false)
+				} else {
+					tagChannel, err = model.GetChannelsByTagForTenant(*tag, middleware.GetTenantId(c), idSort, false)
+				}
 				if err == nil {
 					channelData = append(channelData, tagChannel...)
 				}
 			}
 		}
 	} else {
-		channels, err := model.SearchChannelsByTenant(middleware.GetTenantId(c), keyword, group, modelKeyword, idSort)
+		var channels []*model.Channel
+		var err error
+		if role >= common.RoleRootUser {
+			channels, err = model.SearchChannels(keyword, group, modelKeyword, idSort)
+		} else {
+			channels, err = model.SearchChannelsForTenant(middleware.GetTenantId(c), keyword, group, modelKeyword, idSort)
+		}
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -365,13 +425,22 @@ func GetChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	channel, err := model.GetChannelById(id, false)
+	role := c.GetInt("platform_role")
+	var channel *model.Channel
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(id, false)
+	} else {
+		channel, err = model.GetVisibleChannelForTenant(id, middleware.GetTenantId(c), false)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	if channel != nil {
 		clearChannelInfo(channel)
+		if role < common.RoleRootUser {
+			model.SanitizeForTenantView(channel)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -384,6 +453,8 @@ func GetChannel(c *gin.Context) {
 // GetChannelKey 获取渠道密钥（需要通过安全验证中间件）
 // 此函数依赖 SecureVerificationRequired 中间件，确保用户已通过安全验证
 func GetChannelKey(c *gin.Context) {
+	tenantId := middleware.GetTenantId(c)
+	role := c.GetInt("platform_role")
 	userId := c.GetInt("id")
 	channelId, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -391,10 +462,14 @@ func GetChannelKey(c *gin.Context) {
 		return
 	}
 
-	// 获取渠道信息（包含密钥）
-	channel, err := model.GetChannelById(channelId, true)
+	var channel *model.Channel
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(channelId, true)
+	} else {
+		channel, err = model.GetOwnedChannelForTenant(channelId, tenantId, true)
+	}
 	if err != nil {
-		common.ApiError(c, fmt.Errorf("获取渠道信息失败: %v", err))
+		common.ApiError(c, fmt.Errorf("渠道不存在或无权限"))
 		return
 	}
 
@@ -404,7 +479,7 @@ func GetChannelKey(c *gin.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLogCtx(c, userId, model.LogTypeSystem, fmt.Sprintf("查看渠道密钥信息 (渠道ID: %d)", channelId))
+	model.RecordLogCtx(c, userId, model.LogTypeSystem, fmt.Sprintf("查看渠道密钥信息 (渠道ID: %d, scope=%s)", channelId, channel.Scope))
 
 	// 返回渠道密钥
 	c.JSON(http.StatusOK, gin.H{
@@ -564,7 +639,30 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 
-	addChannelRequest.Channel.TenantId = middleware.GetTenantId(c)
+	role := c.GetInt("platform_role")
+	incomingScope := strings.TrimSpace(addChannelRequest.Channel.Scope)
+	if incomingScope == "" {
+		incomingScope = model.ChannelScopeTenant
+	}
+	switch incomingScope {
+	case model.ChannelScopePlatform:
+		if role < common.RoleRootUser {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "only root can create platform channels"})
+			return
+		}
+		addChannelRequest.Channel.Scope = model.ChannelScopePlatform
+		addChannelRequest.Channel.TenantId = 0
+	case model.ChannelScopeTenant:
+		addChannelRequest.Channel.Scope = model.ChannelScopeTenant
+		if role < common.RoleRootUser {
+			addChannelRequest.Channel.TenantId = middleware.GetTenantId(c)
+		} else if addChannelRequest.Channel.TenantId <= 0 {
+			addChannelRequest.Channel.TenantId = middleware.GetTenantId(c)
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid scope"})
+		return
+	}
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
 	switch addChannelRequest.Mode {
@@ -644,7 +742,7 @@ func AddChannel(c *gin.Context) {
 	// 高并发下可能越界 1-N 个。admin 低频操作可接受，channel_limit 告警兜底）
 	// 注意：必须用 len(channels)（清洗后的实际创建数），不是 len(keys)——
 	// 上面的循环会跳过空行。
-	{
+	if addChannelRequest.Channel.Scope == model.ChannelScopeTenant {
 		tenantId := middleware.GetTenantId(c)
 		plan, err := model.GetTenantPlan(tenantId)
 		if err != nil {
@@ -669,7 +767,11 @@ func AddChannel(c *gin.Context) {
 		}
 	}
 
-	err = model.BatchInsertChannels(channels)
+	if addChannelRequest.Channel.Scope == model.ChannelScopePlatform {
+		err = model.BatchInsertChannelsBypass(channels)
+	} else {
+		err = model.BatchInsertChannels(channels)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -683,14 +785,27 @@ func AddChannel(c *gin.Context) {
 }
 
 func DeleteChannel(c *gin.Context) {
+	tenantId := middleware.GetTenantId(c)
+	role := c.GetInt("platform_role")
 	id, _ := strconv.Atoi(c.Param("id"))
-	channel := model.Channel{Id: id}
-	err := channel.Delete()
+	var channel *model.Channel
+	var err error
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(id, false)
+	} else {
+		channel, err = model.GetOwnedChannelForTenant(id, tenantId, false)
+	}
+	if err != nil {
+		common.ApiError(c, fmt.Errorf("not accessible"))
+		return
+	}
+	err = channel.Delete()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	model.InitChannelCache()
+	service.ResetProxyClientCache()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -875,17 +990,22 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	// Preserve existing ChannelInfo to ensure multi-key channels keep correct state even if the client does not send ChannelInfo in the request.
-	originChannel, err := model.GetChannelById(channel.Id, true)
+	var originChannel *model.Channel
+	role := c.GetInt("platform_role")
+	if role >= common.RoleRootUser {
+		originChannel, err = model.GetChannelById(channel.Id, true)
+	} else {
+		originChannel, err = model.GetOwnedChannelForTenant(channel.Id, middleware.GetTenantId(c), true)
+	}
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "not accessible"})
 		return
 	}
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	channel.Scope = originChannel.Scope
+	channel.TenantId = originChannel.TenantId
 
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
@@ -1195,29 +1315,34 @@ func CopyChannel(c *gin.Context) {
 		}
 	}
 
-	// fetch original channel with key
-	origin, err := model.GetChannelById(id, true)
+	tenantId := middleware.GetTenantId(c)
+	role := c.GetInt("platform_role")
+	var origin *model.Channel
+	if role >= common.RoleRootUser {
+		origin, err = model.GetChannelById(id, true)
+	} else {
+		origin, err = model.GetOwnedChannelForTenant(id, tenantId, true)
+	}
 	if err != nil {
 		common.SysError("failed to get channel by id: " + err.Error())
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取渠道信息失败，请稍后重试"})
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "not accessible"})
 		return
 	}
 
-	// clone channel
-	clone := *origin // shallow copy is sufficient as we will overwrite primitives
-	clone.Id = 0     // let DB auto-generate
-	clone.TenantId = middleware.GetTenantId(c)
+	clone := model.SanitizeForCopy(origin, tenantId)
+	if clone == nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "复制渠道失败"})
+		return
+	}
 	clone.CreatedTime = common.GetTimestamp()
 	clone.Name = origin.Name + suffix
-	clone.TestTime = 0
-	clone.ResponseTime = 0
 	if resetBalance {
 		clone.Balance = 0
 		clone.UsedQuota = 0
 	}
 
 	// insert
-	if err := model.BatchInsertChannels([]model.Channel{clone}); err != nil {
+	if err := model.BatchInsertChannels([]model.Channel{*clone}); err != nil {
 		common.SysError("failed to clone channel: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "复制渠道失败，请稍后重试"})
 		return
@@ -1267,7 +1392,13 @@ func ManageMultiKeys(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelById(request.ChannelId, true)
+	role := c.GetInt("platform_role")
+	var channel *model.Channel
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(request.ChannelId, true)
+	} else {
+		channel, err = model.GetOwnedChannelForTenant(request.ChannelId, middleware.GetTenantId(c), true)
+	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -1740,8 +1871,14 @@ func OllamaPullModel(c *gin.Context) {
 		return
 	}
 
-	// 获取渠道信息
-	channel, err := model.GetChannelById(req.ChannelID, true)
+	role := c.GetInt("platform_role")
+	var channel *model.Channel
+	var err error
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(req.ChannelID, true)
+	} else {
+		channel, err = model.GetOwnedChannelForTenant(req.ChannelID, middleware.GetTenantId(c), true)
+	}
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -1803,8 +1940,14 @@ func OllamaPullModelStream(c *gin.Context) {
 		return
 	}
 
-	// 获取渠道信息
-	channel, err := model.GetChannelById(req.ChannelID, true)
+	role := c.GetInt("platform_role")
+	var channel *model.Channel
+	var err error
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(req.ChannelID, true)
+	} else {
+		channel, err = model.GetOwnedChannelForTenant(req.ChannelID, middleware.GetTenantId(c), true)
+	}
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -1885,8 +2028,14 @@ func OllamaDeleteModel(c *gin.Context) {
 		return
 	}
 
-	// 获取渠道信息
-	channel, err := model.GetChannelById(req.ChannelID, true)
+	role := c.GetInt("platform_role")
+	var channel *model.Channel
+	var err error
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(req.ChannelID, true)
+	} else {
+		channel, err = model.GetOwnedChannelForTenant(req.ChannelID, middleware.GetTenantId(c), true)
+	}
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -1936,7 +2085,13 @@ func OllamaVersion(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelById(id, true)
+	role := c.GetInt("platform_role")
+	var channel *model.Channel
+	if role >= common.RoleRootUser {
+		channel, err = model.GetChannelById(id, true)
+	} else {
+		channel, err = model.GetOwnedChannelForTenant(id, middleware.GetTenantId(c), true)
+	}
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,

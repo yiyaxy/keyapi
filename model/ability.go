@@ -73,6 +73,29 @@ func GetAllEnableAbilities(tenantId int) []Ability {
 	return abilities
 }
 
+// FixTenantAbilities rebuilds abilities for one tenant's own channels only.
+func FixTenantAbilities(tenantId int) (success, fails int, err error) {
+	if tenantId <= 0 {
+		return 0, 0, errors.New("tenantId required")
+	}
+	if err := DB.Where("tenant_id = ? AND scope = ?", tenantId, ChannelScopeTenant).Delete(&Ability{}).Error; err != nil {
+		return 0, 0, err
+	}
+	var channels []*Channel
+	if err := DB.Where("tenant_id = ? AND scope = ?", tenantId, ChannelScopeTenant).Find(&channels).Error; err != nil {
+		return 0, 0, err
+	}
+	for _, ch := range channels {
+		if e := ch.AddAbilities(nil); e != nil {
+			fails++
+		} else {
+			success++
+		}
+	}
+	InitChannelCache()
+	return success, fails, nil
+}
+
 func getPriority(group string, model string, retry int, tenantId int) (int, error) {
 
 	var priorities []int

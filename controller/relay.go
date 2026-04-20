@@ -586,6 +586,20 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
+	if info.Billing != nil {
+		prevMarkup := info.PriceMarkupRatio
+		prevPreConsumed := info.Billing.GetPreConsumedQuota()
+		if _, err := helper.ModelPriceHelper(c, info, info.GetEstimatePromptTokens(), &types.TokenCountMeta{}); err == nil {
+			nextPreConsumed := info.PriceData.QuotaToPreConsume
+			if nextPreConsumed > prevPreConsumed {
+				delta := nextPreConsumed - prevPreConsumed
+				if err := info.Billing.PreConsumeAdditional(c, delta); err != nil {
+					return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+				}
+				logger.LogInfo(c, fmt.Sprintf("channel switch increased markup, topped up pre-consume by %s (markup %.4f -> %.4f)", logger.FormatQuota(delta), prevMarkup, info.PriceMarkupRatio))
+			}
+		}
+	}
 	return channel, nil
 }
 

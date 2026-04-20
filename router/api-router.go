@@ -338,6 +338,40 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/upstream_updates/detect", channel.DetectChannelUpstreamModelUpdates)
 			channelRoute.POST("/upstream_updates/detect_all", channel.DetectAllChannelUpstreamModelUpdates)
 		}
+
+		tenantChannelRoute := apiRouter.Group("/tenant-channel")
+		tenantChannelRoute.Use(middleware.TenantAdminOnlyAuth())
+		{
+			tenantChannelRoute.GET("/", channel.TenantListChannels)
+			tenantChannelRoute.GET("/search", channel.TenantSearchChannels)
+			tenantChannelRoute.GET("/:id", channel.TenantGetChannel)
+			tenantChannelRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), channel.TenantGetChannelKey)
+			tenantChannelRoute.POST("/", channel.TenantAddChannel)
+			tenantChannelRoute.PUT("/", channel.TenantUpdateChannel)
+			tenantChannelRoute.DELETE("/:id", channel.TenantDeleteChannel)
+			tenantChannelRoute.POST("/:id/toggle", channel.TenantToggleChannel)
+			tenantChannelRoute.POST("/batch", channel.TenantDeleteChannelBatch)
+			tenantChannelRoute.POST("/batch/tag", channel.TenantBatchSetChannelTag)
+			tenantChannelRoute.DELETE("/disabled", channel.TenantDeleteDisabledChannel)
+			tenantChannelRoute.POST("/tag/disabled", channel.TenantDisableTagChannels)
+			tenantChannelRoute.POST("/tag/enabled", channel.TenantEnableTagChannels)
+			tenantChannelRoute.PUT("/tag", channel.TenantEditTagChannels)
+			tenantChannelRoute.GET("/tag/models", channel.TenantGetTagModels)
+			tenantChannelRoute.POST("/fix", channel.TenantFixChannelsAbilities)
+			tenantChannelRoute.POST("/ollama/pull", channel.TenantOllamaPullModel)
+			tenantChannelRoute.POST("/ollama/pull/stream", channel.TenantOllamaPullModelStream)
+			tenantChannelRoute.DELETE("/ollama/delete", channel.TenantOllamaDeleteModel)
+			tenantChannelRoute.GET("/ollama/version/:id", channel.TenantOllamaVersion)
+			tenantChannelRoute.POST("/mode", channel.TenantSetPlatformChannelMode)
+			tenantChannelRoute.GET("/mode", channel.TenantGetPlatformChannelMode)
+		}
+
+		adminTenantChannelRoute := apiRouter.Group("/admin/tenant/:tenantId/channel")
+		adminTenantChannelRoute.Use(middleware.RootAuth())
+		{
+			adminTenantChannelRoute.POST("/:channelId/toggle", channel.AdminOnBehalfToggleChannel)
+			adminTenantChannelRoute.POST("/fix", channel.AdminOnBehalfFixChannelsAbilities)
+		}
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{

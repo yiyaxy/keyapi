@@ -33,6 +33,7 @@ import { LogsPage } from '@/pages/Logs';
 import { MessageAdminPage } from '@/pages/MessageAdmin';
 import { ModelsAdminPage } from '@/pages/ModelsAdmin';
 import { PlanPage } from '@/pages/PlanPage';
+import { PlatformChannelsAdminPage } from '@/pages/PlatformChannelsAdmin';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
 import { PromptRuleAdminPage } from '@/pages/PromptRuleAdmin';
@@ -173,6 +174,10 @@ export const router = createBrowserRouter([
                   {
                     path: '/admin/platform-tenants',
                     element: <PlatformTenantsPage />,
+                  },
+                  {
+                    path: '/admin/platform/channels',
+                    element: <PlatformChannelsAdminPage />,
                   },
                   { path: '/admin/models', element: <ModelsAdminPage /> },
                   {

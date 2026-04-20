@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -329,9 +330,66 @@ func tenantGuardScope(db *gorm.DB) {
 	msg := fmt.Sprintf("[tenant-guardrail] UNSCOPED %s REJECTED: table=%s accessed without tenant_id in WHERE. "+
 		"Fix: use TenantDB(ctx), add .Where(\"tenant_id = ?\", id), or WithTenantBypass() for admin ops.",
 		op, db.Statement.Schema.Table)
-	common.SysError(msg)
+	common.SysError(msg + formatTenantGuardrailSQLDebug(db, op, whereExpr, sql))
 	_ = db.AddError(fmt.Errorf("tenant guardrail: refusing unscoped %s on %s (use WithTenantBypass to override)",
 		op, db.Statement.Schema.Table))
+}
+
+func formatTenantGuardrailSQLDebug(db *gorm.DB, op string, whereExpr string, rawSQL string) string {
+	if db == nil || db.Statement == nil {
+		return ""
+	}
+	table := ""
+	if db.Statement.Schema != nil {
+		table = db.Statement.Schema.Table
+	}
+	clauseNames := make([]string, 0, len(db.Statement.Clauses))
+	for name := range db.Statement.Clauses {
+		clauseNames = append(clauseNames, name)
+	}
+	sort.Strings(clauseNames)
+	varsStr := formatTenantGuardrailVars(db.Statement.Vars)
+	explainedSQL := ""
+	if strings.TrimSpace(rawSQL) != "" {
+		explainedSQL = db.Dialector.Explain(rawSQL, db.Statement.Vars...)
+	} else {
+		explainedSQL = synthesizeTenantGuardrailSQL(op, table, whereExpr, db.Statement.Vars, db)
+	}
+	return fmt.Sprintf(" | raw_sql=%q | where=%q | vars=%s | explained_sql=%q | clauses=%v",
+		rawSQL, whereExpr, varsStr, explainedSQL, clauseNames)
+}
+
+func formatTenantGuardrailVars(vars []interface{}) string {
+	if len(vars) == 0 {
+		return "[]"
+	}
+	parts := make([]string, 0, len(vars))
+	for i, v := range vars {
+		parts = append(parts, fmt.Sprintf("$%d=%T(%v)", i+1, v, v))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func synthesizeTenantGuardrailSQL(op string, table string, whereExpr string, vars []interface{}, db *gorm.DB) string {
+	if table == "" {
+		table = "<unknown_table>"
+	}
+	base := ""
+	switch op {
+	case "UPDATE":
+		base = fmt.Sprintf("UPDATE %s SET <blocked_by_tenant_guardrail>", table)
+	case "DELETE":
+		base = fmt.Sprintf("DELETE FROM %s", table)
+	default:
+		base = fmt.Sprintf("SELECT * FROM %s", table)
+	}
+	if strings.TrimSpace(whereExpr) != "" {
+		base += " WHERE " + whereExpr
+	}
+	if db != nil {
+		return db.Dialector.Explain(base, vars...)
+	}
+	return base
 }
 
 // tenantGuardCreate 是 Insert 的租户隔离守门员：

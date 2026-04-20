@@ -24,6 +24,9 @@ export function ChannelsTable({
   onDelete,
   onToggle,
   onTest,
+  readOnly = false,
+  showScope = false,
+  showMarkup = false,
 }: {
   items: Channel[];
   testingId: number | null;
@@ -31,6 +34,9 @@ export function ChannelsTable({
   onDelete: (c: Channel) => void;
   onToggle: (c: Channel) => void;
   onTest: (c: Channel) => void;
+  readOnly?: boolean;
+  showScope?: boolean;
+  showMarkup?: boolean;
 }) {
   const { t } = useTranslation('channels');
   return (
@@ -42,10 +48,12 @@ export function ChannelsTable({
             <th className='px-3 py-2 font-medium'>{t('table.col.name')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.type')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.group')}</th>
+            {showScope ? <th className='px-3 py-2 font-medium'>Scope</th> : null}
             <th className='px-3 py-2 font-medium'>{t('table.col.priority')}</th>
+            {showMarkup ? <th className='px-3 py-2 font-medium'>Markup</th> : null}
             <th className='px-3 py-2 font-medium'>{t('table.col.status')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.response')}</th>
-            <th className='px-3 py-2' />
+            {!readOnly ? <th className='px-3 py-2' /> : null}
           </tr>
         </thead>
         <tbody>
@@ -58,7 +66,19 @@ export function ChannelsTable({
                 <td className='px-3 py-2'>{ch.name || '—'}</td>
                 <td className='px-3 py-2'>{channelTypeName(ch.type)}</td>
                 <td className='px-3 py-2'>{ch.group}</td>
+                {showScope ? (
+                  <td className='px-3 py-2'>
+                    <Badge variant={ch.scope === 'platform' ? 'secondary' : 'outline'}>
+                      {ch.scope ?? 'tenant'}
+                    </Badge>
+                  </td>
+                ) : null}
                 <td className='px-3 py-2'>{ch.priority ?? 0}</td>
+                {showMarkup ? (
+                  <td className='px-3 py-2 text-fg-2'>
+                    {ch.markup_ratio && ch.markup_ratio > 0 ? `${ch.markup_ratio.toFixed(2)}x` : 'plan'}
+                  </td>
+                ) : null}
                 <td className='px-3 py-2'>
                   <Badge variant={badge.variant}>{t(badge.label)}</Badge>
                 </td>
@@ -69,7 +89,7 @@ export function ChannelsTable({
                       ? `${ch.response_time} ms`
                       : '—'}
                 </td>
-                <td className='px-3 py-2'>
+                {!readOnly ? <td className='px-3 py-2'>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant='ghost' size='sm' aria-label='Actions'>
@@ -91,7 +111,7 @@ export function ChannelsTable({
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </td>
+                </td> : null}
               </tr>
             );
           })}

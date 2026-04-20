@@ -10,6 +10,7 @@ import { qk } from '@/lib/queryKeys';
 export type Channel = {
   id: number;
   tenant_id: number;
+  scope?: 'platform' | 'tenant';
   type: number;
   key: string;
   name: string;
@@ -39,6 +40,8 @@ export type Channel = {
   param_override: string | null;
   header_override: string | null;
   setting: string | null; // JSON — dto.ChannelSettings
+  markup_ratio?: number | null;
+  tenant_disabled?: boolean;
 };
 
 export type ChannelsQuery = {
@@ -47,6 +50,8 @@ export type ChannelsQuery = {
   status?: 'all' | 'enabled' | 'disabled';
   type?: number;
   id_sort?: boolean;
+  scope?: 'platform' | 'tenant';
+  tenantView?: boolean;
 };
 
 export type ChannelsPage = {
@@ -73,7 +78,9 @@ export function useChannels(q: ChannelsQuery) {
       if (q.status === 'enabled') params.set('status', '1');
       if (q.status === 'disabled') params.set('status', '0');
       if (q.id_sort) params.set('id_sort', 'true');
-      const res = await api.get<ChannelsPage>(`/api/channel/?${params.toString()}`);
+      if (q.scope) params.set('scope', q.scope);
+      const base = q.tenantView ? '/api/tenant-channel/' : '/api/channel/';
+      const res = await api.get<ChannelsPage>(`${base}?${params.toString()}`);
       return res.data;
     },
     placeholderData: keepPreviousData,
@@ -124,7 +131,11 @@ export type ChannelCreateOptions = {
 export function useCreateChannel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { input: ChannelInput; opts: ChannelCreateOptions }) => {
+    mutationFn: async (payload: {
+      input: ChannelInput & { scope?: 'platform' | 'tenant'; tenant_id?: number };
+      opts: ChannelCreateOptions;
+      tenantView?: boolean;
+    }) => {
       const body: Record<string, unknown> = {
         mode: payload.opts.mode,
         channel: payload.input,
@@ -135,7 +146,8 @@ export function useCreateChannel() {
       if (payload.opts.mode === 'batch' && payload.opts.batch_add_set_key_prefix_2_name) {
         body.batch_add_set_key_prefix_2_name = true;
       }
-      const res = await api.post<Channel>('/api/channel/', body);
+      const base = payload.tenantView ? '/api/tenant-channel/' : '/api/channel/';
+      const res = await api.post<Channel>(base, body);
       return res.data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['channels', 'list'] }),
@@ -147,13 +159,14 @@ export type ChannelUpdateInput = Partial<ChannelInput> & { id: number };
 export function useUpdateChannel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: ChannelUpdateInput) => {
-      const res = await api.put<Channel>('/api/channel/', input);
+    mutationFn: async (payload: { input: ChannelUpdateInput; tenantView?: boolean }) => {
+      const base = payload.tenantView ? '/api/tenant-channel/' : '/api/channel/';
+      const res = await api.put<Channel>(base, payload.input);
       return res.data;
     },
     onSuccess: (_d, v) => {
       void qc.invalidateQueries({ queryKey: ['channels', 'list'] });
-      void qc.invalidateQueries({ queryKey: channelsKeys.detail(v.id) });
+      void qc.invalidateQueries({ queryKey: channelsKeys.detail(v.input.id) });
     },
   });
 }
@@ -161,8 +174,9 @@ export function useUpdateChannel() {
 export function useDeleteChannel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: number) => {
-      await api.delete(`/api/channel/${id}`);
+    mutationFn: async ({ id, tenantView }: { id: number; tenantView?: boolean }) => {
+      const base = tenantView ? '/api/tenant-channel/' : '/api/channel/';
+      await api.delete(`${base}${id}`);
       return id;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['channels', 'list'] }),
@@ -172,11 +186,52 @@ export function useDeleteChannel() {
 export function useToggleChannelStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, nextStatus }: { id: number; nextStatus: 1 | 2 }) => {
-      await api.put('/api/channel/', { id, status: nextStatus });
+    mutationFn: async ({
+      id,
+      nextStatus,
+      tenantView,
+      platformToggle,
+    }: {
+      id: number;
+      nextStatus: 1 | 2;
+      tenantView?: boolean;
+      platformToggle?: boolean;
+    }) => {
+      if (tenantView && platformToggle) {
+        await api.post(`/api/tenant-channel/${id}/toggle`, { disabled: nextStatus !== 1 });
+      } else {
+        const base = tenantView ? '/api/tenant-channel/' : '/api/channel/';
+        await api.put(base, { id, status: nextStatus });
+      }
       return { id, nextStatus };
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['channels', 'list'] }),
+  });
+}
+
+export function usePlatformChannelMode(tenantView: boolean) {
+  return useQuery<{ mode: string }>({
+    queryKey: ['channels', 'platform-mode', tenantView],
+    queryFn: async () => {
+      const res = await api.get<{ mode: string }>(tenantView ? '/api/tenant-channel/mode' : '/api/channel/mode');
+      return res.data;
+    },
+    enabled: tenantView,
+    staleTime: 15_000,
+  });
+}
+
+export function useSetPlatformChannelMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (mode: string) => {
+      const res = await api.post<{ mode: string }>('/api/tenant-channel/mode', { mode });
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['channels', 'platform-mode'] });
+      void qc.invalidateQueries({ queryKey: ['channels', 'list'] });
+    },
   });
 }
 
