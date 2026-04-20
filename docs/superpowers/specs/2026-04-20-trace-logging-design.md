@@ -271,16 +271,18 @@ func RequestId() func(c *gin.Context) {
 
 **顺手修复 `middleware/performance_trace.go`**:该文件 L22 当前是 `c.GetString("X-Request-Id")`——key 写错,永远读不到,fallback 成 `UnixNano`。所有 `[PERF][<id>] ...` 日志行的消息体里嵌的都是错 id,导致同一行出现两套 id(trace 列正确的 `HTTP-xxx` vs 消息体里的 UnixNano 串),排障时冲突混乱。
 
-本次一并修:把 L22 改为 `c.GetString(common.RequestIdKey)` 或直接 `trace.Get()`(统一来源);fallback 分支删除(TraceId 现在保证存在,未命中返回 `"-"`)。
+本次一并修:
+- L22 改为 `trace.Get()`(统一来源),fallback 分支删除(`trace.Get()` 保证返回非空,未命中为 `"-"`)
+- **删除所有 `[PERF][%s]` 消息体里的重复 id**——SysLog 已经自动在 trace 列输出,消息体再嵌一次是冗余,且在历史代码里已经制造过"两套 id 冲突"的排障坑
 
 ```go
-// 修正后
-requestID := trace.Get()  // 或 c.GetString(common.RequestIdKey)
-// 不再需要 UnixNano fallback
-common.SysLog(fmt.Sprintf("[PERF][%s] === Request Start === Path: %s", requestID, c.Request.URL.Path))
+// 修正后(注意:消息体里不再嵌 requestID)
+common.SysLog(fmt.Sprintf("[PERF] === Request Start === Path: %s", c.Request.URL.Path))
+// ... 其他所有 [PERF] 行同样处理,去掉 [%s] 及对应 requestID 参数 ...
+common.SysLog(fmt.Sprintf("[PERF] Total: %v", totalDuration))
 ```
 
-注:这个文件的 SysLog 本身已经通过 `common.SysLog` 输出,自动带上正确的 trace 列;消息体里 `[%s]` 保留还是删除都可以——保留作为可读标记,删除更干净。**倾向删除**(trace 列已经有 id,消息体再嵌一次是冗余),本次按"删除"处理。
+同理,`MarkStage` 里的 `[PERF][%s] %s: %v` 也改成 `[PERF] %s: %v`。`requestID` 变量不再需要,整个读 header 的逻辑可以删掉。
 
 **格式兼容性**:原先的 RequestId 格式是 `GetTimeString + 4字节hash + 8字节随机`,约 20+ 字符;新格式 `HTTP-<16hex>` = 21 字符,长度接近,但**首 5 字节变成固定的 `HTTP-` 前缀**。如果有外部系统按"必须以时间串开头"或"全 hex 字符"解析 header,会出问题。取舍:选新格式(客户端通常只做透传,不解析内容)。若确认有外部依赖,在 plan 阶段评估是否保留原生成逻辑,只在服务端内部多存一份 `trace.Set` 用的 id。
 
@@ -288,8 +290,8 @@ common.SysLog(fmt.Sprintf("[PERF][%s] === Request Start === Path: %s", requestID
 
 **改造原则**:v1 **完全覆盖 `main.go` 启动的所有长驻 goroutine**,每个入口用以下两种方式之一:
 
-- 方式 A(推荐,新代码):把 `go fn()` / `gopool.Go(fn)` 替换为 `trace.GoJob("<name>", fn)`
-- 方式 B(已有函数,不想改调用点):在被调用函数开头加 `trace.Set(trace.NewJob("<name>")); defer trace.Clear()`
+- 方式 A(推荐,新代码):在 `main.go` 里把 `go fn()` / `gopool.Go(fn)` 替换为 `trace.GoJob("<name>", fn)`
+- 方式 B(已有 `StartXxxTask()` 这类**同步**包装函数,不想改其外层调用点):**必须把 `trace.Set` / `defer trace.Clear` 写在函数内部真正起循环的 `gopool.Go(func(){ ... })` closure 最开头**——**不能**写在包装函数的同步入口处,否则 trace 只覆盖"注册任务"这一瞬间,真正跑循环的 goroutine 里还是 `"-"`。见下方 3.4 表后"关键概念澄清"段
 
 **`main.go` 长驻 goroutine 完整清单**(基于 `main.go:80–180` 事实核对,**非 goroutine 的同步调用不在此表**):
 
