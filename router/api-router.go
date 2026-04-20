@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/controller/obs"
 	"github.com/QuantumNous/new-api/controller/payment"
+	"github.com/QuantumNous/new-api/controller/platform"
 	"github.com/QuantumNous/new-api/controller/tenant"
 	"github.com/QuantumNous/new-api/controller/ticket"
 	"github.com/QuantumNous/new-api/controller/user"
@@ -31,24 +32,24 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	apiRouter.Use(middleware.TenantAPIRateLimit())
 	{
-		apiRouter.GET("/setup", controller.GetSetup)
-		apiRouter.POST("/setup", controller.PostSetup)
-		apiRouter.GET("/status", controller.GetStatus)
-		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
+		apiRouter.GET("/setup", platform.GetSetup)
+		apiRouter.POST("/setup", platform.PostSetup)
+		apiRouter.GET("/status", platform.GetStatus)
+		apiRouter.GET("/uptime/status", platform.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), catalog.DashboardListModels)
-		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
-		apiRouter.GET("/notice", controller.GetNotice)
-		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
-		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)
-		apiRouter.GET("/refund-policy", controller.GetRefundPolicy)
-		apiRouter.GET("/about", controller.GetAbout)
-		//apiRouter.GET("/midjourney", controller.GetMidjourney)
-		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
+		apiRouter.GET("/status/test", middleware.AdminAuth(), platform.TestStatus)
+		apiRouter.GET("/notice", platform.GetNotice)
+		apiRouter.GET("/user-agreement", platform.GetUserAgreement)
+		apiRouter.GET("/privacy-policy", platform.GetPrivacyPolicy)
+		apiRouter.GET("/refund-policy", platform.GetRefundPolicy)
+		apiRouter.GET("/about", platform.GetAbout)
+		//apiRouter.GET("/midjourney", platform.GetMidjourney)
+		apiRouter.GET("/home_page_content", platform.GetHomePageContent)
 		apiRouter.GET("/pricing", middleware.TryUserAuth(), catalog.GetPricing)
 		apiRouter.GET("/subscription/plans", controller.GetSubscriptionPlans)
-		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
-		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
-		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)
+		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), platform.SendEmailVerification)
+		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), platform.SendPasswordResetEmail)
+		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), platform.ResetPassword)
 		// OAuth routes - specific routes must come before :provider wildcard
 		apiRouter.GET("/oauth/state", middleware.CriticalRateLimit(), auth.GenerateOAuthCode)
 		apiRouter.POST("/oauth/email/bind", middleware.CriticalRateLimit(), user.EmailBind)
@@ -259,13 +260,13 @@ func SetApiRouter(router *gin.Engine) {
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
-			optionRoute.GET("/", controller.GetOptions)
-			optionRoute.PUT("/", controller.UpdateOption)
+			optionRoute.GET("/", platform.GetOptions)
+			optionRoute.PUT("/", platform.UpdateOption)
 			optionRoute.GET("/channel_affinity_cache", channel.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", channel.ClearChannelAffinityCache)
 			optionRoute.POST("/rest_model_ratio", catalog.ResetModelRatio)
-			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
-			optionRoute.POST("/force_logout_all", controller.ForceLogoutAll)
+			optionRoute.POST("/migrate_console_setting", platform.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
+			optionRoute.POST("/force_logout_all", platform.ForceLogoutAll)
 		}
 
 		// Custom OAuth provider management (root only)
@@ -488,25 +489,25 @@ func SetApiRouter(router *gin.Engine) {
 		messageAdminRoute := apiRouter.Group("/message/admin")
 		messageAdminRoute.Use(middleware.TenantAdminAuth())
 		{
-			messageAdminRoute.POST("/", controller.AdminCreateMessage)
-			messageAdminRoute.GET("/", controller.AdminListMessages)
-			messageAdminRoute.GET("/:id", controller.AdminGetMessage)
-			messageAdminRoute.PUT("/:id", controller.AdminEditMessage)
-			messageAdminRoute.DELETE("/:id", controller.AdminRecallMessage)
-			messageAdminRoute.GET("/:id/read_status", controller.AdminGetMessageReadStatus)
+			messageAdminRoute.POST("/", platform.AdminCreateMessage)
+			messageAdminRoute.GET("/", platform.AdminListMessages)
+			messageAdminRoute.GET("/:id", platform.AdminGetMessage)
+			messageAdminRoute.PUT("/:id", platform.AdminEditMessage)
+			messageAdminRoute.DELETE("/:id", platform.AdminRecallMessage)
+			messageAdminRoute.GET("/:id/read_status", platform.AdminGetMessageReadStatus)
 		}
 
 		// Console translation route
-		apiRouter.GET("/console/translated", middleware.UserAuth(), controller.GetTranslatedConsole)
+		apiRouter.GET("/console/translated", middleware.UserAuth(), platform.GetTranslatedConsole)
 
 		// Message routes (user inbox)
 		messageUserRoute := apiRouter.Group("/message")
 		messageUserRoute.Use(middleware.UserAuth())
 		{
-			messageUserRoute.GET("/inbox", controller.GetUserInbox)
-			messageUserRoute.GET("/inbox/:id", controller.GetUserInboxMessage)
-			messageUserRoute.POST("/inbox/:id/read", controller.MarkMessageRead)
-			messageUserRoute.GET("/unread_count", controller.GetUnreadMessageCount)
+			messageUserRoute.GET("/inbox", platform.GetUserInbox)
+			messageUserRoute.GET("/inbox/:id", platform.GetUserInboxMessage)
+			messageUserRoute.POST("/inbox/:id/read", platform.MarkMessageRead)
+			messageUserRoute.GET("/unread_count", platform.GetUnreadMessageCount)
 		}
 
 		ipRoute := apiRouter.Group("/ip")
@@ -599,26 +600,26 @@ func SetApiRouter(router *gin.Engine) {
 		deploymentsRoute := apiRouter.Group("/deployments")
 		deploymentsRoute.Use(middleware.PlatformAdminAuth())
 		{
-			deploymentsRoute.GET("/settings", controller.GetModelDeploymentSettings)
-			deploymentsRoute.POST("/settings/test-connection", controller.TestIoNetConnection)
-			deploymentsRoute.GET("/", controller.GetAllDeployments)
-			deploymentsRoute.GET("/search", controller.SearchDeployments)
-			deploymentsRoute.POST("/test-connection", controller.TestIoNetConnection)
-			deploymentsRoute.GET("/hardware-types", controller.GetHardwareTypes)
-			deploymentsRoute.GET("/locations", controller.GetLocations)
-			deploymentsRoute.GET("/available-replicas", controller.GetAvailableReplicas)
-			deploymentsRoute.POST("/price-estimation", controller.GetPriceEstimation)
-			deploymentsRoute.GET("/check-name", controller.CheckClusterNameAvailability)
-			deploymentsRoute.POST("/", controller.CreateDeployment)
+			deploymentsRoute.GET("/settings", platform.GetModelDeploymentSettings)
+			deploymentsRoute.POST("/settings/test-connection", platform.TestIoNetConnection)
+			deploymentsRoute.GET("/", platform.GetAllDeployments)
+			deploymentsRoute.GET("/search", platform.SearchDeployments)
+			deploymentsRoute.POST("/test-connection", platform.TestIoNetConnection)
+			deploymentsRoute.GET("/hardware-types", platform.GetHardwareTypes)
+			deploymentsRoute.GET("/locations", platform.GetLocations)
+			deploymentsRoute.GET("/available-replicas", platform.GetAvailableReplicas)
+			deploymentsRoute.POST("/price-estimation", platform.GetPriceEstimation)
+			deploymentsRoute.GET("/check-name", platform.CheckClusterNameAvailability)
+			deploymentsRoute.POST("/", platform.CreateDeployment)
 
-			deploymentsRoute.GET("/:id", controller.GetDeployment)
-			deploymentsRoute.GET("/:id/logs", controller.GetDeploymentLogs)
-			deploymentsRoute.GET("/:id/containers", controller.ListDeploymentContainers)
-			deploymentsRoute.GET("/:id/containers/:container_id", controller.GetContainerDetails)
-			deploymentsRoute.PUT("/:id", controller.UpdateDeployment)
-			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
-			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
-			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+			deploymentsRoute.GET("/:id", platform.GetDeployment)
+			deploymentsRoute.GET("/:id/logs", platform.GetDeploymentLogs)
+			deploymentsRoute.GET("/:id/containers", platform.ListDeploymentContainers)
+			deploymentsRoute.GET("/:id/containers/:container_id", platform.GetContainerDetails)
+			deploymentsRoute.PUT("/:id", platform.UpdateDeployment)
+			deploymentsRoute.PUT("/:id/name", platform.UpdateDeploymentName)
+			deploymentsRoute.POST("/:id/extend", platform.ExtendDeployment)
+			deploymentsRoute.DELETE("/:id", platform.DeleteDeployment)
 		}
 
 		tenantRoute := apiRouter.Group("/tenant")

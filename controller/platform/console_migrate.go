@@ -1,6 +1,6 @@
 // 用于迁移检测的旧键，该文件下个版本会删除
 
-package controller
+package platform
 
 import (
 	"encoding/json"
