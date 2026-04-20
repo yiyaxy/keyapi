@@ -108,12 +108,12 @@ func Clear() {
     traceLocal.Remove()
 }
 
-// NewHTTP 生成 HTTP 请求 TraceId,如 "HTTP-a3f2c1b8d5e7f091d5e7f091"
+// NewHTTP 生成 HTTP 请求 TraceId,如 "HTTP-a3f2c1b8d5e7f091"(5 前缀 + 16 hex)
 func NewHTTP() string {
     return prefixHTTP + "-" + randHex16()
 }
 
-// NewJob 生成后台任务 TraceId,如 "JOB-subreset-b9e8d2c1a3f2c1b8"
+// NewJob 生成后台任务 TraceId,如 "JOB-subreset-b9e8d2c1a3f2c1b8"(4 前缀 + name + 16 hex)
 // name 建议 ≤ 10 字符,长度更长也能用,只是视觉对齐会错位
 func NewJob(name string) string {
     return prefixJob + "-" + name + "-" + randHex16()
@@ -397,7 +397,7 @@ HTTP 请求链路(同步部分完全覆盖):
 启动阶段:
   main() 入口 → trace.Set(trace.NewSys("bootstrap"))
          ├→ model.InitDB() → SQL 日志 "SYS-bootstrap-c1d3e5f7a9b0c2e4"
-         ├→ model.InitOptions() → 同上
+         ├→ model.InitOptionMap() → 同上
          └→ HTTP server Run 前 → trace.Clear()
             (避免 main goroutine 后续行为继续带 bootstrap 标签)
 ```
@@ -443,11 +443,15 @@ HTTP 请求链路(同步部分完全覆盖):
 
 **`model/gorm_logger_test.go`**(新增):
 - 打开 sqlite in-memory DB,替换 GORM logger 为 `prettyGormLogger`
-- **保存并替换 `gin.DefaultWriter` / `gin.DefaultErrorWriter`**(在 `common.LogWriterMu.Lock()` 下)为一个 `bytes.Buffer`,测试结束 `defer` 恢复。不要用 stdout 重定向——GORM 正确实现后写的是 `gin.DefaultWriter`,redirect stdout 会捕不到
-- Case 1:`trace.Set("TEST-abcd1234ef567890")` → `db.Create(...)` → buffer 含 `"TEST-abcd1234ef567890"`
-- Case 2:不 Set → buffer 含定宽 `"-"` 填充的字符串
-- Case 3:错误 SQL → `gin.DefaultErrorWriter` 对应的 buffer 含 `[SQL ERR]` + trace + 错误信息
-- **Case 4(writer 统一性断言)**:正常 SQL 只写入 `gin.DefaultWriter` 对应 buffer,**不**写 stdout;错误 SQL 只写入 `gin.DefaultErrorWriter` 对应 buffer。这条是本次改造能成立的关键回归用例
+- **准备两个独立的 `bytes.Buffer`**(命名建议 `outBuf` / `errBuf`),在 `common.LogWriterMu.Lock()` 下分别把 `gin.DefaultWriter` 指向 `outBuf`、`gin.DefaultErrorWriter` 指向 `errBuf`。测试结束 `defer` 恢复原始 writer。**不要**合并成同一个 buffer——后面的 Case 3/4 依赖两者独立才能断言 stdout/stderr 路径区分
+- 不要用 stdout 重定向:GORM 正确实现后写的是 `gin.DefaultWriter`,redirect stdout 会捕不到
+- Case 1(trace 带上):`trace.Set("TEST-abcd1234ef567890")` → `db.Create(...)` → `outBuf` 含 `"TEST-abcd1234ef567890"`
+- Case 2(未 Set fallback):不 Set → `outBuf` 含定宽 `"-"` 填充的字符串
+- Case 3(错误路径):触发一个会失败的 SQL → `errBuf` 含 `[SQL ERR]` + trace + 错误信息,`outBuf` 不含该错误信息
+- **Case 4(writer 统一性断言,关键回归用例)**:
+  - 执行一次正常 SQL:断言 `outBuf.Len() > 0`、`errBuf.Len() == 0`
+  - 执行一次错误 SQL:断言 `errBuf.Len() > 0`、该错误信息**不**出现在 `outBuf` 里
+  - 目的:防止实现者图省事把所有输出混到同一个 writer,或退回 `fmt.Printf` 绕过 writer 路由
 
 ### 6.3 手工验证清单(不自动化)
 
@@ -490,7 +494,7 @@ HTTP 请求链路(同步部分完全覆盖):
 | 13 | `service/subscription_reset_task.go` | 修改 | 方式 B:在 `StartSubscriptionQuotaResetTask` 内部 `gopool.Go(func(){ ... })` 里,函数开头加 `trace.Set(trace.NewJob("subreset")); defer trace.Clear()` |
 | 14 | `service/codex_credential_refresh_task.go` | 修改 | 方式 B,内部 goroutine 加 `subreset` → `codexref` 的相同改动 |
 | 15 | `controller/channel/upstream_update.go`(`StartChannelUpstreamModelUpdateTask`) | 修改 | 方式 B,`chupstream` |
-| 16 | `model/batch_updater.go`(按实际文件,`InitBatchUpdater` 内部 goroutine,plan 阶段核实是否存在)| 修改 | 方式 B,`batchupdate`;如果 `InitBatchUpdater` 没有内部 goroutine,则不改 |
+| 16 | `model/utils.go`(`InitBatchUpdater` 实际位置,已核实)| 修改 | 方式 B,`batchupdate`;plan 阶段核实该函数是否真的起了内部 goroutine,没有则不改 |
 
 **实际执行时 #13–#16 文件名 / 函数位置以 plan 阶段核实为准**。plan 阶段必须完成:
 - 逐个验证 3.4 清单 18 行对应的真实源码位置
