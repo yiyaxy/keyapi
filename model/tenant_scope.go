@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -331,8 +332,31 @@ func tenantGuardCreate(db *gorm.DB) {
 		return
 	}
 
+	// ReflectValue can be either a single struct (DB.Create(&row)) or a
+	// slice/array (DB.Create(&rows) — batch insert). schema.Field.ValueOf
+	// panics on a slice Value, so we have to dispatch per-element here.
+	rv := reflect.Indirect(db.Statement.ReflectValue)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < rv.Len(); i++ {
+			if err := checkOrFillTenantId(db, field, rv.Index(i)); err != nil {
+				_ = db.AddError(err)
+				return
+			}
+		}
+	case reflect.Struct:
+		if err := checkOrFillTenantId(db, field, rv); err != nil {
+			_ = db.AddError(err)
+			return
+		}
+	}
+}
+
+// checkOrFillTenantId reads tenant_id from a single row, back-fills from
+// request context when missing, and fails closed if it still ends up as 0.
+func checkOrFillTenantId(db *gorm.DB, field *schema.Field, rowValue reflect.Value) error {
 	// Phase 1：如果当前 tenant_id 为 0，就尝试从 context 里自动回填
-	val, isZero := field.ValueOf(db.Statement.Context, db.Statement.ReflectValue)
+	val, isZero := field.ValueOf(db.Statement.Context, rowValue)
 	currentTenantId := 0
 	switch v := val.(type) {
 	case int:
@@ -347,7 +371,7 @@ func tenantGuardCreate(db *gorm.DB) {
 		// 这样可以防止 DB.Create() 在没挂请求 context 时，把数据悄悄写到租户 1。
 		tenantId := ExplicitTenantIDFromContext(db.Statement.Context)
 		if tenantId > 0 {
-			_ = field.Set(db.Statement.Context, db.Statement.ReflectValue, tenantId)
+			_ = field.Set(db.Statement.Context, rowValue, tenantId)
 			currentTenantId = tenantId
 		}
 	}
@@ -355,7 +379,7 @@ func tenantGuardCreate(db *gorm.DB) {
 	// Phase 2：fail-closed —— 如果 tenant_id 仍为 0，拒绝写入。
 	// 回填之后再读一次，避免前面 Set 没生效。
 	if currentTenantId == 0 {
-		val2, _ := field.ValueOf(db.Statement.Context, db.Statement.ReflectValue)
+		val2, _ := field.ValueOf(db.Statement.Context, rowValue)
 		switch v := val2.(type) {
 		case int:
 			currentTenantId = v
@@ -364,8 +388,9 @@ func tenantGuardCreate(db *gorm.DB) {
 		}
 	}
 	if currentTenantId == 0 {
-		_ = db.AddError(fmt.Errorf("tenant guardrail: refusing to create %s row without tenant_id (use WithTenantBypass to override)", db.Statement.Schema.Table))
+		return fmt.Errorf("tenant guardrail: refusing to create %s row without tenant_id (use WithTenantBypass to override)", db.Statement.Schema.Table)
 	}
+	return nil
 }
 
 // ---------- 唯一索引自动放行工具函数 ----------

@@ -392,7 +392,12 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	return GetChannelByIdWithTenant(id, 0, selectAll)
 }
 
-func BatchInsertChannels(channels []Channel) error {
+// BatchInsertChannels inserts in one transaction and surfaces panics as
+// errors. Without the named return + deferred recover-to-err dance, a
+// panic inside a gorm callback (e.g. tenantGuardCreate on a slice) would
+// be swallowed silently and the caller would see `nil` — which for this
+// handler means reporting success to the admin with zero rows inserted.
+func BatchInsertChannels(channels []Channel) (retErr error) {
 	if len(channels) == 0 {
 		return nil
 	}
@@ -403,6 +408,9 @@ func BatchInsertChannels(channels []Channel) error {
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			if retErr == nil {
+				retErr = fmt.Errorf("panic during channel insert: %v", r)
+			}
 		}
 	}()
 
