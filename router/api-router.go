@@ -1,7 +1,6 @@
 package router
 
 import (
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/controller/auth"
 	"github.com/QuantumNous/new-api/controller/catalog"
 	"github.com/QuantumNous/new-api/controller/channel"
@@ -46,7 +45,7 @@ func SetApiRouter(router *gin.Engine) {
 		//apiRouter.GET("/midjourney", platform.GetMidjourney)
 		apiRouter.GET("/home_page_content", platform.GetHomePageContent)
 		apiRouter.GET("/pricing", middleware.TryUserAuth(), catalog.GetPricing)
-		apiRouter.GET("/subscription/plans", controller.GetSubscriptionPlans)
+		apiRouter.GET("/subscription/plans", payment.GetSubscriptionPlans)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), platform.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), platform.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), platform.ResetPassword)
@@ -225,9 +224,9 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(middleware.UserAuth())
 		{
-			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
-			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
-			subscriptionRoute.POST("/activate/:id", controller.ActivateSubscription)
+			subscriptionRoute.GET("/self", payment.GetSubscriptionSelf)
+			subscriptionRoute.PUT("/self/preference", payment.UpdateSubscriptionPreference)
+			subscriptionRoute.POST("/activate/:id", payment.ActivateSubscription)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), payment.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), payment.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), payment.SubscriptionRequestCreemPay)
@@ -235,21 +234,21 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(middleware.TenantAdminAuth())
 		{
-			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
-			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
-			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
-			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
-			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
+			subscriptionAdminRoute.GET("/plans", payment.AdminListSubscriptionPlans)
+			subscriptionAdminRoute.POST("/plans", payment.AdminCreateSubscriptionPlan)
+			subscriptionAdminRoute.PUT("/plans/:id", payment.AdminUpdateSubscriptionPlan)
+			subscriptionAdminRoute.PATCH("/plans/:id", payment.AdminUpdateSubscriptionPlanStatus)
+			subscriptionAdminRoute.POST("/bind", payment.AdminBindSubscription)
 
 			// User subscription management (admin)
-			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
-			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
-			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
-			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+			subscriptionAdminRoute.GET("/users/:id/subscriptions", payment.AdminListUserSubscriptions)
+			subscriptionAdminRoute.POST("/users/:id/subscriptions", payment.AdminCreateUserSubscription)
+			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", payment.AdminInvalidateUserSubscription)
+			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", payment.AdminDeleteUserSubscription)
 
 			// Subscription order management (admin)
-			subscriptionAdminRoute.GET("/orders", controller.AdminListSubscriptionOrders)
-			subscriptionAdminRoute.POST("/orders/complete", controller.AdminCompleteSubscriptionOrder)
+			subscriptionAdminRoute.GET("/orders", payment.AdminListSubscriptionOrders)
+			subscriptionAdminRoute.POST("/orders/complete", payment.AdminCompleteSubscriptionOrder)
 		}
 
 		// Subscription payment callbacks (no auth)
@@ -442,26 +441,26 @@ func SetApiRouter(router *gin.Engine) {
 		purchaseRoute := apiRouter.Group("/purchase")
 		purchaseRoute.Use(middleware.TenantAdminAuth())
 		{
-			purchaseRoute.GET("/topup", controller.AdminListTopUpOrders)
+			purchaseRoute.GET("/topup", payment.AdminListTopUpOrders)
 			purchaseRoute.POST("/topup/complete", payment.AdminCompleteTopUp)
-			purchaseRoute.POST("/topup/expire", controller.AdminExpireTopUpOrder)
-			purchaseRoute.POST("/topup/delete", controller.AdminDeleteTopUpOrder)
-			purchaseRoute.GET("/subscription", controller.AdminListSubscriptionOrdersFull)
-			purchaseRoute.POST("/subscription/complete", controller.AdminCompleteSubscriptionOrder)
-			purchaseRoute.POST("/subscription/expire", controller.AdminExpireSubscriptionOrderAction)
-			purchaseRoute.POST("/subscription/delete", controller.AdminDeleteSubscriptionOrderAction)
+			purchaseRoute.POST("/topup/expire", payment.AdminExpireTopUpOrder)
+			purchaseRoute.POST("/topup/delete", payment.AdminDeleteTopUpOrder)
+			purchaseRoute.GET("/subscription", payment.AdminListSubscriptionOrdersFull)
+			purchaseRoute.POST("/subscription/complete", payment.AdminCompleteSubscriptionOrder)
+			purchaseRoute.POST("/subscription/expire", payment.AdminExpireSubscriptionOrderAction)
+			purchaseRoute.POST("/subscription/delete", payment.AdminDeleteSubscriptionOrderAction)
 		}
 
 		affTransferRoute := apiRouter.Group("/aff_transfer")
 		{
-			affTransferRoute.POST("/", middleware.UserAuth(), controller.UserCreateAffTransfer)
-			affTransferRoute.GET("/self", middleware.UserAuth(), controller.UserGetAffTransferHistory)
-			affTransferRoute.GET("/pending_quota", middleware.UserAuth(), controller.UserGetPendingQuota)
-			affTransferRoute.GET("/", middleware.TenantAdminAuth(), controller.AdminGetAllAffTransfers)
-			affTransferRoute.POST("/process", middleware.TenantAdminAuth(), controller.AdminProcessAffTransfer)
-			affTransferRoute.POST("/batch_approve", middleware.TenantAdminAuth(), controller.AdminBatchApproveAllPending)
-			affTransferRoute.GET("/stats", middleware.TenantAdminAuth(), controller.AdminGetAffTransferStats)
-			affTransferRoute.GET("/rebate_logs", middleware.UserAuth(), controller.UserGetAffRebateLogs)
+			affTransferRoute.POST("/", middleware.UserAuth(), user.UserCreateAffTransfer)
+			affTransferRoute.GET("/self", middleware.UserAuth(), user.UserGetAffTransferHistory)
+			affTransferRoute.GET("/pending_quota", middleware.UserAuth(), user.UserGetPendingQuota)
+			affTransferRoute.GET("/", middleware.TenantAdminAuth(), user.AdminGetAllAffTransfers)
+			affTransferRoute.POST("/process", middleware.TenantAdminAuth(), user.AdminProcessAffTransfer)
+			affTransferRoute.POST("/batch_approve", middleware.TenantAdminAuth(), user.AdminBatchApproveAllPending)
+			affTransferRoute.GET("/stats", middleware.TenantAdminAuth(), user.AdminGetAffTransferStats)
+			affTransferRoute.GET("/rebate_logs", middleware.UserAuth(), user.UserGetAffRebateLogs)
 		}
 
 		// Prompt rule routes (admin)
