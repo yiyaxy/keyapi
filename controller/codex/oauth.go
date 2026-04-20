@@ -1,4 +1,4 @@
-package controller
+package codex
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/relay/channel/codex"
+	codexrelay "github.com/QuantumNous/new-api/relay/channel/codex"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-contrib/sessions"
@@ -192,7 +192,7 @@ func completeCodexOAuthWithChannelID(c *gin.Context, channelID int) {
 	}
 	email, _ := service.ExtractEmailFromJWT(tokenRes.AccessToken)
 
-	key := codex.OAuthKey{
+	key := codexrelay.OAuthKey{
 		AccessToken:  tokenRes.AccessToken,
 		RefreshToken: tokenRes.RefreshToken,
 		AccountID:    accountID,
