@@ -6,6 +6,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+
+	"gorm.io/gorm"
 )
 
 const (
@@ -94,15 +96,16 @@ func GetAllAffTransferRequests(tenantId int, page *common.PageInfo, keyword stri
 }
 
 func ApproveAffTransferRequest(tenantId int, id int, adminId int, remark string) error {
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
+	}
 	tx := DB.Begin()
 	defer tx.Rollback()
 
 	var req AffTransferRequest
-	reqQuery := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", id)
-	if tenantId > 0 {
-		reqQuery = reqQuery.Where("tenant_id = ?", tenantId)
-	}
-	if err := reqQuery.First(&req).Error; err != nil {
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		First(&req).Error; err != nil {
 		return err
 	}
 	if req.Status != AffTransferStatusPending {
@@ -110,23 +113,31 @@ func ApproveAffTransferRequest(tenantId int, id int, adminId int, remark string)
 	}
 
 	var user User
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, req.UserId).Error; err != nil {
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ? AND tenant_id = ?", req.UserId, tenantId).
+		First(&user).Error; err != nil {
 		return err
 	}
 	if user.AffQuota < req.Quota {
 		return fmt.Errorf("用户邀请额度不足，当前: %s，需要: %s", logger.LogQuota(user.AffQuota), logger.LogQuota(req.Quota))
 	}
 
-	user.AffQuota -= req.Quota
-	user.Quota += req.Quota
-	if err := tx.Save(&user).Error; err != nil {
+	if err := tx.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", user.Id, tenantId).
+		Updates(map[string]interface{}{
+			"aff_quota": gorm.Expr("aff_quota - ?", req.Quota),
+			"quota":     gorm.Expr("quota + ?", req.Quota),
+		}).Error; err != nil {
 		return err
 	}
 
-	req.Status = AffTransferStatusApproved
-	req.AdminId = adminId
-	req.AdminRemark = remark
-	if err := tx.Save(&req).Error; err != nil {
+	if err := tx.Model(&AffTransferRequest{}).
+		Where("id = ? AND tenant_id = ?", req.Id, tenantId).
+		Updates(map[string]interface{}{
+			"status":       AffTransferStatusApproved,
+			"admin_id":     adminId,
+			"admin_remark": remark,
+		}).Error; err != nil {
 		return err
 	}
 
@@ -190,15 +201,16 @@ func GetAffTransferStats(tenantId int) (map[string]interface{}, error) {
 
 // BatchApproveAllPendingRequests approves all pending transfer requests
 func BatchApproveAllPendingRequests(tenantId int, adminId int, remark string) (int, error) {
+	if tenantId <= 0 {
+		return 0, errors.New("tenantId 不能为空")
+	}
 	tx := DB.Begin()
 	defer tx.Rollback()
 
-	batchQuery := tx.Where("status = ?", AffTransferStatusPending)
-	if tenantId > 0 {
-		batchQuery = batchQuery.Where("tenant_id = ?", tenantId)
-	}
 	var pendingRequests []AffTransferRequest
-	if err := batchQuery.Order("id ASC").Find(&pendingRequests).Error; err != nil {
+	if err := tx.
+		Where("status = ? AND tenant_id = ?", AffTransferStatusPending, tenantId).
+		Order("id ASC").Find(&pendingRequests).Error; err != nil {
 		return 0, err
 	}
 
@@ -206,7 +218,9 @@ func BatchApproveAllPendingRequests(tenantId int, adminId int, remark string) (i
 	for _, req := range pendingRequests {
 		// Lock user row
 		var user User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, req.UserId).Error; err != nil {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ? AND tenant_id = ?", req.UserId, tenantId).
+			First(&user).Error; err != nil {
 			common.SysLog(fmt.Sprintf("batch approve: skip request %d, user %d not found: %s", req.Id, req.UserId, err.Error()))
 			continue
 		}
@@ -218,18 +232,24 @@ func BatchApproveAllPendingRequests(tenantId int, adminId int, remark string) (i
 		}
 
 		// Transfer quota
-		user.AffQuota -= req.Quota
-		user.Quota += req.Quota
-		if err := tx.Save(&user).Error; err != nil {
+		if err := tx.Model(&User{}).
+			Where("id = ? AND tenant_id = ?", user.Id, tenantId).
+			Updates(map[string]interface{}{
+				"aff_quota": gorm.Expr("aff_quota - ?", req.Quota),
+				"quota":     gorm.Expr("quota + ?", req.Quota),
+			}).Error; err != nil {
 			common.SysLog(fmt.Sprintf("batch approve: skip request %d, failed to update user %d: %s", req.Id, req.UserId, err.Error()))
 			continue
 		}
 
 		// Update request status
-		req.Status = AffTransferStatusApproved
-		req.AdminId = adminId
-		req.AdminRemark = remark
-		if err := tx.Save(&req).Error; err != nil {
+		if err := tx.Model(&AffTransferRequest{}).
+			Where("id = ? AND tenant_id = ?", req.Id, tenantId).
+			Updates(map[string]interface{}{
+				"status":       AffTransferStatusApproved,
+				"admin_id":     adminId,
+				"admin_remark": remark,
+			}).Error; err != nil {
 			common.SysLog(fmt.Sprintf("batch approve: skip request %d, failed to update request: %s", req.Id, err.Error()))
 			continue
 		}

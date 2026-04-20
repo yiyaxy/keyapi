@@ -63,7 +63,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
 	tenantId := middleware.GetTenantId(c)
-	settingMap, _ := model.GetUserSetting(userId, false)
+	settingMap, _ := model.GetUserSetting(tenantId, userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
 
 	// Get all subscriptions (including expired)

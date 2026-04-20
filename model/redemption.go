@@ -134,6 +134,10 @@ func Redeem(key string, userId int) (quota int, err error) {
 	if userId == 0 {
 		return 0, errors.New("无效的 user id")
 	}
+	tenantId := GetUserTenantId(userId)
+	if tenantId <= 0 {
+		return 0, errors.New("无效的租户")
+	}
 	redemption := &Redemption{}
 
 	keyCol := "`key`"
@@ -142,7 +146,9 @@ func Redeem(key string, userId int) (quota int, err error) {
 	}
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
+		err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where(keyCol+" = ? AND tenant_id = ?", key, tenantId).
+			First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
 		}
@@ -152,21 +158,24 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
-		err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
+		err = tx.Model(&User{}).
+			Where("id = ? AND tenant_id = ?", userId, tenantId).
+			Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 		if err != nil {
 			return err
 		}
 		redemption.RedeemedTime = common.GetTimestamp()
 		redemption.Status = common.RedemptionCodeStatusUsed
 		redemption.UsedUserId = userId
-		err = tx.Save(redemption).Error
-		return err
+		return tx.Model(&Redemption{}).
+			Where("id = ? AND tenant_id = ?", redemption.Id, redemption.TenantId).
+			Select("*").Updates(redemption).Error
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
-	RecordTopUpLogWithTenant(GetUserTenantId(userId), userId, redemption.Quota, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
+	RecordTopUpLogWithTenant(tenantId, userId, redemption.Quota, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return redemption.Quota, nil
 }
 

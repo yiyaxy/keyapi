@@ -93,6 +93,7 @@ func UserCheckin(userId int) (*Checkin, error) {
 
 // userCheckinWithTransaction 使用事务执行签到（适用于 MySQL 和 PostgreSQL）
 func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) (*Checkin, error) {
+	tenantId := GetUserTenantId(userId)
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		// 步骤1: 创建签到记录
 		// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
@@ -101,7 +102,8 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 		}
 
 		// 步骤2: 在事务中增加用户额度
-		if err := tx.Model(&User{}).Where("id = ?", userId).
+		if err := tx.Model(&User{}).
+			Where("id = ? AND tenant_id = ?", userId, tenantId).
 			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
 			return errors.New("签到失败：更新额度出错")
 		}

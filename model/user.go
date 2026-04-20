@@ -414,16 +414,25 @@ func inviteUser(inviterId int, registerReward int) (err error) {
 	if err != nil {
 		return err
 	}
-	user.AffCount++
-	user.AffQuota += registerReward
-	user.AffHistoryQuota += registerReward
-	return DB.Save(user).Error
+	if user.Id == 0 || user.TenantId == 0 {
+		return errors.New("邀请人信息不完整")
+	}
+	return DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
+		Updates(map[string]interface{}{
+			"aff_count":         gorm.Expr("aff_count + ?", 1),
+			"aff_quota":         gorm.Expr("aff_quota + ?", registerReward),
+			"aff_history_quota": gorm.Expr("aff_history_quota + ?", registerReward),
+		}).Error
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
+	}
+	if user.Id == 0 || user.TenantId == 0 {
+		return errors.New("user.Id 和 user.TenantId 不能为空")
 	}
 
 	// 开始数据库事务
@@ -434,7 +443,9 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	defer tx.Rollback() // 确保在函数退出时事务能回滚
 
 	// 加锁查询用户以确保数据一致性
-	err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, user.Id).Error
+	err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
+		First(user).Error
 	if err != nil {
 		return err
 	}
@@ -445,13 +456,17 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	}
 
 	// 更新用户额度
-	user.AffQuota -= quota
-	user.Quota += quota
-
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
+	if err := tx.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
+		Updates(map[string]interface{}{
+			"aff_quota": gorm.Expr("aff_quota - ?", quota),
+			"quota":     gorm.Expr("quota + ?", quota),
+		}).Error; err != nil {
 		return err
 	}
+
+	user.AffQuota -= quota
+	user.Quota += quota
 
 	// 提交事务
 	return tx.Commit().Error
@@ -581,6 +596,9 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 }
 
 func (user *User) Update(updatePassword bool) error {
+	if user.Id == 0 || user.TenantId == 0 {
+		return errors.New("user.Id 和 user.TenantId 不能为空")
+	}
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -589,14 +607,12 @@ func (user *User) Update(updatePassword bool) error {
 		}
 	}
 	newUser := *user
-	query := DB.Where("id = ?", user.Id)
-	if user.TenantId > 0 {
-		query = query.Where("tenant_id = ?", user.TenantId)
-	}
-	if err = query.First(user).Error; err != nil {
+	if err = DB.Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).First(user).Error; err != nil {
 		return err
 	}
-	if err = DB.Model(user).Updates(newUser).Error; err != nil {
+	if err = DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
+		Updates(newUser).Error; err != nil {
 		return err
 	}
 
@@ -605,6 +621,9 @@ func (user *User) Update(updatePassword bool) error {
 }
 
 func (user *User) Edit(updatePassword bool) error {
+	if user.Id == 0 || user.TenantId == 0 {
+		return errors.New("user.Id 和 user.TenantId 不能为空")
+	}
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -625,14 +644,12 @@ func (user *User) Edit(updatePassword bool) error {
 		updates["password"] = newUser.Password
 	}
 
-	query := DB.Where("id = ?", user.Id)
-	if user.TenantId > 0 {
-		query = query.Where("tenant_id = ?", user.TenantId)
-	}
-	if err = query.First(user).Error; err != nil {
+	if err = DB.Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).First(user).Error; err != nil {
 		return err
 	}
-	if err = DB.Model(user).Updates(updates).Error; err != nil {
+	if err = DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
+		Updates(updates).Error; err != nil {
 		return err
 	}
 
@@ -775,10 +792,12 @@ func (user *User) FillUserByGitHubIdWithTenant(tenantId int) error {
 
 // UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
 func (user *User) UpdateGitHubId(newGitHubId string) error {
-	if user.Id == 0 {
-		return errors.New("user id is empty")
+	if user.Id == 0 || user.TenantId == 0 {
+		return errors.New("user.Id 和 user.TenantId 不能为空")
 	}
-	return DB.Model(user).Update("github_id", newGitHubId).Error
+	return DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
+		Update("github_id", newGitHubId).Error
 }
 
 func (user *User) FillUserByDiscordId() error {
@@ -934,7 +953,10 @@ func ValidateAccessTokenWithTenant(token string, tenantId int) (user *User) {
 }
 
 // GetUserQuota gets quota from Redis first, falls back to DB if needed
-func GetUserQuota(id int, fromDB bool, tenantId ...int) (quota int, err error) {
+func GetUserQuota(id int, fromDB bool, tenantId int) (quota int, err error) {
+	if tenantId <= 0 || id <= 0 {
+		return 0, errors.New("tenantId 和 id 不能为空")
+	}
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
 		if shouldUpdateRedis(fromDB, err) {
@@ -953,11 +975,9 @@ func GetUserQuota(id int, fromDB bool, tenantId ...int) (quota int, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
-	query := DB.Model(&User{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
-	}
-	err = query.Select("quota").Find(&quota).Error
+	err = DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Select("quota").Find(&quota).Error
 	if err != nil {
 		return 0, err
 	}
@@ -1006,7 +1026,10 @@ func GetUserGroup(id int, fromDB bool) (group string, err error) {
 }
 
 // GetUserSetting gets setting from Redis first, falls back to DB if needed
-func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error) {
+func GetUserSetting(tenantId int, id int, fromDB bool) (settingMap dto.UserSetting, err error) {
+	if tenantId <= 0 || id <= 0 {
+		return settingMap, errors.New("tenantId 和 id 不能为空")
+	}
 	var setting string
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
@@ -1028,7 +1051,9 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	fromDB = true
 	// can be nil setting
 	var safeSetting sql.NullString
-	err = DB.Model(&User{}).Where("id = ?", id).Select("setting").Find(&safeSetting).Error
+	err = DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Select("setting").Find(&safeSetting).Error
 	if err != nil {
 		return settingMap, err
 	}
@@ -1043,9 +1068,12 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-func IncreaseUserQuota(id int, quota int, db bool, tenantId ...int) (err error) {
+func IncreaseUserQuota(id int, quota int, db bool, tenantId int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
+	}
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
 	}
 	gopool.Go(func() {
 		err := cacheIncrUserQuota(id, int64(quota))
@@ -1054,31 +1082,28 @@ func IncreaseUserQuota(id int, quota int, db bool, tenantId ...int) (err error) 
 		}
 	})
 	if !db && common.BatchUpdateEnabled {
-		resolvedTenantId := 0
-		if len(tenantId) > 0 {
-			resolvedTenantId = tenantId[0]
-		}
-		addNewRecord(BatchUpdateTypeUserQuota, resolvedTenantId, id, quota)
+		addNewRecord(BatchUpdateTypeUserQuota, tenantId, id, quota)
 		return nil
 	}
-	return increaseUserQuota(id, quota, tenantId...)
+	return increaseUserQuota(id, quota, tenantId)
 }
 
-func increaseUserQuota(id int, quota int, tenantId ...int) (err error) {
-	query := DB.Model(&User{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
+func increaseUserQuota(id int, quota int, tenantId int) (err error) {
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
 	}
-	err = query.Update("quota", gorm.Expr("quota + ?", quota)).Error
-	if err != nil {
-		return err
-	}
+	err = DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Update("quota", gorm.Expr("quota + ?", quota)).Error
 	return err
 }
 
-func DecreaseUserQuota(id int, quota int, tenantId ...int) (err error) {
+func DecreaseUserQuota(id int, quota int, tenantId int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
+	}
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
 	}
 	gopool.Go(func() {
 		err := cacheDecrUserQuota(id, int64(quota))
@@ -1087,36 +1112,30 @@ func DecreaseUserQuota(id int, quota int, tenantId ...int) (err error) {
 		}
 	})
 	if common.BatchUpdateEnabled {
-		resolvedTenantId := 0
-		if len(tenantId) > 0 {
-			resolvedTenantId = tenantId[0]
-		}
-		addNewRecord(BatchUpdateTypeUserQuota, resolvedTenantId, id, -quota)
+		addNewRecord(BatchUpdateTypeUserQuota, tenantId, id, -quota)
 		return nil
 	}
-	return decreaseUserQuota(id, quota, tenantId...)
+	return decreaseUserQuota(id, quota, tenantId)
 }
 
-func decreaseUserQuota(id int, quota int, tenantId ...int) (err error) {
-	query := DB.Model(&User{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
+func decreaseUserQuota(id int, quota int, tenantId int) (err error) {
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
 	}
-	err = query.Update("quota", gorm.Expr("quota - ?", quota)).Error
-	if err != nil {
-		return err
-	}
+	err = DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Update("quota", gorm.Expr("quota - ?", quota)).Error
 	return err
 }
 
-func DeltaUpdateUserQuota(id int, delta int, tenantId ...int) (err error) {
+func DeltaUpdateUserQuota(id int, delta int, tenantId int) (err error) {
 	if delta == 0 {
 		return nil
 	}
 	if delta > 0 {
-		return IncreaseUserQuota(id, delta, false, tenantId...)
+		return IncreaseUserQuota(id, delta, false, tenantId)
 	} else {
-		return DecreaseUserQuota(id, -delta, tenantId...)
+		return DecreaseUserQuota(id, -delta, tenantId)
 	}
 }
 
@@ -1130,62 +1149,59 @@ func GetRootUser() (user *User) {
 	return user
 }
 
-func UpdateUserUsedQuotaAndRequestCount(id int, quota int, tenantId ...int) {
-	if common.BatchUpdateEnabled {
-		resolvedTenantId := 0
-		if len(tenantId) > 0 {
-			resolvedTenantId = tenantId[0]
-		}
-		addNewRecord(BatchUpdateTypeUsedQuota, resolvedTenantId, id, quota)
-		addNewRecord(BatchUpdateTypeRequestCount, resolvedTenantId, id, 1)
+func UpdateUserUsedQuotaAndRequestCount(id int, quota int, tenantId int) {
+	if tenantId <= 0 || id <= 0 {
+		common.SysLog(fmt.Sprintf("UpdateUserUsedQuotaAndRequestCount: missing tenantId/id (user_id=%d)", id))
 		return
 	}
-	updateUserUsedQuotaAndRequestCount(id, quota, 1, tenantId...)
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeUsedQuota, tenantId, id, quota)
+		addNewRecord(BatchUpdateTypeRequestCount, tenantId, id, 1)
+		return
+	}
+	updateUserUsedQuotaAndRequestCount(id, quota, 1, tenantId)
 }
 
-func updateUserUsedQuotaAndRequestCount(id int, quota int, count int, tenantId ...int) {
-	query := DB.Model(&User{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
+func updateUserUsedQuotaAndRequestCount(id int, quota int, count int, tenantId int) {
+	if tenantId <= 0 || id <= 0 {
+		common.SysLog(fmt.Sprintf("updateUserUsedQuotaAndRequestCount: missing tenantId/id (user_id=%d)", id))
+		return
 	}
-	err := query.Updates(
-		map[string]interface{}{
+	err := DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Updates(map[string]interface{}{
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
 			"request_count": gorm.Expr("request_count + ?", count),
-		},
-	).Error
+		}).Error
 	if err != nil {
 		common.SysLog("failed to update user used quota and request count: " + err.Error())
 		return
 	}
-
-	//// 更新缓存
-	//if err := invalidateUserCache(id); err != nil {
-	//	common.SysError("failed to invalidate user cache: " + err.Error())
-	//}
 }
 
-func updateUserUsedQuota(id int, quota int, tenantId ...int) {
-	query := DB.Model(&User{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
+func updateUserUsedQuota(id int, quota int, tenantId int) {
+	if tenantId <= 0 || id <= 0 {
+		common.SysLog(fmt.Sprintf("updateUserUsedQuota: missing tenantId/id (user_id=%d)", id))
+		return
 	}
-	err := query.Updates(
-		map[string]interface{}{
+	err := DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Updates(map[string]interface{}{
 			"used_quota": gorm.Expr("used_quota + ?", quota),
-		},
-	).Error
+		}).Error
 	if err != nil {
 		common.SysLog("failed to update user used quota: " + err.Error())
 	}
 }
 
-func updateUserRequestCount(id int, count int, tenantId ...int) {
-	query := DB.Model(&User{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
+func updateUserRequestCount(id int, count int, tenantId int) {
+	if tenantId <= 0 || id <= 0 {
+		common.SysLog(fmt.Sprintf("updateUserRequestCount: missing tenantId/id (user_id=%d)", id))
+		return
 	}
-	err := query.Update("request_count", gorm.Expr("request_count + ?", count)).Error
+	err := DB.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Update("request_count", gorm.Expr("request_count + ?", count)).Error
 	if err != nil {
 		common.SysLog("failed to update user request count: " + err.Error())
 	}
