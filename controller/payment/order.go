@@ -1,7 +1,6 @@
 package payment
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -9,7 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/shopspring/decimal"
+	paymentsvc "github.com/QuantumNous/new-api/service/payment"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -45,24 +44,17 @@ func toOrderView(o *model.PaymentOrder) paymentOrderView {
 }
 
 // creditedRawQuota reconstructs the raw quota delta that the success
-// callback wrote to users.quota for a topup order. Reads amount_units
-// from metadata (same source applyTopupSuccess uses). Returns 0 on any
-// parse problem or if the order isn't a topup.
+// callback wrote to users.quota for a topup order. It reuses the same
+// authoritative-first metadata resolver as applyTopupSuccess.
 func creditedRawQuota(o *model.PaymentOrder) int64 {
 	if o == nil || o.OrderType != model.PaymentOrderTypeTopup {
 		return 0
 	}
-	var meta struct {
-		AmountUnits int64 `json:"amount_units"`
-	}
-	if err := json.Unmarshal([]byte(o.Metadata), &meta); err != nil {
+	delta, err := paymentsvc.ResolveTopupQuotaDeltaFromMetadata(o.Metadata, common.QuotaPerUnit)
+	if err != nil {
 		return 0
 	}
-	if meta.AmountUnits <= 0 {
-		return 0
-	}
-	return decimal.NewFromInt(meta.AmountUnits).
-		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+	return delta
 }
 
 // GetPaymentOrderByOutTradeNoHandler returns a single order. Authz:

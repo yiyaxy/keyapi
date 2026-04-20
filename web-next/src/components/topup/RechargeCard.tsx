@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -66,7 +66,7 @@ function maxAmountFor(cfg: PublicConfig): number {
 // preview hint — the WeChat modal shows the authoritative amount from the
 // order response.
 function estimateCny(amount: number, cfg: PublicConfig): number {
-  const rate = cfg.usd_exchange_rate || 1;
+  const rate = cfg.price || cfg.usd_exchange_rate || 1;
   if (cfg.quota_display_type === 'TOKENS') {
     return (amount / cfg.quota_per_unit) * rate;
   }
@@ -92,7 +92,7 @@ export function RechargeCard() {
   const presets = presetsFor(cfg);
   const symbol = unitSymbol(cfg);
   const maxAmount = maxAmountFor(cfg);
-  const [preset, setPreset] = useState<number>(presets[1]);
+  const [preset, setPreset] = useState<number>(presets[1] ?? presets[0] ?? MIN_AMOUNT);
   const [custom, setCustom] = useState<string>('');
   const [modalOpen, setModalOpen] = useState(false);
   const [result, setResult] = useState<CreateTopupResponse | null>(null);
@@ -100,9 +100,13 @@ export function RechargeCard() {
   // Effective amount: custom wins if it's a positive number, else use preset.
   const customNum = Number(custom);
   const amount = Number.isFinite(customNum) && customNum > 0 ? customNum : preset;
-  const canSubmit =
-    amount >= MIN_AMOUNT && amount <= maxAmount && !create.isPending;
+  const canSubmit = amount >= MIN_AMOUNT && amount <= maxAmount && !create.isPending;
   const isTokens = cfg.quota_display_type === 'TOKENS';
+
+  useEffect(() => {
+    if (custom !== '' || presets.includes(preset)) return;
+    setPreset(presets[1] ?? presets[0] ?? MIN_AMOUNT);
+  }, [custom, preset, presets]);
 
   async function onPay() {
     if (!canSubmit) return;
@@ -116,8 +120,7 @@ export function RechargeCard() {
       setResult(res);
       setModalOpen(true);
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? (err.backendMessage ?? err.message) : String(err);
+      const msg = err instanceof ApiError ? (err.backendMessage ?? err.message) : String(err);
       toast.error(msg);
     }
   }

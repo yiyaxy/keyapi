@@ -11,7 +11,7 @@ func TestReadQuotaDeltaFromMetadata_PrefersAuthoritativeKey(t *testing.T) {
 		"quota_delta":  int64(684_931),
 	})
 
-	got, err := readQuotaDeltaFromMetadata(string(meta), 500_000)
+	got, err := ResolveTopupQuotaDeltaFromMetadata(string(meta), 500_000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestReadQuotaDeltaFromMetadata_PrefersAuthoritativeKey(t *testing.T) {
 func TestReadQuotaDeltaFromMetadata_LegacyFallback(t *testing.T) {
 	meta, _ := json.Marshal(map[string]any{"amount_units": int64(2)})
 
-	got, err := readQuotaDeltaFromMetadata(string(meta), 500_000)
+	got, err := ResolveTopupQuotaDeltaFromMetadata(string(meta), 500_000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,10 +33,10 @@ func TestReadQuotaDeltaFromMetadata_LegacyFallback(t *testing.T) {
 }
 
 func TestReadQuotaDeltaFromMetadata_InvalidMetadata(t *testing.T) {
-	if _, err := readQuotaDeltaFromMetadata("not-json", 500_000); err == nil {
+	if _, err := ResolveTopupQuotaDeltaFromMetadata("not-json", 500_000); err == nil {
 		t.Fatal("expected error on invalid JSON")
 	}
-	if _, err := readQuotaDeltaFromMetadata(`{"amount_units":0}`, 500_000); err == nil {
+	if _, err := ResolveTopupQuotaDeltaFromMetadata(`{"amount_units":0}`, 500_000); err == nil {
 		t.Fatal("expected error when neither key yields a positive value")
 	}
 }

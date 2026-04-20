@@ -263,10 +263,10 @@ func ApplyPaymentSuccess(ctx context.Context, outTradeNo string, transactionId s
 	return nil
 }
 
-// readQuotaDeltaFromMetadata prefers the authoritative quota_delta field and
+// ResolveTopupQuotaDeltaFromMetadata prefers the authoritative quota_delta
 // falls back to the legacy amount_units × QuotaPerUnit contract for old or
 // in-flight orders that predate quota_delta.
-func readQuotaDeltaFromMetadata(rawMetadata string, quotaPerUnit float64) (int64, error) {
+func ResolveTopupQuotaDeltaFromMetadata(rawMetadata string, quotaPerUnit float64) (int64, error) {
 	var meta struct {
 		AmountUnits int64 `json:"amount_units"`
 		QuotaDelta  int64 `json:"quota_delta"`
@@ -302,7 +302,7 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 	// Resolve the quota to credit. New orders stamp metadata.quota_delta as
 	// the authoritative value; old or in-flight orders fall back to the
 	// legacy amount_units × QuotaPerUnit contract.
-	quotaToAdd, err := readQuotaDeltaFromMetadata(order.Metadata, common.QuotaPerUnit)
+	quotaToAdd, err := ResolveTopupQuotaDeltaFromMetadata(order.Metadata, common.QuotaPerUnit)
 	if err != nil {
 		return fmt.Errorf("resolve quota delta for order %d: %w", order.Id, err)
 	}
