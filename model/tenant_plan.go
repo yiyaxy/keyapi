@@ -86,18 +86,19 @@ func GetTenantPlan(tenantId int) (*TenantPlan, error) {
 	// Create default free plan
 	now := common.GetTimestamp()
 	plan = TenantPlan{
-		TenantId:    tenantId,
-		PlanName:    TenantPlanDefaultName,
-		QuotaLimit:  -1,
-		RPMLimit:    -1,
-		TPMLimit:    -1,
-		MaxMembers:  -1,
-		MaxTokens:   -1,
-		MaxChannels: -1,
-		Status:      TenantPlanStatusActive,
-		ExpiresAt:   0,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		TenantId:       tenantId,
+		PlanName:       TenantPlanDefaultName,
+		QuotaLimit:     -1,
+		RPMLimit:       -1,
+		TPMLimit:       -1,
+		MaxMembers:     -1,
+		MaxTokens:      -1,
+		MaxChannels:    -1,
+		PlatformMarkup: 1.0,
+		Status:         TenantPlanStatusActive,
+		ExpiresAt:      0,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := WithTenantBypass(DB).Create(&plan).Error; err != nil {
 		// Another goroutine may have created it concurrently; try to read again
