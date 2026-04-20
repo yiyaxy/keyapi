@@ -18,6 +18,66 @@ var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
 var channelSyncLock sync.RWMutex
 
+var (
+	// In-memory routing preferences per tenant. Rebuilt by ReloadTenantRoutingCache.
+	tenantRoutingMu       sync.RWMutex
+	tenantMode            = map[int]string{}           // tenantId -> mode
+	tenantDisabledChannel = map[int]map[int]struct{}{} // tenantId -> set of channel_id
+)
+
+// ReloadTenantRoutingCache refreshes mode + disabled-set for one tenant
+// from DB. Call whenever tenant_options.platform_channel_mode or
+// tenant_channel_overrides changes. See spec §4.3.
+func ReloadTenantRoutingCache(tenantId int) {
+	if tenantId <= 0 {
+		return
+	}
+	mode, _ := GetTenantPlatformChannelMode(tenantId)
+	dis, _ := GetTenantDisabledPlatformChannels(tenantId)
+
+	tenantRoutingMu.Lock()
+	defer tenantRoutingMu.Unlock()
+	tenantMode[tenantId] = mode
+	tenantDisabledChannel[tenantId] = dis
+}
+
+// InvalidateTenantRoutingCache refreshes the cache for a single tenant.
+// Alias for ReloadTenantRoutingCache — kept for naming clarity at call sites.
+func InvalidateTenantRoutingCache(tenantId int) {
+	ReloadTenantRoutingCache(tenantId)
+}
+
+// GetCachedTenantMode returns the cached mode or the default when unloaded.
+func GetCachedTenantMode(tenantId int) string {
+	tenantRoutingMu.RLock()
+	defer tenantRoutingMu.RUnlock()
+	if m, ok := tenantMode[tenantId]; ok {
+		return m
+	}
+	return PlatformChannelModePrivatePriority
+}
+
+// GetCachedTenantDisabledChannels returns the cached disabled set (non-nil
+// even when unloaded — callers can range safely).
+func GetCachedTenantDisabledChannels(tenantId int) map[int]struct{} {
+	tenantRoutingMu.RLock()
+	defer tenantRoutingMu.RUnlock()
+	if s, ok := tenantDisabledChannel[tenantId]; ok {
+		return s
+	}
+	return map[int]struct{}{}
+}
+
+// reloadAllTenantRoutingCaches warms per-tenant preferences at startup.
+// Called at the end of InitChannelCache.
+func reloadAllTenantRoutingCaches() {
+	var tenants []Tenant
+	WithTenantBypass(DB).Where("status = ?", TenantStatusActive).Find(&tenants)
+	for _, t := range tenants {
+		ReloadTenantRoutingCache(t.Id)
+	}
+}
+
 // tenantGroupKey builds a composite cache key "tenantId:group" for tenant-isolated channel lookup.
 func tenantGroupKey(tenantId int, group string) string {
 	return fmt.Sprintf("%d:%s", tenantId, group)
@@ -91,6 +151,9 @@ func InitChannelCache() {
 	channelsIDM = newChannelId2channel
 	channelSyncLock.Unlock()
 	common.SysLog("channels synced from database")
+
+	// Warm per-tenant routing preferences (mode + disabled overrides).
+	reloadAllTenantRoutingCaches()
 }
 
 // GetChannelGroupsCopy returns a copy of group names that have at least one enabled channel for the given tenant.
