@@ -31,6 +31,7 @@ type TenantPlan struct {
 	RenewPeriodDays  int    `json:"renew_period_days" gorm:"default:30"`
 	RenewPriceAmount int64  `json:"renew_price_amount" gorm:"bigint;default:0"`
 	RenewCurrency    string `json:"renew_currency" gorm:"type:varchar(8);default:'CNY'"`
+	PlatformMarkup   float64 `json:"platform_markup" gorm:"type:decimal(10,4);not null;default:1.0000"`
 	CreatedAt     int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
 	UpdatedAt     int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
@@ -82,18 +83,19 @@ func GetTenantPlan(tenantId int) (*TenantPlan, error) {
 	// Create default free plan
 	now := common.GetTimestamp()
 	plan = TenantPlan{
-		TenantId:    tenantId,
-		PlanName:    TenantPlanDefaultName,
-		QuotaLimit:  -1,
-		RPMLimit:    -1,
-		TPMLimit:    -1,
-		MaxMembers:  -1,
-		MaxTokens:   -1,
-		MaxChannels: -1,
-		Status:      TenantPlanStatusActive,
-		ExpiresAt:   0,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		TenantId:       tenantId,
+		PlanName:       TenantPlanDefaultName,
+		QuotaLimit:     -1,
+		RPMLimit:       -1,
+		TPMLimit:       -1,
+		MaxMembers:     -1,
+		MaxTokens:      -1,
+		MaxChannels:    -1,
+		Status:         TenantPlanStatusActive,
+		ExpiresAt:      0,
+		PlatformMarkup: 1.0,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := WithTenantBypass(DB).Create(&plan).Error; err != nil {
 		// Another goroutine may have created it concurrently; try to read again
