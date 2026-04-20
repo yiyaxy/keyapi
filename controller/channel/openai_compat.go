@@ -1,4 +1,4 @@
-package controller
+package channel
 
 import (
 	"github.com/QuantumNous/new-api/common"

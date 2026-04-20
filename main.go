@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/controller/channel"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
@@ -108,10 +109,10 @@ func main() {
 		if err != nil {
 			common.FatalLog("failed to parse CHANNEL_UPDATE_FREQUENCY: " + err.Error())
 		}
-		go controller.AutomaticallyUpdateChannels(frequency)
+		go channel.AutomaticallyUpdateChannels(frequency)
 	}
 
-	go controller.AutomaticallyTestChannels()
+	go channel.AutomaticallyTestChannels()
 
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
 	service.StartCodexCredentialAutoRefreshTask()
@@ -139,7 +140,7 @@ func main() {
 	}
 
 	// Channel upstream model update check task
-	controller.StartChannelUpstreamModelUpdateTask()
+	channel.StartChannelUpstreamModelUpdateTask()
 
 	// 租户告警巡检任务：master 节点每 5 分钟全量刷新一次，同时触发新告警邮件推送
 	if common.IsMasterNode {

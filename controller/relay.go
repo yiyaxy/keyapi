@@ -705,7 +705,11 @@ func processChannelErrorNoLog(c *gin.Context, channelError types.ChannelError, e
 	// in the defer block, with all retry_errors included in admin_info.
 }
 
-func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
+// ProcessChannelError is the public entry point for recording a channel error
+// and (if configured) auto-disabling the channel. Exported so the channel
+// subpackage's health-check path can reuse the same bookkeeping without
+// duplicating disable/log logic.
+func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
@@ -917,7 +921,7 @@ func RelayTask(c *gin.Context) {
 		}
 
 		if !taskErr.LocalError {
-			processChannelError(c,
+			ProcessChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
