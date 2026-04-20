@@ -54,6 +54,9 @@
 | **租户级配置存储** | A：模式存 `tenant_options`，禁用关系存新表 `tenant_channel_overrides` | KV 配置走 tenant_options 很自然；稀疏的禁用关系用独立表 |
 | **迁移** | 跳过（项目未部署，直接新建表带 `scope` 默认值即可） | 无存量数据 |
 | **Guardrail** | 读操作遇到 `scope='platform'` 自动放行；写/改/删仍需 RoleRoot + `WithTenantBypass` | 读必须跨租户可见；写严格锁在平台 admin |
+| **路由架构** | 拆 3 个 group：`/api/channel/*`（RootAuth，保留）+ `/api/tenant-channel/*`（新建，AdminAuth）+ `/api/admin/tenant/:tid/channel/*`（新建，RootAuth） | 现有全组 RootAuth 和"tenant admin 管理自己 BYOK"冲突；强制拆分避免 handler 内杂乱的 role 分支 |
+| **字段脱敏** | `sanitizeForTenantView` 对 platform 渠道剥离 Setting/HeaderOverride/ParamOverride/OtherSettings/Other/BaseURL/StatusCodeMapping/AutoBan/Balance/UsedQuota/ChannelInfo 细节 | 仅藏 key 不够；Proxy/SystemPrompt/ModelRatioOverride 等运营配置同样敏感 |
+| **Search 防 oracle** | Tenant-side `SearchChannelsForTenant` 删除 `key = ?` 谓词；Tag search 同样 | `key=?` 精确匹配 + 结果存在性 = key 存在性 oracle |
 
 ---
 
@@ -386,24 +389,144 @@ MarkupSource      string // "channel" | "plan" | "none"
 - 顶部加一个 Segment：模式切换（4 选 1，写入 `tenant_options.platform_channel_mode`）
 - UI 禁用/启用按钮都可见，避免"禁用后找不到开关"的死循环（原 Open Question #1）
 
-### 7.3 后端路由权限
+### 7.3 路由层重构（**必要**：现状是全组 RootAuth，与本设计冲突）
 
-| 路由 | Super Admin (root=100) | Tenant Admin (10) | 备注 |
+**现状**（`router/api-router.go:298`）：整个 `/api/channel/*` 组都挂 `middleware.RootAuth()`——只有 root 能访问。`controller/channel/channel.go:567` 强写 `TenantId = GetTenantId(c)`、`:648` 按 tenant `MaxChannels` 校验。**与本设计（tenant admin 管理自己的 BYOK、platform 渠道 tenant_id=0）直接冲突**。
+
+**改造方案**（决策：两个独立 route group）：
+
+**A. `/api/channel/*`（RootAuth 保持不变）—— 平台管理员入口**
+- 用途：super admin 管理**所有**渠道（含平台渠道和代租户操作租户渠道）
+- 不变：现有 handlers 可以沿用，但需要修改 `AddChannel` / `UpdateChannel` 语义：
+  - `AddChannel` body 接受 `scope`（默认 `tenant`）和 `tenant_id`（仅 `scope=tenant` 时必填且 > 0）
+  - `scope=platform` 时 `TenantId` 强制为 `0`
+  - `MaxChannels` 配额检查**仅当 `scope=tenant`** 时执行（当前 `:648` 的逻辑加 if 分支）
+- 子路由（root 独占）：`/fix`（全局重建 abilities）、`/copy/:id`（允许跨 scope 复制）、`/multi_key/manage`（platform 渠道的多 key 管理）等
+
+**B. `/api/tenant-channel/*`（新建，`AdminAuth()` + tenant 上下文）—— 租户管理员入口**
+- 用途：tenant admin 管理**自己租户的渠道**（BYOK）+ 查看/toggle 平台渠道
+- 关键：所有写操作**强制** `TenantId = GetTenantId(c)` + `Scope = "tenant"`（body 里即便传 `scope=platform` 也被覆盖）
+- 端点：
+  ```
+  GET    /api/tenant-channel/                        列表（我的 + 平台，走 §7.2 分区展示，§7.4 脱敏）
+  GET    /api/tenant-channel/search                  搜索（不含 key 精确匹配，见 §7.5）
+  GET    /api/tenant-channel/:id                     单条详情（§7.4 脱敏）
+  POST   /api/tenant-channel/                        新建（强制 tenant scope + tenant_id）
+  PUT    /api/tenant-channel/                        更新（严格 tenant 匹配，拒绝 platform）
+  DELETE /api/tenant-channel/:id                     删除（同上）
+  POST   /api/tenant-channel/:id/key                 查看自己的 key（SecureVerification）
+  POST   /api/tenant-channel/:id/toggle              toggle 平台渠道禁用态（原 §6.2 的租户端）
+  POST   /api/tenant-channel/batch                   批量删除（限自己租户）
+  POST   /api/tenant-channel/batch/tag               批量打 tag（限自己租户）
+  DELETE /api/tenant-channel/disabled                清理被禁渠道（限自己租户）
+  POST   /api/tenant-channel/tag/disabled            tag 级禁用（限自己租户）
+  POST   /api/tenant-channel/tag/enabled             同上
+  PUT    /api/tenant-channel/tag                     tag 级编辑（限自己租户）
+  GET    /api/tenant-channel/tag/models              按 tag 查模型（限自己租户）
+  POST   /api/tenant-channel/fix                     按 tenant 重建 abilities（租户版）
+  POST   /api/tenant-channel/ollama/*                Ollama 管理（限自己租户拥有的 Ollama 渠道）
+  ```
+- `GetChannelKey` / `UpdateChannel` / 等沿用 `controller/channel/*`，但入口不同：route 层注入 `ctxKey: "allowPlatformWrite" = false`，controller 读取决定是否拒绝 platform 写。
+
+**C. `/api/admin/tenant/:tenantId/channel/*`（新建，`RootAuth`）—— root 代租户入口**
+- 用途：运营/排障 —— root 代任意租户做操作，`tenantId` 显式在 path 里
+- 端点（最少集合，用到再加）：
+  ```
+  POST /api/admin/tenant/:tenantId/channel/:channelId/toggle     代租户 toggle 平台渠道
+  POST /api/admin/tenant/:tenantId/channel/fix                   代租户重建 abilities
+  ```
+- 实现：从 path 取 `tenantId`，后端 `WithTenantBypass` 手动设置 tenant 上下文后调用复用的 handler
+
+**D. 权限矩阵（route-level，最终形态）**
+
+| 路由 | RootAuth | AdminAuth(+tenant ctx) | 备注 |
 |------|:-:|:-:|------|
-| `POST /api/channel/` `scope=platform` | ✅ | ❌ | 创建平台渠道 |
-| `POST /api/channel/` `scope=tenant` | ✅ | ✅ | 创建自己的私有渠道 |
-| `PUT /api/channel/` 针对 platform 行 | ✅ | ❌ | 编辑平台渠道 |
-| `PUT /api/channel/` 针对自己 tenant 行 | ✅ | ✅ | 编辑自己的私有渠道 |
-| `DELETE /api/channel/:id` platform | ✅ | ❌ | 删除平台渠道 |
-| `DELETE /api/channel/:id` 自己 tenant | ✅ | ✅ | 删除自己的 |
-| `GET /api/channel/:id/key` platform | ✅ | ❌ | 看平台 key（仅超管） |
-| `GET /api/channel/:id/key` 自己 tenant | ✅ | ✅ | 看自己的 key |
-| `POST /api/tenant/channel/:id/toggle` | ❌（用下一行） | ✅ | 禁用/启用平台渠道（当前租户，无 selector） |
-| `POST /api/admin/tenant/:tenantId/channel/:id/toggle` | ✅ | ❌ | root 代租户禁用/启用（显式 selector） |
+| `POST /api/channel/` scope=platform | ✅ | — | 平台渠道，tenant_id=0 |
+| `POST /api/channel/` scope=tenant | ✅ | — | root 代某租户建（body 传 tenant_id） |
+| `PUT /api/channel/` 任意 scope | ✅ | — | root 全权 |
+| `DELETE /api/channel/:id` 任意 | ✅ | — | root 全权 |
+| `POST /api/channel/:id/key` 任意 | ✅ | — | root 全权（含 SecureVerification + CriticalRateLimit） |
+| `POST /api/channel/fix` | ✅ | — | 全局重建 abilities |
+| `POST /api/tenant-channel/` | — | ✅ | 强制 tenant scope + 本租户 tenant_id |
+| `PUT /api/tenant-channel/` | — | ✅ | 严格本租户；若 orig.scope=platform 返 403 |
+| `DELETE /api/tenant-channel/:id` | — | ✅ | 同上 |
+| `POST /api/tenant-channel/:id/key` | — | ✅ | 严格本租户；platform 返 403 |
+| `POST /api/tenant-channel/:id/toggle` | — | ✅ | 仅 platform 渠道可 toggle |
+| `POST /api/admin/tenant/:tid/channel/:id/toggle` | ✅ | — | root 代租户操作，显式 tenantId（回答 Open Q #1） |
 
----
+**E. Controller 分裂策略**
 
-## 8. Guardrail 变更
+两个方案选一：
+- **E1（推荐）**：沿用同一组 handler，route 层通过中间件往 context 里写入 `role_scope`（`platform_admin` vs `tenant_admin`）和 `allow_platform_write` flag，handler 根据 flag 决定是否接受 `scope=platform`、是否跳过 MaxChannels 检查
+- **E2**：复制一套 handler 到 `controller/tenant_channel/` 子包，两套独立演化。YAGNI，除非发现逻辑分歧太大
+
+初版走 E1，发现分叉后再重构。
+
+**F. 向后兼容**
+当前前端只调 `/api/channel/*`（因为只有 root 能用），改造后：
+- super admin UI 继续用 `/api/channel/*`
+- 新的 tenant admin UI 指向 `/api/tenant-channel/*`
+- 两套 API 长期共存，不做 URL alias 混淆
+
+### 7.4 Tenant 视角的字段脱敏（必做，否则平台渠道是敏感运营信息的泄漏源）
+
+`model.Channel` struct（`model/channel.go:40-60`）有多个默认随 GET 返回的文本字段：`Setting`（含 `dto.ChannelSettings` 里的 `Proxy`、`SystemPrompt`、`ChannelRatio`、`ModelRatioOverride` 等）、`HeaderOverride`、`ParamOverride`、`OtherSettings`、`Other`、`BaseURL`、`StatusCodeMapping`、`AutoBan`、`Balance`、`UsedQuota`。
+
+**规则：当调用方是 tenant（不是 root），且返回的 channel 是 `scope='platform'` 时，后端必须剥离下列字段再返回**：
+
+| 字段 | 平台渠道返回给 tenant 时 | 理由 |
+|------|:-:|------|
+| `Key` / `Keys` | ❌ 置空 | 敏感凭证（已有） |
+| `Setting` | ❌ 置空 | 含 Proxy、SystemPrompt、ModelRatioOverride 等运营敏感配置 |
+| `HeaderOverride` | ❌ 置空 | 可能含 API key 替换模板（`{api_key}` 被填入时） |
+| `ParamOverride` | ❌ 置空 | 平台定制参数覆盖策略（商业机密） |
+| `OtherSettings` (`settings`) | ⚠️ 白名单 | 只返回 `VertexKeyType` 等非敏感子字段；运营字段不返回 |
+| `Other` | ❌ 置空 | 部署地区等内部 |
+| `BaseURL` | ⚠️ 置空或只露 domain | 默认置空；如果前端确实需要展示"供应商地址"，只露 host，不露 path/query |
+| `StatusCodeMapping` | ❌ 置空 | 状态码映射规则 |
+| `AutoBan` | ❌ 置空 | 运营参数 |
+| `Balance` / `BalanceUpdatedTime` | ❌ 置空 | 余额信息（跨租户统计泄漏） |
+| `UsedQuota` | ❌ 置空 | 用量数据 |
+| `ChannelInfo.MultiKeyStatusList` / `MultiKeyDisabledReason` / `MultiKeyDisabledTime` | ❌ 置空 | 多 key 运营状态 |
+| `MarkupRatio` | ✅ 保留 | 税透明，租户有权知道加价倍数 |
+| `Scope` / `Type` / `Name` / `Models` / `Groups` / `Status` / `Tag` | ✅ 保留 | 必需展示项 |
+
+**实现位置**：`clearChannelInfo` 已有（见 `controller/channel.go:65-70`），扩展为 `sanitizeForTenantView(ch *Channel, viewerScope string)`：
+- `viewerScope = "platform_admin"` → 返回原样
+- `viewerScope = "tenant_admin" && ch.Scope == "platform"` → 应用上表剥离
+- `viewerScope = "tenant_admin" && ch.Scope == "tenant"` → 只 omit `Key`（现有行为）
+
+所有 tenant-side 读取入口（`/api/tenant-channel/*` 的 GET / search / list）在返回前统一调用此 helper。
+
+### 7.5 Search 接口防"key oracle"
+
+**问题**：`model/channel.go:351,354` 的 `SearchChannelsByTenant` 在 WHERE 里含 `key = ?` 精确匹配谓词。Tenant 搜索 `keyword="sk-abc123"` 时，若结果集非空，即可确认"某平台渠道 key = sk-abc123"。即使返回结果里不含 key 字段，**存在性本身已泄漏**（oracle）。
+
+**改造**：拆两个 search helper：
+```go
+// 现有函数：仅 root 调用，保留 key 精确匹配
+func SearchChannelsAdmin(tenantId int, keyword, group, model string, idSort bool) ([]*Channel, error)
+
+// 新：tenant 调用，谓词里删除 `key = ?`
+func SearchChannelsForTenant(tenantId int, keyword, group, model string, idSort bool) ([]*Channel, error) {
+    // WHERE 子句只保留：id = ? OR name LIKE ? OR base_url LIKE ?
+    // 对 platform 渠道，base_url 同样走 §7.4 脱敏（搜索也不放行）
+    // 结果集 Scope='platform' 的行走 sanitizeForTenantView
+}
+```
+
+同样处理：`SearchTags`（§9 Finding 3 会提）的谓词 `key = ?`（如果有）必须删除。
+
+### 7.6 解决前两轮 Open Questions 的最终形态
+
+- **Open Q #1**（toggle 端点的 tenant selector）：
+  - Tenant 端 `POST /api/tenant-channel/:id/toggle`——无 selector，tenantId 从 JWT 解析；root **不允许**命中此端点（AdminAuth 中间件就会拦到，root 即便角色 >= admin 也不经过此路径）
+  - Root 代操作走 `POST /api/admin/tenant/:tenantId/channel/:id/toggle`——显式 path selector
+  - 两个端点签名/鉴权/副作用都不同，不会互相混淆
+
+- **Open Q #2**（禁用后无 re-enable 入口）：
+  - `/api/tenant-channel/` 列表始终返回**所有平台渠道**（无论是否被本租户禁用）；前端按 `ch.tenant_disabled`（后端 join `tenant_channel_overrides` 打 flag）做灰色+启用按钮
+  - 响应体增加字段 `tenant_disabled bool`（仅 tenant-side 返回）
 
 ### 8.1 读操作白名单
 
@@ -467,13 +590,28 @@ func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, e
 | `OllamaPullModel` / `Stream` / `Delete` / `Version` | 写 | 无 tenant 过滤 | `GetOwnedChannelForTenant`；平台 Ollama 渠道的拉取 / 删除只能 root 做 |
 | `FixChannelsAbilities` | 写（全局） | 跨租户 TRUNCATE | 限制为 `RoleRootUser` + `WithTenantBypass`；**同时**提供按租户的版本 `FixTenantChannelsAbilities(tenantId)` 给 tenant admin 用（只 truncate 该 tenant 的 abilities 行，且重建时跳过 platform） |
 | `FetchUpstreamModels` | 读 | 已用 `GetChannelByIdWithTenant` | 改 `GetVisibleChannelForTenant`，因为平台渠道也应该允许当前租户查看其支持的模型（key 仍不返回） |
+| `GetAllChannels`（**tag_mode** 分支） | 读 | `GetPaginatedTags` / `GetChannelsByTag` 全局无 tenant filter | 新增 `GetPaginatedTagsForTenant(tenantId, offset, limit)` 和 `GetChannelsByTagForTenant(tag, tenantId, ...)`；按 `(scope='platform' OR tenant_id=?)` 扫描 tag/channels |
+| `SearchChannels`（**tag_mode** 分支） | 读 | `SearchTags` / `GetChannelsByTag` 全局无 tenant filter | 新增 `SearchTagsForTenant(tenantId, keyword, group, model, idSort)`；同样按 scope+tenant 过滤，且删除 `key=?` 谓词（§7.5） |
+| `DisableTagChannels` / `EnableTagChannels` / `EditTagChannels` | 写 | 已传 tenantId 给 model 层 | 保持；额外校验：tenant 端 handler **禁止** tag 操作命中 `scope='platform'` 的渠道（model 层加 `AND scope='tenant'`） |
 
-### 9.3 Controller 原则提炼
+### 9.3 `model` 层 tag 相关 helper 补齐
 
-- **读的入口**走 `GetVisibleChannelForTenant`（租户视角：自己的 + 平台的）
+| 现有函数 | 问题 | 新增/改写 |
+|----------|------|----------|
+| `GetPaginatedTags(offset, limit)` `model/channel.go:850` | 无 tenant filter，跨租户泄漏 | 新增 `GetPaginatedTagsForTenant(tenantId int, offset, limit int) ([]*string, error)`：`WHERE tag != '' AND (scope='platform' OR tenant_id=?)` |
+| `SearchTags(keyword, group, model, idSort)` `model/channel.go:856` | 无 tenant filter；WHERE 里含 `key = ?` oracle | 新增 `SearchTagsForTenant(...)`：加 tenant 过滤 + 删除 `key=?` 谓词 |
+| `GetChannelsByTag(tag, idSort, selectAll)` `model/channel.go:300` | 无 tenant filter | 新增 `GetChannelsByTagForTenant(tag, tenantId, idSort, selectAll)`：`WHERE tag=? AND (scope='platform' OR tenant_id=?)` |
+
+Super admin（`/api/channel/*`）仍可用原版 helper（全局扫描），显式 `WithTenantBypass` 包裹。
+
+### 9.4 Controller 原则提炼
+
+- **读的入口**走 `GetVisibleChannelForTenant` / `*ForTenant` 系列（租户视角：自己的 + 平台的）
 - **写的入口**走 `GetOwnedChannelForTenant`（严格租户匹配，防止误改）
 - **涉及平台渠道的写**额外要求 `role == RoleRootUser`
-- **跨租户全局操作**（`FixChannelsAbilities`）要求 root + 显式 `WithTenantBypass`
+- **跨租户全局操作**（`FixChannelsAbilities`、全局 tag 扫描）要求 root + 显式 `WithTenantBypass`
+- **Tag 相关 helper** 必须有 `ForTenant` 版本；`controller/tenant-channel/*` 只能用 `ForTenant` 版本
+- **返回 body** 走 §7.4 的 `sanitizeForTenantView`——平台渠道向 tenant 输出时剥离敏感字段
 
 ---
 
@@ -497,6 +635,14 @@ func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, e
 - `TestAffinityCacheRespectsTenantDisable`：租户 A 的 affinity cache 命中 platform channel 后，切换到禁用该 channel 或改为 `only_private` 应立即失效（清理 `<tenantA>:*`）
 - `TestAffinityCacheIsolatesTenants`：租户 A 和 B 同一 affinityValue 在 cache 里是两条 entry，A 的路由不影响 B
 - `TestDiscoveryMatchesRouting`：`GetGroupEnabledModels(group, tenantId)` 返回的每一个 model 调用后**都能**成功路由（对每个 mode × override 组合）；反之路由成功的 model 必定在 discovery 里
+- `TestSanitizeForTenantViewStripsSensitiveFields`：tenant 获取 platform 渠道时，`Setting` / `HeaderOverride` / `ParamOverride` / `OtherSettings` / `Other` / `BaseURL` / `StatusCodeMapping` / `Balance` / `UsedQuota` / `ChannelInfo.MultiKeyStatusList` 等字段均为空；`MarkupRatio` / `Models` / `Groups` 保留
+- `TestSearchCannotOracleKey`：tenant 调 `/api/tenant-channel/search?keyword=<具体 key>` 返回空（即使 DB 里确实有匹配的 platform key）；root 同查询走 `/api/channel/search` 可命中
+- `TestTagModeTenantIsolation`：租户 A 用 tag_mode 查询，只看到自己的 tag 和 platform 渠道的 tag，看不到租户 B 的 tag；tag_mode 禁用/启用/编辑不影响租户 B 的渠道
+- `TestTagEditOnPlatformDenied`：tenant 端 `PUT /api/tenant-channel/tag` 命中 platform 渠道所用 tag 时 → 只影响自己租户的渠道，不动 platform 渠道
+- `TestTenantCreateChannelForcesScope`：tenant 端 `POST /api/tenant-channel/` body 传 `scope=platform`、`tenant_id=0` → 实际插入 `scope=tenant`、`tenant_id=<当前 tenant>`；MaxChannels 检查生效
+- `TestRootCreatePlatformChannelSkipsMaxChannels`：root 端 `POST /api/channel/` `scope=platform` 不受任何 tenant MaxChannels 影响（只受 platform 全局限额，如果有）
+- `TestTenantListAlwaysShowsDisabledPlatform`：租户禁用 platform channel #5 后，列表仍返回 #5 带 `tenant_disabled=true` 标志（验证 Open Q #2 最终形态）
+- `TestTenantToggleNoSelectorRespectsJWT`：租户 A 调 `POST /api/tenant-channel/:id/toggle`，即使 JWT 被篡改 tenantId 或 body 带 tenantId 字段，后端只信 JWT；租户 A 无法改租户 B 的 override
 
 ### 10.3 Guardrail 回归
 
@@ -531,12 +677,15 @@ func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, e
 | root 创建 platform 时 TenantId 填什么 | 统一 `TenantId = 0`；DB 约束 + 代码校验双重保证 |
 | `ChannelAffinityCache` 是否需要区分 scope | 已升级：v1 **必须**加 tenantId 到 cache key，并在 distributor 命中后做 scope/mode/disable 二次校验（见 §4.4） |
 | Pre-charge 时 channel 是否已选定 | distributor 先于 `ModelPriceHelper` 执行（见 `middleware/distributor.go` 注入 `ContextKeyChannelId`），所以 pre-charge 能拿到 channel.Scope；若发现某些路径不是这个顺序，需要在 plan 阶段核实并调整 |
+| `sanitizeForTenantView` 对 `channel_info` 内嵌字段的精度 | v1 粗粒度整块置空 `ChannelInfo.MultiKeyStatusList` 等；如果未来 UI 需要展示"平台渠道有多少个 key 健康"这种聚合统计，单独加一个聚合 API 而不是放开字段 |
+| tag_mode tenant 端能否对 platform 渠道批量操作 | v1 **不能**——tenant-side 的 tag 操作只影响 `scope='tenant'` 的渠道；平台渠道的 tag 只有 root 能改（避免租户靠 tag 绕过禁用） |
+| `/api/channel/*` 被现有前端调用的位置 | Milestone 6 前必须 grep 前端确认调用点；切 `/api/tenant-channel/*` 时 UI 要同步改，不做 URL 兼容层（避免长期维护 shim） |
 
 ---
 
 ## 13. 实施顺序建议（写 plan 时用）
 
-粗略 6 个 milestone（详细 plan 下一步生成）：
+粗略 10 个 milestone（详细 plan 下一步生成）：
 
 1. **Schema 迁移** — 加列（channels.scope, channels.markup_ratio, abilities.scope, tenant_plans.platform_markup）、加新表 `tenant_channel_overrides`、注册 guardrail
 2. **Guardrail 白名单** — 放行 `scope='platform'` 读；`tenant_channel_overrides` 纳入 tenant-scoped
@@ -546,8 +695,16 @@ func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, e
    - affinity cache key 加 tenantId 前缀 + distributor 命中后二次校验
    - discovery 接口（`GetGroupEnabledModels` / `GetEnabledModels` / `GetChannelGroupsCopy`）复用 `effectiveRoutingSet`
 5. **计费 markup 注入（pre + post）** — `ModelPriceHelper` 按 channel 结算；`RelayInfo` 持久化 markup；PostConsume 读取；retry 切换后重算
-6. **Controller 权限 + IDOR 修复** — 按 §9.2 清单改写 `controller/channel.go`；新增 super admin 的 `/admin/platform/channels`、`/admin/tenant/:tenantId/channel/:id/toggle` 路由
-7. **UI 变更** — super admin 入口、tenant 视角平台渠道分区（启用/禁用都可见）、模式切换 Segment、toggle 按钮
-8. **Cache 失效钩子** — mode / override 变更 → 单租户 routing cache + affinity `<tenantId>:*` 双清
+6. **路由层重构** — 按 §7.3 拆三个 group（`/api/channel` 保 RootAuth；新 `/api/tenant-channel`、`/api/admin/tenant/:tid/channel`）；修改 `AddChannel` 接受 `scope`/`tenant_id` body 参数并条件跳过 MaxChannels；中间件注入 `role_scope` / `allow_platform_write`
+7. **Controller IDOR 修复 + tag_mode 补齐** — 按 §9.2 / §9.3 新增 `GetVisibleChannelForTenant` / `GetOwnedChannelForTenant` / `*ForTenant` tag helpers；所有 handler 切到 For-Tenant 版本（tenant-side）或显式 bypass（platform-side）
+8. **字段脱敏 + Search oracle 防护** — 实现 `sanitizeForTenantView`；新增 `SearchChannelsForTenant` / `SearchTagsForTenant` 删除 `key=?` 谓词；tenant-side 接口全部经过
+9. **UI 变更** — super admin `/admin/platform/channels`；tenant 端 `/console/channels` 分区（我的 / 平台）；禁用渠道灰显 + 启用按钮；模式切换 Segment
+10. **Cache 失效钩子** — mode / override 变更 → 单租户 routing cache + affinity `<tenantId>:*` 双清
 
-每个 milestone 独立可 commit、可 review、可回滚。Milestones 4 和 5 之间有耦合（markup 依赖 channel 已被选中），写 plan 时再细分 task-level 顺序。
+每个 milestone 独立可 commit、可 review、可回滚。依赖关系：
+- Milestone 1-2 先做（schema + guardrail 基础）
+- Milestone 3 先于 4-5（helpers 是后续依赖）
+- Milestone 6 和 7 有耦合：6 重构路由分组后，7 才能把 handler 逻辑清晰地按 role_scope 分叉；**不建议**把 route 拆分和 IDOR 修复混在同一个 commit
+- Milestone 4-5（路由 + 计费）可并行（不同文件）
+- Milestone 8 依赖 7（sanitize helper 在 handler 里挂）
+- Milestone 9（UI）基本可在后端 milestone 5-8 中后期开始
