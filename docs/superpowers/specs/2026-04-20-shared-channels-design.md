@@ -259,10 +259,12 @@ buildChannelAffinityCacheKeySuffix(rule, usingGroup, affinityValue)
 | `model.GetGroupEnabledModels(group, tenantId)` | `model/ability.go:45` | SQL `tenant_id=?` | 用 `(scope='platform' OR tenant_id=?)` + 应用层剔除被租户禁用的 platform channel；只有 `only_platform` 模式时剔除所有 tenant 行；只有 `only_private` 时剔除所有 platform 行 |
 | `model.GetEnabledModels(tenantId)` | `model/ability.go:55` | SQL `tenant_id=?` | 同上 |
 | `model.GetChannelGroupsCopy(tenantId)` | `model/channel_cache.go`（用 `GetChannelGroupsCopy`） | 读 `tenantId:group` 桶 | 合并 `0:group` 桶 + 当前 tenant 桶，扣掉所有 platform channel 均被禁用的 group |
+| `model.GetBoundChannelsByModelsMap(modelNames, tenantId)` | `model/model_meta.go:112` | SQL 仅 `channels.tenant_id=?`（可选） | JOIN 加 `AND (channels.scope='platform' OR channels.tenant_id=?)`；**并且**在 map 组装前按 tenant 的 `mode` + `override` 过滤（结果里出现的 channel 必须是 `EffectiveRoutingSet` 里实际可用的那批） |
+| `controller/catalog/meta.go:187,274`（模型详情页的 `BoundChannels`） | 调用 `GetBoundChannelsByModelsMap(..., tenantId)` | 下游自动受益 | 无需改 controller，但 e2e 测试要确保：禁用 platform 渠道后模型详情页不再列出该 channel；切 `only_private` 模式后 platform 渠道从 BoundChannels 消失 |
 | `controller/catalog/registry.go:174` (`GetUserModels`) | 现调用 `GetGroupEnabledModels(..., tid)` | 下游自动受益 | 无需改，但 e2e 测试要加平台渠道的用例 |
 | `controller/group.go:58` (`GetChannelGroups`) | 现调用 `GetChannelGroupsCopy(tid)` | 下游受益 | 同上 |
 
-**实现策略**：抽一个 helper `EffectiveRoutingSet(tenantId, group, model) -> []Ability` 被路由 + discovery **共用**，保证两条链路永远一致。
+**实现策略**：抽一个 helper `EffectiveRoutingSet(tenantId, group, model) -> []Ability` 被路由 + discovery **共用**（包括 `GetBoundChannelsByModelsMap` 的结果过滤），保证所有链路永远一致。**契约**：任何对外暴露"某 model 有哪些可用 channel"的接口都必须经过 `EffectiveRoutingSet`；直接查 DB 绕过此 helper 的新代码需要在 review 时被拒。
 
 ### 4.6 Cache 刷新与失效
 
@@ -356,12 +358,12 @@ MarkupSource      string // "channel" | "plan" | "none"
 
 ### 6.2 租户对平台渠道的启用/禁用
 
-- **API（租户端）**：`POST /api/tenant/channel/:channelId/toggle`（body: `{disabled: true|false}`）
-  - 权限：**仅当前租户的 admin**（`RoleAdminUser` 及以上，但不跨租户）
+- **API（租户端）**：`POST /api/tenant-channel/:channelId/toggle`（body: `{disabled: true|false}`）
+  - 权限：**仅当前租户的 admin**，使用新的 `TenantAdminOnlyAuth()` 中间件（见 §7.3-G）——注意**不能**简单用 `AdminAuth()`，因为 `AdminAuth` 不拦 root
   - tenantId 从 JWT / session 取，**URL 里没有 tenant selector**
-  - root（`RoleRootUser`）如果也想操作，走下面的 admin 端 API，不复用此接口
+  - root（`RoleRootUser`）命中此端点会被 `TenantAdminOnlyAuth` 以 403 拒绝，提示走下面的 admin 端 API
 - **API（root 端，代租户操作）**：`POST /api/admin/tenant/:tenantId/channel/:channelId/toggle`（body 同上）
-  - 权限：仅 `RoleRootUser`
+  - 权限：仅 `RoleRootUser`（`RootAuth()` 已足够）
   - 显式 `tenantId` 路径参数；后端 `WithTenantBypass` 写 `tenant_channel_overrides`
   - 用途：运营代操作、排障
 - 约束（两个接口共用）：目标 channel 必须 `scope='platform'`，否则 400
@@ -403,8 +405,9 @@ MarkupSource      string // "channel" | "plan" | "none"
   - `MaxChannels` 配额检查**仅当 `scope=tenant`** 时执行（当前 `:648` 的逻辑加 if 分支）
 - 子路由（root 独占）：`/fix`（全局重建 abilities）、`/copy/:id`（允许跨 scope 复制）、`/multi_key/manage`（platform 渠道的多 key 管理）等
 
-**B. `/api/tenant-channel/*`（新建，`AdminAuth()` + tenant 上下文）—— 租户管理员入口**
+**B. `/api/tenant-channel/*`（新建，`TenantAdminOnlyAuth()` + tenant 上下文）—— 租户管理员入口**
 - 用途：tenant admin 管理**自己租户的渠道**（BYOK）+ 查看/toggle 平台渠道
+- **关键：不能用 `AdminAuth()`**——`AdminAuth()` 只检查 `effectiveRole >= RoleAdminUser(10)`，root（100）也能过，不满足"只有租户 admin 能命中"的要求。见 §7.3-G 新中间件定义。
 - 关键：所有写操作**强制** `TenantId = GetTenantId(c)` + `Scope = "tenant"`（body 里即便传 `scope=platform` 也被覆盖）
 - 端点：
   ```
@@ -439,7 +442,7 @@ MarkupSource      string // "channel" | "plan" | "none"
 
 **D. 权限矩阵（route-level，最终形态）**
 
-| 路由 | RootAuth | AdminAuth(+tenant ctx) | 备注 |
+| 路由 | RootAuth | TenantAdminOnlyAuth | 备注 |
 |------|:-:|:-:|------|
 | `POST /api/channel/` scope=platform | ✅ | — | 平台渠道，tenant_id=0 |
 | `POST /api/channel/` scope=tenant | ✅ | — | root 代某租户建（body 传 tenant_id） |
@@ -467,6 +470,50 @@ MarkupSource      string // "channel" | "plan" | "none"
 - super admin UI 继续用 `/api/channel/*`
 - 新的 tenant admin UI 指向 `/api/tenant-channel/*`
 - 两套 API 长期共存，不做 URL alias 混淆
+
+**G. `TenantAdminOnlyAuth()` 中间件定义（新）**
+
+现有 `AdminAuth()`（`middleware/auth.go:221`）只看 `effectiveRole >= RoleAdminUser(10)`，会放行 root（`platform_role=100`）。租户端路由需要"**tenant admin 可通行、root 被拒**"的精确语义，所以加一个新中间件：
+
+```go
+// 仅允许"本租户的 admin"访问；root（平台管理员）应走 /api/admin/tenant/... 代操作端点
+func TenantAdminOnlyAuth() func(c *gin.Context) {
+    return func(c *gin.Context) {
+        // 先过 authHelper 做会话/token 校验（沿用现有逻辑）
+        if !authHelper(c, common.RoleAdminUser) {
+            return
+        }
+        // 额外拒绝 root：强制走 /api/admin/tenant/... 代操作路径
+        platformRole := c.GetInt("platform_role")
+        if platformRole >= common.RoleRootUser {
+            c.JSON(http.StatusForbidden, gin.H{
+                "success": false,
+                "message": "root 用户请使用 /api/admin/tenant/:tenantId/channel/* 端点代租户操作",
+            })
+            c.Abort()
+            return
+        }
+        // 额外校验：当前用户必须在当前 tenant 有 TenantRoleAdmin（不只是平台 role）
+        tenantRole := c.GetInt("tenant_role")
+        if tenantRole < model.TenantRoleAdmin {
+            c.JSON(http.StatusForbidden, gin.H{
+                "success": false,
+                "message": "需要当前租户的 admin 角色",
+            })
+            c.Abort()
+            return
+        }
+        c.Next()
+    }
+}
+```
+
+**设计理由**：
+- `platform_role` 和 `tenant_role` 在 `authHelper` 的 `c.Set` 里已经分开（`middleware/auth.go:191-193`），直接读取即可，不需要额外查表
+- 拒绝 root 是**架构明确性**而非"权限不足"——root 有权，但走错路径；提示里给出正确端点
+- 要求 `tenant_role >= TenantRoleAdmin` 确保用户不只是 platform admin 混入租户，而是确实被授予了本租户的 admin 角色
+
+**其他写作注意**：文档里所有"AdminAuth + tenant context"表述都要改为"TenantAdminOnlyAuth"。
 
 ### 7.4 Tenant 视角的字段脱敏（必做，否则平台渠道是敏感运营信息的泄漏源）
 
@@ -583,7 +630,8 @@ func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, e
 | `GetChannelKey` | 读 | **严重**：跨租户读 key | tenant 渠道：`GetOwnedChannelForTenant(id, tenantId, selectAll=true)`；platform 渠道：要求 `role >= RoleRootUser`，再 `WithTenantBypass` 查 |
 | `UpdateChannel` | 写 | 无 tenant 过滤 | `orig := GetVisibleChannelForTenant(...)` 先确认存在；若 `orig.Scope=='platform'` 必须 `role == RoleRootUser`，否则 403；否则 `GetOwnedChannelForTenant` 严格校验后写 |
 | `DeleteChannel` | 写 | 无 tenant 过滤 | 同 UpdateChannel 的分支 |
-| `CopyChannel` | 读+写 | 无 tenant 过滤 | 原 channel 用 `GetVisibleChannelForTenant`；复制后新 channel `TenantId=tenantId`、`Scope='tenant'`，显式覆盖不保留平台 flag |
+| `CopyChannel` | 读+写 | 无 tenant 过滤；且原逻辑整行 shallow copy 会带上 key/Setting 等敏感字段 | **Tenant 端路径强制拒绝复制 platform 渠道**：`orig := GetOwnedChannelForTenant(id, tenantId, selectAll=true)` —— 严格匹配 tenant_id，platform 渠道（tenant_id=0）天然不匹配返 not found/403。**不提供"从 platform fork 为 tenant"能力**（与 §11 非目标保持一致）。Root 端 `/api/channel/copy/:id` 保留完整能力（可以跨 scope 复制），但**复制后必须显式走 `sanitizeForCopy`**（见下一行） |
+| `sanitizeForCopy`（新 helper） | — | CopyChannel 的 shallow copy 不安全 | 定义白名单字段：`Type / Name / Models / Groups / ModelMapping / Priority / Weight / Tag / Setting?`（Setting 在 platform→tenant 时需要白名单剥离 Proxy/ModelRatioOverride 等运营字段）；**Key / HeaderOverride / ParamOverride / OtherSettings / Other / ChannelInfo（多 key 状态）/ Balance / UsedQuota / TestTime / ResponseTime 一律不复制**。Root 跨 scope 复制 platform→tenant 时用户必须在 UI 或 API body 里重新提供 Key |
 | `ManageMultiKeys` | 写 | 无 tenant 过滤 | `GetOwnedChannelForTenant`（平台渠道的多 key 只能由 root 管，复用 super admin 的 `/admin/platform/channels` 路径，不走此 controller） |
 | `BatchSetChannelTag` | 写 | 未传 tenantId | 传入 `tenantId`；`model.BatchSetChannelTag` 加 `WHERE tenant_id=?`；平台渠道的 tag 只能由 root 修改（独立路由） |
 | `GetTagModels` | 读 | 未传 tenantId | 传入 `tenantId`；按 "tenant_id=? OR scope='platform'" 查 tag |
@@ -635,6 +683,7 @@ Super admin（`/api/channel/*`）仍可用原版 helper（全局扫描），显�
 - `TestAffinityCacheRespectsTenantDisable`：租户 A 的 affinity cache 命中 platform channel 后，切换到禁用该 channel 或改为 `only_private` 应立即失效（清理 `<tenantA>:*`）
 - `TestAffinityCacheIsolatesTenants`：租户 A 和 B 同一 affinityValue 在 cache 里是两条 entry，A 的路由不影响 B
 - `TestDiscoveryMatchesRouting`：`GetGroupEnabledModels(group, tenantId)` 返回的每一个 model 调用后**都能**成功路由（对每个 mode × override 组合）；反之路由成功的 model 必定在 discovery 里
+- `TestBoundChannelsMatchesRouting`：模型详情页 `BoundChannels`（通过 `GetBoundChannelsByModelsMap`）与 `EffectiveRoutingSet` 返回的 channel 集合逐一相等；禁用 platform 渠道后立即消失；切 `only_private` 后所有 platform 渠道从 BoundChannels 剔除
 - `TestSanitizeForTenantViewStripsSensitiveFields`：tenant 获取 platform 渠道时，`Setting` / `HeaderOverride` / `ParamOverride` / `OtherSettings` / `Other` / `BaseURL` / `StatusCodeMapping` / `Balance` / `UsedQuota` / `ChannelInfo.MultiKeyStatusList` 等字段均为空；`MarkupRatio` / `Models` / `Groups` 保留
 - `TestSearchCannotOracleKey`：tenant 调 `/api/tenant-channel/search?keyword=<具体 key>` 返回空（即使 DB 里确实有匹配的 platform key）；root 同查询走 `/api/channel/search` 可命中
 - `TestTagModeTenantIsolation`：租户 A 用 tag_mode 查询，只看到自己的 tag 和 platform 渠道的 tag，看不到租户 B 的 tag；tag_mode 禁用/启用/编辑不影响租户 B 的渠道
@@ -661,7 +710,7 @@ Super admin（`/api/channel/*`）仍可用原版 helper（全局扫描），显�
 - **平台渠道之间的租户白名单/黑名单**：只支持租户自己"禁用"
 - **跨租户 channel 复用计费**（单 channel 的 quota 在多租户间分摊）
 - **平台渠道的 A/B / 金丝雀发布**
-- **从 platform fork 为 tenant**（用户可手工新建）
+- **Tenant 端 "从 platform fork 为 tenant"**：tenant 端 `/api/tenant-channel/copy/:id` 不允许 source 是 platform 渠道（见 §9.2 CopyChannel 行）。Root 端 `/api/channel/copy/:id` 允许跨 scope 复制但走 `sanitizeForCopy` 白名单，Key 必须重新提供（不自动继承平台 key）。这不是 "完整 fork"，是 "从 platform 创建新的 tenant 渠道模板"
 - **平台渠道的观测面板**（使用量、成功率）——记账字段打上 `is_platform_channel`，后续另做仪表盘
 
 ---
