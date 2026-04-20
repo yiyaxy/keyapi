@@ -10,10 +10,25 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/tenant_ctx"
 	"github.com/QuantumNous/new-api/constant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
+
+// resolveAutoTenantId 给 guardrail 自动注入阶段挑一个 tenant_id。
+// 优先级：goroutine-local（TenantResolve 中间件在每个 HTTP 请求上挂的）
+// > 调用方通过 ctx 显式传入。两处都读不到就返 0 —— 调用方把 0 当
+// "fail-closed"处理。
+func resolveAutoTenantId(ctx context.Context) int {
+	if tid := tenant_ctx.Get(); tid > 0 {
+		return tid
+	}
+	if ctx == nil {
+		return 0
+	}
+	return ExplicitTenantIDFromContext(ctx)
+}
 
 // tenantScopedTables 记录需要租户隔离的表名集合。
 var tenantScopedTables sync.Map
@@ -307,14 +322,13 @@ func tenantGuardScope(db *gorm.DB) {
 		return
 	}
 
-	// Check 4：尝试从 context 里自动注入 —— 但必须是"显式"写入的 tenant_id 才行。
-	// ExplicitTenantIDFromContext 在没 set 时返 0（不是 DefaultTenantId），
-	// 这样 context.Background() 的查询不会被当成"租户 1"处理。
-	if ctx := db.Statement.Context; ctx != nil {
-		if tenantId := ExplicitTenantIDFromContext(ctx); tenantId > 0 {
-			db.Where("tenant_id = ?", tenantId)
-			return
-		}
+	// Check 4：自动注入 tenant_id。
+	// 优先级：goroutine-local（HTTP TenantResolve 中间件挂的）> 显式写入 ctx。
+	// 两者都没读到就 fail-closed。任何 fallback 到 DefaultTenantId 的设计都
+	// 会把"缺失 tenant"变成"写到租户 1"，属于跨租户泄漏。
+	if tenantId := resolveAutoTenantId(db.Statement.Context); tenantId > 0 {
+		db.Where("tenant_id = ?", tenantId)
+		return
 	}
 
 	// 以上都不满足 —— Phase 2 fail-closed：写 ERROR 日志 + 拒绝执行。
@@ -443,10 +457,9 @@ func checkOrFillTenantId(db *gorm.DB, field *schema.Field, rowValue reflect.Valu
 	}
 
 	if isZero || currentTenantId == 0 {
-		// 用 ExplicitTenantIDFromContext（context.Background() 时返 0），
-		// 而不是 TenantIDFromContext（会返回 DefaultTenantId）。
-		// 这样可以防止 DB.Create() 在没挂请求 context 时，把数据悄悄写到租户 1。
-		tenantId := ExplicitTenantIDFromContext(db.Statement.Context)
+		// 优先级：goroutine-local > 显式 ctx。与 Query/Update/Delete 的 Check 4 对齐。
+		// 两者都没有就让 currentTenantId 保持 0，由下方 fail-closed 拒绝入库。
+		tenantId := resolveAutoTenantId(db.Statement.Context)
 		if tenantId > 0 {
 			_ = field.Set(db.Statement.Context, rowValue, tenantId)
 			currentTenantId = tenantId

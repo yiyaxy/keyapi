@@ -74,11 +74,39 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// 挑一个"当前 host 对应"的默认 tenant id 发给后端。
+// 仅用于 bootstrap 尚未写入（未登录）的场景：登录请求也要带，否则后端
+// fail-closed 会把整个 auth 流程拦掉。
+//
+// 规则：
+//   - 子域名部署（acme.example.com）—— 返回 null，让后端按子域名解析
+//   - localhost / IP / 扁平域名（example.com） —— 返回 "1"，对齐 DefaultTenantId
+//   - www / api 这种保留子域也按扁平域名处理
+function fallbackTenantIdForHost(): string | null {
+  if (typeof window === 'undefined') return null;
+  const host = window.location.hostname;
+  if (!host) return null;
+  if (host === 'localhost') return '1';
+  if (/^\d+(\.\d+){3}$/.test(host)) return '1'; // IPv4
+  if (host.includes(':')) return '1'; // IPv6 literal
+  const parts = host.split('.');
+  if (parts.length < 3) return '1';
+  const slug = parts[0];
+  if (slug === 'www' || slug === 'api') return '1';
+  return null;
+}
+
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const boot = loadBootstrap();
   if (boot) {
     config.headers.set('New-API-User', String(boot.id));
     config.headers.set('X-Tenant-Id', String(boot.tenant_id));
+  } else {
+    // 未登录时仍需带 X-Tenant-Id，后端解析不到就直接 fail-closed。
+    const fb = fallbackTenantIdForHost();
+    if (fb !== null) {
+      config.headers.set('X-Tenant-Id', fb);
+    }
   }
   if (i18n.language) {
     config.headers.set('Accept-Language', i18n.language);
