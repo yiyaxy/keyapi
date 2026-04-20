@@ -1,15 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
+import { ReplyAttachments } from '@/components/tickets/ReplyAttachments';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { useReplyTicket, useTicketDetail, type TicketReply } from '@/hooks/useTickets';
+import {
+  useReplyTicket,
+  useTicketDetail,
+  type TicketAttachment,
+  type TicketReply,
+} from '@/hooks/useTickets';
 import { fmtDateSec } from '@/lib/format';
 
 function statusMeta(status: string): {
@@ -19,10 +25,8 @@ function statusMeta(status: string): {
   switch (status) {
     case 'open':
       return { key: 'status.open', variant: 'default' };
-    case 'pending':
-      return { key: 'status.pending', variant: 'secondary' };
-    case 'replied':
-      return { key: 'status.replied', variant: 'outline' };
+    case 'processing':
+      return { key: 'status.processing', variant: 'secondary' };
     case 'closed':
       return { key: 'status.closed', variant: 'destructive' };
     default:
@@ -37,6 +41,16 @@ export function TicketDetailPage() {
   const detail = useTicketDetail(Number.isFinite(id) ? id : null);
   const reply = useReplyTicket(id);
   const [draft, setDraft] = useState('');
+
+  const byReply = useMemo(() => {
+    const map = new Map<number, TicketAttachment[]>();
+    for (const a of detail.data?.attachments ?? []) {
+      const arr = map.get(a.reply_id) ?? [];
+      arr.push(a);
+      map.set(a.reply_id, arr);
+    }
+    return map;
+  }, [detail.data?.attachments]);
 
   if (detail.isPending) {
     return <Skeleton className='h-96 w-full' />;
@@ -64,7 +78,7 @@ export function TicketDetailPage() {
     const text = draft.trim();
     if (!text) return;
     try {
-      await reply.mutateAsync(text);
+      await reply.mutateAsync({ content: text });
       toast.success(t('detail.reply.success'));
       setDraft('');
     } catch (e) {
@@ -90,7 +104,12 @@ export function TicketDetailPage() {
         <CardContent>
           <ul className='space-y-4'>
             {replies.map((r) => (
-              <ReplyBlock key={r.id} reply={r} t={t} />
+              <ReplyBlock
+                key={r.id}
+                reply={r}
+                attachments={byReply.get(r.id) ?? []}
+                t={t}
+              />
             ))}
           </ul>
         </CardContent>
@@ -123,7 +142,15 @@ export function TicketDetailPage() {
   );
 }
 
-function ReplyBlock({ reply, t }: { reply: TicketReply; t: (k: string) => string }) {
+function ReplyBlock({
+  reply,
+  attachments,
+  t,
+}: {
+  reply: TicketReply;
+  attachments: TicketAttachment[];
+  t: (k: string) => string;
+}) {
   const isUser = reply.role === 'user';
   return (
     <li className={'rounded-md border border-line p-3 ' + (isUser ? 'bg-bg-0' : 'bg-bg-1')}>
@@ -134,6 +161,7 @@ function ReplyBlock({ reply, t }: { reply: TicketReply; t: (k: string) => string
         <div className='text-12 text-fg-2 tabular-nums'>{fmtDateSec(reply.created_at)}</div>
       </div>
       <div className='whitespace-pre-wrap text-13 leading-6 text-fg-0'>{reply.content}</div>
+      <ReplyAttachments attachments={attachments} />
     </li>
   );
 }
