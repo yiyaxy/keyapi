@@ -13,8 +13,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/controller/channel"
+	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
@@ -159,10 +159,10 @@ func main() {
 
 	if common.IsMasterNode && constant.UpdateTask {
 		gopool.Go(func() {
-			controller.UpdateMidjourneyTaskBulk()
+			media.UpdateMidjourneyTaskBulk()
 		})
 		gopool.Go(func() {
-			controller.UpdateTaskBulk()
+			media.UpdateTaskBulk()
 		})
 	}
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {

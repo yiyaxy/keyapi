@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/controller/catalog"
+	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/types"
@@ -68,7 +69,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
 	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
 	{
-		playgroundRouter.POST("/chat/completions", controller.Playground)
+		playgroundRouter.POST("/chat/completions", media.Playground)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RelayPrometheusMiddleware())

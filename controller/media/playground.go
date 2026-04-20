@@ -1,9 +1,10 @@
-package controller
+package media
 
 import (
 	"errors"
 	"fmt"
 
+	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -52,5 +53,5 @@ func Playground(c *gin.Context) {
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
-	Relay(c, types.RelayFormatOpenAI)
+	controller.Relay(c, types.RelayFormatOpenAI)
 }

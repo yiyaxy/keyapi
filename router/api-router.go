@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/channel"
 	"github.com/QuantumNous/new-api/controller/codex"
 	"github.com/QuantumNous/new-api/controller/invoice"
+	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/controller/obs"
 	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/controller/tenant"
@@ -559,13 +560,13 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		mjRoute := apiRouter.Group("/mj")
-		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
-		mjRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllMidjourney)
+		mjRoute.GET("/self", middleware.UserAuth(), media.GetUserMidjourney)
+		mjRoute.GET("/", middleware.TenantAdminAuth(), media.GetAllMidjourney)
 
 		taskRoute := apiRouter.Group("/task")
 		{
-			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
-			taskRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllTask)
+			taskRoute.GET("/self", middleware.UserAuth(), media.GetUserTask)
+			taskRoute.GET("/", middleware.TenantAdminAuth(), media.GetAllTask)
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")
