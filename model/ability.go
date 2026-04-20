@@ -47,7 +47,7 @@ func GetGroupEnabledModels(group string, tenantId int) []string {
 	var models []string
 	q := DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true)
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+		q = q.Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
 	}
 	q.Distinct("model").Pluck("model", &models)
 	return models
@@ -57,7 +57,7 @@ func GetEnabledModels(tenantId int) []string {
 	var models []string
 	q := DB.Table("abilities").Where("enabled = ?", true)
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+		q = q.Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
 	}
 	q.Distinct("model").Pluck("model", &models)
 	return models
