@@ -31,6 +31,10 @@ type TenantPlan struct {
 	RenewPeriodDays  int    `json:"renew_period_days" gorm:"default:30"`
 	RenewPriceAmount int64  `json:"renew_price_amount" gorm:"bigint;default:0"`
 	RenewCurrency    string `json:"renew_currency" gorm:"type:varchar(8);default:'CNY'"`
+	// PlatformMarkup is the default markup ratio for platform channels.
+	// Falls back value when channel.markup_ratio is unset.
+	// Defaults to 1.0 (no markup).
+	PlatformMarkup float64 `json:"platform_markup" gorm:"type:decimal(10,4);not null;default:1.0"`
 	CreatedAt     int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
 	UpdatedAt     int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
