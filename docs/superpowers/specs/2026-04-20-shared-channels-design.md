@@ -134,7 +134,7 @@ type TenantChannelOverride struct {
 
 ### 4.1 SQL 层
 
-`model/ability.go` 的 `GetGroupEnabledModels` / 相关查询改造：
+`model/ability.go` 的 `GetGroupEnabledModels` / `GetEnabledModels` / `GetChannelEnabledModelsAndChannels` 等查询统一改造：
 
 ```sql
 -- 现状
@@ -145,9 +145,12 @@ WHERE "group" = ? AND model = ? AND enabled = true
   AND (scope = 'platform' OR tenant_id = ?)
 ```
 
-`model/channel_cache.go` 的 `GetRandomSatisfiedChannel(tenantId, group, model, retry)` 内部：
-- 从 cache 拿到候选集合（同时包含 platform + tenant 的 abilities）
-- 传入**应用层过滤器**（见 4.2）
+**注意：SQL 扩大范围只是第一步，不等于用户最终可见/可路由的集合**。`scope='platform'` 的 ability 命中后还要再经过：
+- 租户 `platform_channel_mode` 过滤（可能裁掉全部 platform）
+- 租户 `tenant_channel_overrides` 过滤（裁掉被自己禁用的具体 channel）
+- channel 本身 `Status=Enabled`（现有检查）
+
+所以 **路由选择 (§4.2-4.4) 和模型/组发现 (§4.5) 必须走同一套过滤函数**，否则会出现"discovery 列出的 model 调用时却 no_channel"。
 
 ### 4.2 应用层过滤（在 channel_cache 选渠道时）
 
@@ -188,11 +191,81 @@ func filterByTenantMode(candidates []Ability, tenantId int) []Ability {
 - 在同一层内仍按现有 `priority desc, weight` 排序 + 随机。
 - "禁用"的平台渠道永远不进入候选（无论哪种模式）。
 
-### 4.3 Cache 刷新
+### 4.3 Channel Cache（`model/channel_cache.go`）分桶改造
 
-- `InitChannelCache()` 调用处：加载 abilities 时不再按 tenantId 过滤（拿所有 + scope），而是把 platform + tenant 都入 cache。
-- `tenant_channel_overrides` 变更时要 invalidate 对应 tenant 的缓存。`tenant_options.platform_channel_mode` 变更同理。
-- 若性能敏感：将 override 做成 `map[tenantId]map[channelId]struct{}` 内存索引，启动加载 + 增量更新。
+**当前现状**（`model/channel_cache.go:17-23`）：
+```go
+var group2model2channels map[string]map[string][]int
+// key = tenantGroupKey(tenantId, group) = "tenantId:group"
+```
+`GetRandomSatisfiedChannel(tenantId, group, ...)` 只读 `group2model2channels["<tenantId>:<group>"]`。**平台 channel 的 ability 存储在 `"0:<group>"` 桶里不会被任何租户的 lookup 读到**。
+
+**改造方案**：
+
+1. **分桶结构保留**：tenant channel 仍按 `tenantId:group` 分桶，platform channel 按 `0:group` 分桶（`scope='platform'` 的 ability `tenant_id=0`）。
+2. **Lookup 时合并**：`GetRandomSatisfiedChannel(tenantId, group, model, retry)` 内部：
+   ```go
+   tenantCandidates   := group2model2channels[tenantGroupKey(tenantId, group)][model]
+   platformCandidates := group2model2channels[tenantGroupKey(0,         group)][model]
+   merged := append(tenantCandidates, platformCandidates...)
+   // 应用 §4.2 的 filterByTenantMode + 禁用过滤
+   ```
+3. **不做爆炸式复制**：不把 platform ability 塞进每个租户的桶（见 §2 决策：A 方案）。
+4. **Override & Mode 的内存索引**：
+   - `tenantPlatformChannelMode map[int]string`（tenantId → mode）
+   - `tenantDisabledPlatformChannel map[int]map[int]struct{}`（tenantId → set of channelId）
+   - `InitChannelCache()` 启动时加载
+   - 写路径（toggle/mode 切换）调用 `InvalidateTenantRoutingCache(tenantId)` 重新加载单租户项
+5. **platform 侧变更影响所有租户**：super admin 改平台 channel 时全量 `InitChannelCache()`（已有行为）。
+
+### 4.4 Channel Affinity Cache（`service/channel_affinity.go`）改造
+
+**当前现状**（`service/channel_affinity.go:322`）：
+```go
+buildChannelAffinityCacheKeySuffix(rule, usingGroup, affinityValue)
+  // 结果："<rule.Name>:<usingGroup>:<affinityValue>"，无 tenantId
+```
+`middleware/distributor.go:104` 命中后直接 `model.CacheGetChannel(preferredChannelID)`，**不重新走 §4.2 过滤**。
+
+**后果（不改会发生的事）**：
+- **跨租户串扰**：租户 A 亲和过的 channel_id，租户 B 同 affinityValue 会命中同一条 cache entry，无视该 channel 对 B 是否可见/禁用。
+- **Mode / Disable 延迟失效**：租户改了 `platform_channel_mode=only_private` 或禁用了 platform channel，affinity cache 里指向 platform channel 的条目仍然生效到 TTL 结束。
+- **性能/合规兼坏**：计费会按平台 markup 扣费，但租户其实应该禁用。
+
+**改造方案（必须全做）**：
+
+1. **Cache key 加 tenantId 前缀**：
+   ```go
+   buildChannelAffinityCacheKeySuffix(rule, tenantId, usingGroup, affinityValue)
+     // "<tenantId>:<rule.Name>:<usingGroup>:<affinityValue>"
+   ```
+   彻底隔离跨租户命中。
+2. **取回后二次校验**（在 `distributor.go` 的命中分支）：
+   - 拿到 `preferred *Channel` 后检查：
+     - `preferred.Scope == "tenant"` → 必须 `preferred.TenantId == currentTenantId`，否则丢弃 affinity 走正常路由
+     - `preferred.Scope == "platform"` → 检查当前租户的 mode 是否允许 platform；检查该 channel 是否在租户 disable 集合里；不满足则丢弃
+3. **租户级失效**：租户切换 mode / toggle platform channel 时，清理该 tenantId 命名空间下的所有 affinity entry（namespace 扫描：`channelAffinity:<tenantId>:*`）。
+4. **Platform 侧删除**：super admin 删掉一个 platform channel 时，所有租户的 affinity 命中都会因为二次校验而 fallback——不强制 purge，TTL 自然过期即可。
+
+### 4.5 Discovery 接口过滤（模型列表 / 组列表 / model details）
+
+以下接口**必须使用和路由相同的过滤逻辑**，否则列出可选 model 但调用必 `no_channel`：
+
+| 接口 / 函数 | 当前位置 | 现行为 | 改造 |
+|-------------|----------|--------|------|
+| `model.GetGroupEnabledModels(group, tenantId)` | `model/ability.go:45` | SQL `tenant_id=?` | 用 `(scope='platform' OR tenant_id=?)` + 应用层剔除被租户禁用的 platform channel；只有 `only_platform` 模式时剔除所有 tenant 行；只有 `only_private` 时剔除所有 platform 行 |
+| `model.GetEnabledModels(tenantId)` | `model/ability.go:55` | SQL `tenant_id=?` | 同上 |
+| `model.GetChannelGroupsCopy(tenantId)` | `model/channel_cache.go`（用 `GetChannelGroupsCopy`） | 读 `tenantId:group` 桶 | 合并 `0:group` 桶 + 当前 tenant 桶，扣掉所有 platform channel 均被禁用的 group |
+| `controller/catalog/registry.go:174` (`GetUserModels`) | 现调用 `GetGroupEnabledModels(..., tid)` | 下游自动受益 | 无需改，但 e2e 测试要加平台渠道的用例 |
+| `controller/group.go:58` (`GetChannelGroups`) | 现调用 `GetChannelGroupsCopy(tid)` | 下游受益 | 同上 |
+
+**实现策略**：抽一个 helper `EffectiveRoutingSet(tenantId, group, model) -> []Ability` 被路由 + discovery **共用**，保证两条链路永远一致。
+
+### 4.6 Cache 刷新与失效
+
+- `InitChannelCache()`：调用 `WithTenantBypass(DB).Find(&abilities)` 拿全量 abilities（已有做法，保持），分桶时 platform ability 落 `0:group`，tenant ability 落 `tenantId:group`（已有做法，保持）。
+- 每次 `tenant_channel_overrides` 或 `tenant_options.platform_channel_mode` 变更 → 清理该 tenant 的 affinity 命名空间 + 更新内存 map（§4.3 第 4 项）。
+- platform 侧 channel/ability 变更 → 全量 `InitChannelCache()`（已有）+ 不影响 affinity key（但二次校验兜底）。
 
 ---
 
@@ -215,15 +288,44 @@ func effectiveMarkup(ch *Channel, plan *TenantPlan) (float64, string) {
 }
 ```
 
-### 5.2 应用到计费路径
+### 5.2 应用到计费路径（**含预扣，不是只挂 PostConsume**）
 
-现有计费点（`service/billing.go` / `relay/*` 的 `PostConsumeQuota`）拿到最终扣费时：
+重要：当前计费走**两阶段**，不能只改末端：
+
+1. **Pre-charge**：`relay/helper/price.go` 的 `ModelPriceHelper` 计算 `preConsumedQuota`，由 `service/billing_session.go` 的 `preConsume → PreConsumeTokenQuota` 预扣到 token/user balance。**选渠道发生在 distributor 阶段**（在 `ModelPriceHelper` 之前 / 之后取决于分支，但到 PriceHelper 执行时 `c.Keys["channel_id"]` 已经被 distributor 写入），所以此时**已经可以解析出 channel.Scope / channel.MarkupRatio**。
+2. **Post-consume**：`PostConsumeQuota` 按实际 token 补扣（或退多扣）。
+
+**改造**：
+
+- `ModelPriceHelper` 内部在算出 `preConsumedQuota` 后，**立即乘 effective_markup**（若 channel 是 platform）：
+  ```go
+  channel := model.CacheGetChannel(info.ChannelId)
+  plan, _ := model.GetTenantPlan(info.TenantId)
+  mk, source := effectiveMarkup(channel, plan)
+  preConsumedQuota = int(math.Ceil(float64(preConsumedQuota) * mk))
+  info.PriceMarkupRatio = mk
+  info.PriceMarkupSource = source
+  ```
+  `info *RelayInfo` 里持久化 markup 给 PostConsume 用，避免重新查。
+- `PostConsumeQuota` 读 `info.PriceMarkupRatio`，对最终 `quota`（或其 delta 部分）也乘 markup。**两阶段用同一系数**，不允许 pre/post 取到不同值（防止路由重试切换 channel 后 markup 不一致 —— 如果中途 failover 到另一个 channel，应按最终落地的 channel 重算，此时 PostConsume 拿最终 channel 重算 markup，而 pre-charge 的差额在 retry 时补算。详细见 §5.4 重试与切换场景）。
 
 ```
-final_quota = base_quota(model_ratio, completion_ratio, group_ratio, tokens) * effective_markup
+final_quota = base_quota(model_ratio, completion_ratio, group_ratio, tokens) × effective_markup
+preConsumed_quota = base_preConsumed × effective_markup
 ```
 
-**注意**：`group_ratio` 和 `effective_markup` 是独立维度——group 是用户组的价格系数，markup 是平台渠道加价系数，二者相乘。
+**`group_ratio` 和 `effective_markup` 是独立维度**——group 是用户组的价格系数，markup 是平台渠道加价系数，二者相乘。
+
+### 5.3 重试与 channel 切换
+
+Relay 失败重试会切换 channel（`middleware/distributor.go` 的 retry 逻辑）。若重试把请求从**私有渠道**切到**平台渠道**（或反之），markup 发生变化。处理方案：
+
+- **每次 retry 选到新 channel 后，重新调用 `effectiveMarkup`**，更新 `info.PriceMarkupRatio`。
+- PostConsume 以**最后实际成功的 channel** 的 markup 为准结算。
+- Pre-charge 的差额：
+  - 若新 markup > 旧：需要再预扣 `(new - old) × base_preConsumed`；失败则请求中止（和当前"预扣失败"同等处理）。
+  - 若新 markup < 旧：在 PostConsume 时自动退差（现有 `quota_delta` 机制支持）。
+- 账单日志记录**最终生效的 markup**（retry 之间的 pre-charge 波动不单独记）。
 
 ### 5.3 账单日志
 
@@ -234,6 +336,8 @@ IsPlatformChannel bool   // scope=='platform'
 MarkupRatio       float64
 MarkupSource      string // "channel" | "plan" | "none"
 ```
+
+（注：本小节是 §5.4，由于 §5.3 被"重试与 channel 切换"占用，此节可理解为"5.4 账单日志"。最终落地 PR 时按顺序编号即可。）
 
 便于审计与客服排查"为什么这次扣多了"。
 
@@ -249,11 +353,17 @@ MarkupSource      string // "channel" | "plan" | "none"
 
 ### 6.2 租户对平台渠道的启用/禁用
 
-- API：`POST /api/tenant/channel/:channelId/toggle`（body: `{disabled: true|false}`）
-- 权限：当前租户的 admin
-- 约束：目标 channel 必须 `scope='platform'`，否则 400
+- **API（租户端）**：`POST /api/tenant/channel/:channelId/toggle`（body: `{disabled: true|false}`）
+  - 权限：**仅当前租户的 admin**（`RoleAdminUser` 及以上，但不跨租户）
+  - tenantId 从 JWT / session 取，**URL 里没有 tenant selector**
+  - root（`RoleRootUser`）如果也想操作，走下面的 admin 端 API，不复用此接口
+- **API（root 端，代租户操作）**：`POST /api/admin/tenant/:tenantId/channel/:channelId/toggle`（body 同上）
+  - 权限：仅 `RoleRootUser`
+  - 显式 `tenantId` 路径参数；后端 `WithTenantBypass` 写 `tenant_channel_overrides`
+  - 用途：运营代操作、排障
+- 约束（两个接口共用）：目标 channel 必须 `scope='platform'`，否则 400
 - 实现：`disabled=true` → upsert 一行到 `tenant_channel_overrides`；`disabled=false` → 删除该行
-- 每次变更后 invalidate 该 tenant 的 channel_cache
+- 每次变更后 invalidate 该 tenant 的 channel_cache **以及 affinity cache 的 `<tenantId>:*` 命名空间**（见 §4.4）
 
 ---
 
@@ -268,10 +378,13 @@ MarkupSource      string // "channel" | "plan" | "none"
 
 ### 7.2 Tenant admin 入口
 
-- 现有 `/admin/channels` 列出**自己的私有渠道 + 所有未被自己禁用的平台渠道**
-- 平台渠道行用 badge 标识（"共享"），操作列只有"禁用/启用"按钮，没有编辑/删除
-- 平台渠道 key 一律不返回（即使 `GetChannelKey` 也 403）
-- 顶部加一个 Segment：模式切换（4 选 1）
+- 现有 `/admin/channels` 分两个区域展示：
+  - **我的渠道**：所有 `scope='tenant'` 且 `tenant_id=当前租户` 的渠道（可编辑/删除）
+  - **平台渠道**：所有 `scope='platform'` 的渠道，**无论是否被自己禁用都展示**（禁用的用灰色样式 + "已禁用" 徽标 + "启用"按钮；启用的显示"禁用"按钮）
+- 平台渠道行用 badge 标识（"共享"），操作列只有"禁用/启用"切换，**没有编辑/删除**
+- 平台渠道 key 一律不返回（即使 `GetChannelKey` 也 403，除非 root）
+- 顶部加一个 Segment：模式切换（4 选 1，写入 `tenant_options.platform_channel_mode`）
+- UI 禁用/启用按钮都可见，避免"禁用后找不到开关"的死循环（原 Open Question #1）
 
 ### 7.3 后端路由权限
 
@@ -285,7 +398,8 @@ MarkupSource      string // "channel" | "plan" | "none"
 | `DELETE /api/channel/:id` 自己 tenant | ✅ | ✅ | 删除自己的 |
 | `GET /api/channel/:id/key` platform | ✅ | ❌ | 看平台 key（仅超管） |
 | `GET /api/channel/:id/key` 自己 tenant | ✅ | ✅ | 看自己的 key |
-| `POST /api/tenant/channel/:id/toggle` | ✅ | ✅ | 禁用/启用平台渠道 |
+| `POST /api/tenant/channel/:id/toggle` | ❌（用下一行） | ✅ | 禁用/启用平台渠道（当前租户，无 selector） |
+| `POST /api/admin/tenant/:tenantId/channel/:id/toggle` | ✅ | ❌ | root 代租户禁用/启用（显式 selector） |
 
 ---
 
@@ -315,20 +429,51 @@ Check 0（新）：如果是 SELECT 且 WHERE 里命中 scope='platform'（或�
 
 ## 9. `controller/channel.go` IDOR 修复（in-scope）
 
-因为本次大改此文件，顺手把以下裸 `GetChannelById(id, ...)` 全部换成 `GetChannelByIdWithTenant(id, tenantId, ...)`，并在所有 platform 相关写操作加 role 检查：
+因为本次大改此文件，顺手修。**但原方案"把 `GetChannelById` 全部换成 `GetChannelByIdWithTenant`"是错的**——后者（`model/channel.go:370-389`）是严格 `WHERE id=? AND tenant_id=?` 匹配，传租户 id 去查平台渠道（`tenant_id=0`）会 not found。
 
-| 函数 | 当前问题 | 修复 |
-|------|----------|------|
-| `GetChannel` | 无 tenant 过滤 | 用 `GetChannelByIdWithTenant`；platform 渠道允许任何租户读（不回 key） |
-| `GetChannelKey` | **严重**：跨租户读 key | tenant 渠道强制 `tenant_id` 匹配；platform 渠道强制 `role == RoleRootUser` |
-| `UpdateChannel` | 无 tenant 过滤 | 先按 tenant 查原 channel；`scope=platform` 要求 root |
-| `DeleteChannel` | 无 tenant 过滤 | 同上 |
-| `CopyChannel` | 无 tenant 过滤 | 原 channel 必须是自己租户的（或者自己是 root 复制 platform） |
-| `ManageMultiKeys` | 无 tenant 过滤 | 同 UpdateChannel |
-| `BatchSetChannelTag` | 未传 tenantId | 传入 `tenantId`，model 层加 where |
-| `GetTagModels` | 未传 tenantId | 同上 |
-| `OllamaPullModel` / `Stream` / `Delete` / `Version` | 无 tenant 过滤 | 同 UpdateChannel |
-| `FixChannelsAbilities` | 跨租户 TRUNCATE | 限制为 `RoleRootUser`；分两个 API：全量（仅 root）、按租户（tenant admin），前者用 `WithTenantBypass` |
+### 9.1 model 层新增两个 helper（先做）
+
+```go
+// 读：允许"属于当前租户" 或 "平台渠道"
+func GetVisibleChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+    query := DB.Where("id = ? AND (scope = 'platform' OR tenant_id = ?)", id, tenantId)
+    // ...
+}
+
+// 写：严格匹配 tenantId，确保调用方不会误改平台渠道或他租户渠道
+// 等价于现有 GetChannelByIdWithTenant，但重命名强调语义
+func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+    query := DB.Where("id = ? AND tenant_id = ?", id, tenantId)
+    // 注：scope='tenant' 的检查由约束保证 tenant_id > 0
+}
+```
+
+（`GetChannelByIdWithTenant` 本身保留，但 callers 切到上面两个语义更清晰的命名。）
+
+### 9.2 Controller 逐函数修复清单
+
+所有修复前先 `tenantId := middleware.GetTenantId(c)`、`role := c.GetInt("role")`。下表"读/写"指该函数的主要动作。
+
+| 函数 | 动作 | 当前问题 | 修复 |
+|------|------|----------|------|
+| `GetChannel` | 读 | 无 tenant 过滤 | `GetVisibleChannelForTenant(id, tenantId)`；返回时平台渠道剥掉 key |
+| `GetChannelKey` | 读 | **严重**：跨租户读 key | tenant 渠道：`GetOwnedChannelForTenant(id, tenantId, selectAll=true)`；platform 渠道：要求 `role >= RoleRootUser`，再 `WithTenantBypass` 查 |
+| `UpdateChannel` | 写 | 无 tenant 过滤 | `orig := GetVisibleChannelForTenant(...)` 先确认存在；若 `orig.Scope=='platform'` 必须 `role == RoleRootUser`，否则 403；否则 `GetOwnedChannelForTenant` 严格校验后写 |
+| `DeleteChannel` | 写 | 无 tenant 过滤 | 同 UpdateChannel 的分支 |
+| `CopyChannel` | 读+写 | 无 tenant 过滤 | 原 channel 用 `GetVisibleChannelForTenant`；复制后新 channel `TenantId=tenantId`、`Scope='tenant'`，显式覆盖不保留平台 flag |
+| `ManageMultiKeys` | 写 | 无 tenant 过滤 | `GetOwnedChannelForTenant`（平台渠道的多 key 只能由 root 管，复用 super admin 的 `/admin/platform/channels` 路径，不走此 controller） |
+| `BatchSetChannelTag` | 写 | 未传 tenantId | 传入 `tenantId`；`model.BatchSetChannelTag` 加 `WHERE tenant_id=?`；平台渠道的 tag 只能由 root 修改（独立路由） |
+| `GetTagModels` | 读 | 未传 tenantId | 传入 `tenantId`；按 "tenant_id=? OR scope='platform'" 查 tag |
+| `OllamaPullModel` / `Stream` / `Delete` / `Version` | 写 | 无 tenant 过滤 | `GetOwnedChannelForTenant`；平台 Ollama 渠道的拉取 / 删除只能 root 做 |
+| `FixChannelsAbilities` | 写（全局） | 跨租户 TRUNCATE | 限制为 `RoleRootUser` + `WithTenantBypass`；**同时**提供按租户的版本 `FixTenantChannelsAbilities(tenantId)` 给 tenant admin 用（只 truncate 该 tenant 的 abilities 行，且重建时跳过 platform） |
+| `FetchUpstreamModels` | 读 | 已用 `GetChannelByIdWithTenant` | 改 `GetVisibleChannelForTenant`，因为平台渠道也应该允许当前租户查看其支持的模型（key 仍不返回） |
+
+### 9.3 Controller 原则提炼
+
+- **读的入口**走 `GetVisibleChannelForTenant`（租户视角：自己的 + 平台的）
+- **写的入口**走 `GetOwnedChannelForTenant`（严格租户匹配，防止误改）
+- **涉及平台渠道的写**额外要求 `role == RoleRootUser`
+- **跨租户全局操作**（`FixChannelsAbilities`）要求 root + 显式 `WithTenantBypass`
 
 ---
 
@@ -347,7 +492,11 @@ Check 0（新）：如果是 SELECT 且 WHERE 里命中 scope='platform'（或�
 - `TestSuperAdminCreatesPlatformChannel`：root 创建 `scope=platform`、`tenant_id=0`，数据库可查到
 - `TestTenantOverrideDisablesPlatformChannel`：租户禁用后路由不再返回此 channel；启用后恢复
 - `TestModeSwitchEndToEnd`：切换到 `only_private`，调用 platform-only model → 404 no_channel；切回 `private_priority` 正常
-- `TestBillingMarkupApplied`：跑一次平台渠道请求，核对 log.markup_ratio 和 final_quota
+- `TestBillingMarkupAppliedPreAndPost`：**关键回归**——平台渠道请求的 `preConsumedQuota` 和 `PostConsumeQuota` 均应包含 markup；log 记录最终 markup
+- `TestRetryAcrossScopeRecalculatesMarkup`：首次路由到 tenant 渠道失败，retry 切到 platform 渠道；最终扣费按 platform markup 结算，并补扣 pre-charge 差额
+- `TestAffinityCacheRespectsTenantDisable`：租户 A 的 affinity cache 命中 platform channel 后，切换到禁用该 channel 或改为 `only_private` 应立即失效（清理 `<tenantA>:*`）
+- `TestAffinityCacheIsolatesTenants`：租户 A 和 B 同一 affinityValue 在 cache 里是两条 entry，A 的路由不影响 B
+- `TestDiscoveryMatchesRouting`：`GetGroupEnabledModels(group, tenantId)` 返回的每一个 model 调用后**都能**成功路由（对每个 mode × override 组合）；反之路由成功的 model 必定在 discovery 里
 
 ### 10.3 Guardrail 回归
 
@@ -380,7 +529,8 @@ Check 0（新）：如果是 SELECT 且 WHERE 里命中 scope='platform'（或�
 | platform 渠道失败熔断 | 现有 channel-level 熔断保持，不做租户级熔断（v2 再考虑） |
 | 禁用后是否影响统计 | 禁用 = 不路由，但历史账单仍能查到；UI 要清楚标识 |
 | root 创建 platform 时 TenantId 填什么 | 统一 `TenantId = 0`；DB 约束 + 代码校验双重保证 |
-| `ChannelAffinityCache` 是否需要区分 scope | 需要，因为"亲和性"是按租户维持的；v1 先按现有 tenantId 做 key，不分 scope |
+| `ChannelAffinityCache` 是否需要区分 scope | 已升级：v1 **必须**加 tenantId 到 cache key，并在 distributor 命中后做 scope/mode/disable 二次校验（见 §4.4） |
+| Pre-charge 时 channel 是否已选定 | distributor 先于 `ModelPriceHelper` 执行（见 `middleware/distributor.go` 注入 `ContextKeyChannelId`），所以 pre-charge 能拿到 channel.Scope；若发现某些路径不是这个顺序，需要在 plan 阶段核实并调整 |
 
 ---
 
@@ -388,11 +538,16 @@ Check 0（新）：如果是 SELECT 且 WHERE 里命中 scope='platform'（或�
 
 粗略 6 个 milestone（详细 plan 下一步生成）：
 
-1. **Schema 迁移** — 加列、加新表、注册 guardrail
-2. **Guardrail 白名单** — 放行 `scope='platform'` 读
-3. **路由层改造** — SQL + 应用层模式过滤 + cache 更新
-4. **Controller 权限 + IDOR 修复** — 顺手修完 channel.go 所有越权
-5. **计费 markup 注入** — effective_markup + 账单字段
-6. **UI 变更** — super admin 入口、tenant 视角 readonly 展示、模式切换、禁用按钮
+1. **Schema 迁移** — 加列（channels.scope, channels.markup_ratio, abilities.scope, tenant_plans.platform_markup）、加新表 `tenant_channel_overrides`、注册 guardrail
+2. **Guardrail 白名单** — 放行 `scope='platform'` 读；`tenant_channel_overrides` 纳入 tenant-scoped
+3. **model 层 helpers** — `GetVisibleChannelForTenant` / `GetOwnedChannelForTenant` / `effectiveRoutingSet(tenantId, group)` / `effectiveMarkup`
+4. **路由层改造（两条链路一致）**
+   - `channel_cache` 的 lookup 合并 `tenantId:group` + `0:group` 桶 + 应用 §4.2 过滤
+   - affinity cache key 加 tenantId 前缀 + distributor 命中后二次校验
+   - discovery 接口（`GetGroupEnabledModels` / `GetEnabledModels` / `GetChannelGroupsCopy`）复用 `effectiveRoutingSet`
+5. **计费 markup 注入（pre + post）** — `ModelPriceHelper` 按 channel 结算；`RelayInfo` 持久化 markup；PostConsume 读取；retry 切换后重算
+6. **Controller 权限 + IDOR 修复** — 按 §9.2 清单改写 `controller/channel.go`；新增 super admin 的 `/admin/platform/channels`、`/admin/tenant/:tenantId/channel/:id/toggle` 路由
+7. **UI 变更** — super admin 入口、tenant 视角平台渠道分区（启用/禁用都可见）、模式切换 Segment、toggle 按钮
+8. **Cache 失效钩子** — mode / override 变更 → 单租户 routing cache + affinity `<tenantId>:*` 双清
 
-每个 milestone 独立可 commit、可 review、可回滚。
+每个 milestone 独立可 commit、可 review、可回滚。Milestones 4 和 5 之间有耦合（markup 依赖 channel 已被选中），写 plan 时再细分 task-level 顺序。

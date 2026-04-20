@@ -1,4 +1,4 @@
-package controller
+package catalog
 
 import (
 	"strconv"

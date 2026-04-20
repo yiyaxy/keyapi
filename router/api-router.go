@@ -42,7 +42,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/about", controller.GetAbout)
 		//apiRouter.GET("/midjourney", controller.GetMidjourney)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
-		apiRouter.GET("/pricing", middleware.TryUserAuth(), controller.GetPricing)
+		apiRouter.GET("/pricing", middleware.TryUserAuth(), catalog.GetPricing)
 		apiRouter.GET("/subscription/plans", controller.GetSubscriptionPlans)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
@@ -63,7 +63,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/telegram/bind", middleware.CriticalRateLimit(), auth.TelegramBind)
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), auth.HandleOAuth)
-		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
+		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), catalog.GetRatioConfig)
 
 		apiRouter.POST("/stripe/webhook", payment.StripeWebhook)
 		apiRouter.POST("/creem/webhook", payment.CreemWebhook)
@@ -142,13 +142,13 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/logout", controller.Logout)
 			userRoute.POST("/epay/notify", payment.EpayNotify)
 			userRoute.GET("/epay/notify", payment.EpayNotify)
-			userRoute.GET("/groups", controller.GetUserGroups)
+			userRoute.GET("/groups", catalog.GetUserGroups)
 
 			selfRoute := userRoute.Group("/")
 			selfRoute.Use(middleware.UserAuth())
 			{
-				selfRoute.GET("/self/groups", controller.GetUserGroups)
-				selfRoute.GET("/self/channel-groups", controller.GetChannelGroups)
+				selfRoute.GET("/self/groups", catalog.GetUserGroups)
+				selfRoute.GET("/self/channel-groups", catalog.GetChannelGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/tenants", controller.ListCurrentUserTenants)
 				selfRoute.POST("/tenant/switch", controller.SwitchTenant)
@@ -261,7 +261,7 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.PUT("/", controller.UpdateOption)
 			optionRoute.GET("/channel_affinity_cache", channel.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", channel.ClearChannelAffinityCache)
-			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)
+			optionRoute.POST("/rest_model_ratio", catalog.ResetModelRatio)
 			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
 			optionRoute.POST("/force_logout_all", controller.ForceLogoutAll)
 		}
@@ -290,8 +290,8 @@ func SetApiRouter(router *gin.Engine) {
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{
-			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
-			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
+			ratioSyncRoute.GET("/channels", catalog.GetSyncableChannels)
+			ratioSyncRoute.POST("/fetch", catalog.FetchUpstreamRatios)
 		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.RootAuth())
@@ -363,13 +363,13 @@ func SetApiRouter(router *gin.Engine) {
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(middleware.TenantAdminAuth())
 		{
-			redemptionRoute.GET("/", controller.GetAllRedemptions)
-			redemptionRoute.GET("/search", controller.SearchRedemptions)
-			redemptionRoute.GET("/:id", controller.GetRedemption)
-			redemptionRoute.POST("/", controller.AddRedemption)
-			redemptionRoute.PUT("/", controller.UpdateRedemption)
-			redemptionRoute.DELETE("/invalid", controller.DeleteInvalidRedemption)
-			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
+			redemptionRoute.GET("/", catalog.GetAllRedemptions)
+			redemptionRoute.GET("/search", catalog.SearchRedemptions)
+			redemptionRoute.GET("/:id", catalog.GetRedemption)
+			redemptionRoute.POST("/", catalog.AddRedemption)
+			redemptionRoute.PUT("/", catalog.UpdateRedemption)
+			redemptionRoute.DELETE("/invalid", catalog.DeleteInvalidRedemption)
+			redemptionRoute.DELETE("/:id", catalog.DeleteRedemption)
 		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.TenantAdminAuth(), obs.GetAllLogs)
@@ -465,10 +465,10 @@ func SetApiRouter(router *gin.Engine) {
 		promptRuleRoute := apiRouter.Group("/prompt_rule")
 		promptRuleRoute.Use(middleware.TenantAdminAuth())
 		{
-			promptRuleRoute.GET("/", controller.GetAllPromptRules)
-			promptRuleRoute.POST("/", controller.CreatePromptRule)
-			promptRuleRoute.PUT("/", controller.UpdatePromptRule)
-			promptRuleRoute.DELETE("/:id", controller.DeletePromptRule)
+			promptRuleRoute.GET("/", catalog.GetAllPromptRules)
+			promptRuleRoute.POST("/", catalog.CreatePromptRule)
+			promptRuleRoute.PUT("/", catalog.UpdatePromptRule)
+			promptRuleRoute.DELETE("/:id", catalog.DeletePromptRule)
 		}
 
 		// User rebate setting routes (admin)
@@ -546,16 +546,16 @@ func SetApiRouter(router *gin.Engine) {
 		groupRoute := apiRouter.Group("/group")
 		groupRoute.Use(middleware.TenantAdminAuth())
 		{
-			groupRoute.GET("/", controller.GetGroups)
+			groupRoute.GET("/", catalog.GetGroups)
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
 		prefillGroupRoute.Use(middleware.TenantAdminAuth())
 		{
-			prefillGroupRoute.GET("/", controller.GetPrefillGroups)
-			prefillGroupRoute.POST("/", controller.CreatePrefillGroup)
-			prefillGroupRoute.PUT("/", controller.UpdatePrefillGroup)
-			prefillGroupRoute.DELETE("/:id", controller.DeletePrefillGroup)
+			prefillGroupRoute.GET("/", catalog.GetPrefillGroups)
+			prefillGroupRoute.POST("/", catalog.CreatePrefillGroup)
+			prefillGroupRoute.PUT("/", catalog.UpdatePrefillGroup)
+			prefillGroupRoute.DELETE("/:id", catalog.DeletePrefillGroup)
 		}
 
 		mjRoute := apiRouter.Group("/mj")
