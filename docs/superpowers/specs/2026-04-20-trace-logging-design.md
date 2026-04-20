@@ -54,7 +54,7 @@
 | **TraceId 列宽** | 30 字符左对齐(`JOB-<10字符name>-<16hex>` = 31,`HTTP-<16hex>` = 21,取 30 兼顾对齐与总长度) | 视觉扫齐,长于 30 的 id 会打破对齐但仍能读 |
 | **时间戳格式** | `2006/01/02 15:04:05.000`(本地时区) | 保留现有格式风格,只是加毫秒;本地时区对单机运维友好 |
 | **GORM Trace() ctx 参数** | 继续忽略(`_ ctx`) | 业务代码不传 ctx,读 ctx 拿不到;统一走 goroutine-local |
-| **未 Set 时的返回值** | `"-"`(左对齐填空格到 22) | 视觉占位,不影响对齐 |
+| **未 Set 时的返回值** | `"-"`(左对齐填空格到 30) | 视觉占位,不影响对齐;宽度与 `TraceColumnWidth` 一致 |
 | **业务日志 fallback** | `logger.LogInfo(ctx, ...)` 优先从 ctx 取,ctx 里没有再读 goroutine-local | 保留现有 API;兼容旧调用 |
 | **随机源** | `crypto/rand`,失败回退 `math/rand` | TraceId 不是安全敏感字段,但 crypto 质量更好;回退保证不阻塞 |
 | **颜色** | 保留现有 GORM 的灰/黄/红 ANSI 配色 | 终端可读性好,Windows 终端 / 写入文件时少量乱码可接受 |
@@ -269,6 +269,19 @@ func RequestId() func(c *gin.Context) {
 
 **Header 名称事实核对**(来自 `common/constants.go:162`):`common.RequestIdKey = "X-Oneapi-Request-Id"`,**不是** `X-Request-Id`。本项目返回给客户端的 header key 就是 `X-Oneapi-Request-Id`。
 
+**顺手修复 `middleware/performance_trace.go`**:该文件 L22 当前是 `c.GetString("X-Request-Id")`——key 写错,永远读不到,fallback 成 `UnixNano`。所有 `[PERF][<id>] ...` 日志行的消息体里嵌的都是错 id,导致同一行出现两套 id(trace 列正确的 `HTTP-xxx` vs 消息体里的 UnixNano 串),排障时冲突混乱。
+
+本次一并修:把 L22 改为 `c.GetString(common.RequestIdKey)` 或直接 `trace.Get()`(统一来源);fallback 分支删除(TraceId 现在保证存在,未命中返回 `"-"`)。
+
+```go
+// 修正后
+requestID := trace.Get()  // 或 c.GetString(common.RequestIdKey)
+// 不再需要 UnixNano fallback
+common.SysLog(fmt.Sprintf("[PERF][%s] === Request Start === Path: %s", requestID, c.Request.URL.Path))
+```
+
+注:这个文件的 SysLog 本身已经通过 `common.SysLog` 输出,自动带上正确的 trace 列;消息体里 `[%s]` 保留还是删除都可以——保留作为可读标记,删除更干净。**倾向删除**(trace 列已经有 id,消息体再嵌一次是冗余),本次按"删除"处理。
+
 **格式兼容性**:原先的 RequestId 格式是 `GetTimeString + 4字节hash + 8字节随机`,约 20+ 字符;新格式 `HTTP-<16hex>` = 21 字符,长度接近,但**首 5 字节变成固定的 `HTTP-` 前缀**。如果有外部系统按"必须以时间串开头"或"全 hex 字符"解析 header,会出问题。取舍:选新格式(客户端通常只做透传,不解析内容)。若确认有外部依赖,在 plan 阶段评估是否保留原生成逻辑,只在服务端内部多存一份 `trace.Set` 用的 id。
 
 ### 3.4 后台任务入口改造
@@ -412,7 +425,7 @@ HTTP 请求链路(同步部分完全覆盖):
 **`common/trace/trace_test.go`**:
 - `Set` / `Get` / `Clear` 往返正确
 - 未 Set 时 `Get` 返回 `"-"`
-- `NewHTTP` / `NewJob` / `NewSys` 返回值前缀正确,hex 部分长度 8
+- `NewHTTP` / `NewJob` / `NewSys` 返回值前缀正确,hex 部分长度 16
 - `NewJob("subreset")` 返回符合 `^JOB-subreset-[0-9a-f]{16}$`
 - **继承测试**:父 goroutine Set,用 `routine.Go` 起子 goroutine,子读到父值
 - **隔离测试**:两个并发 goroutine 用 `sync.WaitGroup` 同步,各自 Set 不同值,互不污染
@@ -446,6 +459,7 @@ HTTP 请求链路(同步部分完全覆盖):
 - [ ] `DEBUG=true` 下打开 Info 级别,所有 SQL 都有 TraceId
 - [ ] `DEBUG=false` 下关闭 Info,只有慢查询 / 错误有 TraceId 列(格式仍对齐)
 - [ ] 启动阶段所有 bootstrap 期的 SQL / SYS 日志前缀是 `SYS-bootstrap-*`
+- [ ] **PERF 日志 id 一致性**:打一次中继请求,`[PERF]` 系列日志的 trace 列与同请求其他日志一致(都是同一个 `HTTP-xxx`),消息体不再出现 UnixNano 样式的陌生 id
 
 ### 6.4 不测
 
@@ -468,6 +482,7 @@ HTTP 请求链路(同步部分完全覆盖):
 | 7 | `logger/logger.go` | 修改 | `logHelper` 加毫秒 + ctx fallback trace |
 | 8 | `middleware/logger.go` | 修改 | Gin format 加毫秒 + trace 定宽列 |
 | 9 | `middleware/request-id.go` | 修改 | `trace.Set` + `defer trace.Clear`;RequestId 格式改 `HTTP-<16hex>`(通过 `trace.NewHTTP()` 生成);确认返回 header 仍是 `X-Oneapi-Request-Id` |
+| 9.5 | `middleware/performance_trace.go` | 修改 | L22 读错了 header key(`X-Request-Id` → `X-Oneapi-Request-Id`),并去掉 UnixNano fallback;[PERF] 消息体不再重复嵌 id(trace 列已有) |
 | 10 | `model/gorm_logger.go` | 修改 | 三个 case 的 Printf 加时间 + trace 列 |
 | 11 | `model/gorm_logger_test.go` | 新建 | 集成测试(含 writer 统一性) |
 | 11.5 | `logger/logger_test.go` | 新建或扩充 | 覆盖 nil ctx / ctx-with-id / goroutine-local fallback 三种路径 |
