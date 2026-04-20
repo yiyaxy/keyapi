@@ -16,41 +16,54 @@
       :refresher-triggered="refreshing"
       @refresherrefresh="onPullDown"
     >
-      <!-- 邀请码卡片 -->
-      <view class="code-card">
-        <text class="code-title">我的邀请码</text>
-        <view class="code-row">
-          <text class="code-val">{{ userInfo?.aff_code || '--' }}</text>
-          <view class="copy-btn" @click="copyCode">
-            <u-icon name="copy" size="36" color="#4F6EF7" />
-            <text class="copy-txt">复制邀请码</text>
+      <!-- 未登录提示 -->
+      <template v-if="!userStore.isLoggedIn">
+        <view class="login-prompt">
+          <u-icon name="account" size="100" color="#9ca3af" />
+          <text class="prompt-title">登录后查看邀请数据</text>
+          <text class="prompt-sub">邀请好友注册，即可获得奖励额度</text>
+          <view class="prompt-btn" @click="goLogin">立即登录</view>
+        </view>
+      </template>
+
+      <!-- 已登录内容 -->
+      <template v-else>
+        <!-- 邀请码卡片 -->
+        <view class="code-card">
+          <text class="code-title">我的邀请码</text>
+          <view class="code-row">
+            <text class="code-val">{{ userInfo?.aff_code || '--' }}</text>
+            <view class="copy-btn" @click="copyCode">
+              <u-icon name="copy" size="36" color="#4F6EF7" />
+              <text class="copy-txt">复制邀请码</text>
+            </view>
+          </view>
+          <text class="code-tip">将邀请码分享给好友，好友注册后你将获得奖励</text>
+        </view>
+
+        <!-- 数据统计 -->
+        <text class="section-title">邀请收益</text>
+        <view class="stats-grid">
+          <view class="s-item">
+            <text class="s-val">{{ userInfo?.aff_count || 0 }}</text>
+            <text class="s-label">已邀请人数</text>
+          </view>
+          <view class="s-item">
+            <text class="s-val">{{ q2cny(userInfo?.aff_history_quota) }}</text>
+            <text class="s-label">累计总奖励</text>
+          </view>
+          <view class="s-item">
+            <text class="s-val accent">{{ q2cny(userInfo?.aff_quota) }}</text>
+            <text class="s-label">待转换奖励</text>
+          </view>
+          <view class="s-item">
+            <text class="s-val">{{ q2cny(Number(userInfo?.aff_history_quota || 0) - Number(userInfo?.aff_quota || 0)) }}</text>
+            <text class="s-label">已转换额度</text>
           </view>
         </view>
-        <text class="code-tip">将邀请码分享给好友，好友注册后你将获得奖励</text>
-      </view>
+      </template>
 
-      <!-- 数据统计 -->
-      <text class="section-title">邀请收益</text>
-      <view class="stats-grid">
-        <view class="s-item">
-          <text class="s-val">{{ userInfo?.aff_count || 0 }}</text>
-          <text class="s-label">已邀请人数</text>
-        </view>
-        <view class="s-item">
-          <text class="s-val">{{ q2cny(userInfo?.aff_history_quota) }}</text>
-          <text class="s-label">累计总奖励</text>
-        </view>
-        <view class="s-item">
-          <text class="s-val accent">{{ q2cny(userInfo?.aff_quota) }}</text>
-          <text class="s-label">待转换奖励</text>
-        </view>
-        <view class="s-item">
-          <text class="s-val">{{ q2cny(Number(userInfo?.aff_history_quota || 0) - Number(userInfo?.aff_quota || 0)) }}</text>
-          <text class="s-label">已转换额度</text>
-        </view>
-      </view>
-
-      <!-- 规则说明 -->
+      <!-- 规则说明（访客也可见） -->
       <text class="section-title">邀请规则</text>
       <view class="rule-card">
         <view class="rule-item" v-for="(r, i) in rules" :key="i">
@@ -109,18 +122,18 @@ async function onPullDown() {
   await loadData()
 }
 
+function goLogin() { uni.navigateTo({ url: '/pages/login/index' }) }
+
 onLoad(() => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
-  if (!userStore.isLoggedIn) {
-    uni.reLaunch({ url: '/pages/login/index' })
-    return
+  if (userStore.isLoggedIn) {
+    if (userStore.userInfo) userInfo.value = userStore.userInfo
+    loadData()
   }
-  if (userStore.userInfo) userInfo.value = userStore.userInfo
-  loadData()
 })
 
 onShow(() => {
-  if (userInfo.value && userStore.isLoggedIn) loadData()
+  if (userStore.isLoggedIn) loadData()
 })
 </script>
 
@@ -145,6 +158,24 @@ onShow(() => {
   display: block;
   font-size: 28rpx; font-weight: 600; color: #6b7280;
   padding: 32rpx 32rpx 16rpx; letter-spacing: 1rpx;
+}
+
+/* 未登录提示 */
+.login-prompt {
+  margin: 80rpx 24rpx 40rpx;
+  background: #fff; border-radius: 24rpx; padding: 60rpx 40rpx;
+  display: flex; flex-direction: column; align-items: center;
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
+}
+.prompt-title { font-size: 32rpx; font-weight: 600; color: #1a1a2e; margin: 24rpx 0 12rpx; }
+.prompt-sub { font-size: 26rpx; color: #6b7280; margin-bottom: 40rpx; }
+.prompt-btn {
+  width: 100%; height: 88rpx;
+  background: linear-gradient(135deg, #4F6EF7, #6C8EFF);
+  border-radius: 14rpx;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 30rpx; font-weight: 600;
+  box-shadow: 0 6rpx 20rpx rgba(79,110,247,0.3);
 }
 
 .code-card {

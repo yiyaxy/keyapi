@@ -152,7 +152,7 @@ async function loadMore() {
 
 onLoad(async () => {
   if (!userStore.isLoggedIn) {
-    uni.redirectTo({ url: '/pages/login/index' })
+    uni.navigateTo({ url: '/pages/login/index' })
     return
   }
   // 并发加载统计和日志列表

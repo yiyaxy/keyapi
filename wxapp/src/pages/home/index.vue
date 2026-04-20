@@ -23,6 +23,51 @@
         <view class="skeleton-grid" />
       </template>
 
+      <!-- 未登录：访客引导页 -->
+      <template v-else-if="!userStore.isLoggedIn">
+        <view class="guest-hero">
+          <view class="guest-logo">
+            <u-icon name="server" size="80" color="#4F6EF7" />
+          </view>
+          <text class="guest-title">CaMeL API</text>
+          <text class="guest-sub">专业的 AI 模型接入服务</text>
+          <text class="guest-desc">支持 OpenAI、Claude、Gemini 等 40+ 主流模型，统一接口，按量计费</text>
+          <view class="guest-login-btn" @click="goLogin">立即登录</view>
+        </view>
+
+        <!-- 功能介绍 -->
+        <text class="section-title">平台功能</text>
+        <view class="grid">
+          <view class="grid-item" @click="goLogin">
+            <view class="grid-icon" style="background:#eef1ff;">
+              <u-icon name="coupon" size="52" color="#4F6EF7" />
+            </view>
+            <text class="grid-label">兑换码充值</text>
+          </view>
+          <view class="grid-item" @click="goLogin">
+            <view class="grid-icon" style="background:#e8faf0;">
+              <u-icon name="setting" size="52" color="#18A058" />
+            </view>
+            <text class="grid-label">API Key</text>
+          </view>
+          <view class="grid-item" @click="goLogin">
+            <view class="grid-icon" style="background:#fff7e8;">
+              <u-icon name="clock" size="52" color="#f59e0b" />
+            </view>
+            <text class="grid-label">消费记录</text>
+          </view>
+          <view class="grid-item" @click="goLogin">
+            <view class="grid-icon" style="background:#ffeef2;">
+              <u-icon name="share" size="52" color="#ef4444" />
+            </view>
+            <text class="grid-label">邀请中心</text>
+          </view>
+        </view>
+
+        <view style="height:48rpx;" />
+      </template>
+
+      <!-- 已登录：正常内容 -->
       <template v-else>
         <!-- 余额英雄卡片 -->
         <view class="hero">
@@ -144,6 +189,7 @@ function q2cny(quota) { return renderQuota(quota) }
 
 function nav(url) { uni.navigateTo({ url }) }
 function switchTab(url) { uni.switchTab({ url }) }
+function goLogin() { uni.navigateTo({ url: '/pages/login/index' }) }
 
 function copyCode(code) {
   if (!code) return
@@ -157,28 +203,27 @@ async function refresh() {
   if (refreshing.value) return
   refreshing.value = true
   try {
-    // 并发请求：系统配置 + 用户信息 + 今日统计 + 本月统计
     // getStatus 无需登录态，用于获取服务器真实 quota_per_unit
-    const [statusRes, selfRes, todayRes, monthRes] = await Promise.allSettled([
-      getStatus(),
-      getSelf(),
-      getTodayStat(),
-      getMonthStat(),
-    ])
+    const statusRes = await Promise.resolve(getStatus()).catch(() => null)
+    if (statusRes) userStore.applyStatus(statusRes)
 
-    // 必须先更新 status 配置（含 quota_per_unit / exchange rate 等），再渲染金额
-    if (statusRes.status === 'fulfilled' && statusRes.value) {
-      userStore.applyStatus(statusRes.value)
-    }
-    if (selfRes.status === 'fulfilled') {
-      userInfo.value = selfRes.value
-      userStore.setUserInfo(selfRes.value)
-    }
-    if (todayRes.status === 'fulfilled') {
-      todayQuota.value = todayRes.value?.quota || 0
-    }
-    if (monthRes.status === 'fulfilled') {
-      monthQuota.value = monthRes.value?.quota || 0
+    // 需要登录的接口仅在已登录时调用
+    if (userStore.isLoggedIn) {
+      const [selfRes, todayRes, monthRes] = await Promise.allSettled([
+        getSelf(),
+        getTodayStat(),
+        getMonthStat(),
+      ])
+      if (selfRes.status === 'fulfilled') {
+        userInfo.value = selfRes.value
+        userStore.setUserInfo(selfRes.value)
+      }
+      if (todayRes.status === 'fulfilled') {
+        todayQuota.value = todayRes.value?.quota || 0
+      }
+      if (monthRes.status === 'fulfilled') {
+        monthQuota.value = monthRes.value?.quota || 0
+      }
     }
   } finally {
     firstLoading.value = false
@@ -193,16 +238,12 @@ async function onPullDown() {
 
 onLoad(() => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
-  if (!userStore.isLoggedIn) {
-    uni.reLaunch({ url: '/pages/login/index' })
-    return
-  }
   refresh()
 })
 
 onShow(() => {
-  // 从其他页返回时刷新余额（例如兑换成功后）
-  if (!firstLoading.value && userStore.isLoggedIn) {
+  // 从登录页返回后刷新（用户可能刚完成登录）
+  if (!firstLoading.value) {
     refresh()
   }
 })
@@ -257,6 +298,44 @@ onShow(() => {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* 访客引导页 */
+.guest-hero {
+  margin: 40rpx 24rpx 0;
+  background: linear-gradient(135deg, #4F6EF7 0%, #7B9BFF 100%);
+  border-radius: 28rpx;
+  padding: 60rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 16rpx 48rpx rgba(79, 110, 247, 0.3);
+}
+.guest-logo {
+  width: 120rpx; height: 120rpx;
+  background: rgba(255,255,255,0.2);
+  border-radius: 32rpx;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 28rpx;
+}
+.guest-title {
+  font-size: 44rpx; font-weight: 700; color: #fff; margin-bottom: 12rpx;
+}
+.guest-sub {
+  font-size: 26rpx; color: rgba(255,255,255,0.85); margin-bottom: 20rpx;
+}
+.guest-desc {
+  font-size: 24rpx; color: rgba(255,255,255,0.7);
+  text-align: center; line-height: 1.7; margin-bottom: 48rpx;
+  padding: 0 8rpx;
+}
+.guest-login-btn {
+  width: 100%;
+  height: 88rpx;
+  background: #fff;
+  border-radius: 14rpx;
+  display: flex; align-items: center; justify-content: center;
+  color: #4F6EF7; font-size: 32rpx; font-weight: 600;
 }
 
 /* 英雄卡片 */

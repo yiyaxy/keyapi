@@ -14,6 +14,17 @@
       :refresher-triggered="refreshing"
       @refresherrefresh="onPullDown"
     >
+      <!-- 未登录提示 -->
+      <view class="login-prompt" v-if="!userStore.isLoggedIn">
+        <u-icon name="account" size="100" color="#9ca3af" />
+        <text class="prompt-title">登录后查看个人信息</text>
+        <text class="prompt-sub">管理 API Key、查看消费记录</text>
+        <view class="prompt-btn" @click="goLogin">立即登录</view>
+      </view>
+
+      <!-- 已登录内容 -->
+      <template v-else>
+
       <!-- 用户头像 + 基本信息 -->
       <view class="user-header">
         <view class="avatar">
@@ -108,6 +119,7 @@
       </view>
 
       <view style="height:48rpx;" />
+      </template>
     </scroll-view>
   </view>
 </template>
@@ -172,14 +184,14 @@ async function onPullDown() {
   await loadData()
 }
 
+function goLogin() { uni.navigateTo({ url: '/pages/login/index' }) }
+
 onLoad(() => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
-  if (!userStore.isLoggedIn) {
-    uni.reLaunch({ url: '/pages/login/index' })
-    return
+  if (userStore.isLoggedIn) {
+    if (userStore.userInfo) userInfo.value = userStore.userInfo
+    loadData()
   }
-  if (userStore.userInfo) userInfo.value = userStore.userInfo
-  loadData()
 })
 
 onShow(() => {
@@ -201,6 +213,24 @@ onShow(() => {
 }
 .nav-title { font-size: 34rpx; font-weight: 600; color: #1a1a2e; }
 .scroll { flex: 1; }
+
+/* 未登录提示 */
+.login-prompt {
+  margin: 80rpx 24rpx 40rpx;
+  background: #fff; border-radius: 24rpx; padding: 60rpx 40rpx;
+  display: flex; flex-direction: column; align-items: center;
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
+}
+.prompt-title { font-size: 32rpx; font-weight: 600; color: #1a1a2e; margin: 24rpx 0 12rpx; }
+.prompt-sub { font-size: 26rpx; color: #6b7280; margin-bottom: 40rpx; }
+.prompt-btn {
+  width: 100%; height: 88rpx;
+  background: linear-gradient(135deg, #4F6EF7, #6C8EFF);
+  border-radius: 14rpx;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 30rpx; font-weight: 600;
+  box-shadow: 0 6rpx 20rpx rgba(79,110,247,0.3);
+}
 
 /* 用户头部 */
 .user-header {

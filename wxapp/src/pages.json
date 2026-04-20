@@ -31,19 +31,22 @@
 		{
 			"path": "pages/redeem/index",
 			"style": {
-				"navigationBarTitleText": "兑换码充值"
+				"navigationBarTitleText": "兑换码充值",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/apikey/index",
 			"style": {
-				"navigationBarTitleText": "API Key"
+				"navigationBarTitleText": "API Key",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/usage-records/index",
 			"style": {
-				"navigationBarTitleText": "消费记录"
+				"navigationBarTitleText": "消费记录",
+				"navigationStyle": "custom"
 			}
 		}
 	],

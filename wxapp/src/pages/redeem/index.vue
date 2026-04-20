@@ -122,7 +122,7 @@ async function doRedeem() {
 
 onLoad(() => {
   if (!userStore.isLoggedIn) {
-    uni.redirectTo({ url: '/pages/login/index' })
+    uni.navigateTo({ url: '/pages/login/index' })
   }
 })
 </script>
