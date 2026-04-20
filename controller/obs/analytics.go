@@ -1,4 +1,4 @@
-package controller
+package obs
 
 import (
 	"strconv"

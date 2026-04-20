@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/auth"
 	"github.com/QuantumNous/new-api/controller/codex"
 	"github.com/QuantumNous/new-api/controller/invoice"
+	"github.com/QuantumNous/new-api/controller/obs"
 	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/controller/tenant"
 	"github.com/QuantumNous/new-api/controller/ticket"
@@ -210,8 +211,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id/2fa", auth.AdminDisable2FA)
 
 				// Admin IP history
-				adminRoute.GET("/:id/ips", controller.GetUserIpHistory)
-				adminRoute.GET("/:id/api-ips", controller.GetUserApiIpHistory)
+				adminRoute.GET("/:id/ips", obs.GetUserIpHistory)
+				adminRoute.GET("/:id/api-ips", obs.GetUserApiIpHistory)
 			}
 		}
 
@@ -277,12 +278,12 @@ func SetApiRouter(router *gin.Engine) {
 		performanceRoute := apiRouter.Group("/performance")
 		performanceRoute.Use(middleware.RootAuth())
 		{
-			performanceRoute.GET("/stats", controller.GetPerformanceStats)
-			performanceRoute.DELETE("/disk_cache", controller.ClearDiskCache)
-			performanceRoute.POST("/reset_stats", controller.ResetPerformanceStats)
-			performanceRoute.POST("/gc", controller.ForceGC)
-			performanceRoute.GET("/logs", controller.GetLogFiles)
-			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
+			performanceRoute.GET("/stats", obs.GetPerformanceStats)
+			performanceRoute.DELETE("/disk_cache", obs.ClearDiskCache)
+			performanceRoute.POST("/reset_stats", obs.ResetPerformanceStats)
+			performanceRoute.POST("/gc", obs.ForceGC)
+			performanceRoute.GET("/logs", obs.GetLogFiles)
+			performanceRoute.DELETE("/logs", obs.CleanupLogFiles)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
@@ -369,68 +370,68 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
 		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllLogs)
-		logRoute.DELETE("/", middleware.TenantAdminAuth(), controller.DeleteHistoryLogs)
-		logRoute.GET("/stat", middleware.TenantAdminAuth(), controller.GetLogsStat)
-		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
+		logRoute.GET("/", middleware.TenantAdminAuth(), obs.GetAllLogs)
+		logRoute.DELETE("/", middleware.TenantAdminAuth(), obs.DeleteHistoryLogs)
+		logRoute.GET("/stat", middleware.TenantAdminAuth(), obs.GetLogsStat)
+		logRoute.GET("/self/stat", middleware.UserAuth(), obs.GetLogsSelfStat)
 		logRoute.GET("/channel_affinity_usage_cache", middleware.TenantAdminAuth(), controller.GetChannelAffinityUsageCacheStats)
-		logRoute.GET("/search", middleware.TenantAdminAuth(), controller.SearchAllLogs)
-		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
-		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
-		logRoute.GET("/self/cache_savings", middleware.UserAuth(), controller.GetCacheSavingsSelf)
-		logRoute.GET("/cache_savings", middleware.TenantAdminAuth(), controller.GetCacheSavingsStat)
-		logRoute.GET("/request/:request_id", middleware.TenantAdminAuth(), controller.GetRequestTrace)
+		logRoute.GET("/search", middleware.TenantAdminAuth(), obs.SearchAllLogs)
+		logRoute.GET("/self", middleware.UserAuth(), obs.GetUserLogs)
+		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), obs.SearchUserLogs)
+		logRoute.GET("/self/cache_savings", middleware.UserAuth(), obs.GetCacheSavingsSelf)
+		logRoute.GET("/cache_savings", middleware.TenantAdminAuth(), obs.GetCacheSavingsStat)
+		logRoute.GET("/request/:request_id", middleware.TenantAdminAuth(), obs.GetRequestTrace)
 
 		dataRoute := apiRouter.Group("/data")
-		dataRoute.GET("/", middleware.TenantAdminAuth(), controller.GetAllQuotaDates)
-		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
+		dataRoute.GET("/", middleware.TenantAdminAuth(), obs.GetAllQuotaDates)
+		dataRoute.GET("/self", middleware.UserAuth(), obs.GetUserQuotaDates)
 
 		analyticsRoute := apiRouter.Group("/analytics")
 		analyticsRoute.Use(middleware.TenantAdminAuth())
 		{
-			analyticsRoute.GET("/channel", controller.GetAnalyticsByChannel)
-			analyticsRoute.GET("/model", controller.GetAnalyticsByModel)
-			analyticsRoute.GET("/user", controller.GetAnalyticsByUser)
-			analyticsRoute.GET("/site-rpm", controller.GetSiteRPM)
-			analyticsRoute.GET("/site-rpm/history", controller.GetSiteRPMHistory)
+			analyticsRoute.GET("/channel", obs.GetAnalyticsByChannel)
+			analyticsRoute.GET("/model", obs.GetAnalyticsByModel)
+			analyticsRoute.GET("/user", obs.GetAnalyticsByUser)
+			analyticsRoute.GET("/site-rpm", obs.GetSiteRPM)
+			analyticsRoute.GET("/site-rpm/history", obs.GetSiteRPMHistory)
 
 			// Purchase analytics
-			analyticsRoute.GET("/purchase/overview", controller.GetPurchaseOverview)
-			analyticsRoute.GET("/purchase/trend", controller.GetPurchaseTrend)
-			analyticsRoute.GET("/purchase/payment-method", controller.GetPurchasePaymentMethod)
-			analyticsRoute.GET("/purchase/order-type", controller.GetPurchaseOrderType)
-			analyticsRoute.GET("/purchase/top-users", controller.GetPurchaseTopSpenders)
-			analyticsRoute.GET("/purchase/redemption", controller.GetPurchaseRedemptionStats)
+			analyticsRoute.GET("/purchase/overview", obs.GetPurchaseOverview)
+			analyticsRoute.GET("/purchase/trend", obs.GetPurchaseTrend)
+			analyticsRoute.GET("/purchase/payment-method", obs.GetPurchasePaymentMethod)
+			analyticsRoute.GET("/purchase/order-type", obs.GetPurchaseOrderType)
+			analyticsRoute.GET("/purchase/top-users", obs.GetPurchaseTopSpenders)
+			analyticsRoute.GET("/purchase/redemption", obs.GetPurchaseRedemptionStats)
 
 			// Subscription & Top-up analytics (new separate endpoints)
-			analyticsRoute.GET("/purchase/subscription/overview", controller.GetSubscriptionOverview)
-			analyticsRoute.GET("/purchase/subscription/plan-breakdown", controller.GetSubscriptionPlanBreakdown)
-			analyticsRoute.GET("/purchase/subscription/heatmap", controller.GetSubscriptionHeatmap)
-			analyticsRoute.GET("/purchase/topup/overview", controller.GetTopUpOverview)
-			analyticsRoute.GET("/purchase/dau", controller.GetPurchaseDAUTrend)
-			analyticsRoute.GET("/purchase/registrations", controller.GetPurchaseRegistrationTrend)
-			analyticsRoute.GET("/purchase/conversion", controller.GetPurchaseConversionFunnel)
-			analyticsRoute.GET("/purchase/referral", controller.GetPurchaseReferralAnalytics)
-			analyticsRoute.GET("/channel-monitor", controller.GetChannelMonitor)
+			analyticsRoute.GET("/purchase/subscription/overview", obs.GetSubscriptionOverview)
+			analyticsRoute.GET("/purchase/subscription/plan-breakdown", obs.GetSubscriptionPlanBreakdown)
+			analyticsRoute.GET("/purchase/subscription/heatmap", obs.GetSubscriptionHeatmap)
+			analyticsRoute.GET("/purchase/topup/overview", obs.GetTopUpOverview)
+			analyticsRoute.GET("/purchase/dau", obs.GetPurchaseDAUTrend)
+			analyticsRoute.GET("/purchase/registrations", obs.GetPurchaseRegistrationTrend)
+			analyticsRoute.GET("/purchase/conversion", obs.GetPurchaseConversionFunnel)
+			analyticsRoute.GET("/purchase/referral", obs.GetPurchaseReferralAnalytics)
+			analyticsRoute.GET("/channel-monitor", obs.GetChannelMonitor)
 		}
 
 		agentLogRoute := apiRouter.Group("/agent-logs")
 		agentLogRoute.Use(middleware.TenantAdminAuth())
 		{
-			agentLogRoute.GET("", controller.GetAgentLogs)
-			agentLogRoute.POST("", controller.CreateAgentLog)
-			agentLogRoute.PUT("/:id", controller.UpdateAgentLog)
-			agentLogRoute.DELETE("/:id", controller.DeleteAgentLog)
+			agentLogRoute.GET("", obs.GetAgentLogs)
+			agentLogRoute.POST("", obs.CreateAgentLog)
+			agentLogRoute.PUT("/:id", obs.UpdateAgentLog)
+			agentLogRoute.DELETE("/:id", obs.DeleteAgentLog)
 		}
 
 		agentReportRoute := apiRouter.Group("/agent-reports")
 		agentReportRoute.Use(middleware.TenantAdminAuth())
 		{
-			agentReportRoute.GET("", controller.GetAgentReports)
-			agentReportRoute.GET("/:id", controller.GetAgentReportDetail)
-			agentReportRoute.POST("", controller.CreateAgentReport)
-			agentReportRoute.PUT("/:id", controller.UpdateAgentReport)
-			agentReportRoute.DELETE("/:id", controller.DeleteAgentReport)
+			agentReportRoute.GET("", obs.GetAgentReports)
+			agentReportRoute.GET("/:id", obs.GetAgentReportDetail)
+			agentReportRoute.POST("", obs.CreateAgentReport)
+			agentReportRoute.PUT("/:id", obs.UpdateAgentReport)
+			agentReportRoute.DELETE("/:id", obs.DeleteAgentReport)
 		}
 
 		purchaseRoute := apiRouter.Group("/purchase")
@@ -507,38 +508,38 @@ func SetApiRouter(router *gin.Engine) {
 		ipRoute := apiRouter.Group("/ip")
 		ipRoute.Use(middleware.TenantAdminAuth())
 		{
-			ipRoute.GET("/lookup", controller.IpLookup)
-			ipRoute.GET("/users", controller.IpUsers)
-			ipRoute.GET("/analytics", controller.IpAnalytics)
-			ipRoute.GET("/records", controller.IpRecords)
-			ipRoute.POST("/ban", controller.BanIp)
-			ipRoute.POST("/unban", controller.UnbanIp)
-			ipRoute.GET("/bans", controller.GetIpBans)
+			ipRoute.GET("/lookup", obs.IpLookup)
+			ipRoute.GET("/users", obs.IpUsers)
+			ipRoute.GET("/analytics", obs.IpAnalytics)
+			ipRoute.GET("/records", obs.IpRecords)
+			ipRoute.POST("/ban", obs.BanIp)
+			ipRoute.POST("/unban", obs.UnbanIp)
+			ipRoute.GET("/bans", obs.GetIpBans)
 
 			// V2 enhanced IP analytics
 			ipV2 := ipRoute.Group("/v2")
 			{
-				ipV2.GET("/overview", controller.IpOverviewV2)
-				ipV2.GET("/login/geo", controller.LoginGeoDist)
-				ipV2.GET("/login/time_pattern", controller.LoginTimePattern)
-				ipV2.GET("/login/type_detail", controller.LoginTypeDetail)
-				ipV2.GET("/login/multi_account", controller.MultiAccountIps)
-				ipV2.POST("/login/multi_account/disable_users", controller.DisableMultiAccountUsersByIp)
-				ipV2.GET("/api/top_ips", controller.ApiTopIps)
-				ipV2.GET("/api/geo", controller.ApiGeoDist)
-				ipV2.GET("/api/time_pattern", controller.ApiTimePattern)
-				ipV2.GET("/api/high_freq", controller.HighFreqIps)
-				ipV2.GET("/api/ip_models", controller.ApiIpModelUsage)
-				ipV2.GET("/cross/ip_mismatch", controller.IpMismatch)
-				ipV2.GET("/cross/risk_score", controller.IpRiskScores)
-				ipV2.GET("/cross/new_ips", controller.NewIps)
-				ipV2.GET("/cross/user_ip_summary", controller.UserIpSummary)
+				ipV2.GET("/overview", obs.IpOverviewV2)
+				ipV2.GET("/login/geo", obs.LoginGeoDist)
+				ipV2.GET("/login/time_pattern", obs.LoginTimePattern)
+				ipV2.GET("/login/type_detail", obs.LoginTypeDetail)
+				ipV2.GET("/login/multi_account", obs.MultiAccountIps)
+				ipV2.POST("/login/multi_account/disable_users", obs.DisableMultiAccountUsersByIp)
+				ipV2.GET("/api/top_ips", obs.ApiTopIps)
+				ipV2.GET("/api/geo", obs.ApiGeoDist)
+				ipV2.GET("/api/time_pattern", obs.ApiTimePattern)
+				ipV2.GET("/api/high_freq", obs.HighFreqIps)
+				ipV2.GET("/api/ip_models", obs.ApiIpModelUsage)
+				ipV2.GET("/cross/ip_mismatch", obs.IpMismatch)
+				ipV2.GET("/cross/risk_score", obs.IpRiskScores)
+				ipV2.GET("/cross/new_ips", obs.NewIps)
+				ipV2.GET("/cross/user_ip_summary", obs.UserIpSummary)
 			}
 		}
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
-			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)
+			logRoute.GET("/token", middleware.TokenAuthReadOnly(), obs.GetLogByKey)
 		}
 		groupRoute := apiRouter.Group("/group")
 		groupRoute.Use(middleware.TenantAdminAuth())
