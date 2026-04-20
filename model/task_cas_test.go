@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 
 	InitColForTest()
 
-	if err := db.AutoMigrate(&Task{}, &User{}, &Token{}, &Log{}, &Channel{}, &TenantChannelOverride{}, &TenantOption{}); err != nil {
+	if err := db.AutoMigrate(&Task{}, &User{}, &Token{}, &Log{}, &Channel{}, &TenantChannelOverride{}, &TenantOption{}, &Ability{}); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
 

@@ -225,16 +225,61 @@ func GetRandomSatisfiedChannel(tenantId int, group string, model string, retry i
 	defer channelSyncLock.RUnlock()
 
 	tgKey := tenantGroupKey(tenantId, group)
+	platformKey := tenantGroupKey(0, group)
 
-	// First, try to find channels with the exact model name.
-	channels := group2model2channels[tgKey][model]
-
-	// If no channels found, try to find channels with the normalized model name.
+	gather := func(modelName string) []int {
+		var out []int
+		if m, ok := group2model2channels[tgKey]; ok {
+			out = append(out, m[modelName]...)
+		}
+		if m, ok := group2model2channels[platformKey]; ok {
+			out = append(out, m[modelName]...)
+		}
+		return out
+	}
+	channels := gather(model)
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
-		channels = group2model2channels[tgKey][normalizedModel]
+		channels = gather(normalizedModel)
 	}
 
+	// Partition into tenant-owned vs platform candidates, drop disabled platforms,
+	// and apply the tenant's mode preference.
+	mode := GetCachedTenantMode(tenantId)
+	disabled := GetCachedTenantDisabledChannels(tenantId)
+	var tenantOwn, platform []int
+	for _, id := range channels {
+		c := channelsIDM[id]
+		if c == nil {
+			continue
+		}
+		if c.Scope == ChannelScopePlatform {
+			if _, off := disabled[id]; off {
+				continue
+			}
+			platform = append(platform, id)
+		} else {
+			tenantOwn = append(tenantOwn, id)
+		}
+	}
+	switch mode {
+	case PlatformChannelModeOnlyPrivate:
+		channels = tenantOwn
+	case PlatformChannelModeOnlyPlatform:
+		channels = platform
+	case PlatformChannelModePlatformPriority:
+		if len(platform) > 0 {
+			channels = platform
+		} else {
+			channels = tenantOwn
+		}
+	default: // private_priority (also handles "" and invalid)
+		if len(tenantOwn) > 0 {
+			channels = tenantOwn
+		} else {
+			channels = platform
+		}
+	}
 	if len(channels) == 0 {
 		return nil, nil
 	}
