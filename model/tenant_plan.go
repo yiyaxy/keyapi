@@ -11,19 +11,19 @@ import (
 
 // TenantPlan represents a tenant-level billing plan with quota and rate limits.
 type TenantPlan struct {
-	Id            int    `json:"id" gorm:"primaryKey"`
-	TenantId      int    `json:"tenant_id" gorm:"uniqueIndex;not null"`
-	PlanName      string `json:"plan_name" gorm:"type:varchar(64);not null;default:'free'"`
-	QuotaLimit    int64  `json:"quota_limit" gorm:"bigint;default:-1"`  // -1 = unlimited
-	RPMLimit      int    `json:"rpm_limit" gorm:"default:-1"`           // requests per minute, -1 = unlimited
-	TPMLimit      int    `json:"tpm_limit" gorm:"default:-1"`           // tokens per minute, -1 = unlimited
-	MaxMembers    int    `json:"max_members" gorm:"default:-1"`         // -1 = unlimited
-	MaxTokens     int    `json:"max_tokens" gorm:"default:-1"`          // API tokens limit
-	MaxChannels   int    `json:"max_channels" gorm:"default:-1"`
-	AllowedModels string `json:"allowed_models" gorm:"type:text"`       // comma-separated, empty = all
-	Status        int    `json:"status" gorm:"default:1"`               // 1=active
-	ExpiresAt     int64  `json:"expires_at" gorm:"bigint;default:0"`    // 0 = never expires
-	GracePeriodSeconds int64 `json:"grace_period_seconds" gorm:"default:0"` // grace period after expires_at before disabling; 0 = no grace, immediate disable
+	Id                 int    `json:"id" gorm:"primaryKey"`
+	TenantId           int    `json:"tenant_id" gorm:"uniqueIndex;not null"`
+	PlanName           string `json:"plan_name" gorm:"type:varchar(64);not null;default:'free'"`
+	QuotaLimit         int64  `json:"quota_limit" gorm:"bigint;default:-1"` // -1 = unlimited
+	RPMLimit           int    `json:"rpm_limit" gorm:"default:-1"`          // requests per minute, -1 = unlimited
+	TPMLimit           int    `json:"tpm_limit" gorm:"default:-1"`          // tokens per minute, -1 = unlimited
+	MaxMembers         int    `json:"max_members" gorm:"default:-1"`        // -1 = unlimited
+	MaxTokens          int    `json:"max_tokens" gorm:"default:-1"`         // API tokens limit
+	MaxChannels        int    `json:"max_channels" gorm:"default:-1"`
+	AllowedModels      string `json:"allowed_models" gorm:"type:text"`       // comma-separated, empty = all
+	Status             int    `json:"status" gorm:"default:1"`               // 1=active
+	ExpiresAt          int64  `json:"expires_at" gorm:"bigint;default:0"`    // 0 = never expires
+	GracePeriodSeconds int64  `json:"grace_period_seconds" gorm:"default:0"` // grace period after expires_at before disabling; 0 = no grace, immediate disable
 	// Renewal pricing (S2). Platform admin configures via UpdateTenantPlanRequest.
 	// - RenewPeriodDays: how many days each renewal order extends ExpiresAt.
 	// - RenewPriceAmount: unit price in CNY cents. <=0 disables renewal ordering.
@@ -31,9 +31,12 @@ type TenantPlan struct {
 	RenewPeriodDays  int    `json:"renew_period_days" gorm:"default:30"`
 	RenewPriceAmount int64  `json:"renew_price_amount" gorm:"bigint;default:0"`
 	RenewCurrency    string `json:"renew_currency" gorm:"type:varchar(8);default:'CNY'"`
-	PlatformMarkup   float64 `json:"platform_markup" gorm:"type:decimal(10,4);not null;default:1.0000"`
-	CreatedAt     int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
-	UpdatedAt     int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
+	// PlatformMarkup is the default markup ratio for platform channels.
+	// Falls back value when channel.markup_ratio is unset.
+	// Defaults to 1.0 (no markup).
+	PlatformMarkup float64 `json:"platform_markup" gorm:"type:decimal(10,4);not null;default:1.0"`
+	CreatedAt        int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
+	UpdatedAt        int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
 const (
@@ -91,9 +94,9 @@ func GetTenantPlan(tenantId int) (*TenantPlan, error) {
 		MaxMembers:     -1,
 		MaxTokens:      -1,
 		MaxChannels:    -1,
+		PlatformMarkup: 1.0,
 		Status:         TenantPlanStatusActive,
 		ExpiresAt:      0,
-		PlatformMarkup: 1.0,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}

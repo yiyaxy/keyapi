@@ -18,6 +18,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	ChannelScopePlatform = "platform"
+	ChannelScopeTenant   = "tenant"
+)
+
 type Channel struct {
 	Id                 int     `json:"id"`
 	TenantId           int     `json:"tenant_id" gorm:"index;not null;default:1"`
@@ -52,6 +57,11 @@ type Channel struct {
 	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
+
+	// Scope distinguishes "platform" (shared, tenant_id=0) and "tenant" (owned).
+	// See docs/superpowers/specs/2026-04-20-shared-channels-design.md §3.1.
+	Scope       string   `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
+	MarkupRatio *float64 `json:"markup_ratio" gorm:"type:decimal(10,4);default:null"`
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
@@ -367,6 +377,55 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 	return SearchChannelsByTenant(0, keyword, group, model, idSort)
 }
 
+// SearchChannelsForTenant searches channels visible to the given tenant
+// (own + platform), excluding the `key = ?` predicate that SearchChannelsByTenant
+// supports. This removes the "key existence oracle" — see spec §7.5.
+func SearchChannelsForTenant(tenantId int, keyword, group, modelName string, idSort bool) ([]*Channel, error) {
+	var channels []*Channel
+	if tenantId <= 0 {
+		return channels, nil
+	}
+
+	modelsCol := "`models`"
+	if common.UsingPostgreSQL {
+		modelsCol = `"models"`
+	}
+	baseURLCol := "`base_url`"
+	if common.UsingPostgreSQL {
+		baseURLCol = `"base_url"`
+	}
+
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+
+	baseQuery := DB.Model(&Channel{}).Omit("key").
+		Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
+
+	var whereClause string
+	var args []interface{}
+	// Note: NO `key = ?` predicate here (anti-oracle).
+	if group != "" && group != "null" {
+		var groupCondition string
+		if common.UsingMySQL {
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+		} else {
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+		}
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%", "%,"+group+",%")
+	} else {
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%")
+	}
+
+	if err := baseQuery.Where(whereClause, args...).Order(order).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
 func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil
@@ -390,6 +449,45 @@ func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, e
 
 func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	return GetChannelByIdWithTenant(id, 0, selectAll)
+}
+
+// GetVisibleChannelForTenant returns a channel that is either owned by the
+// tenant OR is a platform-scoped shared channel. Used by tenant-side reads
+// (list/detail/fetch). See spec §9.1.
+func GetVisibleChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+	channel := &Channel{Id: id}
+	query := DB.Where("id = ? AND (scope = ? OR tenant_id = ?)", id, ChannelScopePlatform, tenantId)
+	var err error
+	if selectAll {
+		err = query.First(channel).Error
+	} else {
+		err = query.Omit("key").First(channel).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
+// GetOwnedChannelForTenant strictly requires tenant_id match. Used by
+// tenant-side writes so that platform channels (tenant_id=0) and other
+// tenants' rows are never editable. See spec §9.1.
+func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+	if tenantId <= 0 {
+		return nil, errors.New("tenantId required for owned channel lookup")
+	}
+	channel := &Channel{Id: id}
+	query := DB.Where("id = ? AND tenant_id = ?", id, tenantId)
+	var err error
+	if selectAll {
+		err = query.First(channel).Error
+	} else {
+		err = query.Omit("key").First(channel).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
 }
 
 // BatchInsertChannels inserts in one transaction and surfaces panics as
@@ -1087,4 +1185,76 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 		counts[r.Type] = r.Count
 	}
 	return counts, nil
+}
+
+// GetChannelsByTagForTenant returns channels with the given tag that are
+// visible to the tenant (own + platform). See spec §9.3.
+func GetChannelsByTagForTenant(tag string, tenantId int, idSort bool, selectAll bool) ([]*Channel, error) {
+	var channels []*Channel
+	if tenantId <= 0 {
+		return channels, nil
+	}
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+	query := DB.Where("tag = ? AND (scope = ? OR tenant_id = ?)", tag, ChannelScopePlatform, tenantId).Order(order)
+	if !selectAll {
+		query = query.Omit("key")
+	}
+	err := query.Find(&channels).Error
+	return channels, err
+}
+
+// GetPaginatedTagsForTenant returns distinct non-empty tags visible to
+// the tenant (own + platform).
+func GetPaginatedTagsForTenant(tenantId int, offset, limit int) ([]*string, error) {
+	var tags []*string
+	if tenantId <= 0 {
+		return tags, nil
+	}
+	err := DB.Model(&Channel{}).Select("DISTINCT tag").
+		Where("tag != '' AND (scope = ? OR tenant_id = ?)", ChannelScopePlatform, tenantId).
+		Offset(offset).Limit(limit).Find(&tags).Error
+	return tags, err
+}
+
+// SearchTagsForTenant searches tags visible to the tenant.
+// The `key = ?` predicate is NOT included here (anti-oracle; see §7.5).
+func SearchTagsForTenant(tenantId int, keyword, group, modelName string, idSort bool) ([]*string, error) {
+	var tags []*string
+	if tenantId <= 0 {
+		return tags, nil
+	}
+	modelsCol := "`models`"
+	if common.UsingPostgreSQL {
+		modelsCol = `"models"`
+	}
+	baseURLCol := "`base_url`"
+	if common.UsingPostgreSQL {
+		baseURLCol = `"base_url"`
+	}
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+	baseQuery := DB.Model(&Channel{}).
+		Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
+	var whereClause string
+	var args []interface{}
+	if group != "" && group != "null" {
+		var groupCondition string
+		if common.UsingMySQL {
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+		} else {
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+		}
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%", "%,"+group+",%")
+	} else {
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%")
+	}
+	err := baseQuery.Where(whereClause, args...).Order(order).Select("DISTINCT tag").Find(&tags).Error
+	return tags, err
 }

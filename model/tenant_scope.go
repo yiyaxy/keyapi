@@ -227,6 +227,9 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 	// Phase S3 表 —— 退款
 	RegisterTenantScopedTable("payment_refunds")
 
+	// Shared channels override (tenant disables a specific platform channel)
+	RegisterTenantScopedTable("tenant_channel_overrides")
+
 	// Create：fail-closed（没有 tenant_id 就拒绝入库）
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)
 	// Query/Update/Delete：fail-closed（WHERE 里没 tenant_id 就拒绝）
@@ -275,6 +278,22 @@ func tenantGuardScope(db *gorm.DB) {
 		whereExpr = fmt.Sprintf("%v", whereClause.Expression)
 		if strings.Contains(whereExpr, "tenant_id") {
 			return
+		}
+	}
+
+	// Check 2.5 (NEW): allow reads scoped to scope='platform' even without tenant_id.
+	// Only applies to tables that have a scope column — channels and abilities today.
+	// See spec §8.1.
+	//
+	// Match the exact GORM-serialised form "scope = ? [platform]" — a single
+	// substring — to prevent split-field injection (two columns whose values
+	// together spell "scope" and "[platform]" but are not the scope column).
+	if db.Statement.BuildClauses[0] == "SELECT" && whereExpr != "" {
+		tableName := db.Statement.Schema.Table
+		if tableName == "channels" || tableName == "abilities" {
+			if strings.Contains(whereExpr, "scope = ? [platform]") {
+				return
+			}
 		}
 	}
 
