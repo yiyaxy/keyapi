@@ -26,13 +26,23 @@ import { Textarea } from '@/components/ui/textarea';
 import { useCreateInvoiceApplication, type InvoiceableOrder } from '@/hooks/useInvoice';
 import { ApiError } from '@/lib/api';
 
-const schema = z.object({
-  invoice_type: z.string().min(1),
-  title: z.string().min(1).max(255),
-  tax_id: z.string().max(64).optional(),
-  email: z.string().email(),
-  apply_remark: z.string().max(2000).optional(),
-});
+const schema = z
+  .object({
+    invoice_type: z.string().min(1),
+    title: z.string().min(1).max(255),
+    tax_id: z.string().max(64).optional(),
+    email: z.string().email(),
+    apply_remark: z.string().max(2000).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.invoice_type === 'company' && !v.tax_id?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['tax_id'],
+        message: 'required',
+      });
+    }
+  });
 type Values = z.infer<typeof schema>;
 
 export function CreateApplicationDialog({
@@ -49,7 +59,7 @@ export function CreateApplicationDialog({
   const form = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      invoice_type: 'normal',
+      invoice_type: 'company',
       title: '',
       tax_id: '',
       email: '',
@@ -110,8 +120,8 @@ export function CreateApplicationDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value='normal'>{t('create.invoice_type.normal')}</SelectItem>
-                <SelectItem value='special'>{t('create.invoice_type.special')}</SelectItem>
+                <SelectItem value='company'>{t('create.invoice_type.company')}</SelectItem>
+                <SelectItem value='personal'>{t('create.invoice_type.personal')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -120,8 +130,15 @@ export function CreateApplicationDialog({
             <Input id='inv-title' autoFocus {...form.register('title')} />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='inv-taxid'>{t('create.tax_id')}</Label>
+            <Label htmlFor='inv-taxid'>
+              {form.watch('invoice_type') === 'company'
+                ? t('create.tax_id.required')
+                : t('create.tax_id.optional')}
+            </Label>
             <Input id='inv-taxid' {...form.register('tax_id')} />
+            {form.formState.errors.tax_id && (
+              <p className='text-12 text-danger'>{t('create.tax_id.missing')}</p>
+            )}
           </div>
           <div className='space-y-2'>
             <Label htmlFor='inv-email'>{t('create.email')}</Label>

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -101,26 +102,28 @@ func GetMessageById(tenantId int, id int) (*Message, error) {
 }
 
 func UpdateMessage(tenantId int, id int, updates map[string]interface{}) (int64, error) {
-	updates["updated_at"] = time.Now().Unix()
-	tx := DB.Model(&Message{}).Where("id = ?", id)
-	if tenantId > 0 {
-		tx = tx.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 || id <= 0 {
+		return 0, errors.New("tenantId 和 id 不能为空")
 	}
-	result := tx.Updates(updates)
+	updates["updated_at"] = time.Now().Unix()
+	result := DB.Model(&Message{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Updates(updates)
 	return result.RowsAffected, result.Error
 }
 
 func RecallMessage(tenantId int, id int) (int64, error) {
-	now := time.Now().Unix()
-	tx := DB.Model(&Message{}).Where("id = ?", id)
-	if tenantId > 0 {
-		tx = tx.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 || id <= 0 {
+		return 0, errors.New("tenantId 和 id 不能为空")
 	}
-	result := tx.Updates(map[string]interface{}{
-		"status":     MessageStatusRecalled,
-		"updated_at": now,
-		"deleted_at": time.Now(),
-	})
+	now := time.Now().Unix()
+	result := DB.Model(&Message{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Updates(map[string]interface{}{
+			"status":     MessageStatusRecalled,
+			"updated_at": now,
+			"deleted_at": time.Now(),
+		})
 	return result.RowsAffected, result.Error
 }
 

@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
@@ -90,9 +92,8 @@ func GetAgentLogs(tenantId int, page, pageSize int, agentName, category, status,
 }
 
 func DeleteAgentLog(tenantId int, id int) error {
-	tx := DB.Where("id = ?", id)
-	if tenantId > 0 {
-		tx = tx.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
 	}
-	return tx.Delete(&AgentLog{}).Error
+	return DB.Where("id = ? AND tenant_id = ?", id, tenantId).Delete(&AgentLog{}).Error
 }

@@ -134,15 +134,16 @@ func ApproveAffTransferRequest(tenantId int, id int, adminId int, remark string)
 }
 
 func RejectAffTransferRequest(tenantId int, id int, adminId int, remark string) error {
-	rejectQuery := DB.Model(&AffTransferRequest{}).Where("id = ? AND status = ?", id, AffTransferStatusPending)
-	if tenantId > 0 {
-		rejectQuery = rejectQuery.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
 	}
-	result := rejectQuery.Updates(map[string]interface{}{
-		"status":       AffTransferStatusRejected,
-		"admin_id":     adminId,
-		"admin_remark": remark,
-	})
+	result := DB.Model(&AffTransferRequest{}).
+		Where("id = ? AND tenant_id = ? AND status = ?", id, tenantId, AffTransferStatusPending).
+		Updates(map[string]interface{}{
+			"status":       AffTransferStatusRejected,
+			"admin_id":     adminId,
+			"admin_remark": remark,
+		})
 	if result.Error != nil {
 		return result.Error
 	}

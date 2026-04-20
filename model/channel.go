@@ -201,8 +201,21 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	}
 }
 
+// scopedQuery 返回限定到当前 channel (id, tenant_id) 的 *gorm.DB。
+// 校验 Id/TenantId 非空，满足 tenant guardrail 的 fail-closed 要求。
+func (channel *Channel) scopedQuery() (*gorm.DB, error) {
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return nil, errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
+	return DB.Model(&Channel{}).Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId), nil
+}
+
 func (channel *Channel) SaveChannelInfo() error {
-	return DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
+	q, err := channel.scopedQuery()
+	if err != nil {
+		return err
+	}
+	return q.Update("channel_info", channel.ChannelInfo).Error
 }
 
 func (channel *Channel) GetModels() []string {
@@ -269,14 +282,23 @@ func (c *Channel) GetMaxRetry() int {
 }
 
 func (channel *Channel) Save() error {
-	return DB.Save(channel).Error
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
+	// GORM Save 在 UPDATE 时只按 PK 建 WHERE，租户 guardrail 不放行。
+	// 显式拼出 WHERE id+tenant_id 后走 Select("*").Updates 等价写回。
+	return DB.Model(&Channel{}).
+		Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).
+		Select("*").Updates(channel).Error
 }
 
 func (channel *Channel) SaveWithoutKey() error {
-	if channel.Id == 0 {
-		return errors.New("channel ID is 0")
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
 	}
-	return DB.Omit("key").Save(channel).Error
+	return DB.Model(&Channel{}).
+		Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).
+		Omit("key").Select("*").Updates(channel).Error
 }
 
 // GetAllChannelsByTenant 取租户内渠道；tenantId<=0 表示平台级全量扫描
@@ -647,18 +669,26 @@ func (channel *Channel) Update() error {
 			}
 		}
 	}
-	var err error
-	err = DB.Model(channel).Updates(channel).Error
+	q, err := channel.scopedQuery()
 	if err != nil {
 		return err
 	}
-	DB.Model(channel).First(channel, "id = ?", channel.Id)
+	err = q.Updates(channel).Error
+	if err != nil {
+		return err
+	}
+	DB.Model(&Channel{}).First(channel, "id = ? AND tenant_id = ?", channel.Id, channel.TenantId)
 	err = channel.UpdateAbilities(nil)
 	return err
 }
 
 func (channel *Channel) UpdateResponseTime(responseTime int64) {
-	err := DB.Model(channel).Select("response_time", "test_time").Updates(Channel{
+	q, err := channel.scopedQuery()
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to update response time: channel_id=%d, error=%v", channel.Id, err))
+		return
+	}
+	err = q.Select("response_time", "test_time").Updates(Channel{
 		TestTime:     common.GetTimestamp(),
 		ResponseTime: int(responseTime),
 	}).Error
@@ -668,7 +698,12 @@ func (channel *Channel) UpdateResponseTime(responseTime int64) {
 }
 
 func (channel *Channel) UpdateBalance(balance float64) {
-	err := DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
+	q, err := channel.scopedQuery()
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to update balance: channel_id=%d, error=%v", channel.Id, err))
+		return
+	}
+	err = q.Select("balance_updated_time", "balance").Updates(Channel{
 		BalanceUpdatedTime: common.GetTimestamp(),
 		Balance:            balance,
 	}).Error
@@ -678,8 +713,10 @@ func (channel *Channel) UpdateBalance(balance float64) {
 }
 
 func (channel *Channel) Delete() error {
-	var err error
-	err = DB.Delete(channel).Error
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
+	err := DB.Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).Delete(&Channel{}).Error
 	if err != nil {
 		return err
 	}
@@ -788,10 +825,11 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 		}
 	}
 
+	var loadedTenantId int
 	shouldUpdateAbilities := false
 	defer func() {
-		if shouldUpdateAbilities {
-			err := UpdateAbilityStatus(channelId, status == common.ChannelStatusEnabled)
+		if shouldUpdateAbilities && loadedTenantId > 0 {
+			err := UpdateAbilityStatus(loadedTenantId, channelId, status == common.ChannelStatusEnabled)
 			if err != nil {
 				common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))
 			}
@@ -801,6 +839,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	if err != nil {
 		return false
 	} else {
+		loadedTenantId = channel.TenantId
 		if channel.Status == status {
 			return false
 		}
@@ -833,32 +872,35 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 }
 
 func EnableChannelByTag(tag string, tenantId int) error {
-	q := DB.Model(&Channel{}).Where("tag = ?", tag)
-	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
 	}
-	err := q.Update("status", common.ChannelStatusEnabled).Error
+	err := DB.Model(&Channel{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Update("status", common.ChannelStatusEnabled).Error
 	if err != nil {
 		return err
 	}
-	err = UpdateAbilityStatusByTag(tag, true, tenantId)
-	return err
+	return UpdateAbilityStatusByTag(tag, true, tenantId)
 }
 
 func DisableChannelByTag(tag string, tenantId int) error {
-	q := DB.Model(&Channel{}).Where("tag = ?", tag)
-	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
 	}
-	err := q.Update("status", common.ChannelStatusManuallyDisabled).Error
+	err := DB.Model(&Channel{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Update("status", common.ChannelStatusManuallyDisabled).Error
 	if err != nil {
 		return err
 	}
-	err = UpdateAbilityStatusByTag(tag, false, tenantId)
-	return err
+	return UpdateAbilityStatusByTag(tag, false, tenantId)
 }
 
 func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string, tenantId int) error {
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
+	}
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
@@ -891,11 +933,9 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 		updateData.HeaderOverride = headerOverride
 	}
 
-	q := DB.Model(&Channel{}).Where("tag = ?", tag)
-	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
-	}
-	err := q.Updates(updateData).Error
+	err := DB.Model(&Channel{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Updates(updateData).Error
 	if err != nil {
 		return err
 	}
@@ -910,7 +950,7 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 			}
 		}
 	} else {
-		err := UpdateAbilityByTag(tag, newTag, priority, weight)
+		err := UpdateAbilityByTag(tag, newTag, priority, weight, tenantId)
 		if err != nil {
 			return err
 		}
@@ -918,24 +958,26 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
-func UpdateChannelUsedQuota(id int, quota int, tenantId ...int) {
-	if common.BatchUpdateEnabled {
-		resolvedTenantId := 0
-		if len(tenantId) > 0 {
-			resolvedTenantId = tenantId[0]
-		}
-		addNewRecord(BatchUpdateTypeChannelUsedQuota, resolvedTenantId, id, quota)
+func UpdateChannelUsedQuota(id int, quota int, tenantId int) {
+	if tenantId <= 0 {
+		common.SysLog(fmt.Sprintf("UpdateChannelUsedQuota: missing tenantId (channel_id=%d)", id))
 		return
 	}
-	updateChannelUsedQuota(id, quota, tenantId...)
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeChannelUsedQuota, tenantId, id, quota)
+		return
+	}
+	updateChannelUsedQuota(id, quota, tenantId)
 }
 
-func updateChannelUsedQuota(id int, quota int, tenantId ...int) {
-	query := DB.Model(&Channel{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
+func updateChannelUsedQuota(id int, quota int, tenantId int) {
+	if tenantId <= 0 {
+		common.SysLog(fmt.Sprintf("updateChannelUsedQuota: missing tenantId (channel_id=%d)", id))
+		return
 	}
-	err := query.Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+	err := DB.Model(&Channel{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}
@@ -1101,9 +1143,11 @@ func GetChannelsByIds(ids []int) ([]*Channel, error) {
 	return channels, err
 }
 
+// BatchSetChannelTag 是平台级跨租户操作（超管路由），显式 bypass tenant guardrail。
+// 租户场景请使用 BatchSetChannelTagForTenant。
 func BatchSetChannelTag(ids []int, tag *string) error {
 	// 开启事务
-	tx := DB.Begin()
+	tx := WithTenantBypass(DB).Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}

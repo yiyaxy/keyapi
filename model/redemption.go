@@ -176,34 +176,44 @@ func (redemption *Redemption) Insert() error {
 	return err
 }
 
+func (redemption *Redemption) scopedQuery() (*gorm.DB, error) {
+	if redemption.Id == 0 || redemption.TenantId == 0 {
+		return nil, errors.New("redemption.Id 和 redemption.TenantId 不能为空")
+	}
+	return DB.Model(&Redemption{}).Where("id = ? AND tenant_id = ?", redemption.Id, redemption.TenantId), nil
+}
+
 func (redemption *Redemption) SelectUpdate() error {
+	q, err := redemption.scopedQuery()
+	if err != nil {
+		return err
+	}
 	// This can update zero values
-	return DB.Model(redemption).Select("redeemed_time", "status").Updates(redemption).Error
+	return q.Select("redeemed_time", "status").Updates(redemption).Error
 }
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
-	var err error
-	err = DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time").Updates(redemption).Error
-	return err
+	q, err := redemption.scopedQuery()
+	if err != nil {
+		return err
+	}
+	return q.Select("name", "status", "quota", "redeemed_time", "expired_time").Updates(redemption).Error
 }
 
 func (redemption *Redemption) Delete() error {
-	var err error
-	err = DB.Delete(redemption).Error
-	return err
+	if redemption.Id == 0 || redemption.TenantId == 0 {
+		return errors.New("redemption.Id 和 redemption.TenantId 不能为空")
+	}
+	return DB.Where("id = ? AND tenant_id = ?", redemption.Id, redemption.TenantId).Delete(&Redemption{}).Error
 }
 
 func DeleteRedemptionById(tenantId int, id int) (err error) {
-	if id == 0 {
-		return errors.New("id 为空！")
-	}
-	query := DB.Where("id = ?", id)
-	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 || id <= 0 {
+		return errors.New("tenantId 和 id 不能为空")
 	}
 	var redemption Redemption
-	err = query.First(&redemption).Error
+	err = DB.Where("id = ? AND tenant_id = ?", id, tenantId).First(&redemption).Error
 	if err != nil {
 		return err
 	}
@@ -211,11 +221,13 @@ func DeleteRedemptionById(tenantId int, id int) (err error) {
 }
 
 func DeleteInvalidRedemptions(tenantId int) (int64, error) {
-	now := common.GetTimestamp()
-	query := DB
-	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		return 0, errors.New("tenantId 不能为空")
 	}
-	result := query.Where("status IN ? OR (status = ? AND expired_time != 0 AND expired_time < ?)", []int{common.RedemptionCodeStatusUsed, common.RedemptionCodeStatusDisabled}, common.RedemptionCodeStatusEnabled, now).Delete(&Redemption{})
+	now := common.GetTimestamp()
+	result := DB.
+		Where("tenant_id = ?", tenantId).
+		Where("status IN ? OR (status = ? AND expired_time != 0 AND expired_time < ?)", []int{common.RedemptionCodeStatusUsed, common.RedemptionCodeStatusDisabled}, common.RedemptionCodeStatusEnabled, now).
+		Delete(&Redemption{})
 	return result.RowsAffected, result.Error
 }

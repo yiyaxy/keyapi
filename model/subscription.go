@@ -1203,21 +1203,18 @@ func AdminInvalidateUserSubscription(tenantId int, userSubscriptionId int) (stri
 
 // AdminDeleteUserSubscription hard-deletes a user subscription.
 func AdminDeleteUserSubscription(tenantId int, userSubscriptionId int) (string, error) {
-	if userSubscriptionId <= 0 {
-		return "", errors.New("invalid userSubscriptionId")
+	if tenantId <= 0 || userSubscriptionId <= 0 {
+		return "", errors.New("tenantId 和 userSubscriptionId 不能为空")
 	}
 	now := common.GetTimestamp()
 	cacheGroup := ""
 	downgradeGroup := ""
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		query := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId)
-		if tenantId > 0 {
-			query = query.Where("tenant_id = ?", tenantId)
-		}
 		var sub UserSubscription
-		if err := query.First(&sub).Error; err != nil {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ? AND tenant_id = ?", userSubscriptionId, tenantId).
+			First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
@@ -1229,7 +1226,7 @@ func AdminDeleteUserSubscription(tenantId int, userSubscriptionId int) (string, 
 			cacheGroup = target
 			downgradeGroup = target
 		}
-		if err := tx.Where("id = ?", userSubscriptionId).Delete(&UserSubscription{}).Error; err != nil {
+		if err := tx.Where("id = ? AND tenant_id = ?", userSubscriptionId, tenantId).Delete(&UserSubscription{}).Error; err != nil {
 			return err
 		}
 		return nil
