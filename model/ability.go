@@ -22,6 +22,7 @@ type Ability struct {
 	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
 	Weight    uint    `json:"weight" gorm:"default:0;index"`
 	Tag       *string `json:"tag" gorm:"index"`
+	Scope     string  `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
 }
 
 type AbilityWithChannel struct {
