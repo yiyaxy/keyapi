@@ -227,6 +227,9 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 	// Phase S3 表 —— 退款
 	RegisterTenantScopedTable("payment_refunds")
 
+	// Shared channels override (tenant disables a specific platform channel)
+	RegisterTenantScopedTable("tenant_channel_overrides")
+
 	// Create：fail-closed（没有 tenant_id 就拒绝入库）
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)
 	// Query/Update/Delete：fail-closed（WHERE 里没 tenant_id 就拒绝）
