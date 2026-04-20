@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/timandy/routine"
 )
 
@@ -73,8 +74,11 @@ func NewSys(name string) string {
 // GoJob spawns a goroutine, sets a fresh JOB-<name>-<hex> TraceId, runs fn,
 // and clears the TraceId on exit. The child does NOT inherit the parent's
 // TraceId — it always gets a new one.
+//
+// We intentionally use gopool here (instead of routine.Go) so background-task
+// panics keep flowing through the project's existing recover/logging path.
 func GoJob(name string, fn func()) {
-	routine.Go(func() {
+	gopool.Go(func() {
 		Set(NewJob(name))
 		defer Clear()
 		fn()

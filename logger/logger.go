@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/trace"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -95,9 +96,14 @@ func LogDebug(ctx context.Context, msg string, args ...any) {
 }
 
 func logHelper(ctx context.Context, level string, msg string) {
-	id := ctx.Value(common.RequestIdKey)
-	if id == nil {
-		id = "SYSTEM"
+	var id string
+	if ctx != nil {
+		if v, ok := ctx.Value(common.RequestIdKey).(string); ok {
+			id = v
+		}
+	}
+	if id == "" {
+		id = trace.Get()
 	}
 	now := time.Now()
 	common.LogWriterMu.RLock()
@@ -105,7 +111,8 @@ func logHelper(ctx context.Context, level string, msg string) {
 	if level == loggerINFO {
 		writer = gin.DefaultWriter
 	}
-	_, _ = fmt.Fprintf(writer, "[%s] %v | %s | %s \n", level, now.Format("2006/01/02 - 15:04:05"), id, msg)
+	_, _ = fmt.Fprintf(writer, "[%s] %s | %-*s | %s\n",
+		level, common.FmtLogTime(now), common.TraceColumnWidth, id, msg)
 	common.LogWriterMu.RUnlock()
 	logCount++ // we don't need accurate count, so no lock here
 	if logCount > maxLogCount && !setupLogWorking {

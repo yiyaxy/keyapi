@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/trace"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -35,6 +36,9 @@ func StartCodexCredentialAutoRefreshTask() {
 		}
 
 		gopool.Go(func() {
+			trace.Set(trace.NewJob("codexref"))
+			defer trace.Clear()
+
 			logger.LogInfo(context.Background(), fmt.Sprintf("codex credential auto-refresh task started: tick=%s threshold=%s", codexCredentialRefreshTickInterval, codexCredentialRefreshThreshold))
 
 			ticker := time.NewTicker(codexCredentialRefreshTickInterval)

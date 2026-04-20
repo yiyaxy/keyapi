@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/trace"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
@@ -650,6 +651,9 @@ func StartChannelUpstreamModelUpdateTask() {
 		interval := time.Duration(intervalMinutes) * time.Minute
 
 		go func() {
+			trace.Set(trace.NewJob("chupstream"))
+			defer trace.Clear()
+
 			common.SysLog(fmt.Sprintf("upstream model update task started: interval=%s", interval))
 			runChannelUpstreamModelUpdateTaskOnce()
 			ticker := time.NewTicker(interval)
