@@ -402,6 +402,45 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	return GetChannelByIdWithTenant(id, 0, selectAll)
 }
 
+// GetVisibleChannelForTenant returns a channel that is either owned by the
+// tenant OR is a platform-scoped shared channel. Used by tenant-side reads
+// (list/detail/fetch). See spec §9.1.
+func GetVisibleChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+	channel := &Channel{Id: id}
+	query := DB.Where("id = ? AND (scope = ? OR tenant_id = ?)", id, ChannelScopePlatform, tenantId)
+	var err error
+	if selectAll {
+		err = query.First(channel).Error
+	} else {
+		err = query.Omit("key").First(channel).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
+// GetOwnedChannelForTenant strictly requires tenant_id match. Used by
+// tenant-side writes so that platform channels (tenant_id=0) and other
+// tenants' rows are never editable. See spec §9.1.
+func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+	if tenantId <= 0 {
+		return nil, errors.New("tenantId required for owned channel lookup")
+	}
+	channel := &Channel{Id: id}
+	query := DB.Where("id = ? AND tenant_id = ?", id, tenantId)
+	var err error
+	if selectAll {
+		err = query.First(channel).Error
+	} else {
+		err = query.Omit("key").First(channel).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
 // BatchInsertChannels inserts in one transaction and surfaces panics as
 // errors. Without the named return + deferred recover-to-err dance, a
 // panic inside a gorm callback (e.g. tenantGuardCreate on a slice) would
