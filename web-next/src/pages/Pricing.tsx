@@ -5,7 +5,8 @@ import { InlineBanner } from '@/components/auth/InlineBanner';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePricing, type PricingRow } from '@/hooks/usePricing';
-import { fmtMoney } from '@/lib/format';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDisplayUsd } from '@/lib/format';
 
 // QuotaPerUnit: 500,000 quota = 1 USD
 // model_ratio is "quota units per 1K input tokens / 2" (backend convention:
@@ -19,6 +20,7 @@ function outputPerMillion(row: PricingRow): number {
 
 export function PricingPage() {
   const { t } = useTranslation('public');
+  const cfg = usePublicConfig();
   const pricing = usePricing();
   const [q, setQ] = useState('');
   const items = useMemo(() => {
@@ -81,13 +83,13 @@ export function PricingPage() {
                   <td className='px-3 py-2 font-mono'>{row.model_name}</td>
                   <td className='px-3 py-2 text-fg-1'>{row.owner_by || '—'}</td>
                   <td className='px-3 py-2'>
-                    {row.quota_type === 0 ? fmtMoney(inputPerMillion(row)) : '—'}
+                    {row.quota_type === 0 ? fmtDisplayUsd(inputPerMillion(row), cfg) : '—'}
                   </td>
                   <td className='px-3 py-2'>
-                    {row.quota_type === 0 ? fmtMoney(outputPerMillion(row)) : '—'}
+                    {row.quota_type === 0 ? fmtDisplayUsd(outputPerMillion(row), cfg) : '—'}
                   </td>
                   <td className='px-3 py-2'>
-                    {row.quota_type === 1 ? fmtMoney(row.model_price) : '—'}
+                    {row.quota_type === 1 ? fmtDisplayUsd(row.model_price, cfg) : '—'}
                   </td>
                 </tr>
               ))}

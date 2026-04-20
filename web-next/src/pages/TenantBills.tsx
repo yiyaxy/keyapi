@@ -8,10 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageAction } from '@/hooks/usePageAction';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { useRefreshCurrentBill, useTenantBills, type TenantBill } from '@/hooks/useTenantBilling';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
 const PAGE_SIZE = 30;
 
 function statusMeta(status: string): {
@@ -32,6 +32,7 @@ function statusMeta(status: string): {
 
 export function TenantBillsPage() {
   const { t } = useTranslation('tenant');
+  const cfg = usePublicConfig();
   const [page, setPage] = useState(1);
   const bills = useTenantBills({ p: page, page_size: PAGE_SIZE });
   const refresh = useRefreshCurrentBill();
@@ -93,7 +94,7 @@ export function TenantBillsPage() {
                       <td className='px-3 py-2 text-fg-1'>
                         {fmtDateSec(bill.period_start)} → {fmtDateSec(bill.period_end)}
                       </td>
-                      <td className='px-3 py-2'>{fmtMoney(bill.quota_used / QUOTA_PER_UNIT)}</td>
+                      <td className='px-3 py-2'>{fmtDisplay(bill.quota_used, cfg)}</td>
                       <td className='px-3 py-2'>{fmtNum(bill.request_count)}</td>
                       <td className='px-3 py-2'>{bill.plan_name || '—'}</td>
                       <td className='px-3 py-2'>

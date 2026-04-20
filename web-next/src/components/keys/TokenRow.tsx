@@ -10,13 +10,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import type { Token } from '@/hooks/useTokens';
-import { fmtDateSec, fmtMoney } from '@/lib/format';
+import { fmtDateSec, fmtDisplay } from '@/lib/format';
 import { parseGroupChain } from '@/lib/token-schema';
 
 import { KeyCell } from './KeyCell';
-
-const QUOTA_PER_UNIT = 500_000;
 
 function statusBadge(status: number) {
   if (status === 2) return 'disabled';
@@ -34,6 +33,7 @@ type Props = {
 
 export function TokenRow({ token, onEdit, onDelete, onToggleStatus }: Props) {
   const { t } = useTranslation('keys');
+  const cfg = usePublicConfig();
   const groups = parseGroupChain(token.group);
   const chainLabel = groups.length <= 1 ? (groups[0] ?? 'auto') : groups.join(' → ');
   const badge = statusBadge(token.status);
@@ -44,7 +44,7 @@ export function TokenRow({ token, onEdit, onDelete, onToggleStatus }: Props) {
     ? t('status.unlimited')
     : total === 0
       ? '—'
-      : `${fmtMoney(token.used_quota / QUOTA_PER_UNIT)} / ${fmtMoney(total / QUOTA_PER_UNIT)}`;
+      : `${fmtDisplay(token.used_quota, cfg)} / ${fmtDisplay(total, cfg)}`;
 
   return (
     <tr className={disabled ? 'opacity-60' : ''}>

@@ -4,19 +4,23 @@ import { InlineBanner } from '@/components/auth/InlineBanner';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePublicConfig, type PublicConfig } from '@/hooks/usePublicConfig';
 import { useTenantPlan } from '@/hooks/useTenantBilling';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
-
-function formatLimit(value: number, kind: 'quota' | 'count'): string | null {
+function formatLimit(
+  value: number,
+  kind: 'quota' | 'count',
+  cfg: PublicConfig
+): string | null {
   if (value < 0) return null;
-  if (kind === 'quota') return fmtMoney(value / QUOTA_PER_UNIT);
+  if (kind === 'quota') return fmtDisplay(value, cfg);
   return fmtNum(value);
 }
 
 export function TenantPlanPage() {
   const { t } = useTranslation('tenant');
+  const cfg = usePublicConfig();
   const plan = useTenantPlan();
 
   if (plan.isPending) {
@@ -47,22 +51,22 @@ export function TenantPlanPage() {
         <CardContent>
           <dl className='grid grid-cols-1 gap-y-3 text-13 sm:grid-cols-2'>
             <Row label={t('plan.quota_limit')}>
-              {formatLimit(p.quota_limit, 'quota') ?? t('plan.quota.unlimited')}
+              {formatLimit(p.quota_limit, 'quota', cfg) ?? t('plan.quota.unlimited')}
             </Row>
             <Row label={t('plan.rpm')}>
-              {formatLimit(p.rpm_limit, 'count') ?? t('plan.quota.unlimited')}
+              {formatLimit(p.rpm_limit, 'count', cfg) ?? t('plan.quota.unlimited')}
             </Row>
             <Row label={t('plan.tpm')}>
-              {formatLimit(p.tpm_limit, 'count') ?? t('plan.quota.unlimited')}
+              {formatLimit(p.tpm_limit, 'count', cfg) ?? t('plan.quota.unlimited')}
             </Row>
             <Row label={t('plan.max_members')}>
-              {formatLimit(p.max_members, 'count') ?? t('plan.quota.unlimited')}
+              {formatLimit(p.max_members, 'count', cfg) ?? t('plan.quota.unlimited')}
             </Row>
             <Row label={t('plan.max_tokens')}>
-              {formatLimit(p.max_tokens, 'count') ?? t('plan.quota.unlimited')}
+              {formatLimit(p.max_tokens, 'count', cfg) ?? t('plan.quota.unlimited')}
             </Row>
             <Row label={t('plan.max_channels')}>
-              {formatLimit(p.max_channels, 'count') ?? t('plan.quota.unlimited')}
+              {formatLimit(p.max_channels, 'count', cfg) ?? t('plan.quota.unlimited')}
             </Row>
             <Row label={t('plan.allowed_models')}>
               {allowedModels === '' ? (

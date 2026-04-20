@@ -12,12 +12,12 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCacheSavingsSelf } from '@/hooks/useCacheSavings';
-import { fmtMoney, fmtNum } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDisplay, fmtNum } from '@/lib/format';
 
 export function SmartCachePage() {
   const { t } = useTranslation('ops');
+  const cfg = usePublicConfig();
   const [days, setDays] = useState<7 | 30 | 90>(30);
 
   const range = useMemo(() => {
@@ -60,7 +60,7 @@ export function SmartCachePage() {
               <Skeleton className='h-10 w-full' />
             ) : (
               <div className='text-28 font-semibold tabular-nums'>
-                {fmtMoney((data.data?.total_savings_quota ?? 0) / QUOTA_PER_UNIT)}
+                {fmtDisplay(data.data?.total_savings_quota ?? 0, cfg)}
               </div>
             )}
           </CardContent>

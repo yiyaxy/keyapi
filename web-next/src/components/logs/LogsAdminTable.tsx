@@ -3,9 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { LogRow, LogType } from '@/hooks/useLogs';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
@@ -35,6 +34,7 @@ export function LogsAdminTable({
   onRowClick: (r: LogRow) => void;
 }) {
   const { t } = useTranslation('logs');
+  const cfg = usePublicConfig();
   return (
     <div className='overflow-x-auto rounded-md border border-line'>
       <table className='w-full border-collapse tabular-nums'>
@@ -72,7 +72,7 @@ export function LogsAdminTable({
                   : '—'}
               </td>
               <td className='px-3 py-2'>
-                {r.quota > 0 ? fmtMoney(r.quota / QUOTA_PER_UNIT) : t('table.unit.free')}
+                {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
               </td>
               <td className='px-3 py-2 font-mono text-12 text-fg-2'>{r.ip || '—'}</td>
               <td className='px-3 py-2'>

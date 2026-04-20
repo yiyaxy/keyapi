@@ -22,9 +22,9 @@ import {
   useAdminProcessAffTransfer,
   type AffTransferRequest,
 } from '@/hooks/useAffTransfer';
-import { fmtDateSec, fmtMoney } from '@/lib/format';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDateSec, fmtDisplay } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
 const PAGE_SIZE = 30;
 
 function statusVariant(status: number): 'default' | 'secondary' | 'destructive' | 'outline' {
@@ -36,6 +36,7 @@ function statusVariant(status: number): 'default' | 'secondary' | 'destructive' 
 
 export function AffTransferAdminPage() {
   const { t } = useTranslation('aff');
+  const cfg = usePublicConfig();
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState('');
   const [appliedKeyword, setAppliedKeyword] = useState('');
@@ -131,7 +132,7 @@ export function AffTransferAdminPage() {
                       <div className='font-mono'>{r.username || `#${r.user_id}`}</div>
                       <div className='text-12 text-fg-2'>#{r.id}</div>
                     </td>
-                    <td className='px-3 py-2'>{fmtMoney(r.quota / QUOTA_PER_UNIT)}</td>
+                    <td className='px-3 py-2'>{fmtDisplay(r.quota, cfg)}</td>
                     <td className='px-3 py-2'>
                       <Badge variant={statusVariant(r.status)}>
                         {t(

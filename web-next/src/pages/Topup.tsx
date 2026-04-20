@@ -10,15 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { useRedeem } from '@/hooks/useRedeem';
 import { ApiError } from '@/lib/api';
-import { fmtMoney } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { fmtDisplay } from '@/lib/format';
 
 export function TopupPage() {
   const { t } = useTranslation('topup');
   const { user, status } = useAuth();
+  const cfg = usePublicConfig();
   const redeem = useRedeem();
   const [code, setCode] = useState('');
 
@@ -46,7 +46,7 @@ export function TopupPage() {
       const amount = await redeem.mutateAsync(trimmed);
       toast.success(
         t('redeem.success', {
-          amount: fmtMoney(amount / QUOTA_PER_UNIT),
+          amount: fmtDisplay(amount, cfg),
         })
       );
       setCode('');
@@ -63,12 +63,12 @@ export function TopupPage() {
         </CardHeader>
         <CardContent>
           <div className='text-40 font-semibold tabular-nums'>
-            {fmtMoney(user.quota / QUOTA_PER_UNIT)}
+            {fmtDisplay(user.quota, cfg)}
           </div>
           <div className='mt-1 text-13 text-fg-2'>
             {t('balance.used', {
-              used: fmtMoney(user.used_quota / QUOTA_PER_UNIT),
-              total: fmtMoney(totalQuota / QUOTA_PER_UNIT),
+              used: fmtDisplay(user.used_quota, cfg),
+              total: fmtDisplay(totalQuota, cfg),
             })}
           </div>
         </CardContent>

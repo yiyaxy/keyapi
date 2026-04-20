@@ -17,8 +17,9 @@ import {
   useCreateAffTransfer,
   type AffTransferRequest,
 } from '@/hooks/useAffTransfer';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { ApiError } from '@/lib/api';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 const QUOTA_PER_UNIT = 500_000;
 const PAGE_SIZE = 20;
@@ -32,6 +33,7 @@ function statusVariant(status: number): 'default' | 'secondary' | 'destructive' 
 
 export function AffTransferPage() {
   const { t } = useTranslation('aff');
+  const cfg = usePublicConfig();
   const { user } = useAuth();
   const pending = useAffPendingQuota();
   const create = useCreateAffTransfer();
@@ -70,7 +72,7 @@ export function AffTransferPage() {
           <div>
             <div className='text-12 text-fg-2'>{t('available.label')}</div>
             <div className='text-28 font-semibold tabular-nums'>
-              {fmtMoney((user?.quota ?? 0) / QUOTA_PER_UNIT)}
+              {fmtDisplay(user?.quota ?? 0, cfg)}
             </div>
           </div>
           {hasPending && <InlineBanner level='warn' message={t('pending.notice')} />}
@@ -129,7 +131,7 @@ export function AffTransferPage() {
                     {(history.data?.items ?? []).map((r: AffTransferRequest) => (
                       <tr key={r.id} className='border-b border-line text-13'>
                         <td className='py-2 text-fg-2'>{r.id}</td>
-                        <td className='py-2'>{fmtMoney(r.quota / QUOTA_PER_UNIT)}</td>
+                        <td className='py-2'>{fmtDisplay(r.quota, cfg)}</td>
                         <td className='py-2'>
                           <Badge variant={statusVariant(r.status)}>
                             {t(

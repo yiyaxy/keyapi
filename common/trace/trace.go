@@ -5,8 +5,10 @@ package trace
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	mrand "math/rand"
 	"sync"
+	"time"
 
 	"github.com/timandy/routine"
 )
@@ -26,6 +28,10 @@ var traceLocal = routine.NewInheritableThreadLocal[string]()
 func Get() (id string) {
 	defer func() {
 		if r := recover(); r != nil {
+			// This should never happen with timandy/routine v1.1.x on Go 1.25,
+			// but recover keeps our "never panic" contract. Log to stderr so
+			// the bug is visible during tests and operations.
+			log.Printf("trace.Get: recovered from routine library panic: %v", r)
 			id = unsetMarker
 		}
 	}()
@@ -89,7 +95,7 @@ func GoInherit(fn func()) {
 }
 
 var mrandLock sync.Mutex
-var mrandSrc = mrand.New(mrand.NewSource(1))
+var mrandSrc = mrand.New(mrand.NewSource(time.Now().UnixNano()))
 
 func randHex16() string {
 	var b [8]byte

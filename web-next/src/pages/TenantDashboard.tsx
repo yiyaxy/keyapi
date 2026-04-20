@@ -12,18 +12,19 @@ import {
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import {
   useTenantDashboard,
   useTenantModelUsage,
   useTenantUsageTrend,
 } from '@/hooks/useTenantMetrics';
-import { fmtMoney, fmtNum } from '@/lib/format';
+import { fmtDisplay, fmtNum } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
 const TREND_DAYS = 30;
 
 export function TenantDashboardPage() {
   const { t } = useTranslation('tenant');
+  const cfg = usePublicConfig();
   const summary = useTenantDashboard();
   const trend = useTenantUsageTrend(TREND_DAYS);
   const models = useTenantModelUsage();
@@ -74,12 +75,12 @@ export function TenantDashboardPage() {
           title={t('dashboard.usage')}
           loading={summary.isPending}
           primary={
-            summary.data ? fmtMoney(summary.data.today_quota_used / QUOTA_PER_UNIT) : undefined
+            summary.data ? fmtDisplay(summary.data.today_quota_used, cfg) : undefined
           }
           secondary={
             summary.data
               ? t('dashboard.usage.total', {
-                  quota: fmtMoney(summary.data.total_quota_used / QUOTA_PER_UNIT),
+                  quota: fmtDisplay(summary.data.total_quota_used, cfg),
                   requests: fmtNum(summary.data.total_requests),
                 })
               : undefined
@@ -116,11 +117,11 @@ export function TenantDashboardPage() {
                     <YAxis
                       stroke='var(--fg-2)'
                       tick={{ fontSize: 11 }}
-                      tickFormatter={(v: number) => fmtMoney(v / QUOTA_PER_UNIT)}
+                      tickFormatter={(v: number) => fmtDisplay(v, cfg)}
                     />
                     <Tooltip
                       formatter={(value: number) => [
-                        fmtMoney(value / QUOTA_PER_UNIT),
+                        fmtDisplay(value, cfg),
                         t('dashboard.usage'),
                       ]}
                     />
@@ -171,7 +172,7 @@ export function TenantDashboardPage() {
                     <tr key={m.model_name} className='border-b border-line text-13'>
                       <td className='py-2 font-mono'>{m.model_name}</td>
                       <td className='py-2 text-right'>{fmtNum(m.request_count)}</td>
-                      <td className='py-2 text-right'>{fmtMoney(m.quota_used / QUOTA_PER_UNIT)}</td>
+                      <td className='py-2 text-right'>{fmtDisplay(m.quota_used, cfg)}</td>
                     </tr>
                   ))}
                 </tbody>

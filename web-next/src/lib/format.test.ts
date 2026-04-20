@@ -1,7 +1,9 @@
 import i18n from 'i18next';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-import { fmtDate, fmtDateSec, fmtDaySec, fmtMoney, fmtNum } from './format';
+import type { PublicConfig } from '@/hooks/usePublicConfig';
+
+import { fmtDate, fmtDateSec, fmtDaySec, fmtDisplay, fmtDisplayUsd, fmtMoney, fmtNum } from './format';
 
 beforeAll(async () => {
   if (!i18n.isInitialized) {
@@ -30,6 +32,50 @@ describe('format', () => {
   test('fmtDate returns locale string', () => {
     const out = fmtDate('2026-04-18T12:34:56Z');
     expect(out).toMatch(/\d/);
+  });
+});
+
+describe('fmtDisplay', () => {
+  const usdCfg: PublicConfig = {
+    quota_per_unit: 500_000,
+    quota_display_type: 'USD',
+    usd_exchange_rate: 7,
+    custom_currency_symbol: '¤',
+    custom_currency_exchange_rate: 1,
+  };
+  const cnyCfg: PublicConfig = { ...usdCfg, quota_display_type: 'CNY' };
+  const tokensCfg: PublicConfig = { ...usdCfg, quota_display_type: 'TOKENS' };
+  const customCfg: PublicConfig = {
+    ...usdCfg,
+    quota_display_type: 'CUSTOM',
+    custom_currency_symbol: '€',
+    custom_currency_exchange_rate: 0.9,
+  };
+
+  test('USD display renders $ prefix', () => {
+    // 1_000_000 raw quota = 2 USD
+    expect(fmtDisplay(1_000_000, usdCfg)).toBe('$2.00');
+  });
+
+  test('CNY display renders ¥ prefix and applies rate', () => {
+    // 1_000_000 raw = 2 USD = 14 CNY at rate 7
+    expect(fmtDisplay(1_000_000, cnyCfg)).toBe('¥14.00');
+  });
+
+  test('TOKENS display renders integer without symbol', () => {
+    expect(fmtDisplay(1_000_000, tokensCfg)).toBe('1,000,000');
+  });
+
+  test('CUSTOM display uses configured symbol and rate', () => {
+    // 1_000_000 raw = 2 USD * 0.9 = 1.80 EUR
+    expect(fmtDisplay(1_000_000, customCfg)).toBe('€1.80');
+  });
+
+  test('fmtDisplayUsd converts USD input through display unit', () => {
+    // 2 USD in CNY mode = 14 CNY
+    expect(fmtDisplayUsd(2, cnyCfg)).toBe('¥14.00');
+    // 2 USD in USD mode = $2
+    expect(fmtDisplayUsd(2, usdCfg)).toBe('$2.00');
   });
 });
 
