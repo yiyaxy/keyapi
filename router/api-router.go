@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/codex"
 	"github.com/QuantumNous/new-api/controller/invoice"
 	"github.com/QuantumNous/new-api/controller/payment"
+	"github.com/QuantumNous/new-api/controller/ticket"
 	"github.com/QuantumNous/new-api/middleware"
 
 	// Import oauth package to register providers via init()
@@ -73,28 +74,28 @@ func SetApiRouter(router *gin.Engine) {
 		ticketRoute := apiRouter.Group("/ticket")
 		ticketRoute.Use(middleware.UserAuth())
 		{
-			ticketRoute.POST("/uploads/presign", controller.TicketPresignUpload)
-			ticketRoute.POST("", controller.TicketCreate)
-			ticketRoute.GET("", controller.TicketList)
-			ticketRoute.GET("/:id", controller.TicketDetail)
-			ticketRoute.POST("/:id/reply", controller.TicketReply)
-			ticketRoute.GET("/attachments/:att_id/presign", controller.TicketPresignAttachment)
+			ticketRoute.POST("/uploads/presign", ticket.TicketPresignUpload)
+			ticketRoute.POST("", ticket.TicketCreate)
+			ticketRoute.GET("", ticket.TicketList)
+			ticketRoute.GET("/:id", ticket.TicketDetail)
+			ticketRoute.POST("/:id/reply", ticket.TicketReply)
+			ticketRoute.GET("/attachments/:att_id/presign", ticket.TicketPresignAttachment)
 		}
 
 		ticketAdminRoute := apiRouter.Group("/ticket/admin")
 		ticketAdminRoute.Use(middleware.TenantAdminAuth())
 		{
-			ticketAdminRoute.GET("", controller.TicketAdminList)
-			ticketAdminRoute.GET("/:id", controller.TicketAdminDetail)
-			ticketAdminRoute.POST("/:id/reply", controller.TicketAdminReply)
-			ticketAdminRoute.POST("/:id/status", controller.TicketAdminUpdateStatus)
-			ticketAdminRoute.GET("/attachments/:att_id/presign", controller.TicketAdminPresignAttachment)
+			ticketAdminRoute.GET("", ticket.TicketAdminList)
+			ticketAdminRoute.GET("/:id", ticket.TicketAdminDetail)
+			ticketAdminRoute.POST("/:id/reply", ticket.TicketAdminReply)
+			ticketAdminRoute.POST("/:id/status", ticket.TicketAdminUpdateStatus)
+			ticketAdminRoute.GET("/attachments/:att_id/presign", ticket.TicketAdminPresignAttachment)
 		}
 
 		ticketStorageRoute := apiRouter.Group("/ticket_storage")
 		ticketStorageRoute.Use(middleware.PlatformAdminAuth())
 		{
-			ticketStorageRoute.PUT("/secret", controller.UpsertTicketStorageSecret)
+			ticketStorageRoute.PUT("/secret", ticket.UpsertTicketStorageSecret)
 		}
 
 		invoiceSelfRoute := apiRouter.Group("/invoice/self")
