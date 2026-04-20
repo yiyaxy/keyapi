@@ -1294,7 +1294,7 @@ func (user *User) FillUserByLinuxDOIdWithTenant(tenantId int) error {
 var ipSetLocks sync.Map // key: int(userId), value: *sync.Mutex
 
 // AddIpToUserSet appends an IP to the user's ip_set if not already present.
-func AddIpToUserSet(userId int, ip string) {
+func AddIpToUserSet(tenantId int, userId int, ip string) {
 	if userId == 0 || ip == "" {
 		return
 	}
@@ -1304,7 +1304,7 @@ func AddIpToUserSet(userId int, ip string) {
 	mu.Lock()
 	defer mu.Unlock()
 	var currentSet string
-	err := DB.Model(&User{}).Where("id = ?", userId).Select("ip_set").Scan(&currentSet).Error
+	err := DB.Model(&User{}).Where("id = ? AND tenant_id = ?", userId, tenantId).Select("ip_set").Scan(&currentSet).Error
 	if err != nil {
 		common.SysError(fmt.Sprintf("failed to read ip_set for user %d: %v", userId, err))
 		return
@@ -1320,7 +1320,7 @@ func AddIpToUserSet(userId int, ip string) {
 	} else {
 		currentSet = ip
 	}
-	err = DB.Model(&User{}).Where("id = ?", userId).Update("ip_set", currentSet).Error
+	err = DB.Model(&User{}).Where("id = ? AND tenant_id = ?", userId, tenantId).Update("ip_set", currentSet).Error
 	if err != nil {
 		common.SysError(fmt.Sprintf("failed to update ip_set for user %d: %v", userId, err))
 	}
