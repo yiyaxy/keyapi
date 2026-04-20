@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
+import { qk } from '@/lib/queryKeys';
 
 // Channel mirrors the subset of model.Channel fields the admin UI works
 // with. `setting` is a JSON-encoded blob (see dto.ChannelSettings); we
@@ -105,6 +106,17 @@ export type ChannelInput = {
   setting?: string;
 };
 
+export type ChannelCreateMode = 'single' | 'batch' | 'multi_to_single';
+export type MultiKeyMode = 'polling' | 'random';
+
+export type ChannelCreateOptions = {
+  mode: ChannelCreateMode;
+  // only honoured for multi_to_single
+  multi_key_mode?: MultiKeyMode;
+  // only honoured for batch
+  batch_add_set_key_prefix_2_name?: boolean;
+};
+
 // The AddChannel handler decodes AddChannelRequest{ Channel *model.Channel }
 // — i.e. the channel fields must be nested under a "channel" key. Update
 // on the other hand uses PatchChannel which EMBEDS model.Channel, so flat
@@ -112,8 +124,18 @@ export type ChannelInput = {
 export function useCreateChannel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: ChannelInput) => {
-      const res = await api.post<Channel>('/api/channel/', { mode: '', channel: input });
+    mutationFn: async (payload: { input: ChannelInput; opts: ChannelCreateOptions }) => {
+      const body: Record<string, unknown> = {
+        mode: payload.opts.mode,
+        channel: payload.input,
+      };
+      if (payload.opts.mode === 'multi_to_single' && payload.opts.multi_key_mode) {
+        body.multi_key_mode = payload.opts.multi_key_mode;
+      }
+      if (payload.opts.mode === 'batch' && payload.opts.batch_add_set_key_prefix_2_name) {
+        body.batch_add_set_key_prefix_2_name = true;
+      }
+      const res = await api.post<Channel>('/api/channel/', body);
       return res.data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['channels', 'list'] }),
@@ -162,6 +184,36 @@ export type ChannelTestResult = {
   response_time: number;
   message?: string;
 };
+
+// useChannelTypeModels maps channel type id → list of builtin model names,
+// sourced from DashboardListModels (/api/models). Used by the channel form
+// to suggest relevant models for the currently-selected provider type.
+export function useChannelTypeModels() {
+  return useQuery<Record<string, string[]>>({
+    queryKey: qk.meta.channelTypeModels,
+    queryFn: async () => {
+      const res = await api.get<Record<string, string[]>>('/api/models');
+      return res.data ?? {};
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+// useAdminGroups returns the flat list of admin-configured group names
+// (keys of ratio_setting.GroupRatio). Used by the channel form to suggest
+// valid group names — channel.group is a CSV, so we surface these as
+// clickable chips rather than a <select>.
+export function useAdminGroups() {
+  return useQuery<string[]>({
+    queryKey: qk.meta.adminGroups,
+    queryFn: async () => {
+      const res = await api.get<string[]>('/api/group/');
+      const list = Array.isArray(res.data) ? res.data : [];
+      return [...list].sort((a, b) => a.localeCompare(b));
+    },
+    staleTime: 5 * 60_000,
+  });
+}
 
 export function useTestChannel() {
   return useMutation({

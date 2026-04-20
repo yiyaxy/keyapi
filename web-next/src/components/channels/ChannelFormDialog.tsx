@@ -23,6 +23,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  useAdminGroups,
+  useChannelTypeModels,
   useCreateChannel,
   useUpdateChannel,
   type Channel,
@@ -97,6 +99,10 @@ const schema = z.object({
   header_override: jsonString,
   tag: z.string(),
   remark: z.string().max(255),
+  // create-only: how to interpret `key`
+  mode: z.enum(['single', 'batch', 'multi_to_single']),
+  multi_key_mode: z.enum(['polling', 'random']),
+  batch_add_set_key_prefix_2_name: z.boolean(),
 });
 type Values = z.infer<typeof schema>;
 
@@ -121,6 +127,9 @@ const EMPTY: Values = {
   header_override: '',
   tag: '',
   remark: '',
+  mode: 'single',
+  multi_key_mode: 'polling',
+  batch_add_set_key_prefix_2_name: false,
 };
 
 function fromChannel(ch: Channel): Values {
@@ -146,6 +155,10 @@ function fromChannel(ch: Channel): Values {
     header_override: ch.header_override ?? '',
     tag: ch.tag ?? '',
     remark: ch.remark ?? '',
+    // Edit path ignores these — they only apply on create.
+    mode: 'single',
+    multi_key_mode: 'polling',
+    batch_add_set_key_prefix_2_name: false,
   };
 }
 
@@ -176,6 +189,97 @@ function Section({
   );
 }
 
+// ModelPicker renders a search + chip grid below the models textarea.
+// Suggestions are scoped to the currently-selected channel type; empty
+// type map falls back to a flat union so the user still gets something.
+// Click a chip to toggle the model in the CSV — the textarea stays
+// authoritative so power users can still edit directly.
+function ModelPicker({
+  typeId,
+  all,
+  value,
+  onChange,
+  search,
+  onSearchChange,
+  label,
+  searchPlaceholder,
+  emptyLabel,
+}: {
+  typeId: number;
+  all: Record<string, string[]>;
+  value: string;
+  onChange: (v: string) => void;
+  search: string;
+  onSearchChange: (v: string) => void;
+  label: string;
+  searchPlaceholder: string;
+  emptyLabel: string;
+}) {
+  const selected = value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const selectedSet = new Set(selected);
+  const scoped = all[String(typeId)];
+  const pool =
+    scoped && scoped.length > 0
+      ? scoped
+      : Array.from(new Set(Object.values(all).flat())).sort((a, b) => a.localeCompare(b));
+  const needle = search.trim().toLowerCase();
+  const suggestions = (needle ? pool.filter((m) => m.toLowerCase().includes(needle)) : pool).slice(
+    0,
+    200
+  );
+  const toggle = (m: string) => {
+    if (selectedSet.has(m)) {
+      onChange(selected.filter((x) => x !== m).join(','));
+    } else {
+      onChange([...selected, m].join(','));
+    }
+  };
+
+  if (pool.length === 0) return null;
+  return (
+    <div className='space-y-2 rounded-md border border-line bg-bg-0 p-2'>
+      <div className='flex items-center gap-2'>
+        <Label className='text-12 text-fg-2'>{label}</Label>
+        <Input
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder={searchPlaceholder}
+          className='h-7 flex-1 text-12'
+        />
+      </div>
+      <div className='max-h-44 overflow-y-auto'>
+        {suggestions.length === 0 ? (
+          <p className='px-1 py-2 text-12 text-fg-2'>{emptyLabel}</p>
+        ) : (
+          <div className='flex flex-wrap gap-1'>
+            {suggestions.map((m) => {
+              const active = selectedSet.has(m);
+              return (
+                <button
+                  key={m}
+                  type='button'
+                  onClick={() => toggle(m)}
+                  className={
+                    'rounded-full border px-2 py-0.5 text-11 transition-colors ' +
+                    (active
+                      ? 'border-fg-0 bg-fg-0 text-bg-0'
+                      : 'border-line bg-bg-1 text-fg-2 hover:text-fg-0')
+                  }
+                >
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ChannelFormDialog({
   open,
   channel,
@@ -188,7 +292,10 @@ export function ChannelFormDialog({
   const { t } = useTranslation('channels');
   const create = useCreateChannel();
   const update = useUpdateChannel();
+  const adminGroups = useAdminGroups();
+  const channelTypeModels = useChannelTypeModels();
   const isEdit = Boolean(channel);
+  const [modelSearch, setModelSearch] = useState('');
 
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -235,7 +342,14 @@ export function ChannelFormDialog({
         if (values.key.trim()) updatePayload.key = values.key.trim();
         await update.mutateAsync(updatePayload);
       } else {
-        await create.mutateAsync({ ...payload, key: values.key });
+        await create.mutateAsync({
+          input: { ...payload, key: values.key },
+          opts: {
+            mode: values.mode,
+            multi_key_mode: values.multi_key_mode,
+            batch_add_set_key_prefix_2_name: values.batch_add_set_key_prefix_2_name,
+          },
+        });
       }
       toast.success(t('form.saved'));
       onOpenChange(false);
@@ -286,6 +400,66 @@ export function ChannelFormDialog({
                 </Select>
               </div>
             </div>
+            {!isEdit && (
+              <div className='space-y-2 rounded-md border border-line bg-bg-0 p-3'>
+                <Label>{t('form.field.mode')}</Label>
+                <Select
+                  value={form.watch('mode')}
+                  onValueChange={(v) =>
+                    form.setValue('mode', v as 'single' | 'batch' | 'multi_to_single')
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='single'>{t('form.field.mode.single')}</SelectItem>
+                    <SelectItem value='batch'>{t('form.field.mode.batch')}</SelectItem>
+                    <SelectItem value='multi_to_single'>
+                      {t('form.field.mode.multi_to_single')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className='text-12 text-fg-2'>
+                  {t(`form.field.mode.${form.watch('mode')}.hint`)}
+                </p>
+                {form.watch('mode') === 'batch' && (
+                  <div className='flex items-center gap-2 pt-1'>
+                    <Switch
+                      id='ch-batch-prefix'
+                      checked={form.watch('batch_add_set_key_prefix_2_name')}
+                      onCheckedChange={(v) => form.setValue('batch_add_set_key_prefix_2_name', v)}
+                    />
+                    <Label htmlFor='ch-batch-prefix'>
+                      {t('form.field.batch_add_set_key_prefix_2_name')}
+                    </Label>
+                  </div>
+                )}
+                {form.watch('mode') === 'multi_to_single' && (
+                  <div className='space-y-2 pt-1'>
+                    <Label>{t('form.field.multi_key_mode')}</Label>
+                    <Select
+                      value={form.watch('multi_key_mode')}
+                      onValueChange={(v) =>
+                        form.setValue('multi_key_mode', v as 'polling' | 'random')
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='polling'>
+                          {t('form.field.multi_key_mode.polling')}
+                        </SelectItem>
+                        <SelectItem value='random'>
+                          {t('form.field.multi_key_mode.random')}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
             <div className='space-y-2'>
               <Label htmlFor='ch-key'>
                 {t('form.field.key')}
@@ -293,7 +467,14 @@ export function ChannelFormDialog({
                   <span className='ml-2 text-12 text-fg-2'>{t('form.field.key_hint_edit')}</span>
                 )}
               </Label>
-              <Input id='ch-key' type='password' {...form.register('key')} />
+              {!isEdit && form.watch('mode') !== 'single' ? (
+                <>
+                  <Textarea id='ch-key' rows={5} {...form.register('key')} />
+                  <p className='text-12 text-fg-2'>{t('form.field.key_hint_multi')}</p>
+                </>
+              ) : (
+                <Input id='ch-key' type='password' {...form.register('key')} />
+              )}
             </div>
             <div className='space-y-2'>
               <Label htmlFor='ch-url'>{t('form.field.base_url')}</Label>
@@ -312,6 +493,40 @@ export function ChannelFormDialog({
               <div className='space-y-2'>
                 <Label htmlFor='ch-group'>{t('form.field.group')}</Label>
                 <Input id='ch-group' {...form.register('group')} />
+                {(adminGroups.data?.length ?? 0) > 0 && (
+                  <div className='flex flex-wrap gap-1'>
+                    {adminGroups.data!.map((g) => {
+                      const current = form
+                        .watch('group')
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      const active = current.includes(g);
+                      return (
+                        <button
+                          key={g}
+                          type='button'
+                          onClick={() => {
+                            const next = active ? current.filter((x) => x !== g) : [...current, g];
+                            form.setValue('group', next.join(',') || 'default', {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                          }}
+                          className={
+                            'rounded-full border px-2 py-0.5 text-11 transition-colors ' +
+                            (active
+                              ? 'border-fg-0 bg-fg-0 text-bg-0'
+                              : 'border-line bg-bg-1 text-fg-2 hover:text-fg-0')
+                          }
+                        >
+                          {g}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className='text-12 text-fg-2'>{t('form.field.group_hint')}</p>
               </div>
               <div className='space-y-2'>
                 <Label htmlFor='ch-tag'>{t('form.field.tag')}</Label>
@@ -343,6 +558,19 @@ export function ChannelFormDialog({
               <Label htmlFor='ch-models'>{t('form.field.models')}</Label>
               <Textarea id='ch-models' rows={3} {...form.register('models')} />
               <p className='text-12 text-fg-2'>{t('form.field.models_hint')}</p>
+              <ModelPicker
+                typeId={form.watch('type')}
+                all={channelTypeModels.data ?? {}}
+                value={form.watch('models')}
+                onChange={(v) =>
+                  form.setValue('models', v, { shouldDirty: true, shouldValidate: true })
+                }
+                search={modelSearch}
+                onSearchChange={setModelSearch}
+                label={t('form.field.models_picker')}
+                searchPlaceholder={t('form.field.models_picker_search')}
+                emptyLabel={t('form.field.models_picker_empty')}
+              />
             </div>
             <div className='space-y-2'>
               <Label htmlFor='ch-test-model'>{t('form.field.test_model')}</Label>

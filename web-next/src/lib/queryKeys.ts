@@ -17,5 +17,7 @@ export const qk = {
   meta: {
     availableModels: ['meta', 'models'] as const,
     channelGroups: ['meta', 'channel-groups'] as const,
+    adminGroups: ['meta', 'admin-groups'] as const,
+    channelTypeModels: ['meta', 'channel-type-models'] as const,
   },
 } as const;
