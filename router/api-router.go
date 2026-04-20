@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/controller/codex"
+	"github.com/QuantumNous/new-api/controller/invoice"
 	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/middleware"
 
@@ -99,29 +100,29 @@ func SetApiRouter(router *gin.Engine) {
 		invoiceSelfRoute := apiRouter.Group("/invoice/self")
 		invoiceSelfRoute.Use(middleware.UserAuth())
 		{
-			invoiceSelfRoute.GET("/invoiceable_orders", controller.InvoiceSelfInvoiceableOrders)
-			invoiceSelfRoute.GET("/applications", controller.InvoiceSelfListApplications)
-			invoiceSelfRoute.GET("/applications/:id", controller.InvoiceSelfGetApplicationDetail)
-			invoiceSelfRoute.POST("/applications", controller.InvoiceSelfCreateApplication)
-			invoiceSelfRoute.POST("/applications/:id/cancel", controller.InvoiceSelfCancelApplication)
-			invoiceSelfRoute.GET("/files/:file_id/presign", controller.InvoiceSelfPresignFile)
+			invoiceSelfRoute.GET("/invoiceable_orders", invoice.InvoiceSelfInvoiceableOrders)
+			invoiceSelfRoute.GET("/applications", invoice.InvoiceSelfListApplications)
+			invoiceSelfRoute.GET("/applications/:id", invoice.InvoiceSelfGetApplicationDetail)
+			invoiceSelfRoute.POST("/applications", invoice.InvoiceSelfCreateApplication)
+			invoiceSelfRoute.POST("/applications/:id/cancel", invoice.InvoiceSelfCancelApplication)
+			invoiceSelfRoute.GET("/files/:file_id/presign", invoice.InvoiceSelfPresignFile)
 		}
 
 		invoiceAdminRoute := apiRouter.Group("/invoice/admin")
 		invoiceAdminRoute.Use(middleware.TenantAdminAuth())
 		{
-			invoiceAdminRoute.GET("/applications", controller.InvoiceAdminListApplications)
-			invoiceAdminRoute.GET("/applications/:id", controller.InvoiceAdminGetApplicationDetail)
-			invoiceAdminRoute.POST("/applications/:id/status", controller.InvoiceAdminUpdateApplicationStatus)
-			invoiceAdminRoute.POST("/applications/:id/issue", controller.InvoiceAdminIssue)
-			invoiceAdminRoute.POST("/applications/:id/query", controller.InvoiceAdminQuery)
-			invoiceAdminRoute.POST("/applications/:id/red", controller.InvoiceAdminRedInvoice)
-			invoiceAdminRoute.POST("/applications/:id/switch_manual", controller.InvoiceAdminSwitchManual)
-			invoiceAdminRoute.POST("/applications/:id/items/:item_id/payment_info", controller.InvoiceAdminSetItemPaymentInfo)
-			invoiceAdminRoute.POST("/uploads/presign", controller.InvoiceAdminPresignUpload)
-			invoiceAdminRoute.POST("/applications/:id/files", controller.InvoiceAdminFinalizeInvoiceFiles)
-			invoiceAdminRoute.POST("/applications/:id/files/:file_id/visibility", controller.InvoiceAdminUpdateFileVisibility)
-			invoiceAdminRoute.GET("/files/:file_id/presign", controller.InvoiceAdminPresignFile)
+			invoiceAdminRoute.GET("/applications", invoice.InvoiceAdminListApplications)
+			invoiceAdminRoute.GET("/applications/:id", invoice.InvoiceAdminGetApplicationDetail)
+			invoiceAdminRoute.POST("/applications/:id/status", invoice.InvoiceAdminUpdateApplicationStatus)
+			invoiceAdminRoute.POST("/applications/:id/issue", invoice.InvoiceAdminIssue)
+			invoiceAdminRoute.POST("/applications/:id/query", invoice.InvoiceAdminQuery)
+			invoiceAdminRoute.POST("/applications/:id/red", invoice.InvoiceAdminRedInvoice)
+			invoiceAdminRoute.POST("/applications/:id/switch_manual", invoice.InvoiceAdminSwitchManual)
+			invoiceAdminRoute.POST("/applications/:id/items/:item_id/payment_info", invoice.InvoiceAdminSetItemPaymentInfo)
+			invoiceAdminRoute.POST("/uploads/presign", invoice.InvoiceAdminPresignUpload)
+			invoiceAdminRoute.POST("/applications/:id/files", invoice.InvoiceAdminFinalizeInvoiceFiles)
+			invoiceAdminRoute.POST("/applications/:id/files/:file_id/visibility", invoice.InvoiceAdminUpdateFileVisibility)
+			invoiceAdminRoute.GET("/files/:file_id/presign", invoice.InvoiceAdminPresignFile)
 		}
 
 		userRoute := apiRouter.Group("/user")

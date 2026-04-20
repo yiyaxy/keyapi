@@ -1,4 +1,4 @@
-package controller
+package invoice
 
 import (
 	"strconv"
