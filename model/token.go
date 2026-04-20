@@ -326,7 +326,11 @@ func (token *Token) Update() (err error) {
 			})
 		}
 	}()
-	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
+	query := DB.Model(&Token{}).Where("id = ?", token.Id)
+	if token.TenantId > 0 {
+		query = query.Where("tenant_id = ?", token.TenantId)
+	}
+	err = query.Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
 		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
 	return err
 }

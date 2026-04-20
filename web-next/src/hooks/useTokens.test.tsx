@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 
 import { server } from '@/test/msw/server';
 
-import { useCreateToken, useTokensQuery, useUpdateToken } from './useTokens';
+import { useCreateToken, useTokensQuery, useToggleTokenStatus, useUpdateToken } from './useTokens';
 
 function wrapper() {
   const qc = new QueryClient({
@@ -72,5 +72,24 @@ describe('useUpdateToken', () => {
       await result.current.mutateAsync({ id: 1, name: 'updated' });
     });
     expect(put).toMatchObject({ id: 1, name: 'updated' });
+  });
+
+  test('toggle status sends status_only as query param', async () => {
+    let put: unknown = null;
+    let statusOnly: string | null = null;
+    server.use(
+      http.put('/api/token/', async ({ request }) => {
+        statusOnly = new URL(request.url).searchParams.get('status_only');
+        put = await request.json();
+        return HttpResponse.json({ success: true, data: { id: 1 } });
+      })
+    );
+    const { result } = renderHook(() => useToggleTokenStatus(), { wrapper: wrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ id: 1, nextStatus: 2 });
+    });
+    expect(statusOnly).toBe('1');
+    expect(put).toMatchObject({ id: 1, status: 2 });
+    expect(put).not.toHaveProperty('status_only');
   });
 });

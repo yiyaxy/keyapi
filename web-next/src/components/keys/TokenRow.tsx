@@ -49,7 +49,7 @@ export function TokenRow({ token, onEdit, onDelete, onToggleStatus }: Props) {
   return (
     <tr className={disabled ? 'opacity-60' : ''}>
       <td className='px-4 py-3'>
-        <div className='text-13 font-medium text-fg-0'>{token.name || 'Untitled'}</div>
+        <div className='text-13 font-medium text-fg-0'>{token.name || t('token.untitled')}</div>
         <div className='text-12 text-fg-2'>{chainLabel}</div>
       </td>
       <td className='px-4 py-3'>
@@ -65,12 +65,12 @@ export function TokenRow({ token, onEdit, onDelete, onToggleStatus }: Props) {
       <td className='px-4 py-3 text-right'>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='icon' aria-label='Actions'>
+            <Button variant='ghost' size='icon' aria-label={t('menu.actions')}>
               <MoreHorizontal size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end'>
-            <DropdownMenuItem onClick={() => onEdit(token)}>Edit</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onEdit(token)}>{t('menu.edit')}</DropdownMenuItem>
             {(token.status === 1 || token.status === 2) && (
               <DropdownMenuItem onClick={() => onToggleStatus(token)}>
                 {token.status === 1 ? t('status.disabled') : t('status.enabled')}
