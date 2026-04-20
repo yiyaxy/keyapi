@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,7 @@ func TicketPresignUpload(c *gin.Context) {
 		return
 	}
 
-	objectKey, uploadURL, requiredHeaders, expiresAt, err := service.TicketPresignUpload(c.Request.Context(), userId, req.Filename, req.ContentType, req.SizeBytes)
+	objectKey, uploadURL, requiredHeaders, expiresAt, err := service.TicketPresignUpload(c.Request.Context(), middleware.GetTenantId(c), userId, req.Filename, req.ContentType, req.SizeBytes)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -54,7 +55,7 @@ func TicketCreate(c *gin.Context) {
 		return
 	}
 
-	ticket, reply, err := service.CreateTicket(c.Request.Context(), nil, userId, req.Subject, req.Content, req.ObjectKeys)
+	ticket, reply, err := service.CreateTicket(c.Request.Context(), nil, middleware.GetTenantId(c), userId, req.Subject, req.Content, req.ObjectKeys)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -71,7 +72,7 @@ func TicketList(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
 
-	items, total, err := service.TicketListUser(c.Request.Context(), userId, "", "", pageInfo)
+	items, total, err := service.TicketListUser(c.Request.Context(), middleware.GetTenantId(c), userId, "", "", pageInfo)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -90,7 +91,7 @@ func TicketDetail(c *gin.Context) {
 		return
 	}
 
-	ticket, replies, attachments, err := service.TicketGetUserDetail(c.Request.Context(), userId, id)
+	ticket, replies, attachments, err := service.TicketGetUserDetail(c.Request.Context(), middleware.GetTenantId(c), userId, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -119,7 +120,7 @@ func TicketReply(c *gin.Context) {
 		return
 	}
 
-	reply, err := service.TicketReplyUser(c.Request.Context(), userId, ticketID, req.Content, req.ObjectKeys)
+	reply, err := service.TicketReplyUser(c.Request.Context(), middleware.GetTenantId(c), userId, ticketID, req.Content, req.ObjectKeys)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -144,7 +145,7 @@ func TicketPresignAttachment(c *gin.Context) {
 		disposition = "inline"
 	}
 
-	url, expiresAt, err := service.TicketPresignAttachmentForUser(c.Request.Context(), userId, attID, disposition)
+	url, expiresAt, err := service.TicketPresignAttachmentForUser(c.Request.Context(), middleware.GetTenantId(c), userId, attID, disposition)
 	if err != nil {
 		common.ApiError(c, err)
 		return

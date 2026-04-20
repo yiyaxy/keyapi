@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,7 @@ func AdminCreateMessage(c *gin.Context) {
 
 	senderId := c.GetInt("id")
 	msg := &model.Message{
+		TenantId:     middleware.GetTenantId(c),
 		Title:        req.Title,
 		Content:      req.Content,
 		Type:         req.Type,
@@ -61,7 +63,7 @@ func AdminListMessages(c *gin.Context) {
 	keyword := c.Query("keyword")
 	msgType, _ := strconv.Atoi(c.Query("type"))
 
-	messages, total, err := model.GetAllMessages(page, keyword, msgType)
+	messages, total, err := model.GetAllMessages(middleware.GetTenantId(c), page, keyword, msgType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -77,7 +79,7 @@ func AdminGetMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid message ID")
 		return
 	}
-	msg, err := model.GetMessageById(id)
+	msg, err := model.GetMessageById(middleware.GetTenantId(c), id)
 	if err != nil {
 		common.ApiErrorMsg(c, "message not found")
 		return
@@ -107,8 +109,13 @@ func AdminEditMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "no fields to update")
 		return
 	}
-	if err := model.UpdateMessage(id, updates); err != nil {
+	rows, err := model.UpdateMessage(middleware.GetTenantId(c), id, updates)
+	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if rows == 0 {
+		common.ApiErrorMsg(c, "message not found")
 		return
 	}
 	_ = model.DeleteTranslationsByMessageId(id)
@@ -122,8 +129,13 @@ func AdminRecallMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid message ID")
 		return
 	}
-	if err := model.RecallMessage(id); err != nil {
+	rows, err := model.RecallMessage(middleware.GetTenantId(c), id)
+	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if rows == 0 {
+		common.ApiErrorMsg(c, "message not found")
 		return
 	}
 	_ = model.DeleteTranslationsByMessageId(id)
@@ -138,7 +150,7 @@ func AdminGetMessageReadStatus(c *gin.Context) {
 		return
 	}
 	page := common.GetPageQuery(c)
-	statuses, total, err := model.GetMessageReadStatuses(id, page)
+	statuses, total, err := model.GetMessageReadStatuses(middleware.GetTenantId(c), id, page)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -153,7 +165,7 @@ func AdminGetMessageReadStatus(c *gin.Context) {
 func GetUserInbox(c *gin.Context) {
 	userId := c.GetInt("id")
 	page := common.GetPageQuery(c)
-	messages, total, err := model.GetUserInbox(userId, page)
+	messages, total, err := model.GetUserInbox(middleware.GetTenantId(c), userId, page)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -179,13 +191,13 @@ func GetUserInboxMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid message ID")
 		return
 	}
-	msg, err := model.GetUserInboxMessage(userId, msgId)
+	msg, err := model.GetUserInboxMessage(middleware.GetTenantId(c), userId, msgId)
 	if err != nil {
 		common.ApiErrorMsg(c, "message not found")
 		return
 	}
 	// Auto mark as read with IP and User-Agent
-	_ = model.MarkMessageAsRead(userId, msgId, c.ClientIP(), c.GetHeader("User-Agent"))
+	_ = model.MarkMessageAsRead(middleware.GetTenantId(c), userId, msgId, c.ClientIP(), c.GetHeader("User-Agent"))
 	msg.IsRead = true
 
 	lang := c.Query("lang")
@@ -221,7 +233,7 @@ func MarkMessageRead(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid message ID")
 		return
 	}
-	if err := model.MarkMessageAsRead(userId, msgId, c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
+	if err := model.MarkMessageAsRead(middleware.GetTenantId(c), userId, msgId, c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -230,7 +242,7 @@ func MarkMessageRead(c *gin.Context) {
 
 func GetUnreadMessageCount(c *gin.Context) {
 	userId := c.GetInt("id")
-	count, err := model.GetUnreadCount(userId)
+	count, err := model.GetUnreadCount(middleware.GetTenantId(c), userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -79,11 +80,38 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// 如果当前租户已配置微信支付（S2 原生），注入到支付方式列表
+	enableWechatTopup := false
+	tid := middleware.GetTenantId(c)
+	if tid > 0 {
+		wechatCfg, wechatErr := model.GetTenantPaymentConfig(tid, "wechat")
+		if wechatErr == nil && wechatCfg.Enabled && !wechatCfg.PlatformLocked &&
+			wechatCfg.Mchid != "" && wechatCfg.AppId != "" {
+			enableWechatTopup = true
+			hasWechat := false
+			for _, method := range payMethods {
+				if method["type"] == "wechat" {
+					hasWechat = true
+					break
+				}
+			}
+			if !hasWechat {
+				payMethods = append(payMethods, map[string]string{
+					"name":      "微信支付",
+					"type":      "wechat",
+					"color":     "rgba(var(--semi-green-5), 1)",
+					"min_topup": strconv.Itoa(int(operation_setting.MinTopUp)),
+				})
+			}
+		}
+	}
+
 	data := gin.H{
 		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_waffo_topup": enableWaffo,
+		"enable_waffo_topup":  enableWaffo,
+		"enable_wechat_topup": enableWechatTopup,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
@@ -228,6 +256,7 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
+		TenantId:      middleware.GetTenantId(c),
 		UserId:        id,
 		Amount:        amount,
 		Money:         payMoney,
@@ -342,7 +371,8 @@ func EpayNotify(c *gin.Context) {
 		log.Println(verifyInfo)
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
+		// Payment callback: trade_no is globally unique; pass tenantId=0 (no filter).
+		topUp := model.GetTopUpByTradeNo(0, verifyInfo.ServiceTradeNo)
 		if topUp == nil {
 			log.Printf("易支付回调未找到订单: %v", verifyInfo)
 			return
@@ -368,13 +398,13 @@ func EpayNotify(c *gin.Context) {
 			dAmount := decimal.NewFromInt(int64(topUp.Amount))
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
-			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
+			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true, model.GetUserTenantId(topUp.UserId))
 			if err != nil {
 				log.Printf("易支付回调更新用户失败: %v", topUp)
 				return
 			}
 			log.Printf("易支付回调更新用户成功 %v", topUp)
-			model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
+			model.RecordLogCtx(c, topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
 			// 处理充值返利
 			model.ProcessTopUpRebate(topUp.UserId, quotaToAdd)
 		} else if topUp.Status == "success" {
@@ -431,10 +461,11 @@ func GetUserTopUps(c *gin.Context) {
 		total  int64
 		err    error
 	)
+	tenantId := middleware.GetTenantId(c)
 	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
+		topups, total, err = model.SearchUserTopUps(tenantId, userId, keyword, pageInfo)
 	} else {
-		topups, total, err = model.GetUserTopUps(userId, pageInfo)
+		topups, total, err = model.GetUserTopUps(tenantId, userId, pageInfo)
 	}
 	if err != nil {
 		common.ApiError(c, err)
@@ -461,10 +492,11 @@ func GetAllTopUps(c *gin.Context) {
 		total  int64
 		err    error
 	)
+	tenantId := middleware.GetTenantId(c)
 	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
+		topups, total, err = model.SearchAllTopUps(tenantId, keyword, pageInfo)
 	} else {
-		topups, total, err = model.GetAllTopUps(pageInfo)
+		topups, total, err = model.GetAllTopUps(tenantId, pageInfo)
 	}
 	if err != nil {
 		common.ApiError(c, err)

@@ -630,3 +630,9 @@ export interface InvoiceApplicationDetail {
   items: InvoiceItem[];
   files: InvoiceFile[];
 }
+
+// ============================================================================
+// Tenant Types
+// ============================================================================
+
+export * from './tenant';

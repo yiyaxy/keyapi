@@ -203,7 +203,7 @@ type InvoiceableOrder struct {
 
 // ListInvoiceableOrdersForUser lists eligible successful orders for the user.
 // It excludes subscription-mirrored topups (SUB* / sub_ref_*), and excludes orders already invoiced.
-func ListInvoiceableOrdersForUser(ctx context.Context, userId int, keyword string, pageInfo *common.PageInfo) ([]InvoiceableOrder, int64, error) {
+func ListInvoiceableOrdersForUser(ctx context.Context, tenantId int, userId int, keyword string, pageInfo *common.PageInfo) ([]InvoiceableOrder, int64, error) {
 	_ = ctx
 	if userId <= 0 {
 		return nil, 0, types.NewErrorWithStatusCode(fmt.Errorf("invalid user id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -220,6 +220,9 @@ func ListInvoiceableOrdersForUser(ctx context.Context, userId int, keyword strin
 	{
 		var items []model.InvoiceItem
 		q := model.DB.Model(&model.InvoiceItem{}).Where("user_id = ?", userId)
+		if tenantId > 0 {
+			q = q.Where("tenant_id = ?", tenantId)
+		}
 		if err := q.Find(&items).Error; err != nil {
 			return nil, 0, err
 		}
@@ -242,6 +245,9 @@ func ListInvoiceableOrdersForUser(ctx context.Context, userId int, keyword strin
 		Where("payment_method IN ?", []string{"alipay", "wxpay"}).
 		Where("trade_no NOT LIKE ?", "SUB%").
 		Where("trade_no NOT LIKE ?", "sub_ref_%")
+	if tenantId > 0 {
+		qTop = qTop.Where("tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		qTop = qTop.Where("trade_no LIKE ?", "%"+keyword+"%")
 	}
@@ -257,6 +263,9 @@ func ListInvoiceableOrdersForUser(ctx context.Context, userId int, keyword strin
 		Where("user_id = ?", userId).
 		Where("status = ?", common.TopUpStatusSuccess).
 		Where("payment_method IN ?", []string{"alipay", "wxpay"})
+	if tenantId > 0 {
+		qSub = qSub.Where("tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		qSub = qSub.Where("trade_no LIKE ?", "%"+keyword+"%")
 	}
@@ -340,7 +349,7 @@ type CreateInvoiceApplicationItem struct {
 	SourceId   int
 }
 
-func CreateInvoiceApplication(ctx context.Context, p CreateInvoiceApplicationParams) (*model.InvoiceApplication, []model.InvoiceItem, error) {
+func CreateInvoiceApplication(ctx context.Context, tenantId int, p CreateInvoiceApplicationParams) (*model.InvoiceApplication, []model.InvoiceItem, error) {
 	if p.UserId <= 0 {
 		return nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid user id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -392,6 +401,7 @@ func CreateInvoiceApplication(ctx context.Context, p CreateInvoiceApplicationPar
 	var createdItems []model.InvoiceItem
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
 		app := &model.InvoiceApplication{
+			TenantId:              tenantId,
 			UserId:                p.UserId,
 			InvoiceType:           p.InvoiceType,
 			Title:                 p.Title,
@@ -450,6 +460,7 @@ func CreateInvoiceApplication(ctx context.Context, p CreateInvoiceApplicationPar
 				}
 
 				invItem := model.InvoiceItem{
+					TenantId:          tenantId,
 					InvoiceId:         app.Id,
 					UserId:            p.UserId,
 					SourceType:        model.InvoiceItemSourceTopUp,
@@ -505,6 +516,7 @@ func CreateInvoiceApplication(ctx context.Context, p CreateInvoiceApplicationPar
 				}
 
 				invItem := model.InvoiceItem{
+					TenantId:          tenantId,
 					InvoiceId:         app.Id,
 					UserId:            p.UserId,
 					SourceType:        model.InvoiceItemSourceSubscription,
@@ -555,7 +567,7 @@ func CreateInvoiceApplication(ctx context.Context, p CreateInvoiceApplicationPar
 	return createdApp, createdItems, nil
 }
 
-func CancelInvoiceApplication(ctx context.Context, userId int, invoiceId int) (*model.InvoiceApplication, error) {
+func CancelInvoiceApplication(ctx context.Context, tenantId int, userId int, invoiceId int) (*model.InvoiceApplication, error) {
 	_ = ctx
 	if userId <= 0 || invoiceId <= 0 {
 		return nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid params"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -563,8 +575,12 @@ func CancelInvoiceApplication(ctx context.Context, userId int, invoiceId int) (*
 
 	var out *model.InvoiceApplication
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		appQuery := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", invoiceId)
+		if tenantId > 0 {
+			appQuery = appQuery.Where("tenant_id = ?", tenantId)
+		}
 		var app model.InvoiceApplication
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", invoiceId).First(&app).Error
+		err := appQuery.First(&app).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return types.NewErrorWithStatusCode(fmt.Errorf("invoice not found"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -611,7 +627,7 @@ type AdminPresignInvoiceUploadResult struct {
 	ExpiresAt       int64             `json:"expires_at"`
 }
 
-func AdminPresignInvoiceUpload(ctx context.Context, p AdminPresignInvoiceUploadParams) (*AdminPresignInvoiceUploadResult, error) {
+func AdminPresignInvoiceUpload(ctx context.Context, tenantId int, p AdminPresignInvoiceUploadParams) (*AdminPresignInvoiceUploadResult, error) {
 	if p.AdminId <= 0 || p.InvoiceId <= 0 {
 		return nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid admin id or invoice id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -643,8 +659,12 @@ func AdminPresignInvoiceUpload(ctx context.Context, p AdminPresignInvoiceUploadP
 
 	var out *AdminPresignInvoiceUploadResult
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		appQuery := tx.Select("id").Where("id = ?", p.InvoiceId)
+		if tenantId > 0 {
+			appQuery = appQuery.Where("tenant_id = ?", tenantId)
+		}
 		var app model.InvoiceApplication
-		err := tx.Select("id").Where("id = ?", p.InvoiceId).First(&app).Error
+		err := appQuery.First(&app).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return types.NewErrorWithStatusCode(fmt.Errorf("invoice not found"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -653,6 +673,7 @@ func AdminPresignInvoiceUpload(ctx context.Context, p AdminPresignInvoiceUploadP
 		}
 
 		u := &model.InvoiceUpload{
+			TenantId:         tenantId,
 			UploaderId:       p.AdminId,
 			ObjectKey:        objectKey,
 			OriginalFilename: p.Filename,
@@ -696,7 +717,7 @@ type AdminFinalizeInvoiceFilesParams struct {
 	ObjectKeys []string
 }
 
-func AdminFinalizeInvoiceFiles(ctx context.Context, p AdminFinalizeInvoiceFilesParams) ([]model.InvoiceFile, error) {
+func AdminFinalizeInvoiceFiles(ctx context.Context, tenantId int, p AdminFinalizeInvoiceFilesParams) ([]model.InvoiceFile, error) {
 	if p.AdminId <= 0 || p.InvoiceId <= 0 {
 		return nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid admin id or invoice id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -718,8 +739,12 @@ func AdminFinalizeInvoiceFiles(ctx context.Context, p AdminFinalizeInvoiceFilesP
 	prefix := fmt.Sprintf("invoices/%d/", p.InvoiceId)
 
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		appQuery := tx.Select("id").Where("id = ?", p.InvoiceId)
+		if tenantId > 0 {
+			appQuery = appQuery.Where("tenant_id = ?", tenantId)
+		}
 		var app model.InvoiceApplication
-		err := tx.Select("id").Where("id = ?", p.InvoiceId).First(&app).Error
+		err := appQuery.First(&app).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return types.NewErrorWithStatusCode(fmt.Errorf("invoice not found"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -733,8 +758,12 @@ func AdminFinalizeInvoiceFiles(ctx context.Context, p AdminFinalizeInvoiceFilesP
 				return types.NewErrorWithStatusCode(fmt.Errorf("invalid object key"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
 
+			uploadQuery := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("object_key = ?", key)
+			if tenantId > 0 {
+				uploadQuery = uploadQuery.Where("tenant_id = ?", tenantId)
+			}
 			var upload model.InvoiceUpload
-			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("object_key = ?", key).First(&upload).Error; err != nil {
+			if err := uploadQuery.First(&upload).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return types.NewErrorWithStatusCode(fmt.Errorf("upload not found"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 				}
@@ -761,6 +790,7 @@ func AdminFinalizeInvoiceFiles(ctx context.Context, p AdminFinalizeInvoiceFilesP
 			}
 
 			file := model.InvoiceFile{
+				TenantId:         tenantId,
 				InvoiceId:        p.InvoiceId,
 				UploaderId:       p.AdminId,
 				ObjectKey:        key,
@@ -802,7 +832,7 @@ func AdminFinalizeInvoiceFiles(ctx context.Context, p AdminFinalizeInvoiceFilesP
 	return files, nil
 }
 
-func PresignInvoiceFileForUser(ctx context.Context, userId int, fileId int, disposition string) (string, int64, error) {
+func PresignInvoiceFileForUser(ctx context.Context, tenantId int, userId int, fileId int, disposition string) (string, int64, error) {
 	if userId <= 0 || fileId <= 0 {
 		return "", 0, types.NewErrorWithStatusCode(fmt.Errorf("invalid userId/fileId"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -811,16 +841,24 @@ func PresignInvoiceFileForUser(ctx context.Context, userId int, fileId int, disp
 		return "", 0, err
 	}
 
+	fileQuery := model.DB.Where("id = ?", fileId)
+	if tenantId > 0 {
+		fileQuery = fileQuery.Where("tenant_id = ?", tenantId)
+	}
 	var file model.InvoiceFile
-	if err := model.DB.Where("id = ?", fileId).First(&file).Error; err != nil {
+	if err := fileQuery.First(&file).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", 0, types.NewErrorWithStatusCode(fmt.Errorf("file not found"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		return "", 0, err
 	}
 
+	appQuery := model.DB.Where("id = ?", file.InvoiceId)
+	if tenantId > 0 {
+		appQuery = appQuery.Where("tenant_id = ?", tenantId)
+	}
 	var app model.InvoiceApplication
-	if err := model.DB.Where("id = ?", file.InvoiceId).First(&app).Error; err != nil {
+	if err := appQuery.First(&app).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", 0, types.NewErrorWithStatusCode(fmt.Errorf("invoice not found"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
@@ -848,7 +886,7 @@ func PresignInvoiceFileForUser(ctx context.Context, userId int, fileId int, disp
 	return url, expiresAt, nil
 }
 
-func PresignInvoiceFileForAdmin(ctx context.Context, fileId int, disposition string) (string, int64, error) {
+func PresignInvoiceFileForAdmin(ctx context.Context, tenantId int, fileId int, disposition string) (string, int64, error) {
 	if fileId <= 0 {
 		return "", 0, types.NewErrorWithStatusCode(fmt.Errorf("invalid fileId"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -857,8 +895,12 @@ func PresignInvoiceFileForAdmin(ctx context.Context, fileId int, disposition str
 		return "", 0, err
 	}
 
+	fileQuery := model.DB.Where("id = ?", fileId)
+	if tenantId > 0 {
+		fileQuery = fileQuery.Where("tenant_id = ?", tenantId)
+	}
 	var file model.InvoiceFile
-	if err := model.DB.Where("id = ?", fileId).First(&file).Error; err != nil {
+	if err := fileQuery.First(&file).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", 0, types.NewErrorWithStatusCode(fmt.Errorf("file not found"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
@@ -905,7 +947,7 @@ func mapEpayTypeToPiaotongPaymentCode(epayType string) string {
 
 // -------- User: list/detail applications --------
 
-func ListInvoiceApplicationsForUser(ctx context.Context, userId int, status string, keyword string, pageInfo *common.PageInfo) ([]model.InvoiceApplication, int64, error) {
+func ListInvoiceApplicationsForUser(ctx context.Context, tenantId int, userId int, status string, keyword string, pageInfo *common.PageInfo) ([]model.InvoiceApplication, int64, error) {
 	_ = ctx
 	if userId <= 0 {
 		return nil, 0, types.NewErrorWithStatusCode(fmt.Errorf("invalid user id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -915,6 +957,9 @@ func ListInvoiceApplicationsForUser(ctx context.Context, userId int, status stri
 	}
 
 	q := model.DB.Model(&model.InvoiceApplication{}).Where("user_id = ?", userId)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	status = strings.TrimSpace(status)
 	if status != "" {
 		q = q.Where("status = ?", status)
@@ -936,14 +981,18 @@ func ListInvoiceApplicationsForUser(ctx context.Context, userId int, status stri
 	return apps, total, nil
 }
 
-func GetInvoiceApplicationDetailForUser(ctx context.Context, userId int, appId int) (*model.InvoiceApplication, []model.InvoiceItem, []model.InvoiceFile, error) {
+func GetInvoiceApplicationDetailForUser(ctx context.Context, tenantId int, userId int, appId int) (*model.InvoiceApplication, []model.InvoiceItem, []model.InvoiceFile, error) {
 	_ = ctx
 	if userId <= 0 || appId <= 0 {
 		return nil, nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid params"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	appQuery := model.DB.Where("id = ?", appId)
+	if tenantId > 0 {
+		appQuery = appQuery.Where("tenant_id = ?", tenantId)
+	}
 	var app model.InvoiceApplication
-	if err := model.DB.Where("id = ?", appId).First(&app).Error; err != nil {
+	if err := appQuery.First(&app).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("application not found"), types.ErrorCodeInvalidRequest, http.StatusNotFound, types.ErrOptionWithSkipRetry())
 		}
@@ -953,13 +1002,21 @@ func GetInvoiceApplicationDetailForUser(ctx context.Context, userId int, appId i
 		return nil, nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("access denied"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
 
+	itemQuery := model.DB.Where("invoice_id = ?", appId)
+	if tenantId > 0 {
+		itemQuery = itemQuery.Where("tenant_id = ?", tenantId)
+	}
 	var items []model.InvoiceItem
-	if err := model.DB.Where("invoice_id = ?", appId).Order("id ASC").Find(&items).Error; err != nil {
+	if err := itemQuery.Order("id ASC").Find(&items).Error; err != nil {
 		return nil, nil, nil, err
 	}
 
+	fileQuery := model.DB.Where("invoice_id = ? AND is_user_visible = ?", appId, true)
+	if tenantId > 0 {
+		fileQuery = fileQuery.Where("tenant_id = ?", tenantId)
+	}
 	var files []model.InvoiceFile
-	if err := model.DB.Where("invoice_id = ? AND is_user_visible = ?", appId, true).Order("id ASC").Find(&files).Error; err != nil {
+	if err := fileQuery.Order("id ASC").Find(&files).Error; err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -968,13 +1025,16 @@ func GetInvoiceApplicationDetailForUser(ctx context.Context, userId int, appId i
 
 // -------- Admin: list/detail/status applications --------
 
-func ListInvoiceApplicationsForAdmin(ctx context.Context, status string, userId int, keyword string, pageInfo *common.PageInfo) ([]model.InvoiceApplication, int64, error) {
+func ListInvoiceApplicationsForAdmin(ctx context.Context, tenantId int, status string, userId int, keyword string, pageInfo *common.PageInfo) ([]model.InvoiceApplication, int64, error) {
 	_ = ctx
 	if pageInfo == nil {
 		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
 	}
 
 	q := model.DB.Model(&model.InvoiceApplication{})
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	status = strings.TrimSpace(status)
 	if status != "" {
 		q = q.Where("status = ?", status)
@@ -999,27 +1059,39 @@ func ListInvoiceApplicationsForAdmin(ctx context.Context, status string, userId 
 	return apps, total, nil
 }
 
-func GetInvoiceApplicationDetailForAdmin(ctx context.Context, appId int) (*model.InvoiceApplication, []model.InvoiceItem, []model.InvoiceFile, error) {
+func GetInvoiceApplicationDetailForAdmin(ctx context.Context, tenantId int, appId int) (*model.InvoiceApplication, []model.InvoiceItem, []model.InvoiceFile, error) {
 	_ = ctx
 	if appId <= 0 {
 		return nil, nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid params"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	appQuery := model.DB.Where("id = ?", appId)
+	if tenantId > 0 {
+		appQuery = appQuery.Where("tenant_id = ?", tenantId)
+	}
 	var app model.InvoiceApplication
-	if err := model.DB.Where("id = ?", appId).First(&app).Error; err != nil {
+	if err := appQuery.First(&app).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("application not found"), types.ErrorCodeInvalidRequest, http.StatusNotFound, types.ErrOptionWithSkipRetry())
 		}
 		return nil, nil, nil, err
 	}
 
+	itemQuery := model.DB.Where("invoice_id = ?", appId)
+	if tenantId > 0 {
+		itemQuery = itemQuery.Where("tenant_id = ?", tenantId)
+	}
 	var items []model.InvoiceItem
-	if err := model.DB.Where("invoice_id = ?", appId).Order("id ASC").Find(&items).Error; err != nil {
+	if err := itemQuery.Order("id ASC").Find(&items).Error; err != nil {
 		return nil, nil, nil, err
 	}
 
+	fileQuery := model.DB.Where("invoice_id = ?", appId)
+	if tenantId > 0 {
+		fileQuery = fileQuery.Where("tenant_id = ?", tenantId)
+	}
 	var files []model.InvoiceFile
-	if err := model.DB.Where("invoice_id = ?", appId).Order("id ASC").Find(&files).Error; err != nil {
+	if err := fileQuery.Order("id ASC").Find(&files).Error; err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -1033,7 +1105,7 @@ func GetInvoiceApplicationDetailForAdmin(ctx context.Context, appId int) (*model
 //   - approved -> issued (sets IssuedAt)
 //   - pending -> cancelled (sets CancelledAt)
 //   - issued/cancelled cannot transition further
-func AdminUpdateInvoiceApplicationStatus(ctx context.Context, adminId int, appId int, newStatus string, adminRemark string, rejectReason string, goodsName string, taxClassificationCode string, taxRateValue string) (*model.InvoiceApplication, error) {
+func AdminUpdateInvoiceApplicationStatus(ctx context.Context, tenantId int, adminId int, appId int, newStatus string, adminRemark string, rejectReason string, goodsName string, taxClassificationCode string, taxRateValue string) (*model.InvoiceApplication, error) {
 	_ = ctx
 	if adminId <= 0 || appId <= 0 {
 		return nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid params"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -1047,8 +1119,12 @@ func AdminUpdateInvoiceApplicationStatus(ctx context.Context, adminId int, appId
 
 	var out *model.InvoiceApplication
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		appQuery := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", appId)
+		if tenantId > 0 {
+			appQuery = appQuery.Where("tenant_id = ?", tenantId)
+		}
 		var app model.InvoiceApplication
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", appId).First(&app).Error
+		err := appQuery.First(&app).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return types.NewErrorWithStatusCode(fmt.Errorf("application not found"), types.ErrorCodeInvalidRequest, http.StatusNotFound, types.ErrOptionWithSkipRetry())
@@ -1157,7 +1233,7 @@ type AdminUpdateInvoiceFileVisibilityParams struct {
 	IsUserVisible bool
 }
 
-func AdminUpdateInvoiceFileVisibility(ctx context.Context, p AdminUpdateInvoiceFileVisibilityParams) (*model.InvoiceFile, error) {
+func AdminUpdateInvoiceFileVisibility(ctx context.Context, tenantId int, p AdminUpdateInvoiceFileVisibilityParams) (*model.InvoiceFile, error) {
 	_ = ctx
 	if p.AdminId <= 0 || p.InvoiceId <= 0 || p.FileId <= 0 {
 		return nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid params"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -1165,16 +1241,24 @@ func AdminUpdateInvoiceFileVisibility(ctx context.Context, p AdminUpdateInvoiceF
 
 	var out *model.InvoiceFile
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		appQuery := tx.Select("id").Where("id = ?", p.InvoiceId)
+		if tenantId > 0 {
+			appQuery = appQuery.Where("tenant_id = ?", tenantId)
+		}
 		var app model.InvoiceApplication
-		if err := tx.Select("id").Where("id = ?", p.InvoiceId).First(&app).Error; err != nil {
+		if err := appQuery.First(&app).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return types.NewErrorWithStatusCode(fmt.Errorf("application not found"), types.ErrorCodeInvalidRequest, http.StatusNotFound, types.ErrOptionWithSkipRetry())
 			}
 			return err
 		}
 
+		fileQuery := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND invoice_id = ?", p.FileId, p.InvoiceId)
+		if tenantId > 0 {
+			fileQuery = fileQuery.Where("tenant_id = ?", tenantId)
+		}
 		var file model.InvoiceFile
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND invoice_id = ?", p.FileId, p.InvoiceId).First(&file).Error; err != nil {
+		if err := fileQuery.First(&file).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return types.NewErrorWithStatusCode(fmt.Errorf("file not found"), types.ErrorCodeInvalidRequest, http.StatusNotFound, types.ErrOptionWithSkipRetry())
 			}
@@ -1205,7 +1289,7 @@ func isValidInvoiceStatusTransition(from, to string) bool {
 }
 
 // BatchLoadUsernamesForInvoice loads usernames for a list of user IDs.
-func BatchLoadUsernamesForInvoice(userIds []int) map[int]string {
+func BatchLoadUsernamesForInvoice(tenantId int, userIds []int) map[int]string {
 	if len(userIds) == 0 {
 		return nil
 	}
@@ -1224,7 +1308,11 @@ func BatchLoadUsernamesForInvoice(userIds []int) map[int]string {
 		Username string `gorm:"column:username"`
 	}
 	var rows []userRow
-	if err := model.DB.Table("users").Select("id, username").Where("id IN ?", ids).Find(&rows).Error; err != nil {
+	query := model.DB.Table("users").Select("id, username").Where("id IN ?", ids)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	if err := query.Find(&rows).Error; err != nil {
 		return nil
 	}
 	m := make(map[int]string, len(rows))
@@ -1254,11 +1342,15 @@ func compactUniqueInvoiceObjectKeys(keys []string) []string {
 }
 
 // SetInvoiceItemPaymentInfo 更新发票明细项的乐企联用支付信息。
-func SetInvoiceItemPaymentInfo(itemId int, req dto.InvoiceAdminSetItemPaymentInfoRequest) error {
+func SetInvoiceItemPaymentInfo(tenantId int, itemId int, req dto.InvoiceAdminSetItemPaymentInfoRequest) error {
 	if itemId <= 0 {
 		return types.NewErrorWithStatusCode(fmt.Errorf("invalid item id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	return model.DB.Model(&model.InvoiceItem{}).Where("id = ?", itemId).Updates(map[string]interface{}{
+	query := model.DB.Model(&model.InvoiceItem{}).Where("id = ?", itemId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	return query.Updates(map[string]interface{}{
 		"payment_code":         strings.TrimSpace(req.PaymentCode),
 		"trade_no_third_party": strings.TrimSpace(req.TradeNoThirdParty),
 		"sub_mchid":            strings.TrimSpace(req.SubMchid),

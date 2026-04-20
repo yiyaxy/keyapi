@@ -17,6 +17,7 @@ const (
 
 type Message struct {
 	Id           int            `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId     int            `json:"tenant_id" gorm:"index;default:1"`
 	Title        string         `json:"title" gorm:"type:varchar(255);not null"`
 	Content      string         `json:"content" gorm:"type:text"`
 	Type         int            `json:"type" gorm:"default:1;index"`
@@ -30,6 +31,7 @@ type Message struct {
 
 type MessageReadStatus struct {
 	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId  int    `json:"tenant_id" gorm:"index;default:1"`
 	MessageId int    `json:"message_id" gorm:"uniqueIndex:idx_message_user"`
 	UserId    int    `json:"user_id" gorm:"uniqueIndex:idx_message_user;index"`
 	ReadAt    int64  `json:"read_at" gorm:"bigint"`
@@ -58,11 +60,14 @@ func CreateMessage(msg *Message) error {
 	return DB.Create(msg).Error
 }
 
-func GetAllMessages(page *common.PageInfo, keyword string, msgType int) ([]Message, int64, error) {
+func GetAllMessages(tenantId int, page *common.PageInfo, keyword string, msgType int) ([]Message, int64, error) {
 	var messages []Message
 	var total int64
 
 	tx := DB.Model(&Message{})
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		tx = tx.Where("title LIKE ?", "%"+keyword+"%")
 	}
@@ -82,30 +87,44 @@ func GetAllMessages(page *common.PageInfo, keyword string, msgType int) ([]Messa
 	return messages, total, err
 }
 
-func GetMessageById(id int) (*Message, error) {
+func GetMessageById(tenantId int, id int) (*Message, error) {
 	var msg Message
-	err := DB.First(&msg, id).Error
+	tx := DB.Where("id = ?", id)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	err := tx.First(&msg).Error
 	if err != nil {
 		return nil, err
 	}
 	return &msg, nil
 }
 
-func UpdateMessage(id int, updates map[string]interface{}) error {
+func UpdateMessage(tenantId int, id int, updates map[string]interface{}) (int64, error) {
 	updates["updated_at"] = time.Now().Unix()
-	return DB.Model(&Message{}).Where("id = ?", id).Updates(updates).Error
+	tx := DB.Model(&Message{}).Where("id = ?", id)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	result := tx.Updates(updates)
+	return result.RowsAffected, result.Error
 }
 
-func RecallMessage(id int) error {
+func RecallMessage(tenantId int, id int) (int64, error) {
 	now := time.Now().Unix()
-	return DB.Model(&Message{}).Where("id = ?", id).Updates(map[string]interface{}{
+	tx := DB.Model(&Message{}).Where("id = ?", id)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
+	result := tx.Updates(map[string]interface{}{
 		"status":     MessageStatusRecalled,
 		"updated_at": now,
 		"deleted_at": time.Now(),
-	}).Error
+	})
+	return result.RowsAffected, result.Error
 }
 
-func GetUserInbox(userId int, page *common.PageInfo) ([]InboxMessage, int64, error) {
+func GetUserInbox(tenantId int, userId int, page *common.PageInfo) ([]InboxMessage, int64, error) {
 	var total int64
 	var results []InboxMessage
 
@@ -114,12 +133,15 @@ func GetUserInbox(userId int, page *common.PageInfo) ([]InboxMessage, int64, err
 		Where("status = ?", MessageStatusNormal).
 		Where("(type = ? AND target_user_id = ?) OR type = ?",
 			MessageTypeDirected, userId, MessageTypeBroadcast)
+	if tenantId > 0 {
+		countTx = countTx.Where("tenant_id = ?", tenantId)
+	}
 	if err := countTx.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	// Query with LEFT JOIN for read status
-	err := DB.Table("messages m").
+	queryTx := DB.Table("messages m").
 		Select(`m.id, m.title, m.content, m.type, m.target_user_id, m.sender_id, m.status, m.created_at,
 			CASE WHEN r.id IS NOT NULL THEN 1 ELSE 0 END as is_read,
 			COALESCE(r.read_at, 0) as read_at`).
@@ -127,8 +149,11 @@ func GetUserInbox(userId int, page *common.PageInfo) ([]InboxMessage, int64, err
 		Where("m.status = ?", MessageStatusNormal).
 		Where("m.deleted_at IS NULL").
 		Where("(m.type = ? AND m.target_user_id = ?) OR m.type = ?",
-			MessageTypeDirected, userId, MessageTypeBroadcast).
-		Order("m.id DESC").
+			MessageTypeDirected, userId, MessageTypeBroadcast)
+	if tenantId > 0 {
+		queryTx = queryTx.Where("m.tenant_id = ?", tenantId)
+	}
+	err := queryTx.Order("m.id DESC").
 		Offset(page.GetStartIdx()).
 		Limit(page.GetPageSize()).
 		Scan(&results).Error
@@ -136,9 +161,9 @@ func GetUserInbox(userId int, page *common.PageInfo) ([]InboxMessage, int64, err
 	return results, total, err
 }
 
-func GetUserInboxMessage(userId int, messageId int) (*InboxMessage, error) {
+func GetUserInboxMessage(tenantId int, userId int, messageId int) (*InboxMessage, error) {
 	var result InboxMessage
-	err := DB.Table("messages m").
+	queryTx := DB.Table("messages m").
 		Select(`m.id, m.title, m.content, m.type, m.target_user_id, m.sender_id, m.status, m.created_at,
 			CASE WHEN r.id IS NOT NULL THEN 1 ELSE 0 END as is_read,
 			COALESCE(r.read_at, 0) as read_at`).
@@ -147,8 +172,11 @@ func GetUserInboxMessage(userId int, messageId int) (*InboxMessage, error) {
 		Where("m.status = ?", MessageStatusNormal).
 		Where("m.deleted_at IS NULL").
 		Where("(m.type = ? AND m.target_user_id = ?) OR m.type = ?",
-			MessageTypeDirected, userId, MessageTypeBroadcast).
-		Scan(&result).Error
+			MessageTypeDirected, userId, MessageTypeBroadcast)
+	if tenantId > 0 {
+		queryTx = queryTx.Where("m.tenant_id = ?", tenantId)
+	}
+	err := queryTx.Scan(&result).Error
 	if err != nil {
 		return nil, err
 	}
@@ -158,9 +186,10 @@ func GetUserInboxMessage(userId int, messageId int) (*InboxMessage, error) {
 	return &result, nil
 }
 
-func MarkMessageAsRead(userId, messageId int, ip, userAgent string) error {
+func MarkMessageAsRead(tenantId int, userId, messageId int, ip, userAgent string) error {
 	now := time.Now().Unix()
 	readStatus := MessageReadStatus{
+		TenantId:  tenantId,
 		MessageId: messageId,
 		UserId:    userId,
 		ReadAt:    now,
@@ -168,27 +197,39 @@ func MarkMessageAsRead(userId, messageId int, ip, userAgent string) error {
 		UserAgent: userAgent,
 	}
 	// Use ON CONFLICT to avoid duplicate insert
-	return DB.Where("message_id = ? AND user_id = ?", messageId, userId).
-		FirstOrCreate(&readStatus).Error
+	query := DB.Where("message_id = ? AND user_id = ?", messageId, userId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	return query.FirstOrCreate(&readStatus).Error
 }
 
-func GetUnreadCount(userId int) (int64, error) {
+func GetUnreadCount(tenantId int, userId int) (int64, error) {
 	var count int64
-	err := DB.Model(&Message{}).
+	// 子查询也必须带 tenant_id —— message_read_statuses 是租户隔离表，
+	// 不带条件会被 guardrail 拦住（子查询执行失败 → 主查询得到 NOT IN ()
+	// 这种空括号，进而 SQL 语法错）。
+	readSubQuery := DB.Model(&MessageReadStatus{}).
+		Select("message_id").
+		Where("tenant_id = ? AND user_id = ?", tenantId, userId)
+	tx := DB.Model(&Message{}).
+		Where("tenant_id = ?", tenantId).
 		Where("status = ?", MessageStatusNormal).
 		Where("(type = ? AND target_user_id = ?) OR type = ?",
 			MessageTypeDirected, userId, MessageTypeBroadcast).
-		Where("id NOT IN (?)",
-			DB.Model(&MessageReadStatus{}).Select("message_id").Where("user_id = ?", userId)).
-		Count(&count).Error
+		Where("id NOT IN (?)", readSubQuery)
+	err := tx.Count(&count).Error
 	return count, err
 }
 
-func GetMessageReadStatuses(messageId int, page *common.PageInfo) ([]MessageReadStatus, int64, error) {
+func GetMessageReadStatuses(tenantId int, messageId int, page *common.PageInfo) ([]MessageReadStatus, int64, error) {
 	var statuses []MessageReadStatus
 	var total int64
 
 	tx := DB.Model(&MessageReadStatus{}).Where("message_id = ?", messageId)
+	if tenantId > 0 {
+		tx = tx.Where("tenant_id = ?", tenantId)
+	}
 	if err := tx.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}

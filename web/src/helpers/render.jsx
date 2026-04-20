@@ -103,7 +103,6 @@ import {
   SiGitlab,
   SiGoogle,
   SiKeycloak,
-  SiLinkedin,
   SiNextcloud,
   SiNotion,
   SiOkta,
@@ -115,6 +114,8 @@ import {
   SiWechat,
   SiX,
 } from 'react-icons/si';
+// LinkedIn was removed from react-icons/si in v5.x; use the Font Awesome variant.
+import { FaLinkedin } from 'react-icons/fa';
 
 // 获取侧边栏Lucide图标组件
 export function getLucideIcon(key, selected = false) {
@@ -145,6 +146,7 @@ export function getLucideIcon(key, selected = false) {
     case 'task':
       return <CheckSquare {...commonProps} color={iconColor} />;
     case 'topup':
+    case 'tenantPayment':
       return <CreditCard {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
@@ -552,7 +554,7 @@ const oauthProviderIconMap = {
   google: SiGoogle,
   discord: SiDiscord,
   facebook: SiFacebook,
-  linkedin: SiLinkedin,
+  linkedin: FaLinkedin,
   x: SiX,
   twitter: SiX,
   slack: SiSlack,

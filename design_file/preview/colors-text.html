@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Colors — Text</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .panel { padding: 16px; border-radius: var(--r-md); border: 1px solid var(--border); }
+  .light { background: oklch(0.99 0.002 260); }
+  .dark  { background: oklch(0.14 0.006 260); border-color: oklch(0.28 0.008 260); }
+  .row { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; }
+  .row .label { font: 600 11px/16px var(--font-sans); width: 56px; opacity: 0.7; font-family: var(--font-mono); }
+  .light .t0 { color: oklch(0.20 0.008 260); }
+  .light .t1 { color: oklch(0.45 0.010 260); }
+  .light .t2 { color: oklch(0.62 0.010 260); }
+  .dark .t0 { color: oklch(0.97 0.003 260); }
+  .dark .t1 { color: oklch(0.72 0.010 260); }
+  .dark .t2 { color: oklch(0.55 0.010 260); }
+  .specimen { font: 500 16px/20px var(--font-sans); }
+</style>
+</head>
+<body>
+<div class="panel light">
+  <div class="row"><span class="label">text-0</span><span class="specimen t0">$1,284.50 remaining</span></div>
+  <div class="row"><span class="label">text-1</span><span class="specimen t1">42 keys · last sync 2m ago</span></div>
+  <div class="row"><span class="label">text-2</span><span class="specimen t2">Tertiary metadata</span></div>
+</div>
+<div class="panel dark">
+  <div class="row"><span class="label">text-0</span><span class="specimen t0">$1,284.50 remaining</span></div>
+  <div class="row"><span class="label">text-1</span><span class="specimen t1">42 keys · last sync 2m ago</span></div>
+  <div class="row"><span class="label">text-2</span><span class="specimen t2">Tertiary metadata</span></div>
+</div>
+</body>
+</html>

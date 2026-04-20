@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
@@ -170,14 +171,15 @@ func ListModels(c *gin.Context, modelType int) {
 		} else {
 			// Token has no group set — use user's group if it has channels,
 			// otherwise fall back to "default"
-			if !model.GroupHasChannels(userGroup) {
+			if !model.GroupHasChannels(userGroup, middleware.GetTenantId(c)) {
 				group = "default"
 			}
 		}
 		var models []string
 		if tokenGroup == "auto" {
 			for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
-				groupModels := model.GetGroupEnabledModels(autoGroup)
+				tid := middleware.GetTenantId(c)
+				groupModels := model.GetGroupEnabledModels(autoGroup, tid)
 				for _, g := range groupModels {
 					if !common.StringsContains(models, g) {
 						models = append(models, g)
@@ -186,9 +188,10 @@ func ListModels(c *gin.Context, modelType int) {
 			}
 		} else if strings.Contains(group, ",") {
 			// Custom group chain: collect models from all groups in the chain
+			tid := middleware.GetTenantId(c)
 			chainGroups := service.ParseGroupChain(group, userGroup)
 			for _, cg := range chainGroups {
-				groupModels := model.GetGroupEnabledModels(cg)
+				groupModels := model.GetGroupEnabledModels(cg, tid)
 				for _, g := range groupModels {
 					if !common.StringsContains(models, g) {
 						models = append(models, g)
@@ -196,7 +199,7 @@ func ListModels(c *gin.Context, modelType int) {
 				}
 			}
 		} else {
-			models = model.GetGroupEnabledModels(group)
+			models = model.GetGroupEnabledModels(group, middleware.GetTenantId(c))
 		}
 		for _, modelName := range models {
 			if !acceptUnsetRatioModel {
@@ -275,7 +278,7 @@ func DashboardListModels(c *gin.Context) {
 func EnabledListModels(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    model.GetEnabledModels(),
+		"data":    model.GetEnabledModels(middleware.GetTenantId(c)),
 	})
 }
 

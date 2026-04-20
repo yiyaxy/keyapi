@@ -520,7 +520,8 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 	lastID := 0
 	for {
 		var channels []*model.Channel
-		query := model.DB.
+		// 定时任务跨租户扫描所有启用渠道，显式 bypass 放行 guardrail。
+		query := model.WithTenantBypass(model.DB).
 			Select("id", "name", "type", "key", "status", "base_url", "models", "settings", "setting", "other", "group", "priority", "weight", "tag", "channel_info", "header_override").
 			Where("status = ?", common.ChannelStatusEnabled).
 			Order("id asc").

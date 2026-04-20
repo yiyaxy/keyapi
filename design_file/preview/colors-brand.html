@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Colors — Brand & Accent</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .swatch { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; background: var(--bg-1); }
+  .chip { height: 80px; display: flex; align-items: center; justify-content: center; font: 600 13px/1 var(--font-sans); }
+  .meta { padding: 10px 12px; }
+  .name { font: 600 13px/16px var(--font-sans); color: var(--text-0); }
+  .desc { font: 400 11px/14px var(--font-sans); color: var(--text-1); margin-top: 2px; }
+  .mono { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="swatch">
+  <div class="chip" style="background:oklch(0.22 0.010 260); color:oklch(0.99 0.002 260);">Primary CTA</div>
+  <div class="meta">
+    <div class="name">--primary</div>
+    <div class="desc">Near-black charcoal. Single CTA per screen.</div>
+    <div class="mono">oklch(0.22 .010 260)</div>
+  </div>
+</div>
+<div class="swatch">
+  <div class="chip" style="background:oklch(0.65 0.16 160); color:white;">Accent</div>
+  <div class="meta">
+    <div class="name">--accent</div>
+    <div class="desc">The only chromatic color. Links, selection, key numbers.</div>
+    <div class="mono">oklch(0.65 .16 160)</div>
+  </div>
+</div>
+<div class="swatch">
+  <div class="chip" style="background:oklch(0.94 0.04 160); color:oklch(0.32 0.08 160);">Accent soft</div>
+  <div class="meta">
+    <div class="name">--accent-soft</div>
+    <div class="desc">Tag / pill background. Selected row highlight.</div>
+    <div class="mono">oklch(0.94 .04 160)</div>
+  </div>
+</div>
+</body>
+</html>

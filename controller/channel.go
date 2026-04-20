@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
@@ -119,7 +120,7 @@ func GetAllChannels(c *gin.Context) {
 		}
 		total, _ = model.CountAllTags()
 	} else {
-		baseQuery := model.DB.Model(&model.Channel{})
+		baseQuery := model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
 		if typeFilter >= 0 {
 			baseQuery = baseQuery.Where("type = ?", typeFilter)
 		}
@@ -148,7 +149,7 @@ func GetAllChannels(c *gin.Context) {
 		clearChannelInfo(datum)
 	}
 
-	countQuery := model.DB.Model(&model.Channel{})
+	countQuery := model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
 	if statusFilter == common.ChannelStatusEnabled {
 		countQuery = countQuery.Where("status = ?", common.ChannelStatusEnabled)
 	} else if statusFilter == 0 {
@@ -207,7 +208,7 @@ func FetchUpstreamModels(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelById(id, true)
+	channel, err := model.GetChannelByIdWithTenant(id, middleware.GetTenantId(c), true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -272,7 +273,7 @@ func SearchChannels(c *gin.Context) {
 			}
 		}
 	} else {
-		channels, err := model.SearchChannels(keyword, group, modelKeyword, idSort)
+		channels, err := model.SearchChannelsByTenant(middleware.GetTenantId(c), keyword, group, modelKeyword, idSort)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -403,7 +404,7 @@ func GetChannelKey(c *gin.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, fmt.Sprintf("查看渠道密钥信息 (渠道ID: %d)", channelId))
+	model.RecordLogCtx(c, userId, model.LogTypeSystem, fmt.Sprintf("查看渠道密钥信息 (渠道ID: %d)", channelId))
 
 	// 返回渠道密钥
 	c.JSON(http.StatusOK, gin.H{
@@ -580,6 +581,7 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 
+	addChannelRequest.Channel.TenantId = middleware.GetTenantId(c)
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
 	switch addChannelRequest.Mode {
@@ -636,6 +638,10 @@ func AddChannel(c *gin.Context) {
 
 	channels := make([]model.Channel, 0, len(keys))
 	for _, key := range keys {
+		// Trim 后再判空：batch 模式下上游直接按 \n 切分（见 L627），未做清理，
+		// 纯空白行（"   " / "\t"）若不过滤会既参与 incomingCount 又插入无效 key。
+		// 与 multi_to_single 模式（L608 TrimSpace）保持一致。
+		key = strings.TrimSpace(key)
 		if key == "" {
 			continue
 		}
@@ -650,6 +656,36 @@ func AddChannel(c *gin.Context) {
 		}
 		channels = append(channels, *localChannel)
 	}
+
+	// 租户计划级 Channel 数量校验（best-effort：Count→Compare→Insert 非原子，
+	// 高并发下可能越界 1-N 个。admin 低频操作可接受，channel_limit 告警兜底）
+	// 注意：必须用 len(channels)（清洗后的实际创建数），不是 len(keys)——
+	// 上面的循环会跳过空行。
+	{
+		tenantId := middleware.GetTenantId(c)
+		plan, err := model.GetTenantPlan(tenantId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if plan.MaxChannels > 0 {
+			currentCount, err := model.CountTenantChannels(tenantId)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			incomingCount := int64(len(channels))
+			if currentCount+incomingCount > int64(plan.MaxChannels) {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("已达到租户计划的渠道数量上限 (当前: %d, 本次: %d, 上限: %d)",
+						currentCount, incomingCount, plan.MaxChannels),
+				})
+				return
+			}
+		}
+	}
+
 	err = model.BatchInsertChannels(channels)
 	if err != nil {
 		common.ApiError(c, err)
@@ -680,7 +716,7 @@ func DeleteChannel(c *gin.Context) {
 }
 
 func DeleteDisabledChannel(c *gin.Context) {
-	rows, err := model.DeleteDisabledChannel()
+	rows, err := model.DeleteDisabledChannel(middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -716,7 +752,7 @@ func DisableTagChannels(c *gin.Context) {
 		})
 		return
 	}
-	err = model.DisableChannelByTag(channelTag.Tag)
+	err = model.DisableChannelByTag(channelTag.Tag, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -739,7 +775,7 @@ func EnableTagChannels(c *gin.Context) {
 		})
 		return
 	}
-	err = model.EnableChannelByTag(channelTag.Tag)
+	err = model.EnableChannelByTag(channelTag.Tag, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -791,7 +827,7 @@ func EditTagChannels(c *gin.Context) {
 		}
 		channelTag.HeaderOverride = common.GetPointer[string](trimmed)
 	}
-	err = model.EditChannelByTag(channelTag.Tag, channelTag.NewTag, channelTag.ModelMapping, channelTag.Models, channelTag.Groups, channelTag.Priority, channelTag.Weight, channelTag.ParamOverride, channelTag.HeaderOverride)
+	err = model.EditChannelByTag(channelTag.Tag, channelTag.NewTag, channelTag.ModelMapping, channelTag.Models, channelTag.Groups, channelTag.Priority, channelTag.Weight, channelTag.ParamOverride, channelTag.HeaderOverride, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -819,7 +855,7 @@ func DeleteChannelBatch(c *gin.Context) {
 		})
 		return
 	}
-	err = model.BatchDeleteChannels(channelBatch.Ids)
+	err = model.BatchDeleteChannels(middleware.GetTenantId(c), channelBatch.Ids)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -1187,6 +1223,7 @@ func CopyChannel(c *gin.Context) {
 	// clone channel
 	clone := *origin // shallow copy is sufficient as we will overwrite primitives
 	clone.Id = 0     // let DB auto-generate
+	clone.TenantId = middleware.GetTenantId(c)
 	clone.CreatedTime = common.GetTimestamp()
 	clone.Name = origin.Name + suffix
 	clone.TestTime = 0

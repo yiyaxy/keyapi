@@ -42,6 +42,7 @@ const RechargeCard = ({
   enableOnlineTopUp,
   enableStripeTopUp,
   enableCreemTopUp,
+  enableWechatTopup,
   creemProducts,
   creemPreTopUp,
   presetAmounts,
@@ -90,9 +91,9 @@ const RechargeCard = ({
           <div className='py-12 flex justify-center'>
             <Spin size='large' />
           </div>
-        ) : enableOnlineTopUp || enableStripeTopUp || enableCreemTopUp ? (
+        ) : enableOnlineTopUp || enableStripeTopUp || enableCreemTopUp || enableWechatTopup ? (
           <div className='space-y-4'>
-            {(enableOnlineTopUp || enableStripeTopUp) && (
+            {(enableOnlineTopUp || enableStripeTopUp || enableWechatTopup) && (
               <div className='rounded-2xl border border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-700 shadow-sm shadow-slate-200/60 dark:shadow-none overflow-hidden'>
                 <div className='p-5 bg-gradient-to-br from-slate-50 via-white to-slate-100/80 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 border-b border-slate-100 dark:border-slate-800'>
                   <div className='flex items-start justify-between gap-4 mb-4'>
@@ -242,7 +243,10 @@ const RechargeCard = ({
                     </div>
                     <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
                       {payMethods.map((method) => {
-                        const disabled = (!enableOnlineTopUp && method.type !== 'stripe') || (!enableStripeTopUp && method.type === 'stripe');
+                        const disabled =
+                          (method.type === 'stripe' && !enableStripeTopUp) ||
+                          (method.type === 'wechat' && !enableWechatTopup) ||
+                          (!['stripe', 'wechat'].includes(method.type) && !enableOnlineTopUp);
                         const isActive = payWay === method.type;
                         const isLoading = paymentLoading && isActive;
                         const methodIcon =

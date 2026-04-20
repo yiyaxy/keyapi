@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -31,7 +32,7 @@ type LoginRequest struct {
 }
 
 func Login(c *gin.Context) {
-	if !common.PasswordLoginEnabled {
+	if !service.GetConfigBool(middleware.GetTenantId(c), "PasswordLoginEnabled", common.PasswordLoginEnabled) {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
 		return
 	}
@@ -51,7 +52,7 @@ func Login(c *gin.Context) {
 		Username: username,
 		Password: password,
 	}
-	err = user.ValidateAndFill()
+	err = user.ValidateAndFillWithTenant(middleware.GetTenantId(c))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"message": err.Error(),
@@ -89,14 +90,33 @@ func Login(c *gin.Context) {
 
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
+	info, err := model.GetTenantMembershipAuthInfo(middleware.GetTenantId(c), user)
+	if err != nil {
+		common.ApiErrorMsg(c, "当前用户不属于该租户")
+		return
+	}
+	platformRole := info.PlatformRole
+	tenantRole := info.TenantRole
+	effectiveRole := info.EffectiveRole
+	c.Set("role", effectiveRole)
+	c.Set("platform_role", platformRole)
+	c.Set("tenant_role", tenantRole)
 	session := sessions.Default(c)
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
-	session.Set("role", user.Role)
+	session.Set("role", effectiveRole)
+	session.Set("platform_role", platformRole)
+	session.Set("tenant_role", tenantRole)
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
 	session.Set("session_version", common.SessionVersion)
-	err := session.Save()
+	// Multi-tenant: persist tenant in session (read from TenantResolve middleware)
+	if tid, exists := c.Get(string(constant.ContextKeyTenantId)); exists {
+		session.Set("tenant_id", tid)
+	} else {
+		session.Set("tenant_id", model.DefaultTenantId)
+	}
+	err = session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
 		return
@@ -108,8 +128,9 @@ func setupLogin(user *model.User, c *gin.Context) {
 	loginType := c.GetString("login_type")
 	userId := user.Id
 	username := user.Username
+	tenantId := middleware.GetTenantId(c)
 	gopool.Go(func() {
-		model.RecordLoginIp(userId, username, ip, loginType, userAgent)
+		model.RecordLoginIp(tenantId, userId, username, ip, loginType, userAgent)
 		service.LookupIPAsync(ip)
 	})
 
@@ -117,12 +138,15 @@ func setupLogin(user *model.User, c *gin.Context) {
 		"message": "",
 		"success": true,
 		"data": map[string]any{
-			"id":           user.Id,
-			"username":     user.Username,
-			"display_name": user.DisplayName,
-			"role":         user.Role,
-			"status":       user.Status,
-			"group":        user.Group,
+			"id":            user.Id,
+			"username":      user.Username,
+			"display_name":  user.DisplayName,
+			"role":          effectiveRole,
+			"platform_role": platformRole,
+			"tenant_role":   tenantRole,
+			"tenant_id":     tenantId,
+			"status":        user.Status,
+			"group":         user.Group,
 		},
 	})
 }
@@ -145,11 +169,12 @@ func Logout(c *gin.Context) {
 }
 
 func Register(c *gin.Context) {
-	if !common.RegisterEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if !service.GetConfigBool(tenantId, "RegisterEnabled", common.RegisterEnabled) {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 		return
 	}
-	if !common.PasswordRegisterEnabled {
+	if !service.GetConfigBool(tenantId, "PasswordRegisterEnabled", common.PasswordRegisterEnabled) {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordRegisterDisabled)
 		return
 	}
@@ -163,7 +188,7 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
-	if common.EmailVerificationEnabled {
+	if service.GetConfigBool(tenantId, "EmailVerificationEnabled", common.EmailVerificationEnabled) {
 		if user.Email == "" || user.VerificationCode == "" {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return
@@ -173,7 +198,7 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
+	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
@@ -186,6 +211,7 @@ func Register(c *gin.Context) {
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
 	cleanUser := model.User{
+		TenantId:    middleware.GetTenantId(c),
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
@@ -200,10 +226,14 @@ func Register(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := model.EnsureTenantMembership(cleanUser.Id, cleanUser.TenantId, model.TenantRoleMember, inviterId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	// 获取插入后的用户ID
 	var insertedUser model.User
-	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
+	if err := model.DB.Where("username = ? AND tenant_id = ?", cleanUser.Username, middleware.GetTenantId(c)).First(&insertedUser).Error; err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
@@ -217,6 +247,7 @@ func Register(c *gin.Context) {
 		}
 		// 生成默认令牌
 		token := model.Token{
+			TenantId:           middleware.GetTenantId(c),
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
 			Key:                key,
@@ -245,8 +276,13 @@ func Register(c *gin.Context) {
 
 func GetAllUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.GetAllUsers(pageInfo)
+	tenantId := middleware.GetTenantId(c)
+	users, total, err := model.GetAllUsersByTenant(tenantId, pageInfo)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyMembershipView(tenantId, users); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -263,8 +299,13 @@ func SearchUsers(c *gin.Context) {
 	group := c.Query("group")
 	ip := c.Query("ip")
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, ip, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tenantId := middleware.GetTenantId(c)
+	users, total, err := model.SearchUsersByTenant(tenantId, keyword, group, ip, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyMembershipView(tenantId, users); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -281,8 +322,17 @@ func GetUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), id, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	user, err := model.GetUserById(id, false)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), user); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -359,6 +409,7 @@ func TransferAffQuota(c *gin.Context) {
 		return
 	}
 	transferReq := &model.AffTransferRequest{
+		TenantId: middleware.GetTenantId(c),
 		UserId:   id,
 		Username: user.Username,
 		Quota:    tran.Quota,
@@ -399,8 +450,14 @@ func GetAffCode(c *gin.Context) {
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
+	platformRole := c.GetInt("platform_role")
+	tenantRole := c.GetInt("tenant_role")
 	user, err := model.GetUserById(id, false)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), user); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -419,6 +476,9 @@ func GetSelf(c *gin.Context) {
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
 		"role":              user.Role,
+		"platform_role":     platformRole,
+		"tenant_role":       tenantRole,
+		"tenant_id":         middleware.GetTenantId(c),
 		"status":            user.Status,
 		"email":             user.Email,
 		"github_id":         user.GitHubId,
@@ -560,7 +620,7 @@ func GetUserModels(c *gin.Context) {
 	groups := service.GetUserUsableGroups(user.Group)
 	var models []string
 	for group := range groups {
-		for _, g := range model.GetGroupEnabledModels(group) {
+		for _, g := range model.GetGroupEnabledModels(group, middleware.GetTenantId(c)) {
 			if !common.StringsContains(models, g) {
 				models = append(models, g)
 			}
@@ -588,8 +648,17 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), updatedUser.Id, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), originUser); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -598,20 +667,17 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	if myRole <= updatedUser.Role && myRole != common.RoleRootUser {
-		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
-		return
-	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
+	updatedUser.TenantId = middleware.GetTenantId(c)
 	updatePassword := updatedUser.Password != ""
 	if err := updatedUser.Edit(updatePassword); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	if originUser.Quota != updatedUser.Quota {
-		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
+		model.RecordLogCtx(c, originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -633,8 +699,18 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), id, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
 	user, err := model.GetUserById(id, false)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), user); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -645,12 +721,14 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
+	// Use user's actual TenantId (not current tenant) for the DB update,
+	// since guest members have a different home tenant_id
 	if err := user.ClearBinding(bindingType); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	model.RecordLog(user.Id, model.LogTypeManage, fmt.Sprintf("admin cleared %s binding for user %s", bindingType, user.Username))
+	model.RecordLogCtx(c, user.Id, model.LogTypeManage, fmt.Sprintf("admin cleared %s binding for user %s", bindingType, user.Username))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -798,8 +876,17 @@ func DeleteUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), id, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	originUser, err := model.GetUserById(id, false)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), originUser); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -808,14 +895,27 @@ func DeleteUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	err = model.HardDeleteUserById(id)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "",
-		})
-		return
+	tenantId := middleware.GetTenantId(c)
+	platformRole := c.GetInt("platform_role")
+	if platformRole >= common.RoleRootUser {
+		// Platform root: hard delete the user globally
+		err = model.HardDeleteUserByIdWithTenant(id, 0)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	} else {
+		// Tenant admin: remove membership, don't delete the global user
+		err = model.RemoveTenantMembership(tenantId, id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
 }
 
 func DeleteSelf(c *gin.Context) {
@@ -827,11 +927,27 @@ func DeleteSelf(c *gin.Context) {
 		return
 	}
 
-	err := model.DeleteUserById(id)
-	if err != nil {
-		common.ApiError(c, err)
-		return
+	tenantId := middleware.GetTenantId(c)
+	// Check if user's home tenant matches current tenant
+	if user.TenantId == tenantId {
+		// Home tenant — actually delete the user
+		err := model.DeleteUserByIdWithTenant(id, tenantId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	} else {
+		// Guest membership — just remove from current tenant
+		err := model.RemoveTenantMembership(tenantId, id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
+	// Clear session
+	session := sessions.Default(c)
+	session.Clear()
+	_ = session.Save()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -855,18 +971,27 @@ func CreateUser(c *gin.Context) {
 		user.DisplayName = user.Username
 	}
 	myRole := c.GetInt("role")
-	if user.Role >= myRole {
+	requestedTenantRole := model.TenantRoleMember
+	if user.Role >= common.RoleAdminUser {
+		requestedTenantRole = model.TenantRoleAdmin
+	}
+	if model.EffectiveRole(common.RoleCommonUser, requestedTenantRole) >= myRole {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
 	// Even for admin users, we cannot fully trust them!
 	cleanUser := model.User{
+		TenantId:    middleware.GetTenantId(c),
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
-		Role:        user.Role, // 保持管理员设置的角色
+		Role:        common.RoleCommonUser,
 	}
 	if err := cleanUser.Insert(0); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.EnsureTenantMembership(cleanUser.Id, cleanUser.TenantId, requestedTenantRole, c.GetInt("id")); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -892,6 +1017,11 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	// Tenant gate: verify target user belongs to current tenant
+	if err := model.RequireTenantMembership(middleware.GetTenantId(c), req.Id, c.GetInt("platform_role")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	user := model.User{
 		Id: req.Id,
 	}
@@ -899,6 +1029,10 @@ func ManageUser(c *gin.Context) {
 	model.DB.Unscoped().Where(&user).First(&user)
 	if user.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		return
+	}
+	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), &user); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	myRole := c.GetInt("role")
@@ -920,20 +1054,13 @@ func ManageUser(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgUserCannotDeleteRootUser)
 			return
 		}
-		if err := user.Delete(); err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
-			return
-		}
 	case "promote":
-		if myRole != common.RoleRootUser {
-			common.ApiErrorI18n(c, i18n.MsgUserAdminCannotPromote)
-			return
-		}
 		if user.Role >= common.RoleAdminUser {
 			common.ApiErrorI18n(c, i18n.MsgUserAlreadyAdmin)
+			return
+		}
+		if err := model.UpdateTenantMembershipRole(middleware.GetTenantId(c), user.Id, model.TenantRoleAdmin); err != nil {
+			common.ApiError(c, err)
 			return
 		}
 		user.Role = common.RoleAdminUser
@@ -946,17 +1073,62 @@ func ManageUser(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgUserAlreadyCommon)
 			return
 		}
-		user.Role = common.RoleCommonUser
+		if err := model.UpdateTenantMembershipRole(middleware.GetTenantId(c), user.Id, model.TenantRoleMember); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if user.Role < common.RoleAdminUser {
+			user.Role = common.RoleCommonUser
+		}
 	}
 
-	if err := user.Update(false); err != nil {
-		common.ApiError(c, err)
-		return
+	if req.Action == "disable" || req.Action == "enable" || req.Action == "delete" {
+		membershipStatus := model.TenantMembershipStatusActive
+		switch req.Action {
+		case "disable":
+			membershipStatus = model.TenantMembershipStatusDisabled
+		case "delete":
+			membershipStatus = model.TenantMembershipStatusRemoved
+		}
+		if err := model.UpdateTenantMembershipStatus(middleware.GetTenantId(c), user.Id, membershipStatus); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+
+	if req.Action == "disable" || req.Action == "enable" {
+		platformUser, err := model.GetUserById(user.Id, true)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		platformUser.Status = user.Status
+		user = *platformUser
+		if err := user.Update(false); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+	if req.Action == "promote" || req.Action == "demote" {
+		if current, err := model.GetUserById(user.Id, false); err == nil && current != nil {
+			user = *current
+			_ = model.ApplyMembershipViewToUser(middleware.GetTenantId(c), &user)
+		}
 	}
 	clearUser := model.User{
 		Role:   user.Role,
 		Status: user.Status,
 	}
+	if req.Action == "delete" {
+		common.ApiSuccess(c, clearUser)
+		return
+	}
+	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), &user); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	clearUser.Role = user.Role
+	clearUser.Status = user.Status
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -984,10 +1156,7 @@ func EmailBind(c *gin.Context) {
 	}
 	session := sessions.Default(c)
 	id := session.Get("id")
-	user := model.User{
-		Id: id.(int),
-	}
-	err := user.FillUserById()
+	user, err := model.GetUserByIdWithContext(c, id.(int), true)
 	if err != nil {
 		common.ApiError(c, err)
 		return

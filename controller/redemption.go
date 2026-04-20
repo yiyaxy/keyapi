@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +15,8 @@ import (
 
 func GetAllRedemptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.GetAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tenantId := middleware.GetTenantId(c)
+	redemptions, total, err := model.GetAllRedemptions(tenantId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -28,7 +30,8 @@ func GetAllRedemptions(c *gin.Context) {
 func SearchRedemptions(c *gin.Context) {
 	keyword := c.Query("keyword")
 	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.SearchRedemptions(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tenantId := middleware.GetTenantId(c)
+	redemptions, total, err := model.SearchRedemptions(tenantId, keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -45,7 +48,8 @@ func GetRedemption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	redemption, err := model.GetRedemptionById(id)
+	tenantId := middleware.GetTenantId(c)
+	redemption, err := model.GetRedemptionById(tenantId, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -85,6 +89,7 @@ func AddRedemption(c *gin.Context) {
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
 		cleanRedemption := model.Redemption{
+			TenantId:    middleware.GetTenantId(c),
 			UserId:      c.GetInt("id"),
 			Name:        redemption.Name,
 			Key:         key,
@@ -114,7 +119,8 @@ func AddRedemption(c *gin.Context) {
 
 func DeleteRedemption(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	err := model.DeleteRedemptionById(id)
+	tenantId := middleware.GetTenantId(c)
+	err := model.DeleteRedemptionById(tenantId, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -134,7 +140,7 @@ func UpdateRedemption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	cleanRedemption, err := model.GetRedemptionById(redemption.Id)
+	cleanRedemption, err := model.GetRedemptionById(middleware.GetTenantId(c), redemption.Id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -166,7 +172,8 @@ func UpdateRedemption(c *gin.Context) {
 }
 
 func DeleteInvalidRedemption(c *gin.Context) {
-	rows, err := model.DeleteInvalidRedemptions()
+	tenantId := middleware.GetTenantId(c)
+	rows, err := model.DeleteInvalidRedemptions(tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

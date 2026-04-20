@@ -1,0 +1,18 @@
+{
+  "page.title": "仪表盘",
+  "range.7d": "最近 7 天",
+  "range.30d": "最近 30 天",
+  "quota.label": "余额",
+  "quota.used_of_total": "已用 {{used}} / {{total}}",
+  "quota.zero_body": "余额为 0 · 请先充值",
+  "quota.topup": "充值",
+  "quota.exhausted": "已耗尽",
+  "usage.title": "最近 {{range}} 用量 (UTC)",
+  "usage.empty.title": "暂无用量数据",
+  "usage.empty.body": "创建一个 API 密钥以开始使用。",
+  "usage.empty.cta": "创建密钥",
+  "usage.tooltip.requests": "{{count}} 次请求",
+  "activity.requests": "请求数",
+  "activity.tokens": "Tokens",
+  "activity.consumed": "已消耗"
+}

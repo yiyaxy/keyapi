@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -28,7 +29,8 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	tenantId := middleware.GetTenantId(c)
+	plan, err := model.GetSubscriptionPlanById(tenantId, req.PlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -62,7 +64,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := model.CountUserSubscriptionsByPlan(tenantId, userId, plan.Id)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -84,6 +86,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	}
 
 	order := &model.SubscriptionOrder{
+		TenantId:      middleware.GetTenantId(c),
 		UserId:        userId,
 		PlanId:        plan.Id,
 		Money:         plan.PriceAmount,

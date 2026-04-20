@@ -202,7 +202,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		}
 	}
 
-	userQuota, err := model.GetUserQuota(info.UserId, false)
+	userQuota, err := model.GetUserQuota(info.UserId, false, info.TenantId)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -243,7 +243,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 				Group:     info.UsingGroup,
 				Other:     other,
 			})
-			model.UpdateUserUsedQuotaAndRequestCount(info.UserId, priceData.Quota)
+			model.UpdateUserUsedQuotaAndRequestCount(info.UserId, priceData.Quota, info.TenantId)
 			model.UpdateChannelUsedQuota(info.ChannelId, priceData.Quota)
 		}
 	}()
@@ -510,7 +510,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+	userQuota, err := model.GetUserQuota(relayInfo.UserId, false, relayInfo.TenantId)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -550,7 +550,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 				Group:     relayInfo.UsingGroup,
 				Other:     other,
 			})
-			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, priceData.Quota)
+			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, priceData.Quota, relayInfo.TenantId)
 			model.UpdateChannelUsedQuota(relayInfo.ChannelId, priceData.Quota)
 		}
 	}()

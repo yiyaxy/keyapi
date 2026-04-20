@@ -16,7 +16,15 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+// newGormLogger 返回项目定制的 GORM 日志器（实现见 gorm_logger.go）。
+// 特点：单行一条 / 颜色分级（错误红、慢黄、普通灰）/ 调用位置压成短路径 /
+// 默认 Warn 级别不刷屏，DEBUG=true 时 Info 级别完整回显。
+func newGormLogger() logger.Interface {
+	return newPrettyGormLogger()
+}
 
 var commonGroupCol string
 var commonKeyCol string
@@ -62,6 +70,11 @@ func initCol() {
 	//common.SysLog("Using Log SQL Type: " + common.LogSqlType)
 }
 
+// InitColForTest exposes the private initCol() for unit tests that need
+// commonKeyCol/commonGroupCol set without running the full InitDB() path.
+// Production code must not call this directly — InitDB() calls initCol().
+func InitColForTest() { initCol() }
+
 var DB *gorm.DB
 
 var LOG_DB *gorm.DB
@@ -76,6 +89,7 @@ func createRootAccountIfNeed() error {
 			return err
 		}
 		rootUser := User{
+			TenantId:    DefaultTenantId,
 			Username:    "root",
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
@@ -84,25 +98,37 @@ func createRootAccountIfNeed() error {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
+		WithTenantBypass(DB).Create(&rootUser)
 	}
 	return nil
 }
 
 func CheckSetup() {
 	setup := GetSetup()
-	if setup == nil {
-		// No setup record exists, check if we have a root user
+	// "已初始化" 的判据是 InitializedAt > 0（而不是行是否存在）。
+	// 因为 migrateDB 在写入 schema_version 时会创建占位 Setup 行，
+	// 那时 Version/InitializedAt 仍为空——不能算"已初始化"。
+	if setup == nil || setup.InitializedAt == 0 {
+		// 未完成安装，看是否已有 root 用户（老库直接启动的场景）
 		if RootUserExists() {
 			common.SysLog("system is not initialized, but root user exists")
-			// Create setup record
-			newSetup := Setup{
-				Version:       common.Version,
-				InitializedAt: time.Now().Unix(),
-			}
-			err := DB.Create(&newSetup).Error
-			if err != nil {
-				common.SysLog("failed to create setup record: " + err.Error())
+			if setup == nil {
+				err := DB.Create(&Setup{
+					Version:       common.Version,
+					SchemaVersion: CurrentSchemaVersion,
+					InitializedAt: time.Now().Unix(),
+				}).Error
+				if err != nil {
+					common.SysLog("failed to create setup record: " + err.Error())
+				}
+			} else {
+				err := DB.Model(setup).Updates(map[string]interface{}{
+					"version":        common.Version,
+					"initialized_at": time.Now().Unix(),
+				}).Error
+				if err != nil {
+					common.SysLog("failed to update setup record: " + err.Error())
+				}
 			}
 			constant.Setup = true
 		} else {
@@ -135,6 +161,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 				PreferSimpleProtocol: true, // disables implicit prepared statement usage
 			}), &gorm.Config{
 				PrepareStmt: true, // precompile SQL
+				Logger:      newGormLogger(),
 			})
 		}
 		if strings.HasPrefix(dsn, "local") {
@@ -146,6 +173,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 			}
 			return gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 				PrepareStmt: true, // precompile SQL
+				Logger:      newGormLogger(),
 			})
 		}
 		// Use MySQL
@@ -165,6 +193,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 		}
 		return gorm.Open(mysql.Open(dsn), &gorm.Config{
 			PrepareStmt: true, // precompile SQL
+			Logger:      newGormLogger(),
 		})
 	}
 	// Use SQLite
@@ -172,6 +201,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 	common.UsingSQLite = true
 	return gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
+		Logger:      newGormLogger(),
 	})
 }
 
@@ -183,6 +213,7 @@ func InitDB() (err error) {
 		}
 		DB = db
 		relaymetrics.RegisterGormCallbacks(DB)
+		RegisterTenantCallbacks(DB)
 		// MySQL charset/collation startup check: ensure Chinese-capable charset
 		if common.UsingMySQL {
 			if err := checkMySQLChineseSupport(DB); err != nil {
@@ -223,6 +254,7 @@ func InitLogDB() (err error) {
 			db = db.Debug()
 		}
 		LOG_DB = db
+		RegisterTenantCallbacks(LOG_DB)
 		// If log DB is MySQL, also ensure Chinese-capable charset
 		if common.LogSqlType == common.DatabaseTypeMySQL {
 			if err := checkMySQLChineseSupport(LOG_DB); err != nil {
@@ -250,6 +282,25 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
+	// 先把 Setup 表本身建好，才能读写 schema 版本号
+	if err := DB.AutoMigrate(&Setup{}); err != nil {
+		return err
+	}
+
+	currentVersion := GetSchemaVersion()
+	if currentVersion == CurrentSchemaVersion {
+		common.SysLog(fmt.Sprintf("schema version matches (%s), skipping AutoMigrate", currentVersion))
+		// 版本匹配仍需执行的启动动作：缓存预热 + 默认租户幂等兜底
+		LoadIpBanCache()
+		LoadPromptRuleCache()
+		if err := EnsureDefaultTenant(); err != nil {
+			log.Printf("Warning: failed to bootstrap default tenant: %v", err)
+		}
+		return nil
+	}
+
+	common.SysLog(fmt.Sprintf("schema version %q → %q, running full migration", currentVersion, CurrentSchemaVersion))
+
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -257,79 +308,132 @@ func migrateDB() error {
 		return err
 	}
 
-	err := DB.AutoMigrate(
-		&Channel{},
-		&Token{},
-		&User{},
-		&PasskeyCredential{},
-		&Option{},
-		&Redemption{},
-		&Ability{},
-		&Log{},
-		&Midjourney{},
-		&TopUp{},
-		&QuotaData{},
-		&Task{},
-		&Model{},
-		&Vendor{},
-		&PrefillGroup{},
-		&Setup{},
-		&TwoFA{},
-		&TwoFABackupCode{},
-		&Checkin{},
-		&SubscriptionOrder{},
-		&UserSubscription{},
-		&SubscriptionPreConsumeRecord{},
-		&CustomOAuthProvider{},
-		&UserOAuthBinding{},
-		&Message{},
-		&MessageReadStatus{},
-		&UserIpRecord{},
-		&IpBan{},
-		&MessageTranslation{},
-		&ContentTranslation{},
-		&PromptRule{},
-		&AffTransferRequest{},
-		&AffRebateLog{},
-		&UserRebateSetting{},
-		&Ticket{},
-		&TicketReply{},
-		&TicketAttachment{},
-		&TicketUpload{},
-		&InvoiceApplication{},
-		&InvoiceItem{},
-		&InvoiceUpload{},
-		&InvoiceFile{},
-		&SiteRPMSnapshot{},
-		&AgentLog{},
-		&AgentReport{},
-	)
-	if err != nil {
+	// 并行 AutoMigrate 所有表（表清单维护在 migrateDBFast 内部）
+	if err := migrateDBFast(); err != nil {
 		return err
 	}
+
 	LoadIpBanCache()
 	LoadPromptRuleCache()
-	if common.UsingSQLite {
-		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
-			return err
-		}
-	} else {
-		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
-			return err
-		}
+
+	// Bootstrap default tenant and backfill existing data
+	if err := EnsureDefaultTenant(); err != nil {
+		log.Printf("Warning: failed to bootstrap default tenant: %v", err)
+	}
+	backfillTenantId()
+	backfillTenantMemberships()
+
+	// 记录新版本，下次启动即可快进
+	if err := SaveSchemaVersion(CurrentSchemaVersion); err != nil {
+		log.Printf("Warning: failed to save schema version: %v", err)
 	}
 
 	return nil
 }
 
+// backfillTenantId sets tenant_id = DefaultTenantId for any existing rows that have tenant_id = 0.
+// Idempotent: only updates rows where tenant_id = 0.
+func backfillTenantId() {
+	tables := []string{
+		"tenant_memberships",
+		// Phase 1
+		"users", "channels", "tokens", "abilities", "logs",
+		// Phase 2 — financial
+		"top_ups", "redemptions", "subscription_plans", "subscription_orders",
+		"user_subscriptions", "subscription_pre_consume_records",
+		// Phase 2 — invoicing
+		"invoice_applications", "invoice_items", "invoice_uploads", "invoice_files",
+		// Phase 2 — tickets
+		"tickets", "ticket_replies", "ticket_attachments", "ticket_uploads",
+		// Phase 2 — affiliate
+		"aff_rebate_logs", "aff_transfer_requests",
+		// Phase 2 — messaging
+		"messages", "message_read_statuses",
+		// Phase 2 — analytics & audit
+		"user_ip_records", "quota_data", "agent_logs", "agent_reports",
+		// Phase 5 — billing
+		"tenant_plans",
+	}
+	for _, table := range tables {
+		result := DB.Exec(fmt.Sprintf("UPDATE %s SET tenant_id = ? WHERE tenant_id = 0", table), DefaultTenantId)
+		if result.Error != nil {
+			log.Printf("Warning: tenant_id backfill for %s: %v", table, result.Error)
+		} else if result.RowsAffected > 0 {
+			log.Printf("Backfilled tenant_id=%d for %d rows in %s", DefaultTenantId, result.RowsAffected, table)
+		}
+	}
+	// Handle LOG_DB if separate.
+	// backfillTenantId runs inside InitDB()→migrateDB(), before InitLogDB() has assigned LOG_DB,
+	// so LOG_DB may still be nil here. Skip when nil or when pointing to the same handle as DB.
+	if LOG_DB != nil && LOG_DB != DB {
+		result := LOG_DB.Exec("UPDATE logs SET tenant_id = ? WHERE tenant_id = 0", DefaultTenantId)
+		if result.Error != nil {
+			log.Printf("Warning: tenant_id backfill for LOG_DB logs: %v", result.Error)
+		} else if result.RowsAffected > 0 {
+			log.Printf("Backfilled tenant_id=%d for %d rows in LOG_DB logs", DefaultTenantId, result.RowsAffected)
+		}
+	}
+}
+
+func backfillTenantMemberships() {
+	if DB == nil {
+		return
+	}
+	type userSeed struct {
+		Id       int
+		TenantId int
+		Role     int
+		Status   int
+	}
+	var users []userSeed
+	err := WithTenantBypass(DB).Model(&User{}).
+		Select("id", "tenant_id", "role", "status").
+		Find(&users).Error
+	if err != nil {
+		log.Printf("Warning: tenant membership backfill query failed: %v", err)
+		return
+	}
+	for _, user := range users {
+		if user.Id <= 0 {
+			continue
+		}
+		tenantId := user.TenantId
+		if tenantId <= 0 {
+			tenantId = DefaultTenantId
+		}
+		role := TenantRoleMember
+		if user.Role >= common.RoleAdminUser {
+			role = TenantRoleAdmin
+		}
+		status := TenantMembershipStatusActive
+		if user.Status != common.UserStatusEnabled {
+			status = TenantMembershipStatusDisabled
+		}
+		result := WithTenantBypass(DB).Where("tenant_id = ? AND user_id = ?", tenantId, user.Id).
+			Assign(map[string]interface{}{
+				"role":   role,
+				"status": status,
+			}).
+			FirstOrCreate(&TenantMembership{TenantId: tenantId, UserId: user.Id})
+		if result.Error != nil {
+			log.Printf("Warning: tenant membership backfill for user %d failed: %v", user.Id, result.Error)
+		}
+	}
+}
+
+// migrateDBFast 串行跑 AutoMigrate。
+// 历史注释："并行" 只是一种设想——GORM 的 PreparedStmtDB 不是并发安全的，
+// 并行 AutoMigrate 会触发 nil panic（prepare_stmt.go PreparedStmtDB.Reset）。
+// 日常启动已由 schema 版本门控整块跳过，首次/升级那一次用串行也是秒级。
 func migrateDBFast() error {
-
-	var wg sync.WaitGroup
-
 	migrations := []struct {
 		model interface{}
 		name  string
 	}{
+		{&Tenant{}, "Tenant"},
+		{&TenantMembership{}, "TenantMembership"},
+		{&TenantInvite{}, "TenantInvite"},
+		{&TenantOption{}, "TenantOption"},
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
@@ -356,6 +460,8 @@ func migrateDBFast() error {
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&Message{}, "Message"},
 		{&MessageReadStatus{}, "MessageReadStatus"},
+		{&UserIpRecord{}, "UserIpRecord"},
+		{&IpBan{}, "IpBan"},
 		{&MessageTranslation{}, "MessageTranslation"},
 		{&ContentTranslation{}, "ContentTranslation"},
 		{&PromptRule{}, "PromptRule"},
@@ -373,30 +479,22 @@ func migrateDBFast() error {
 		{&SiteRPMSnapshot{}, "SiteRPMSnapshot"},
 		{&AgentLog{}, "AgentLog"},
 		{&AgentReport{}, "AgentReport"},
+		{&TenantPlan{}, "TenantPlan"},
+		{&TenantAlertRecord{}, "TenantAlertRecord"},
+		{&TenantBill{}, "TenantBill"},
+		{&TenantLedger{}, "TenantLedger"},
+		{&TenantAuditLog{}, "TenantAuditLog"},
+		{&TenantPaymentConfig{}, "TenantPaymentConfig"},
+		{&PaymentOrder{}, "PaymentOrder"},
+		{&PaymentRefund{}, "PaymentRefund"},
 	}
-	// 动态计算migration数量，确保errChan缓冲区足够大
-	errChan := make(chan error, len(migrations))
 
 	for _, m := range migrations {
-		wg.Add(1)
-		go func(model interface{}, name string) {
-			defer wg.Done()
-			if err := DB.AutoMigrate(model); err != nil {
-				errChan <- fmt.Errorf("failed to migrate %s: %v", name, err)
-			}
-		}(m.model, m.name)
-	}
-
-	// Wait for all migrations to complete
-	wg.Wait()
-	close(errChan)
-
-	// Check for any errors
-	for err := range errChan {
-		if err != nil {
-			return err
+		if err := DB.AutoMigrate(m.model); err != nil {
+			return fmt.Errorf("failed to migrate %s: %v", m.name, err)
 		}
 	}
+
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err

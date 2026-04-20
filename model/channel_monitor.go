@@ -63,7 +63,7 @@ type channelMonitorVisibilityOption struct {
 // channel.Group is comma-separated (e.g. "default,SLA,smartcache"); each channel
 // appears in each of its group tags. Group-level cache_hit_rate and availability
 // are computed from the aggregate of all channels in the group.
-func GetChannelMonitorData() (*ChannelMonitorData, error) {
+func GetChannelMonitorData(tenantId int) (*ChannelMonitorData, error) {
 	now := time.Now().Unix()
 	oneHourAgo := now - 3600
 	nowMinute := now / 60 * 60
@@ -76,7 +76,11 @@ func GetChannelMonitorData() (*ChannelMonitorData, error) {
 	}
 
 	var channels []Channel
-	if err := DB.Where("status = ?", common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
+	chQuery := DB.Where("status = ?", common.ChannelStatusEnabled)
+	if tenantId > 0 {
+		chQuery = chQuery.Where("tenant_id = ?", tenantId)
+	}
+	if err := chQuery.Find(&channels).Error; err != nil {
 		return nil, err
 	}
 
@@ -101,10 +105,13 @@ func GetChannelMonitorData() (*ChannelMonitorData, error) {
 	}
 
 	var logs []rawLog
-	if err := LOG_DB.Table("logs").
+	logQuery := LOG_DB.Table("logs").
 		Select("channel_id, type, created_at, prompt_tokens, quota, other").
-		Where("created_at >= ? AND channel_id > 0 AND (type = ? OR type = ?)", oneHourAgo, LogTypeConsume, LogTypeError).
-		Find(&logs).Error; err != nil {
+		Where("created_at >= ? AND channel_id > 0 AND (type = ? OR type = ?)", oneHourAgo, LogTypeConsume, LogTypeError)
+	if tenantId > 0 {
+		logQuery = logQuery.Where("tenant_id = ?", tenantId)
+	}
+	if err := logQuery.Find(&logs).Error; err != nil {
 		return nil, err
 	}
 

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Type — Code & Mono</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 20px; background: var(--bg-0); }
+  .label { font: 500 11px/1 var(--font-mono); color: var(--text-2); margin-bottom: 8px; display:block; }
+  .key-row { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .key { flex:1; padding: 8px 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: 13px; color: var(--text-0); }
+  .copy { padding: 6px 12px; background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--r-sm); font: 500 12px/1 var(--font-sans); color: var(--text-0); cursor: pointer; }
+</style>
+</head>
+<body>
+  <span class="label">API KEY · monospace, no ligatures</span>
+  <div class="key-row">
+    <div class="key">sk-newapi-V8jR2fLp9qK3tN7mWxYbCdEhGiZaSoLdPnRtUvWxYz</div>
+    <div class="copy">Copy</div>
+  </div>
+  <span class="label">CODE BLOCK</span>
+  <pre>curl https://api.new-api.dev/v1/chat/completions \
+  -H "Authorization: Bearer $NEWAPI_KEY" \
+  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}'</pre>
+</body>
+</html>

@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -31,7 +32,7 @@ func TicketAdminList(c *gin.Context) {
 		}
 	}
 
-	items, total, err := service.TicketAdminList(c.Request.Context(), status, userId, keyword, pageInfo)
+	items, total, err := service.TicketAdminList(c.Request.Context(), middleware.GetTenantId(c), status, userId, keyword, pageInfo)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -48,7 +49,7 @@ func TicketAdminDetail(c *gin.Context) {
 		return
 	}
 
-	ticket, replies, attachments, err := service.TicketAdminGetDetail(c.Request.Context(), id)
+	ticket, replies, attachments, err := service.TicketAdminGetDetail(c.Request.Context(), middleware.GetTenantId(c), id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -77,7 +78,7 @@ func TicketAdminReply(c *gin.Context) {
 		return
 	}
 
-	reply, err := service.TicketAdminReply(c.Request.Context(), adminId, ticketID, req.Content, req.ObjectKeys)
+	reply, err := service.TicketAdminReply(c.Request.Context(), middleware.GetTenantId(c), adminId, ticketID, req.Content, req.ObjectKeys)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -102,7 +103,7 @@ func TicketAdminUpdateStatus(c *gin.Context) {
 		return
 	}
 
-	ticket, err := service.TicketAdminUpdateStatus(c.Request.Context(), adminId, ticketID, req.Status)
+	ticket, err := service.TicketAdminUpdateStatus(c.Request.Context(), middleware.GetTenantId(c), adminId, ticketID, req.Status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -126,7 +127,7 @@ func TicketAdminPresignAttachment(c *gin.Context) {
 		disposition = "inline"
 	}
 
-	url, expiresAt, err := service.TicketPresignAttachmentForAdmin(c.Request.Context(), attID, disposition)
+	url, expiresAt, err := service.TicketPresignAttachmentForAdmin(c.Request.Context(), middleware.GetTenantId(c), attID, disposition)
 	if err != nil {
 		common.ApiError(c, err)
 		return

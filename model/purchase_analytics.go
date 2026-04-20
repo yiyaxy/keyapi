@@ -121,7 +121,7 @@ func pctChange(current, previous float64) float64 {
 
 // GetPurchaseOverview returns revenue summary with period-over-period comparison.
 // The previous period mirrors the same duration before startTime.
-func GetPurchaseOverview(startTime, endTime int64, orderType string) (*PurchaseOverview, error) {
+func GetPurchaseOverview(tenantId int, startTime, endTime int64, orderType string) (*PurchaseOverview, error) {
 	type revenueRow struct {
 		Revenue float64 `gorm:"column:revenue"`
 		Count   int64   `gorm:"column:count"`
@@ -134,6 +134,9 @@ func GetPurchaseOverview(startTime, endTime int64, orderType string) (*PurchaseO
 			Select("COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess).
 			Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+		if tenantId > 0 {
+			topupQuery = topupQuery.Where("top_ups.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			topupQuery = topupQuery.Where("complete_time >= ?", startTime)
 		}
@@ -151,6 +154,9 @@ func GetPurchaseOverview(startTime, endTime int64, orderType string) (*PurchaseO
 		subQuery := DB.Table("subscription_orders").
 			Select("COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess)
+		if tenantId > 0 {
+			subQuery = subQuery.Where("subscription_orders.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			subQuery = subQuery.Where("complete_time >= ?", startTime)
 		}
@@ -183,23 +189,29 @@ func GetPurchaseOverview(startTime, endTime int64, orderType string) (*PurchaseO
 
 		var topupPrev revenueRow
 		if orderType != "subscription" {
-			if err := DB.Table("top_ups").
+			topupPrevQ := DB.Table("top_ups").
 				Select("COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 				Where("status = ?", common.TopUpStatusSuccess).
 				Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'").
-				Where("complete_time >= ? AND complete_time <= ?", prevStart, prevEnd).
-				Scan(&topupPrev).Error; err != nil {
+				Where("complete_time >= ? AND complete_time <= ?", prevStart, prevEnd)
+			if tenantId > 0 {
+				topupPrevQ = topupPrevQ.Where("top_ups.tenant_id = ?", tenantId)
+			}
+			if err := topupPrevQ.Scan(&topupPrev).Error; err != nil {
 				return nil, err
 			}
 		}
 
 		var subPrev revenueRow
 		if orderType != "topup" {
-			if err := DB.Table("subscription_orders").
+			subPrevQ := DB.Table("subscription_orders").
 				Select("COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 				Where("status = ?", common.TopUpStatusSuccess).
-				Where("complete_time >= ? AND complete_time <= ?", prevStart, prevEnd).
-				Scan(&subPrev).Error; err != nil {
+				Where("complete_time >= ? AND complete_time <= ?", prevStart, prevEnd)
+			if tenantId > 0 {
+				subPrevQ = subPrevQ.Where("subscription_orders.tenant_id = ?", tenantId)
+			}
+			if err := subPrevQ.Scan(&subPrev).Error; err != nil {
 				return nil, err
 			}
 		}
@@ -266,7 +278,7 @@ func dateTruncExpr(column string, granularity string) string {
 }
 
 // GetPurchaseTrend returns time-bucketed revenue and count from both tables.
-func GetPurchaseTrend(startTime, endTime int64, granularity, orderType string) ([]PurchaseTrendItem, error) {
+func GetPurchaseTrend(tenantId int, startTime, endTime int64, granularity, orderType string) ([]PurchaseTrendItem, error) {
 	bucketExpr := dateTruncExpr("complete_time", granularity)
 
 	// Topup query
@@ -276,6 +288,9 @@ func GetPurchaseTrend(startTime, endTime int64, granularity, orderType string) (
 			Select(bucketExpr+" as time_bucket, COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess).
 			Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+		if tenantId > 0 {
+			topupSQL = topupSQL.Where("top_ups.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			topupSQL = topupSQL.Where("complete_time >= ?", startTime)
 		}
@@ -295,6 +310,9 @@ func GetPurchaseTrend(startTime, endTime int64, granularity, orderType string) (
 		subSQL := DB.Table("subscription_orders").
 			Select(bucketExpr+" as time_bucket, COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess)
+		if tenantId > 0 {
+			subSQL = subSQL.Where("subscription_orders.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			subSQL = subSQL.Where("complete_time >= ?", startTime)
 		}
@@ -337,7 +355,7 @@ func GetPurchaseTrend(startTime, endTime int64, granularity, orderType string) (
 }
 
 // GetPaymentMethodDistribution returns revenue/count grouped by payment method.
-func GetPaymentMethodDistribution(startTime, endTime int64, orderType string) ([]PaymentMethodItem, error) {
+func GetPaymentMethodDistribution(tenantId int, startTime, endTime int64, orderType string) ([]PaymentMethodItem, error) {
 	// Top-ups
 	var topupItems []PaymentMethodItem
 	if orderType != "subscription" {
@@ -345,6 +363,9 @@ func GetPaymentMethodDistribution(startTime, endTime int64, orderType string) ([
 			Select("payment_method, COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess).
 			Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+		if tenantId > 0 {
+			topupQ = topupQ.Where("top_ups.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			topupQ = topupQ.Where("complete_time >= ?", startTime)
 		}
@@ -364,6 +385,9 @@ func GetPaymentMethodDistribution(startTime, endTime int64, orderType string) ([
 		subQ := DB.Table("subscription_orders").
 			Select("payment_method, COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess)
+		if tenantId > 0 {
+			subQ = subQ.Where("subscription_orders.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			subQ = subQ.Where("complete_time >= ?", startTime)
 		}
@@ -401,7 +425,7 @@ func GetPaymentMethodDistribution(startTime, endTime int64, orderType string) ([
 }
 
 // GetOrderTypeDistribution returns revenue/count split by order type (topup + subscription plans).
-func GetOrderTypeDistribution(startTime, endTime int64) ([]OrderTypeItem, error) {
+func GetOrderTypeDistribution(tenantId int, startTime, endTime int64) ([]OrderTypeItem, error) {
 	result := []OrderTypeItem{}
 
 	// Top-ups
@@ -413,6 +437,9 @@ func GetOrderTypeDistribution(startTime, endTime int64) ([]OrderTypeItem, error)
 		Select("COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 		Where("status = ?", common.TopUpStatusSuccess).
 		Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+	if tenantId > 0 {
+		topupQ = topupQ.Where("top_ups.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		topupQ = topupQ.Where("complete_time >= ?", startTime)
 	}
@@ -435,6 +462,9 @@ func GetOrderTypeDistribution(startTime, endTime int64) ([]OrderTypeItem, error)
 		Select("COALESCE(sp.title, 'Unknown Plan') as plan_title, COALESCE(SUM(so.money), 0) as revenue, COUNT(*) as count").
 		Joins("LEFT JOIN subscription_plans sp ON so.plan_id = sp.id").
 		Where("so.status = ?", common.TopUpStatusSuccess)
+	if tenantId > 0 {
+		subQ = subQ.Where("so.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		subQ = subQ.Where("so.complete_time >= ?", startTime)
 	}
@@ -454,7 +484,7 @@ func GetOrderTypeDistribution(startTime, endTime int64) ([]OrderTypeItem, error)
 }
 
 // GetTopSpenders returns paged users by total revenue across both tables.
-func GetTopSpenders(startTime, endTime int64, offset, pageSize int, orderType string) ([]TopSpenderItem, int64, error) {
+func GetTopSpenders(tenantId int, startTime, endTime int64, offset, pageSize int, orderType string) ([]TopSpenderItem, int64, error) {
 	if offset < 0 {
 		offset = 0
 	}
@@ -474,6 +504,9 @@ func GetTopSpenders(startTime, endTime int64, offset, pageSize int, orderType st
 			Select("user_id, COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess).
 			Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+		if tenantId > 0 {
+			topupQ = topupQ.Where("top_ups.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			topupQ = topupQ.Where("complete_time >= ?", startTime)
 		}
@@ -493,6 +526,9 @@ func GetTopSpenders(startTime, endTime int64, offset, pageSize int, orderType st
 		subQ := DB.Table("subscription_orders").
 			Select("user_id, COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 			Where("status = ?", common.TopUpStatusSuccess)
+		if tenantId > 0 {
+			subQ = subQ.Where("subscription_orders.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			subQ = subQ.Where("complete_time >= ?", startTime)
 		}
@@ -557,7 +593,11 @@ func GetTopSpenders(startTime, endTime int64, offset, pageSize int, orderType st
 			Id       int    `gorm:"column:id"`
 			Username string `gorm:"column:username"`
 		}
-		DB.Table("users").Select("id, username").Where("id IN ?", userIds).Find(&users)
+		usersQ := DB.Table("users").Select("id, username").Where("id IN ?", userIds)
+		if tenantId > 0 {
+			usersQ = usersQ.Where("users.tenant_id = ?", tenantId)
+		}
+		usersQ.Find(&users)
 		for _, u := range users {
 			userNameMap[u.Id] = u.Username
 		}
@@ -574,7 +614,7 @@ func GetTopSpenders(startTime, endTime int64, offset, pageSize int, orderType st
 }
 
 // GetSubscriptionAnalyticsOverview returns subscription revenue overview and quota utilisation.
-func GetSubscriptionAnalyticsOverview(startTime, endTime int64) (*SubscriptionAnalyticsOverview, error) {
+func GetSubscriptionAnalyticsOverview(tenantId int, startTime, endTime int64) (*SubscriptionAnalyticsOverview, error) {
 	type revenueRow struct {
 		Revenue float64 `gorm:"column:revenue"`
 		Count   int64   `gorm:"column:count"`
@@ -584,6 +624,9 @@ func GetSubscriptionAnalyticsOverview(startTime, endTime int64) (*SubscriptionAn
 	q := DB.Table("subscription_orders").
 		Select("COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 		Where("status = ?", common.TopUpStatusSuccess)
+	if tenantId > 0 {
+		q = q.Where("subscription_orders.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		q = q.Where("complete_time >= ?", startTime)
 	}
@@ -601,11 +644,14 @@ func GetSubscriptionAnalyticsOverview(startTime, endTime int64) (*SubscriptionAn
 		PriceAmount float64 `gorm:"column:price_amount"`
 	}
 	var subs []subRow
-	if err := DB.Table("user_subscriptions us").
+	subQ := DB.Table("user_subscriptions us").
 		Select("us.amount_total, us.amount_used, us.status, sp.price_amount").
 		Joins("JOIN subscription_plans sp ON us.plan_id = sp.id").
-		Where("us.amount_total > 0").
-		Scan(&subs).Error; err != nil {
+		Where("us.amount_total > 0")
+	if tenantId > 0 {
+		subQ = subQ.Where("us.tenant_id = ?", tenantId)
+	}
+	if err := subQ.Scan(&subs).Error; err != nil {
 		return nil, err
 	}
 
@@ -629,7 +675,7 @@ func GetSubscriptionAnalyticsOverview(startTime, endTime int64) (*SubscriptionAn
 }
 
 // GetSubscriptionPlanBreakdown returns per-plan revenue and quota stats.
-func GetSubscriptionPlanBreakdown(startTime, endTime int64) ([]SubscriptionPlanBreakdownItem, error) {
+func GetSubscriptionPlanBreakdown(tenantId int, startTime, endTime int64) ([]SubscriptionPlanBreakdownItem, error) {
 	type orderRow struct {
 		PlanId        int     `gorm:"column:plan_id"`
 		PlanName      string  `gorm:"column:plan_name"`
@@ -641,6 +687,9 @@ func GetSubscriptionPlanBreakdown(startTime, endTime int64) ([]SubscriptionPlanB
 		Select("so.plan_id, COALESCE(sp.title, 'Unknown Plan') as plan_name, COUNT(*) as purchase_count, COALESCE(SUM(so.money), 0) as total_revenue").
 		Joins("JOIN subscription_plans sp ON so.plan_id = sp.id").
 		Where("so.status = ?", common.TopUpStatusSuccess)
+	if tenantId > 0 {
+		q = q.Where("so.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		q = q.Where("so.complete_time >= ?", startTime)
 	}
@@ -659,11 +708,14 @@ func GetSubscriptionPlanBreakdown(startTime, endTime int64) ([]SubscriptionPlanB
 		Status      string `gorm:"column:status"`
 	}
 	var subRows []subUsageRow
-	if err := DB.Table("user_subscriptions us").
+	subUsageQ := DB.Table("user_subscriptions us").
 		Select("us.plan_id, us.amount_total, us.amount_used, us.status").
 		Joins("JOIN subscription_plans sp ON us.plan_id = sp.id").
-		Where("us.amount_total > 0").
-		Scan(&subRows).Error; err != nil {
+		Where("us.amount_total > 0")
+	if tenantId > 0 {
+		subUsageQ = subUsageQ.Where("us.tenant_id = ?", tenantId)
+	}
+	if err := subUsageQ.Scan(&subRows).Error; err != nil {
 		return nil, err
 	}
 
@@ -723,7 +775,7 @@ func GetSubscriptionPlanBreakdown(startTime, endTime int64) ([]SubscriptionPlanB
 }
 
 // GetTopUpAnalyticsOverview returns top-up revenue summary and total active wallet balance.
-func GetTopUpAnalyticsOverview(startTime, endTime int64) (*TopUpAnalyticsOverview, error) {
+func GetTopUpAnalyticsOverview(tenantId int, startTime, endTime int64) (*TopUpAnalyticsOverview, error) {
 	type revenueRow struct {
 		Revenue float64 `gorm:"column:revenue"`
 		Count   int64   `gorm:"column:count"`
@@ -734,6 +786,9 @@ func GetTopUpAnalyticsOverview(startTime, endTime int64) (*TopUpAnalyticsOvervie
 		Select("COALESCE(SUM(money), 0) as revenue, COUNT(*) as count").
 		Where("status = ?", common.TopUpStatusSuccess).
 		Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+	if tenantId > 0 {
+		q = q.Where("top_ups.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		q = q.Where("complete_time >= ?", startTime)
 	}
@@ -747,10 +802,13 @@ func GetTopUpAnalyticsOverview(startTime, endTime int64) (*TopUpAnalyticsOvervie
 	var totalQuota struct {
 		Total int64 `gorm:"column:total"`
 	}
-	if err := DB.Table("users").
+	usersQ := DB.Table("users").
 		Select("COALESCE(SUM(quota), 0) as total").
-		Where("status = 1").
-		Scan(&totalQuota).Error; err != nil {
+		Where("status = 1")
+	if tenantId > 0 {
+		usersQ = usersQ.Where("users.tenant_id = ?", tenantId)
+	}
+	if err := usersQ.Scan(&totalQuota).Error; err != nil {
 		return nil, err
 	}
 
@@ -764,11 +822,15 @@ func GetTopUpAnalyticsOverview(startTime, endTime int64) (*TopUpAnalyticsOvervie
 }
 
 // GetRedemptionStats returns aggregate stats about redemption codes.
-func GetRedemptionStats() (*RedemptionStatsResult, error) {
+func GetRedemptionStats(tenantId int) (*RedemptionStatsResult, error) {
 	var result RedemptionStatsResult
 
 	// Total created (all redemptions including soft-deleted are not counted; only non-deleted)
-	if err := DB.Table("redemptions").Where("deleted_at IS NULL").Count(&result.TotalCreated).Error; err != nil {
+	totalQ := DB.Table("redemptions").Where("deleted_at IS NULL")
+	if tenantId > 0 {
+		totalQ = totalQ.Where("redemptions.tenant_id = ?", tenantId)
+	}
+	if err := totalQ.Count(&result.TotalCreated).Error; err != nil {
 		return nil, err
 	}
 
@@ -778,10 +840,13 @@ func GetRedemptionStats() (*RedemptionStatsResult, error) {
 		Count  int64 `gorm:"column:count"`
 	}
 	var statusCounts []statusCount
-	if err := DB.Table("redemptions").
+	statusQ := DB.Table("redemptions").
 		Select("status, COUNT(*) as count").
-		Where("deleted_at IS NULL").
-		Group("status").
+		Where("deleted_at IS NULL")
+	if tenantId > 0 {
+		statusQ = statusQ.Where("redemptions.tenant_id = ?", tenantId)
+	}
+	if err := statusQ.Group("status").
 		Scan(&statusCounts).Error; err != nil {
 		return nil, err
 	}
@@ -800,10 +865,13 @@ func GetRedemptionStats() (*RedemptionStatsResult, error) {
 	var totalQuota struct {
 		Total int64 `gorm:"column:total"`
 	}
-	if err := DB.Table("redemptions").
+	quotaQ := DB.Table("redemptions").
 		Select("COALESCE(SUM(quota), 0) as total").
-		Where("deleted_at IS NULL").
-		Scan(&totalQuota).Error; err != nil {
+		Where("deleted_at IS NULL")
+	if tenantId > 0 {
+		quotaQ = quotaQ.Where("redemptions.tenant_id = ?", tenantId)
+	}
+	if err := quotaQ.Scan(&totalQuota).Error; err != nil {
 		return nil, err
 	}
 	result.TotalQuota = totalQuota.Total
@@ -829,7 +897,7 @@ type SubscriptionHeatmapItem struct {
 // GetSubscriptionHeatmap returns daily quota usage data for a calendar heatmap.
 // For past/today: shows real subscription consumption aggregated from LOG_DB.
 // For future: shows count of active subscriptions covering that day.
-func GetSubscriptionHeatmap(startTime, endTime int64, planID int) ([]SubscriptionHeatmapItem, error) {
+func GetSubscriptionHeatmap(tenantId int, startTime, endTime int64, planID int) ([]SubscriptionHeatmapItem, error) {
 	// Limit to 400 days max (supports one year forward heatmap)
 	maxDuration := int64(400 * 24 * 3600)
 	if endTime-startTime > maxDuration {
@@ -848,6 +916,9 @@ func GetSubscriptionHeatmap(startTime, endTime int64, planID int) ([]Subscriptio
 		Select("start_time, end_time, amount_total, amount_used, status").
 		Where("start_time <= ? AND end_time >= ?", endTime, startTime).
 		Where("amount_total > 0")
+	if tenantId > 0 {
+		heatQ = heatQ.Where("user_subscriptions.tenant_id = ?", tenantId)
+	}
 	if planID > 0 {
 		heatQ = heatQ.Where("plan_id = ?", planID)
 	}
@@ -890,6 +961,9 @@ func GetSubscriptionHeatmap(startTime, endTime int64, planID int) ([]Subscriptio
 			Where("type = ?", LogTypeConsume).
 			Where("created_at >= ? AND created_at <= ?", dayStart, logEnd).
 			Where("other LIKE ?", "%subscription_consumed%")
+		if tenantId > 0 {
+			logQ = logQ.Where("logs.tenant_id = ?", tenantId)
+		}
 		if err := logQ.Scan(&logRows).Error; err != nil {
 			return nil, err
 		}
@@ -950,7 +1024,7 @@ func GetSubscriptionHeatmap(startTime, endTime int64, planID int) ([]Subscriptio
 	return result, nil
 }
 
-func GetDAUTrend(startTime, endTime int64, granularity string) ([]DAUTrendItem, error) {
+func GetDAUTrend(tenantId int, startTime, endTime int64, granularity string) ([]DAUTrendItem, error) {
 	bucketExpr := dateTruncExpr("created_at", granularity)
 
 	// Query API active user IDs per bucket
@@ -964,6 +1038,9 @@ func GetDAUTrend(startTime, endTime int64, granularity string) ([]DAUTrendItem, 
 		Select(bucketExpr + " as time_bucket, user_id").
 		Where("type = ?", LogTypeConsume).
 		Where("user_id > 0")
+	if tenantId > 0 {
+		apiQ = apiQ.Where("logs.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		apiQ = apiQ.Where("created_at >= ?", startTime)
 	}
@@ -980,6 +1057,9 @@ func GetDAUTrend(startTime, endTime int64, granularity string) ([]DAUTrendItem, 
 	loginQ := DB.Table("user_ip_records").
 		Select(bucketExpr + " as time_bucket, user_id").
 		Where("user_id > 0")
+	if tenantId > 0 {
+		loginQ = loginQ.Where("user_ip_records.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		loginQ = loginQ.Where("created_at >= ?", startTime)
 	}
@@ -1038,7 +1118,7 @@ func GetDAUTrend(startTime, endTime int64, granularity string) ([]DAUTrendItem, 
 	return result, nil
 }
 
-func GetRegistrationTrend(startTime, endTime int64, granularity string) ([]RegistrationTrendItem, error) {
+func GetRegistrationTrend(tenantId int, startTime, endTime int64, granularity string) ([]RegistrationTrendItem, error) {
 	bucketExpr := dateTruncExpr("created_at", granularity)
 
 	type regRow struct {
@@ -1052,6 +1132,9 @@ func GetRegistrationTrend(startTime, endTime int64, granularity string) ([]Regis
 		Where("type = ?", LogTypeSystem).
 		Where("content LIKE ?", "新用户注册赠送%").
 		Where("user_id > 0")
+	if tenantId > 0 {
+		newUserQ = newUserQ.Where("logs.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		newUserQ = newUserQ.Where("created_at >= ?", startTime)
 	}
@@ -1068,6 +1151,9 @@ func GetRegistrationTrend(startTime, endTime int64, granularity string) ([]Regis
 		Select(bucketExpr + " as time_bucket, COUNT(DISTINCT invitee_id) as user_count").
 		Where("type = ?", AffRebateTypeRegister).
 		Where("invitee_id > 0")
+	if tenantId > 0 {
+		referredQ = referredQ.Where("aff_rebate_logs.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		referredQ = referredQ.Where("created_at >= ?", startTime)
 	}
@@ -1106,10 +1192,14 @@ func GetRegistrationTrend(startTime, endTime int64, granularity string) ([]Regis
 	return result, nil
 }
 
-func GetConversionFunnel(startTime, endTime int64) (*ConversionFunnelResult, error) {
+func GetConversionFunnel(tenantId int, startTime, endTime int64) (*ConversionFunnelResult, error) {
 	result := &ConversionFunnelResult{}
 
-	if err := DB.Table("users").Where("status = 1").Count(&result.TotalUsers).Error; err != nil {
+	usersQ := DB.Table("users").Where("status = 1")
+	if tenantId > 0 {
+		usersQ = usersQ.Where("users.tenant_id = ?", tenantId)
+	}
+	if err := usersQ.Count(&result.TotalUsers).Error; err != nil {
 		return nil, err
 	}
 
@@ -1124,6 +1214,9 @@ func GetConversionFunnel(startTime, endTime int64) (*ConversionFunnelResult, err
 		Where("status = ?", common.TopUpStatusSuccess).
 		Where("user_id > 0").
 		Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+	if tenantId > 0 {
+		topupQ = topupQ.Where("top_ups.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		topupQ = topupQ.Where("complete_time >= ?", startTime)
 	}
@@ -1141,6 +1234,9 @@ func GetConversionFunnel(startTime, endTime int64) (*ConversionFunnelResult, err
 		Select("user_id, COUNT(*) as cnt").
 		Where("status = ?", common.TopUpStatusSuccess).
 		Where("user_id > 0")
+	if tenantId > 0 {
+		subQ = subQ.Where("subscription_orders.tenant_id = ?", tenantId)
+	}
 	if startTime > 0 {
 		subQ = subQ.Where("complete_time >= ?", startTime)
 	}
@@ -1178,7 +1274,7 @@ func GetConversionFunnel(startTime, endTime int64) (*ConversionFunnelResult, err
 	return result, nil
 }
 
-func GetReferralAnalytics(startTime, endTime int64, limit int) ([]ReferralAnalyticsItem, error) {
+func GetReferralAnalytics(tenantId int, startTime, endTime int64, limit int) ([]ReferralAnalyticsItem, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -1189,11 +1285,14 @@ func GetReferralAnalytics(startTime, endTime int64, limit int) ([]ReferralAnalyt
 		ReferredCount int64 `gorm:"column:referred_count"`
 	}
 	var refCounts []refCountRow
-	if err := DB.Table("users").
+	refQ := DB.Table("users").
 		Select("inviter_id, COUNT(*) as referred_count").
 		Where("inviter_id > 0").
-		Where("status = 1").
-		Group("inviter_id").
+		Where("status = 1")
+	if tenantId > 0 {
+		refQ = refQ.Where("users.tenant_id = ?", tenantId)
+	}
+	if err := refQ.Group("inviter_id").
 		Scan(&refCounts).Error; err != nil {
 		return nil, err
 	}
@@ -1215,11 +1314,14 @@ func GetReferralAnalytics(startTime, endTime int64, limit int) ([]ReferralAnalyt
 		InviterId int `gorm:"column:inviter_id"`
 	}
 	var inviteeRows []inviteeRow
-	if err := DB.Table("users").
+	inviteeQ := DB.Table("users").
 		Select("id, inviter_id").
 		Where("inviter_id IN ?", inviterIDs).
-		Where("status = 1").
-		Scan(&inviteeRows).Error; err != nil {
+		Where("status = 1")
+	if tenantId > 0 {
+		inviteeQ = inviteeQ.Where("users.tenant_id = ?", tenantId)
+	}
+	if err := inviteeQ.Scan(&inviteeRows).Error; err != nil {
 		return nil, err
 	}
 
@@ -1246,6 +1348,9 @@ func GetReferralAnalytics(startTime, endTime int64, limit int) ([]ReferralAnalyt
 			Where("status = ?", common.TopUpStatusSuccess).
 			Where("user_id IN ?", allInviteeIDs).
 			Where("trade_no NOT LIKE 'SUB%' AND trade_no NOT LIKE 'sub_ref_%'")
+		if tenantId > 0 {
+			topupQ = topupQ.Where("top_ups.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			topupQ = topupQ.Where("complete_time >= ?", startTime)
 		}
@@ -1267,6 +1372,9 @@ func GetReferralAnalytics(startTime, endTime int64, limit int) ([]ReferralAnalyt
 			Select("user_id, COALESCE(SUM(money), 0) as revenue").
 			Where("status = ?", common.TopUpStatusSuccess).
 			Where("user_id IN ?", allInviteeIDs)
+		if tenantId > 0 {
+			subQ = subQ.Where("subscription_orders.tenant_id = ?", tenantId)
+		}
 		if startTime > 0 {
 			subQ = subQ.Where("complete_time >= ?", startTime)
 		}
@@ -1318,7 +1426,11 @@ func GetReferralAnalytics(startTime, endTime int64, limit int) ([]ReferralAnalyt
 			Id       int    `gorm:"column:id"`
 			Username string `gorm:"column:username"`
 		}
-		DB.Table("users").Select("id, username").Where("id IN ?", topUserIDs).Find(&users)
+		usersQ := DB.Table("users").Select("id, username").Where("id IN ?", topUserIDs)
+		if tenantId > 0 {
+			usersQ = usersQ.Where("users.tenant_id = ?", tenantId)
+		}
+		usersQ.Find(&users)
 		for _, u := range users {
 			userNameMap[u.Id] = u.Username
 		}

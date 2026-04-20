@@ -65,6 +65,28 @@ export function AdminRoute({ children }) {
   return <Navigate to='/forbidden' replace />;
 }
 
+// TenantAdminRoute 允许 tenant-only admin（tenant_role=10）或平台 admin 进入。
+// 与 AdminRoute 区别：AdminRoute 只认平台 role>=10，会把租户 admin 挡在门外。
+export function TenantAdminRoute({ children }) {
+  const raw = localStorage.getItem('user');
+  if (!raw) {
+    return <Navigate to='/login' state={{ from: history.location }} />;
+  }
+  try {
+    const user = JSON.parse(raw);
+    if (user) {
+      const platformRole = user.platform_role ?? user.role ?? 0;
+      const tenantRole = user.tenant_role ?? 0;
+      if (platformRole >= 10 || tenantRole >= 10) {
+        return children;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return <Navigate to='/forbidden' replace />;
+}
+
 export function RootRoute({ children }) {
   const raw = localStorage.getItem('user');
   if (!raw) {

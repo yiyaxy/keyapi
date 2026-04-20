@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -71,10 +72,11 @@ func WeChatAuth(c *gin.Context) {
 		return
 	}
 	user := model.User{
+		TenantId: middleware.GetTenantId(c),
 		WeChatId: wechatId,
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
-		err := user.FillUserByWeChatId()
+	if model.IsWeChatIdAlreadyTaken(wechatId, middleware.GetTenantId(c)) {
+		err := user.FillUserByWeChatIdWithTenant(middleware.GetTenantId(c))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -89,6 +91,13 @@ func WeChatAuth(c *gin.Context) {
 			})
 			return
 		}
+		if !model.TenantMembershipAllowsAccess(&user, middleware.GetTenantId(c)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "用户不属于当前租户或成员已被禁用",
+			})
+			return
+		}
 	} else {
 		if common.RegisterEnabled {
 			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
@@ -97,6 +106,13 @@ func WeChatAuth(c *gin.Context) {
 			user.Status = common.UserStatusEnabled
 
 			if err := user.Insert(0); err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": err.Error(),
+				})
+				return
+			}
+			if err := model.EnsureTenantMembership(user.Id, user.TenantId, model.TenantRoleMember, 0); err != nil {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
 					"message": err.Error(),
@@ -152,7 +168,7 @@ func WeChatBind(c *gin.Context) {
 		})
 		return
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
+	if model.IsWeChatIdAlreadyTaken(wechatId, middleware.GetTenantId(c)) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该微信账号已被绑定",
@@ -161,10 +177,7 @@ func WeChatBind(c *gin.Context) {
 	}
 	session := sessions.Default(c)
 	id := session.Get("id")
-	user := model.User{
-		Id: id.(int),
-	}
-	err = user.FillUserById()
+	user, err := model.GetUserByIdWithContext(c, id.(int), true)
 	if err != nil {
 		common.ApiError(c, err)
 		return

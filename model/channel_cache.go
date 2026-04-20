@@ -18,21 +18,28 @@ var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
 var channelSyncLock sync.RWMutex
 
+// tenantGroupKey builds a composite cache key "tenantId:group" for tenant-isolated channel lookup.
+func tenantGroupKey(tenantId int, group string) string {
+	return fmt.Sprintf("%d:%s", tenantId, group)
+}
+
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		return
 	}
+	// 跨租户加载全量 channels / abilities 到内存缓存；
+	// 缓存 key 为 tenantId:group，按租户分桶。
 	newChannelId2channel := make(map[int]*Channel)
 	var channels []*Channel
-	DB.Find(&channels)
+	WithTenantBypass(DB).Find(&channels)
 	for _, channel := range channels {
 		newChannelId2channel[channel.Id] = channel
 	}
 	var abilities []*Ability
-	DB.Find(&abilities)
+	WithTenantBypass(DB).Find(&abilities)
 	groups := make(map[string]bool)
 	for _, ability := range abilities {
-		groups[ability.Group] = true
+		groups[tenantGroupKey(ability.TenantId, ability.Group)] = true
 	}
 	newGroup2model2channels := make(map[string]map[string][]int)
 	for group := range groups {
@@ -42,14 +49,15 @@ func InitChannelCache() {
 		if channel.Status != common.ChannelStatusEnabled {
 			continue // skip disabled channels
 		}
-		groups := strings.Split(channel.Group, ",")
-		for _, group := range groups {
+		channelGroups := strings.Split(channel.Group, ",")
+		for _, group := range channelGroups {
+			tgKey := tenantGroupKey(channel.TenantId, group)
+			if _, ok := newGroup2model2channels[tgKey]; !ok {
+				newGroup2model2channels[tgKey] = make(map[string][]int)
+			}
 			models := strings.Split(channel.Models, ",")
 			for _, model := range models {
-				if _, ok := newGroup2model2channels[group][model]; !ok {
-					newGroup2model2channels[group][model] = make([]int, 0)
-				}
-				newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], channel.Id)
+				newGroup2model2channels[tgKey][model] = append(newGroup2model2channels[tgKey][model], channel.Id)
 			}
 		}
 	}
@@ -85,38 +93,50 @@ func InitChannelCache() {
 	common.SysLog("channels synced from database")
 }
 
-// GetChannelGroupsCopy returns a copy of all group names that have at least one enabled channel.
-func GetChannelGroupsCopy() map[string]bool {
+// GetChannelGroupsCopy returns a copy of group names that have at least one enabled channel for the given tenant.
+func GetChannelGroupsCopy(tenantId int) map[string]bool {
 	if !common.MemoryCacheEnabled {
-		return getChannelGroupsFromDB()
+		return getChannelGroupsFromDB(tenantId)
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
+	prefix := fmt.Sprintf("%d:", tenantId)
 	result := make(map[string]bool)
-	for group := range group2model2channels {
-		result[group] = true
+	for tgKey := range group2model2channels {
+		if strings.HasPrefix(tgKey, prefix) {
+			group := strings.TrimPrefix(tgKey, prefix)
+			result[group] = true
+		}
 	}
 	return result
 }
 
-// GroupHasChannels checks if a group has at least one enabled channel.
-// Works with both memory cache and direct DB lookup.
-func GroupHasChannels(group string) bool {
+// GroupHasChannels checks if a group has at least one enabled channel for the given tenant.
+func GroupHasChannels(group string, tenantId int) bool {
 	if !common.MemoryCacheEnabled {
+		q := DB.Model(&Ability{}).Where(commonGroupCol+" = ? AND enabled = ?", group, true)
+		if tenantId > 0 {
+			q = q.Where("tenant_id = ?", tenantId)
+		}
 		var count int64
-		DB.Model(&Ability{}).Where("`group` = ? AND enabled = ?", group, true).Count(&count)
+		q.Count(&count)
 		return count > 0
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
-	_, ok := group2model2channels[group]
+	tgKey := tenantGroupKey(tenantId, group)
+	_, ok := group2model2channels[tgKey]
 	return ok
 }
 
 // getChannelGroupsFromDB queries distinct groups from abilities table (non-cache fallback).
-func getChannelGroupsFromDB() map[string]bool {
+func getChannelGroupsFromDB(tenantId int) map[string]bool {
 	var groups []string
-	DB.Model(&Ability{}).Where("enabled = ?", true).Distinct("\"group\"").Pluck("\"group\"", &groups)
+	q := DB.Model(&Ability{}).Where("enabled = ?", true)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	q.Distinct(commonGroupCol).Pluck(commonGroupCol, &groups)
 	result := make(map[string]bool)
 	for _, g := range groups {
 		result[g] = true
@@ -132,22 +152,24 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel, error) {
+func GetRandomSatisfiedChannel(tenantId int, group string, model string, retry int) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannel(group, model, retry)
+		return GetChannel(group, model, retry, tenantId)
 	}
 
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
 
+	tgKey := tenantGroupKey(tenantId, group)
+
 	// First, try to find channels with the exact model name.
-	channels := group2model2channels[group][model]
+	channels := group2model2channels[tgKey][model]
 
 	// If no channels found, try to find channels with the normalized model name.
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
-		channels = group2model2channels[group][normalizedModel]
+		channels = group2model2channels[tgKey][normalizedModel]
 	}
 
 	if len(channels) == 0 {

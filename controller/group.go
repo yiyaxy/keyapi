@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -58,7 +59,7 @@ func GetChannelGroups(c *gin.Context) {
 	userId := c.GetInt("id")
 	userGroup, _ := model.GetUserGroup(userId, false)
 	usableGroups := service.GetUserUsableGroups(userGroup)
-	channelGroups := model.GetChannelGroupsCopy()
+	channelGroups := model.GetChannelGroupsCopy(middleware.GetTenantId(c))
 
 	result := make(map[string]map[string]interface{})
 	for groupName := range channelGroups {

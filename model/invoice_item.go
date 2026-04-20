@@ -13,6 +13,7 @@ const (
 
 type InvoiceItem struct {
 	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId  int    `json:"tenant_id" gorm:"index;default:1"`
 	InvoiceId int    `json:"invoice_id" gorm:"index;uniqueIndex:uniq_invoice_item,priority:1"`
 	UserId    int    `json:"user_id" gorm:"index"`
 

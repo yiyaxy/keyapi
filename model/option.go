@@ -139,6 +139,9 @@ func InitOptionMap() {
 	common.OptionMap["WeChatServerAddress"] = ""
 	common.OptionMap["WeChatServerToken"] = ""
 	common.OptionMap["WeChatAccountQRCodeImageURL"] = ""
+	// WxMiniEnvVersion stays global — operator-level toggle controlling
+	// whether wxacode.getUnlimited generates release/trial/develop codes.
+	common.OptionMap["WxMiniEnvVersion"] = "release"
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)

@@ -22,10 +22,11 @@ import { useHeaderBar } from '../../../hooks/common/useHeaderBar';
 import { useNotifications } from '../../../hooks/common/useNotifications';
 import { useNavigation } from '../../../hooks/common/useNavigation';
 import NoticeModal from '../NoticeModal';
-import MobileMenuButton from './MobileMenuButton';
-import HeaderLogo from './HeaderLogo';
+import MobileMenuButton from '../header/MobileMenuButton';
+import HeaderLogo from '../header/HeaderLogo';
 import Navigation from './Navigation';
 import ActionButtons from './ActionButtons';
+import TenantSwitcher from '../header/TenantSwitcher';
 
 const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const {
@@ -106,6 +107,10 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             userState={userState}
             pricingRequireAuth={pricingRequireAuth}
           />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {userState?.user ? <TenantSwitcher /> : null}
+          </div>
 
           <ActionButtons
             isNewYear={isNewYear}

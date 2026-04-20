@@ -23,38 +23,39 @@ const UserNameMaxLength = 20
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int            `json:"id"`
-	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string         `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string         `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
-	AccessToken      *string        `json:"access_token" gorm:"column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int            `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	Id                        int            `json:"id"`
+	TenantId                  int            `json:"tenant_id" gorm:"index;not null;default:1"`
+	Username                  string         `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password                  string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword          string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName               string         `json:"display_name" gorm:"index" validate:"max=20"`
+	Role                      int            `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status                    int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email                     string         `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId                  string         `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId                 string         `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId                    string         `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId                  string         `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId                string         `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode          string         `json:"verification_code" gorm:"-:all"`                      // this field is only for Email verification, don't save it to database!
+	AccessToken               *string        `json:"access_token" gorm:"column:access_token;uniqueIndex"` // this token is for system management
+	Quota                     int            `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota                 int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount              int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Group                     string         `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode                   string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount                  int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota                  int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota           int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId                 int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	TopUpCount                int            `json:"top_up_count" gorm:"type:int;default:0;column:top_up_count"` // 用户充值成功次数（用于计算返利）
 	SubscriptionPurchaseCount int            `json:"subscription_purchase_count" gorm:"type:int;default:0;column:subscription_purchase_count"`
 	DeletedAt                 gorm.DeletedAt `gorm:"index"`
-	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	IpSet            string         `json:"ip_set,omitempty" gorm:"type:text;column:ip_set;default:''"`
+	LinuxDOId                 string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting                   string         `json:"setting" gorm:"type:text;column:setting"`
+	Remark                    string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer            string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	IpSet                     string         `json:"ip_set,omitempty" gorm:"type:text;column:ip_set;default:''"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -164,19 +165,23 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 }
 
 // CheckUserExistOrDeleted check if user exist or deleted, if not exist, return false, nil, if deleted or exist, return true, nil
-func CheckUserExistOrDeleted(username string, email string) (bool, error) {
+func CheckUserExistOrDeleted(username string, email string, tenantId ...int) (bool, error) {
 	var user User
 
 	// err := DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
 	// check email if empty
 	email = strings.ToLower(email)
 	var err error
+	query := DB.Unscoped()
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
 	if email == "" {
-		err = DB.Unscoped().First(&user, "username = ?", username).Error
+		err = query.First(&user, "username = ?", username).Error
 	} else {
 		// 邮箱转小写，确保大小写不敏感
 		email = strings.ToLower(email)
-		err = DB.Unscoped().First(&user, "username = ? or LOWER(email) = ?", username, email).Error
+		err = query.First(&user, "username = ? or LOWER(email) = ?", username, email).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -190,13 +195,27 @@ func CheckUserExistOrDeleted(username string, email string) (bool, error) {
 	return true, nil
 }
 
+func fillUserByField(user *User, field string, value string, tenantId ...int) error {
+	if value == "" {
+		return errors.New(field + " is empty")
+	}
+	query := DB
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	if field == "email" {
+		return query.Where("LOWER(email) = ?", strings.ToLower(value)).First(user).Error
+	}
+	return query.Where(field+" = ?", value).First(user).Error
+}
+
 func GetMaxUserId() int {
 	var user User
 	DB.Unscoped().Last(&user)
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+func GetAllUsersByTenant(tenantId int, pageInfo *common.PageInfo) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -208,15 +227,23 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		}
 	}()
 
+	query := tx.Unscoped().Model(&User{})
+	if tenantId > 0 {
+		// Query via tenant_memberships to include users who are members but have a different home tenant_id
+		query = query.Where("users.id IN (?)",
+			tx.Model(&TenantMembership{}).Select("user_id").
+				Where("tenant_id = ? AND status <> ?", tenantId, TenantMembershipStatusRemoved))
+	}
+
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -230,7 +257,11 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, ip string, startIdx int, num int) ([]*User, int64, error) {
+func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+	return GetAllUsersByTenant(0, pageInfo)
+}
+
+func SearchUsersByTenant(tenantId int, keyword string, group string, ip string, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -248,6 +279,12 @@ func SearchUsers(keyword string, group string, ip string, startIdx int, num int)
 
 	// 构建基础查询
 	query := tx.Unscoped().Model(&User{})
+	if tenantId > 0 {
+		// Query via tenant_memberships to include users who are members but have a different home tenant_id
+		query = query.Where("users.id IN (?)",
+			tx.Model(&TenantMembership{}).Select("user_id").
+				Where("tenant_id = ? AND status <> ?", tenantId, TenantMembershipStatusRemoved))
+	}
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
@@ -302,6 +339,10 @@ func SearchUsers(keyword string, group string, ip string, startIdx int, num int)
 	return users, total, nil
 }
 
+func SearchUsers(keyword string, group string, ip string, startIdx int, num int) ([]*User, int64, error) {
+	return SearchUsersByTenant(0, keyword, group, ip, startIdx, num)
+}
+
 func GetUserById(id int, selectAll bool) (*User, error) {
 	return GetUserByIdWithContext(context.Background(), id, selectAll)
 }
@@ -314,6 +355,10 @@ func GetUserByIdWithContext(ctx context.Context, id int, selectAll bool) (*User,
 	q := DB
 	if ctx != nil {
 		q = DB.WithContext(ctx)
+	}
+	// Multi-tenant: scope by tenant when context carries tenant_id
+	if tenantId := TenantIDFromContext(ctx); tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
 	}
 	var err error
 	if selectAll {
@@ -334,18 +379,33 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 }
 
 func DeleteUserById(id int) (err error) {
+	return DeleteUserByIdWithTenant(id, 0)
+}
+
+func DeleteUserByIdWithTenant(id int, tenantId int) (err error) {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
 	user := User{Id: id}
+	if tenantId > 0 {
+		user.TenantId = tenantId
+	}
 	return user.Delete()
 }
 
 func HardDeleteUserById(id int) error {
+	return HardDeleteUserByIdWithTenant(id, 0)
+}
+
+func HardDeleteUserByIdWithTenant(id int, tenantId int) error {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(&User{}, "id = ?", id).Error
+	query := DB.Unscoped().Where("id = ?", id)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	err := query.Delete(&User{}).Error
 	return err
 }
 
@@ -424,7 +484,7 @@ func (user *User) Insert(inviterId int) error {
 	// 用户创建成功后，根据角色初始化边栏配置
 	// 需要重新获取用户以确保有正确的ID和Role
 	var createdUser User
-	if err := DB.Where("username = ?", user.Username).First(&createdUser).Error; err == nil {
+	if err := WithTenantBypass(DB).Where("username = ?", user.Username).First(&createdUser).Error; err == nil {
 		// 生成基于角色的默认边栏配置
 		defaultSidebarConfig := generateDefaultSidebarConfigForRole(createdUser.Role)
 		if defaultSidebarConfig != "" {
@@ -437,16 +497,16 @@ func (user *User) Insert(inviterId int) error {
 	}
 
 	if common.QuotaForNewUser > 0 {
-		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
 		rebateSetting := GetEffectiveRebateSetting(inviterId)
 		if rebateSetting.InviteeReward > 0 {
-			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
+			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
+			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
 		if rebateSetting.RegisterReward > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
+			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
 			_ = inviteUser(inviterId, rebateSetting.RegisterReward)
 			CreateAffRebateLog(&AffRebateLog{
 				UserId:      inviterId,
@@ -494,7 +554,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	// 用户创建成功后，根据角色初始化边栏配置
 	var createdUser User
-	if err := DB.Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
+	if err := WithTenantBypass(DB).Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
 		defaultSidebarConfig := generateDefaultSidebarConfigForRole(createdUser.Role)
 		if defaultSidebarConfig != "" {
 			currentSetting := createdUser.GetSetting()
@@ -506,15 +566,15 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	}
 
 	if common.QuotaForNewUser > 0 {
-		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true, user.TenantId)
+			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId, common.QuotaForInviter)
 		}
 	}
@@ -529,7 +589,13 @@ func (user *User) Update(updatePassword bool) error {
 		}
 	}
 	newUser := *user
-	DB.First(&user, user.Id)
+	query := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err = query.First(user).Error; err != nil {
+		return err
+	}
 	if err = DB.Model(user).Updates(newUser).Error; err != nil {
 		return err
 	}
@@ -559,7 +625,13 @@ func (user *User) Edit(updatePassword bool) error {
 		updates["password"] = newUser.Password
 	}
 
-	DB.First(&user, user.Id)
+	query := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err = query.First(user).Error; err != nil {
+		return err
+	}
 	if err = DB.Model(user).Updates(updates).Error; err != nil {
 		return err
 	}
@@ -588,11 +660,19 @@ func (user *User) ClearBinding(bindingType string) error {
 		return errors.New("invalid binding type")
 	}
 
-	if err := DB.Model(&User{}).Where("id = ?", user.Id).Update(column, "").Error; err != nil {
+	query := DB.Model(&User{}).Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err := query.Update(column, "").Error; err != nil {
 		return err
 	}
 
-	if err := DB.Where("id = ?", user.Id).First(user).Error; err != nil {
+	refetch := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		refetch = refetch.Where("tenant_id = ?", user.TenantId)
+	}
+	if err := refetch.First(user).Error; err != nil {
 		return err
 	}
 
@@ -603,7 +683,11 @@ func (user *User) Delete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	if err := DB.Delete(user).Error; err != nil {
+	query := DB.Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	if err := query.Delete(user).Error; err != nil {
 		return err
 	}
 
@@ -615,25 +699,46 @@ func (user *User) HardDelete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(user).Error
+	query := DB.Unscoped().Where("id = ?", user.Id)
+	if user.TenantId > 0 {
+		query = query.Where("tenant_id = ?", user.TenantId)
+	}
+	err := query.Delete(user).Error
 	return err
 }
 
 // ValidateAndFill check password & user status
 func (user *User) ValidateAndFill() (err error) {
-	// When querying with struct, GORM will only query with non-zero fields,
-	// that means if your field's value is 0, '', false or other zero values,
-	// it won't be used to build query conditions
 	password := user.Password
 	username := strings.TrimSpace(user.Username)
 	if username == "" || password == "" {
 		return errors.New("用户名或密码为空")
 	}
-	// find by username or email (邮箱大小写不敏感)
-	DB.Where("username = ? OR LOWER(email) = ?", username, strings.ToLower(username)).First(user)
+	// Login identifies a user across tenants — the caller does not yet know
+	// which tenant the user belongs to. Tenant scope is enforced afterwards via
+	// TenantMembershipAllowsAccess (see ValidateAndFillWithTenant). Use
+	// WithTenantBypass to satisfy the fail-closed guardrail on this intentional
+	// cross-tenant lookup.
+	WithTenantBypass(DB).
+		Where("username = ? OR LOWER(email) = ?", username, strings.ToLower(username)).
+		First(user)
 	okay := common.ValidatePasswordAndHash(password, user.Password)
 	if !okay || user.Status != common.UserStatusEnabled {
 		return errors.New("用户名或密码错误，或用户已被封禁")
+	}
+	return nil
+}
+
+func (user *User) ValidateAndFillWithTenant(tenantId int) (err error) {
+	err = user.ValidateAndFill()
+	if err != nil {
+		return err
+	}
+	if tenantId <= 0 {
+		return nil
+	}
+	if !TenantMembershipAllowsAccess(user, tenantId) {
+		return errors.New("用户不属于当前租户或成员已被禁用")
 	}
 	return nil
 }
@@ -647,20 +752,25 @@ func (user *User) FillUserById() error {
 }
 
 func (user *User) FillUserByEmail() error {
+	return user.FillUserByEmailWithTenant(0)
+}
+
+func (user *User) FillUserByEmailWithTenant(tenantId int) error {
 	if user.Email == "" {
 		return errors.New("email 为空！")
 	}
-	// 邮箱大小写不敏感
-	DB.Where("LOWER(email) = ?", strings.ToLower(user.Email)).First(user)
-	return nil
+	return fillUserByField(user, "email", user.Email, tenantId)
 }
 
 func (user *User) FillUserByGitHubId() error {
+	return user.FillUserByGitHubIdWithTenant(0)
+}
+
+func (user *User) FillUserByGitHubIdWithTenant(tenantId int) error {
 	if user.GitHubId == "" {
 		return errors.New("GitHub id 为空！")
 	}
-	DB.Where(User{GitHubId: user.GitHubId}).First(user)
-	return nil
+	return fillUserByField(user, "github_id", user.GitHubId, tenantId)
 }
 
 // UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
@@ -672,53 +782,73 @@ func (user *User) UpdateGitHubId(newGitHubId string) error {
 }
 
 func (user *User) FillUserByDiscordId() error {
+	return user.FillUserByDiscordIdWithTenant(0)
+}
+
+func (user *User) FillUserByDiscordIdWithTenant(tenantId int) error {
 	if user.DiscordId == "" {
 		return errors.New("discord id 为空！")
 	}
-	DB.Where(User{DiscordId: user.DiscordId}).First(user)
-	return nil
+	return fillUserByField(user, "discord_id", user.DiscordId, tenantId)
 }
 
 func (user *User) FillUserByOidcId() error {
+	return user.FillUserByOidcIdWithTenant(0)
+}
+
+func (user *User) FillUserByOidcIdWithTenant(tenantId int) error {
 	if user.OidcId == "" {
 		return errors.New("oidc id 为空！")
 	}
-	DB.Where(User{OidcId: user.OidcId}).First(user)
-	return nil
+	return fillUserByField(user, "oidc_id", user.OidcId, tenantId)
 }
 
 func (user *User) FillUserByWeChatId() error {
+	return user.FillUserByWeChatIdWithTenant(0)
+}
+
+func (user *User) FillUserByWeChatIdWithTenant(tenantId int) error {
 	if user.WeChatId == "" {
 		return errors.New("WeChat id 为空！")
 	}
-	DB.Where(User{WeChatId: user.WeChatId}).First(user)
-	return nil
+	return fillUserByField(user, "wechat_id", user.WeChatId, tenantId)
 }
 
 func (user *User) FillUserByTelegramId() error {
+	return user.FillUserByTelegramIdWithTenant(0)
+}
+
+func (user *User) FillUserByTelegramIdWithTenant(tenantId int) error {
 	if user.TelegramId == "" {
 		return errors.New("Telegram id 为空！")
 	}
-	err := DB.Where(User{TelegramId: user.TelegramId}).First(user).Error
+	err := fillUserByField(user, "telegram_id", user.TelegramId, tenantId)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errors.New("该 Telegram 账户未绑定")
 	}
 	return nil
 }
 
-func IsEmailAlreadyTaken(email string) bool {
+func IsEmailAlreadyTaken(email string, tenantId ...int) bool {
 	// 邮箱大小写不敏感，使用 > 0 以处理可能存在的重复数据
-	return DB.Unscoped().Where("LOWER(email) = ?", strings.ToLower(email)).Find(&User{}).RowsAffected > 0
+	query := DB.Unscoped().Where("LOWER(email) = ?", strings.ToLower(email))
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	return query.Find(&User{}).RowsAffected > 0
 }
 
-func ResetUserPasswordByEmail(email string, password string) error {
+func ResetUserPasswordByEmail(email string, password string, tenantId int) error {
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}
-	// 邮箱大小写不敏感，先检查匹配的用户数量
 	normalizedEmail := strings.ToLower(email)
+	q := DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	var count int64
-	if err := DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail).Count(&count).Error; err != nil {
+	if err := q.Count(&count).Error; err != nil {
 		return fmt.Errorf("查询邮箱失败: %w", err)
 	}
 	if count == 0 {
@@ -731,8 +861,11 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail).Update("password", hashedPassword).Error
-	return err
+	uq := DB.Model(&User{}).Where("LOWER(email) = ?", normalizedEmail)
+	if tenantId > 0 {
+		uq = uq.Where("tenant_id = ?", tenantId)
+	}
+	return uq.Update("password", hashedPassword).Error
 }
 
 func IsAdmin(userId int) bool {
@@ -779,19 +912,29 @@ func IsAdmin(userId int) bool {
 //}
 
 func ValidateAccessToken(token string) (user *User) {
+	return ValidateAccessTokenWithTenant(token, 0)
+}
+
+// ValidateAccessTokenWithTenant validates an access token, optionally scoped to a tenant.
+// tenantId=0 means no tenant filtering (backward compatible).
+func ValidateAccessTokenWithTenant(token string, tenantId int) (user *User) {
 	if token == "" {
 		return nil
 	}
 	token = strings.Replace(token, "Bearer ", "", 1)
 	user = &User{}
-	if DB.Where("access_token = ?", token).First(user).RowsAffected == 1 {
+	q := DB.Where("access_token = ?", token)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	if q.First(user).RowsAffected == 1 {
 		return user
 	}
 	return nil
 }
 
 // GetUserQuota gets quota from Redis first, falls back to DB if needed
-func GetUserQuota(id int, fromDB bool) (quota int, err error) {
+func GetUserQuota(id int, fromDB bool, tenantId ...int) (quota int, err error) {
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
 		if shouldUpdateRedis(fromDB, err) {
@@ -810,7 +953,11 @@ func GetUserQuota(id int, fromDB bool) (quota int, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
-	err = DB.Model(&User{}).Where("id = ?", id).Select("quota").Find(&quota).Error
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err = query.Select("quota").Find(&quota).Error
 	if err != nil {
 		return 0, err
 	}
@@ -848,7 +995,9 @@ func GetUserGroup(id int, fromDB bool) (group string, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
-	err = DB.Model(&User{}).Where("id = ?", id).Select(commonGroupCol).Find(&group).Error
+	// group 是 user 的属性、与当前操作租户无关（user 可能是其他租户的 guest 成员）。
+	// 按 userId 唯一查询，bypass guardrail 是语义正确的选择。
+	err = WithTenantBypass(DB).Model(&User{}).Where("id = ?", id).Select(commonGroupCol).Find(&group).Error
 	if err != nil {
 		return "", err
 	}
@@ -894,7 +1043,7 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-func IncreaseUserQuota(id int, quota int, db bool) (err error) {
+func IncreaseUserQuota(id int, quota int, db bool, tenantId ...int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
@@ -905,21 +1054,29 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 		}
 	})
 	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeUserQuota, resolvedTenantId, id, quota)
 		return nil
 	}
-	return increaseUserQuota(id, quota)
+	return increaseUserQuota(id, quota, tenantId...)
 }
 
-func increaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", quota)).Error
+func increaseUserQuota(id int, quota int, tenantId ...int) (err error) {
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err = query.Update("quota", gorm.Expr("quota + ?", quota)).Error
 	if err != nil {
 		return err
 	}
 	return err
 }
 
-func DecreaseUserQuota(id int, quota int) (err error) {
+func DecreaseUserQuota(id int, quota int, tenantId ...int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
@@ -930,28 +1087,36 @@ func DecreaseUserQuota(id int, quota int) (err error) {
 		}
 	})
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeUserQuota, resolvedTenantId, id, -quota)
 		return nil
 	}
-	return decreaseUserQuota(id, quota)
+	return decreaseUserQuota(id, quota, tenantId...)
 }
 
-func decreaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
+func decreaseUserQuota(id int, quota int, tenantId ...int) (err error) {
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err = query.Update("quota", gorm.Expr("quota - ?", quota)).Error
 	if err != nil {
 		return err
 	}
 	return err
 }
 
-func DeltaUpdateUserQuota(id int, delta int) (err error) {
+func DeltaUpdateUserQuota(id int, delta int, tenantId ...int) (err error) {
 	if delta == 0 {
 		return nil
 	}
 	if delta > 0 {
-		return IncreaseUserQuota(id, delta, false)
+		return IncreaseUserQuota(id, delta, false, tenantId...)
 	} else {
-		return DecreaseUserQuota(id, -delta)
+		return DecreaseUserQuota(id, -delta, tenantId...)
 	}
 }
 
@@ -961,21 +1126,29 @@ func DeltaUpdateUserQuota(id int, delta int) (err error) {
 //}
 
 func GetRootUser() (user *User) {
-	DB.Where("role = ?", common.RoleRootUser).First(&user)
+	WithTenantBypass(DB).Where("role = ?", common.RoleRootUser).First(&user)
 	return user
 }
 
-func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
+func UpdateUserUsedQuotaAndRequestCount(id int, quota int, tenantId ...int) {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
-		addNewRecord(BatchUpdateTypeRequestCount, id, 1)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeUsedQuota, resolvedTenantId, id, quota)
+		addNewRecord(BatchUpdateTypeRequestCount, resolvedTenantId, id, 1)
 		return
 	}
-	updateUserUsedQuotaAndRequestCount(id, quota, 1)
+	updateUserUsedQuotaAndRequestCount(id, quota, 1, tenantId...)
 }
 
-func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
+func updateUserUsedQuotaAndRequestCount(id int, quota int, count int, tenantId ...int) {
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.Updates(
 		map[string]interface{}{
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
 			"request_count": gorm.Expr("request_count + ?", count),
@@ -992,8 +1165,12 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	//}
 }
 
-func updateUserUsedQuota(id int, quota int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
+func updateUserUsedQuota(id int, quota int, tenantId ...int) {
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.Updates(
 		map[string]interface{}{
 			"used_quota": gorm.Expr("used_quota + ?", quota),
 		},
@@ -1003,8 +1180,12 @@ func updateUserUsedQuota(id int, quota int) {
 	}
 }
 
-func updateUserRequestCount(id int, count int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Update("request_count", gorm.Expr("request_count + ?", count)).Error
+func updateUserRequestCount(id int, count int, tenantId ...int) {
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.Update("request_count", gorm.Expr("request_count + ?", count)).Error
 	if err != nil {
 		common.SysLog("failed to update user request count: " + err.Error())
 	}
@@ -1038,47 +1219,75 @@ func GetUsernameById(id int, fromDB bool) (username string, err error) {
 	return username, nil
 }
 
-func IsLinuxDOIdAlreadyTaken(linuxDOId string) bool {
+func IsLinuxDOIdAlreadyTaken(linuxDOId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("linux_do_id = ?", linuxDOId).First(&user).Error
+	query := DB.Unscoped().Where("linux_do_id = ?", linuxDOId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsGitHubIdAlreadyTaken(githubId string) bool {
+func IsGitHubIdAlreadyTaken(githubId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("github_id = ?", githubId).First(&user).Error
+	query := DB.Unscoped().Where("github_id = ?", githubId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsDiscordIdAlreadyTaken(discordId string) bool {
+func IsDiscordIdAlreadyTaken(discordId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("discord_id = ?", discordId).First(&user).Error
+	query := DB.Unscoped().Where("discord_id = ?", discordId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsOidcIdAlreadyTaken(oidcId string) bool {
+func IsOidcIdAlreadyTaken(oidcId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("oidc_id = ?", oidcId).First(&user).Error
+	query := DB.Unscoped().Where("oidc_id = ?", oidcId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsTelegramIdAlreadyTaken(telegramId string) bool {
+func IsTelegramIdAlreadyTaken(telegramId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("telegram_id = ?", telegramId).First(&user).Error
+	query := DB.Unscoped().Where("telegram_id = ?", telegramId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func IsWeChatIdAlreadyTaken(wechatId string) bool {
+func IsWeChatIdAlreadyTaken(wechatId string, tenantId ...int) bool {
 	var user User
-	err := DB.Unscoped().Where("wechat_id = ?", wechatId).First(&user).Error
+	query := DB.Unscoped().Where("wechat_id = ?", wechatId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
 func (user *User) FillUserByLinuxDOId() error {
+	return user.FillUserByLinuxDOIdWithTenant(0)
+}
+
+func (user *User) FillUserByLinuxDOIdWithTenant(tenantId int) error {
 	if user.LinuxDOId == "" {
 		return errors.New("linux do id is empty")
 	}
-	err := DB.Where("linux_do_id = ?", user.LinuxDOId).First(user).Error
+	err := fillUserByField(user, "linux_do_id", user.LinuxDOId, tenantId)
 	return err
 }
 
@@ -1119,7 +1328,7 @@ func AddIpToUserSet(userId int, ip string) {
 
 func RootUserExists() bool {
 	var user User
-	err := DB.Where("role = ?", common.RoleRootUser).First(&user).Error
+	err := WithTenantBypass(DB).Where("role = ?", common.RoleRootUser).First(&user).Error
 	if err != nil {
 		return false
 	}

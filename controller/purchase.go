@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +14,8 @@ func AdminListTopUpOrders(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
 	status := c.Query("status")
-	orders, total, err := model.GetAllTopUpsWithUser(pageInfo, keyword, status)
+	tenantId := middleware.GetTenantId(c)
+	orders, total, err := model.GetAllTopUpsWithUser(tenantId, pageInfo, keyword, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -77,7 +79,8 @@ func AdminListSubscriptionOrdersFull(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
 	status := c.Query("status")
-	orders, total, err := model.GetAllSubscriptionOrdersWithUser(pageInfo, keyword, status)
+	tenantId := middleware.GetTenantId(c)
+	orders, total, err := model.GetAllSubscriptionOrdersWithUser(tenantId, pageInfo, keyword, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -88,7 +91,7 @@ func AdminListSubscriptionOrdersFull(c *gin.Context) {
 	for _, o := range orders {
 		planIds = append(planIds, o.PlanId)
 	}
-	planMap, _ := model.GetSubscriptionPlansByIds(planIds) // best-effort; missing plans are handled below
+	planMap, _ := model.GetSubscriptionPlansByIds(tenantId, planIds) // best-effort; missing plans are handled below
 
 	type enrichedOrder struct {
 		model.SubscriptionOrderWithUser

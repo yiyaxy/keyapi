@@ -20,6 +20,7 @@ import (
 
 type Channel struct {
 	Id                 int     `json:"id"`
+	TenantId           int     `json:"tenant_id" gorm:"index;not null;default:1"`
 	Type               int     `json:"type" gorm:"default:0"`
 	Key                string  `json:"key" gorm:"not null"`
 	OpenAIOrganization *string `json:"openai_organization"`
@@ -268,19 +269,32 @@ func (channel *Channel) SaveWithoutKey() error {
 	return DB.Omit("key").Save(channel).Error
 }
 
-func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
+// GetAllChannelsByTenant 取租户内渠道；tenantId<=0 表示平台级全量扫描
+// （定时任务：余额更新 / 连通性测试 / 上游模型同步 / 平台同步器等），
+// 此时显式 WithTenantBypass 放行 guardrail。
+func GetAllChannelsByTenant(tenantId int, startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
 	var channels []*Channel
 	var err error
 	order := "priority desc"
 	if idSort {
 		order = "id desc"
 	}
-	if selectAll {
-		err = DB.Order(order).Find(&channels).Error
+	var query *gorm.DB
+	if tenantId > 0 {
+		query = DB.Where("tenant_id = ?", tenantId)
 	} else {
-		err = DB.Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+		query = WithTenantBypass(DB)
+	}
+	if selectAll {
+		err = query.Order(order).Find(&channels).Error
+	} else {
+		err = query.Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
 	}
 	return channels, err
+}
+
+func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
+	return GetAllChannelsByTenant(0, startIdx, num, selectAll, idSort)
 }
 
 func GetChannelsByTag(tag string, idSort bool, selectAll bool) ([]*Channel, error) {
@@ -297,7 +311,7 @@ func GetChannelsByTag(tag string, idSort bool, selectAll bool) ([]*Channel, erro
 	return channels, err
 }
 
-func SearchChannels(keyword string, group string, model string, idSort bool) ([]*Channel, error) {
+func SearchChannelsByTenant(tenantId int, keyword string, group string, model string, idSort bool) ([]*Channel, error) {
 	var channels []*Channel
 	modelsCol := "`models`"
 
@@ -319,6 +333,9 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 
 	// 构造基础查询
 	baseQuery := DB.Model(&Channel{}).Omit("key")
+	if tenantId > 0 {
+		baseQuery = baseQuery.Where("tenant_id = ?", tenantId)
+	}
 
 	// 构造WHERE子句
 	var whereClause string
@@ -346,13 +363,21 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 	return channels, nil
 }
 
-func GetChannelById(id int, selectAll bool) (*Channel, error) {
+func SearchChannels(keyword string, group string, model string, idSort bool) ([]*Channel, error) {
+	return SearchChannelsByTenant(0, keyword, group, model, idSort)
+}
+
+func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil
+	query := DB.Where("id = ?", id)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if selectAll {
-		err = DB.First(channel, "id = ?", id).Error
+		err = query.First(channel).Error
 	} else {
-		err = DB.Omit("key").First(channel, "id = ?", id).Error
+		err = query.Omit("key").First(channel).Error
 	}
 	if err != nil {
 		return nil, err
@@ -363,7 +388,16 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	return channel, nil
 }
 
-func BatchInsertChannels(channels []Channel) error {
+func GetChannelById(id int, selectAll bool) (*Channel, error) {
+	return GetChannelByIdWithTenant(id, 0, selectAll)
+}
+
+// BatchInsertChannels inserts in one transaction and surfaces panics as
+// errors. Without the named return + deferred recover-to-err dance, a
+// panic inside a gorm callback (e.g. tenantGuardCreate on a slice) would
+// be swallowed silently and the caller would see `nil` — which for this
+// handler means reporting success to the admin with zero rows inserted.
+func BatchInsertChannels(channels []Channel) (retErr error) {
 	if len(channels) == 0 {
 		return nil
 	}
@@ -374,6 +408,9 @@ func BatchInsertChannels(channels []Channel) error {
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			if retErr == nil {
+				retErr = fmt.Errorf("panic during channel insert: %v", r)
+			}
 		}
 	}()
 
@@ -392,7 +429,7 @@ func BatchInsertChannels(channels []Channel) error {
 	return tx.Commit().Error
 }
 
-func BatchDeleteChannels(ids []int) error {
+func BatchDeleteChannels(tenantId int, ids []int) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -402,11 +439,11 @@ func BatchDeleteChannels(ids []int) error {
 		return tx.Error
 	}
 	for _, chunk := range lo.Chunk(ids, 200) {
-		if err := tx.Where("id in (?)", chunk).Delete(&Channel{}).Error; err != nil {
+		if err := tx.Where("tenant_id = ? AND id in (?)", tenantId, chunk).Delete(&Channel{}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
-		if err := tx.Where("channel_id in (?)", chunk).Delete(&Ability{}).Error; err != nil {
+		if err := tx.Where("tenant_id = ? AND channel_id in (?)", tenantId, chunk).Delete(&Ability{}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -687,25 +724,33 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	return true
 }
 
-func EnableChannelByTag(tag string) error {
-	err := DB.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error
+func EnableChannelByTag(tag string, tenantId int) error {
+	q := DB.Model(&Channel{}).Where("tag = ?", tag)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	err := q.Update("status", common.ChannelStatusEnabled).Error
 	if err != nil {
 		return err
 	}
-	err = UpdateAbilityStatusByTag(tag, true)
+	err = UpdateAbilityStatusByTag(tag, true, tenantId)
 	return err
 }
 
-func DisableChannelByTag(tag string) error {
-	err := DB.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error
+func DisableChannelByTag(tag string, tenantId int) error {
+	q := DB.Model(&Channel{}).Where("tag = ?", tag)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	err := q.Update("status", common.ChannelStatusManuallyDisabled).Error
 	if err != nil {
 		return err
 	}
-	err = UpdateAbilityStatusByTag(tag, false)
+	err = UpdateAbilityStatusByTag(tag, false, tenantId)
 	return err
 }
 
-func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string) error {
+func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string, tenantId int) error {
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
@@ -738,7 +783,11 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 		updateData.HeaderOverride = headerOverride
 	}
 
-	err := DB.Model(&Channel{}).Where("tag = ?", tag).Updates(updateData).Error
+	q := DB.Model(&Channel{}).Where("tag = ?", tag)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	err := q.Updates(updateData).Error
 	if err != nil {
 		return err
 	}
@@ -761,28 +810,40 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
-func UpdateChannelUsedQuota(id int, quota int) {
+func UpdateChannelUsedQuota(id int, quota int, tenantId ...int) {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeChannelUsedQuota, resolvedTenantId, id, quota)
 		return
 	}
-	updateChannelUsedQuota(id, quota)
+	updateChannelUsedQuota(id, quota, tenantId...)
 }
 
-func updateChannelUsedQuota(id int, quota int) {
-	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+func updateChannelUsedQuota(id int, quota int, tenantId ...int) {
+	query := DB.Model(&Channel{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err := query.Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}
 }
 
+// DeleteChannelByStatus 管理员级跨租户删除，需显式 bypass guardrail。
 func DeleteChannelByStatus(status int64) (int64, error) {
-	result := DB.Where("status = ?", status).Delete(&Channel{})
+	result := WithTenantBypass(DB).Where("status = ?", status).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
-func DeleteDisabledChannel() (int64, error) {
-	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
+// DeleteDisabledChannel 按 tenant 清理被禁用渠道。
+func DeleteDisabledChannel(tenantId int) (int64, error) {
+	result := DB.Where("tenant_id = ? AND (status = ? or status = ?)",
+		tenantId, common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).
+		Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
@@ -970,6 +1031,19 @@ func CountAllChannels() (int64, error) {
 	var total int64
 	err := DB.Model(&Channel{}).Count(&total).Error
 	return total, err
+}
+
+// CountTenantChannels returns the number of channels owned by the tenant.
+// Channel uses hard-delete (no DeletedAt column), so this counts all rows
+// present in the channels table for this tenant.
+// Used to enforce TenantPlan.MaxChannels at channel-creation time.
+func CountTenantChannels(tenantId int) (int64, error) {
+	if tenantId <= 0 {
+		return 0, fmt.Errorf("invalid tenantId: %d", tenantId)
+	}
+	var count int64
+	err := DB.Model(&Channel{}).Where("tenant_id = ?", tenantId).Count(&count).Error
+	return count, err
 }
 
 // CountAllTags returns number of non-empty distinct tags

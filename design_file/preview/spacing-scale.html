@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Spacing — Scale</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); }
+  .row { display:flex; align-items:center; gap:12px; padding: 4px 0; }
+  .lbl { width: 48px; font: 500 11px/1 var(--font-mono); color: var(--text-1); }
+  .bar { height: 14px; background: var(--accent); border-radius: 2px; }
+  .px  { font: 500 11px/1 var(--font-mono); color: var(--text-2); }
+  .blessed { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="row"><span class="lbl">s-1</span><div class="bar" style="width:4px"></div><span class="px">4px</span></div>
+<div class="row"><span class="lbl">s-2</span><div class="bar" style="width:8px"></div><span class="px">8px</span></div>
+<div class="row"><span class="lbl blessed">s-3</span><div class="bar" style="width:12px"></div><span class="px blessed">12px · gap inside dense rows</span></div>
+<div class="row"><span class="lbl blessed">s-4</span><div class="bar" style="width:16px"></div><span class="px blessed">16px · default card padding</span></div>
+<div class="row"><span class="lbl blessed">s-5</span><div class="bar" style="width:24px"></div><span class="px blessed">24px · gap between cards</span></div>
+<div class="row"><span class="lbl">s-6</span><div class="bar" style="width:32px"></div><span class="px">32px</span></div>
+<div class="row"><span class="lbl">s-7</span><div class="bar" style="width:48px"></div><span class="px">48px</span></div>
+<div class="row"><span class="lbl">s-8</span><div class="bar" style="width:64px"></div><span class="px">64px</span></div>
+</body>
+</html>

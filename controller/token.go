@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -33,13 +34,14 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := model.CountUserTokens(userId, tenantId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -47,12 +49,13 @@ func GetAllTokens(c *gin.Context) {
 
 func SearchTokens(c *gin.Context) {
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	keyword := c.Query("keyword")
 	token := c.Query("token")
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -65,11 +68,12 @@ func SearchTokens(c *gin.Context) {
 func GetToken(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := model.GetTokenByIdsTenant(id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -80,11 +84,12 @@ func GetToken(c *gin.Context) {
 func GetTokenKey(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
+	tenantId := middleware.GetTenantId(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := model.GetTokenByIdsTenant(id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -189,7 +194,7 @@ func AddToken(c *gin.Context) {
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
-	count, err := model.CountUserTokens(c.GetInt("id"))
+	count, err := model.CountUserTokens(c.GetInt("id"), middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -201,6 +206,28 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
+	// 租户计划级令牌数量校验（best-effort：Count→Compare→Insert 非原子，
+	// 高并发下可能越界 1-N 个。admin 低频操作可接受，token_limit 告警兜底）
+	tenantId := middleware.GetTenantId(c)
+	plan, err := model.GetTenantPlan(tenantId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if plan.MaxTokens > 0 {
+		tenantTokenCount, err := model.CountTenantTokens(tenantId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if int(tenantTokenCount) >= plan.MaxTokens {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("已达到租户计划的令牌数量上限 (%d)", plan.MaxTokens),
+			})
+			return
+		}
+	}
 	key, err := common.GenerateKey()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
@@ -208,6 +235,7 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
+		TenantId:           middleware.GetTenantId(c),
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
@@ -236,7 +264,8 @@ func AddToken(c *gin.Context) {
 func DeleteToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
-	err := model.DeleteTokenById(id, userId)
+	tenantId := middleware.GetTenantId(c)
+	err := model.DeleteTokenByIdTenant(id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -271,7 +300,8 @@ func UpdateToken(c *gin.Context) {
 			return
 		}
 	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
+	tenantId := middleware.GetTenantId(c)
+	cleanToken, err := model.GetTokenByIdsTenant(token.Id, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -323,7 +353,7 @@ func DeleteTokenBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -346,7 +376,8 @@ func GetTokenKeysBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
+	tenantId := middleware.GetTenantId(c)
+	tokens, err := model.GetTokenKeysByIdsTenant(tokenBatch.Ids, userId, tenantId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

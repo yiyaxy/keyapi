@@ -26,12 +26,31 @@ import {
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
+/**
+ * 从 localStorage.user 里读当前租户 id（backend session 注入的 user payload 含 tenant_id）。
+ * 不存在时返回空串 — 请求拦截器会在空串时不发 X-Tenant-Id，后端 fallback 到 session/默认租户。
+ */
+function getTenantIdFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return '';
+    const u = JSON.parse(raw);
+    if (u && typeof u.tenant_id === 'number' && u.tenant_id > 0) {
+      return String(u.tenant_id);
+    }
+    return '';
+  } catch (e) {
+    return '';
+  }
+}
+
 export let API = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
     ? import.meta.env.VITE_REACT_APP_SERVER_URL
     : '',
   headers: {
     'New-API-User': getUserIdFromLocalStorage(),
+    'X-Tenant-Id': getTenantIdFromLocalStorage(),
     'Cache-Control': 'no-store',
   },
 });
@@ -79,6 +98,8 @@ function patchAPIInstance(instance) {
 }
 
 patchAPIInstance(API);
+// 初始 API 实例也要挂上请求拦截器，确保登录后 localStorage 更新能反映到后续请求
+attachAuthInterceptor(API);
 
 export function updateAPI() {
   API = axios.create({
@@ -87,24 +108,51 @@ export function updateAPI() {
       : '',
     headers: {
       'New-API-User': getUserIdFromLocalStorage(),
+      'X-Tenant-Id': getTenantIdFromLocalStorage(),
       'Cache-Control': 'no-store',
     },
   });
 
   patchAPIInstance(API);
+  attachAuthInterceptor(API);
+  attachErrorInterceptor(API);
 }
 
-API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
-    if (error.config && error.config.skipErrorHandler) {
-      return Promise.reject(error);
+/**
+ * 请求拦截：每次请求前从 localStorage 重新读 uid/tenant_id，保证登录/登出后 header 同步
+ * （axios create 时固化的 headers 不会随 localStorage 变化更新）。
+ */
+function attachAuthInterceptor(instance) {
+  instance.interceptors.request.use((config) => {
+    const uid = getUserIdFromLocalStorage();
+    const tid = getTenantIdFromLocalStorage();
+    if (uid) {
+      config.headers['New-API-User'] = uid;
     }
-    showError(error);
-    return Promise.reject(error);
-  },
-);
+    if (tid) {
+      config.headers['X-Tenant-Id'] = tid;
+    } else {
+      // 无 tenant_id 时清除该 header，交给后端 fallback（subdomain/session/default）
+      delete config.headers['X-Tenant-Id'];
+    }
+    return config;
+  });
+}
+
+function attachErrorInterceptor(instance) {
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.config && error.config.skipErrorHandler) {
+        return Promise.reject(error);
+      }
+      showError(error);
+      return Promise.reject(error);
+    },
+  );
+}
+
+attachErrorInterceptor(API);
 
 // playground
 

@@ -1,0 +1,5 @@
+/* Web font loader — Google Fonts substitutes for General Sans + Commit Mono.
+   The token stack in colors_and_type.css falls through to these if the real
+   fonts aren't installed locally. Swap to real woff2s when licensed. */
+
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');

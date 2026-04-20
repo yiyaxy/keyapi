@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Components — Nav & Tabs</title>
+<link rel="stylesheet" href="../fonts/fonts.css" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-0); display:flex; flex-direction:column; gap: 16px; }
+  .sb { width: 200px; padding: 12px 8px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-1); }
+  .group { font: 500 11px/14px var(--font-sans); color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 10px 4px; }
+  .item { display:flex; align-items:center; gap:10px; padding: 6px 10px; border-radius: var(--r-sm); font: 500 13px/18px var(--font-sans); color: var(--text-1); cursor: pointer; }
+  .item:hover { background: var(--bg-2); color: var(--text-0); }
+  .item.active { background: var(--bg-2); color: var(--text-0); }
+  .item.active::before { content:''; width: 2px; height: 14px; background: var(--accent); border-radius: 2px; margin-right: -2px; margin-left: -8px; }
+  .ico { width: 14px; height: 14px; opacity: 0.8; }
+  .tabs { display:flex; gap: 24px; border-bottom: 1px solid var(--border); padding: 0 8px; }
+  .tab { padding: 10px 0; font: 500 13px/18px var(--font-sans); color: var(--text-1); cursor:pointer; position:relative; }
+  .tab.active { color: var(--text-0); }
+  .tab.active::after { content:''; position:absolute; left:0; right:0; bottom:-1px; height: 2px; background: var(--text-0); }
+  .row { display:flex; gap: 16px; align-items:flex-start; }
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="sb">
+    <div class="group">Build</div>
+    <div class="item active"><span class="ico">◇</span>Dashboard</div>
+    <div class="item"><span class="ico">⌘</span>API Keys</div>
+    <div class="item"><span class="ico">▷</span>Playground</div>
+    <div class="item"><span class="ico">≣</span>Logs</div>
+    <div class="group">Billing</div>
+    <div class="item"><span class="ico">$</span>Usage</div>
+    <div class="item"><span class="ico">⊕</span>Top up</div>
+  </div>
+  <div style="flex:1">
+    <div class="tabs">
+      <div class="tab active">Overview</div>
+      <div class="tab">By model</div>
+      <div class="tab">By key</div>
+      <div class="tab">Errors</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

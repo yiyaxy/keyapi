@@ -1,0 +1,7 @@
+{
+  "unauthorized": "登录状态已失效，请重新登录",
+  "forbidden": "无权执行该操作",
+  "server_error": "服务器暂时不可用，稍后再试",
+  "network": "网络异常，请检查连接后重试",
+  "unknown": "发生了未知错误"
+}

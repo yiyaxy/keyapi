@@ -29,6 +29,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // semi-ui upstream removed `./dist/css/semi.css` from package.json `exports`
+      // (strict ESM exports gate). The file still ships on disk; alias bypasses
+      // the exports gate so `import '@douyinfe/semi-ui/dist/css/semi.css'` in
+      // src/index.jsx keeps working.
+      '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
+        __dirname,
+        './node_modules/@douyinfe/semi-ui/dist/css/semi.css',
+      ),
     },
   },
   plugins: [

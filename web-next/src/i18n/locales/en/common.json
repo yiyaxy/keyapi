@@ -1,0 +1,11 @@
+{
+  "app.name": "new-api",
+  "actions.save": "Save",
+  "actions.cancel": "Cancel",
+  "actions.confirm": "Confirm",
+  "actions.back": "Back",
+  "actions.copy": "Copy",
+  "actions.copied": "Copied",
+  "states.loading": "Loading…",
+  "viewport.too_narrow": "Use a larger screen for now"
+}

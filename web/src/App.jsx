@@ -21,7 +21,7 @@ import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
-import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers';
+import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute, TenantAdminRoute } from './helpers';
 import RegisterForm from './components/auth/RegisterForm';
 import LoginForm from './components/auth/LoginForm';
 import NotFound from './pages/NotFound';
@@ -63,7 +63,10 @@ const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
-const Plans = lazy(() => import('./pages/Plans'));
+// Plans page 原计划独立实现，当前 fallback 到 Pricing；
+// pages/Plans 被 .gitignore 里的 `plans` 规则过滤（Windows 大小写不敏感），
+// 改为直接指向已有的 Pricing 页面以解除构建阻塞。
+const Plans = lazy(() => import('./pages/Pricing'));
 const AffTransfer = lazy(() => import('./pages/AffTransfer'));
 const AffTransferAdmin = lazy(() => import('./pages/AffTransferAdmin'));
 const RebateSettings = lazy(() => import('./pages/RebateSettings'));
@@ -77,6 +80,16 @@ const ChannelMonitor = lazy(() => import('./pages/ChannelMonitor'));
 const AgentLog = lazy(() => import('./pages/AgentLog'));
 const AgentReport = lazy(() => import('./pages/AgentReport'));
 const RequestTrace = lazy(() => import('./pages/RequestTrace'));
+const Tenant = lazy(() => import('./pages/Tenant'));
+const TenantMembers = lazy(() => import('./pages/TenantMembers'));
+const TenantPlan = lazy(() => import('./pages/TenantPlan'));
+const TenantConfig = lazy(() => import('./pages/TenantConfig'));
+const TenantDashboardPage = lazy(() => import('./pages/TenantDashboard'));
+const TenantAlerts = lazy(() => import('./pages/TenantAlerts'));
+const TenantAudit = lazy(() => import('./pages/TenantAudit'));
+const TenantBills = lazy(() => import('./pages/TenantBills'));
+const TenantPaymentPage = lazy(() => import('./pages/TenantPayment'));
+const PlatformTenants = lazy(() => import('./pages/PlatformTenants'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -278,6 +291,86 @@ function App() {
           element={
             <AdminRoute>
               <User />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-info'
+          element={
+            <TenantAdminRoute>
+              <Tenant />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-members'
+          element={
+            <TenantAdminRoute>
+              <TenantMembers />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-plan'
+          element={
+            <TenantAdminRoute>
+              <TenantPlan />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-config'
+          element={
+            <TenantAdminRoute>
+              <TenantConfig />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-dashboard'
+          element={
+            <TenantAdminRoute>
+              <TenantDashboardPage />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-alerts'
+          element={
+            <TenantAdminRoute>
+              <TenantAlerts />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-audit'
+          element={
+            <TenantAdminRoute>
+              <TenantAudit />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-bills'
+          element={
+            <TenantAdminRoute>
+              <TenantBills />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/tenant-payment'
+          element={
+            <TenantAdminRoute>
+              <TenantPaymentPage />
+            </TenantAdminRoute>
+          }
+        />
+        <Route
+          path='/console/platform-tenants'
+          element={
+            <AdminRoute>
+              <PlatformTenants />
             </AdminRoute>
           }
         />

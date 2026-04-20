@@ -63,7 +63,8 @@ func runCodexCredentialAutoRefreshOnce() {
 	offset := 0
 	for {
 		var channels []*model.Channel
-		err := model.DB.
+		// 定时任务跨租户扫 Codex 凭证渠道，显式 bypass 放行 guardrail。
+		err := model.WithTenantBypass(model.DB).
 			Select("id", "name", "key", "status", "channel_info").
 			Where("type = ? AND status = 1", constant.ChannelTypeCodex).
 			Order("id asc").

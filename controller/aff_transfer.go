@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -23,7 +24,7 @@ func UserCreateAffTransfer(c *gin.Context) {
 	}
 
 	// Check for pending requests
-	pendingQuota, err := model.GetPendingQuotaByUserId(userId)
+	pendingQuota, err := model.GetPendingQuotaByUserId(middleware.GetTenantId(c), userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -43,6 +44,7 @@ func UserCreateAffTransfer(c *gin.Context) {
 		return
 	}
 	transferReq := &model.AffTransferRequest{
+		TenantId: middleware.GetTenantId(c),
 		UserId:   userId,
 		Username: user.Username,
 		Quota:    req.Quota,
@@ -59,7 +61,7 @@ func UserGetAffTransferHistory(c *gin.Context) {
 	userId := c.GetInt("id")
 	page := common.GetPageQuery(c)
 	status, _ := strconv.Atoi(c.Query("status"))
-	requests, total, err := model.GetAffTransferRequestsByUserId(userId, page, status)
+	requests, total, err := model.GetAffTransferRequestsByUserId(middleware.GetTenantId(c), userId, page, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -73,7 +75,7 @@ func AdminGetAllAffTransfers(c *gin.Context) {
 	page := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
 	status, _ := strconv.Atoi(c.Query("status"))
-	requests, total, err := model.GetAllAffTransferRequests(page, keyword, status)
+	requests, total, err := model.GetAllAffTransferRequests(middleware.GetTenantId(c), page, keyword, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -97,9 +99,9 @@ func AdminProcessAffTransfer(c *gin.Context) {
 	var err error
 	switch req.Action {
 	case "approve":
-		err = model.ApproveAffTransferRequest(req.Id, adminId, req.Remark)
+		err = model.ApproveAffTransferRequest(middleware.GetTenantId(c), req.Id, adminId, req.Remark)
 	case "reject":
-		err = model.RejectAffTransferRequest(req.Id, adminId, req.Remark)
+		err = model.RejectAffTransferRequest(middleware.GetTenantId(c), req.Id, adminId, req.Remark)
 	default:
 		common.ApiErrorMsg(c, "无效操作")
 		return
@@ -112,7 +114,7 @@ func AdminProcessAffTransfer(c *gin.Context) {
 }
 
 func AdminGetAffTransferStats(c *gin.Context) {
-	stats, err := model.GetAffTransferStats()
+	stats, err := model.GetAffTransferStats(middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -124,7 +126,7 @@ func UserGetAffRebateLogs(c *gin.Context) {
 	userId := c.GetInt("id")
 	page := common.GetPageQuery(c)
 	rebateType, _ := strconv.Atoi(c.Query("type"))
-	logs, total, err := model.GetAffRebateLogsByUserId(userId, page, rebateType)
+	logs, total, err := model.GetAffRebateLogsByUserId(middleware.GetTenantId(c), userId, page, rebateType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -143,7 +145,7 @@ func AdminBatchApproveAllPending(c *gin.Context) {
 		return
 	}
 	adminId := c.GetInt("id")
-	count, err := model.BatchApproveAllPendingRequests(adminId, req.Remark)
+	count, err := model.BatchApproveAllPendingRequests(middleware.GetTenantId(c), adminId, req.Remark)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -156,7 +158,7 @@ func AdminBatchApproveAllPending(c *gin.Context) {
 
 func UserGetPendingQuota(c *gin.Context) {
 	userId := c.GetInt("id")
-	pendingQuota, err := model.GetPendingQuotaByUserId(userId)
+	pendingQuota, err := model.GetPendingQuotaByUserId(middleware.GetTenantId(c), userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

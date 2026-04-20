@@ -42,6 +42,7 @@ func TestStatus(c *gin.Context) {
 func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
+	tenantId := middleware.GetTenantId(c)
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -51,7 +52,7 @@ func GetStatus(c *gin.Context) {
 	data := gin.H{
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
-		"email_verification":          common.EmailVerificationEnabled,
+		"email_verification":          service.GetConfigBool(tenantId, "EmailVerificationEnabled", common.EmailVerificationEnabled),
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
 		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
@@ -61,15 +62,16 @@ func GetStatus(c *gin.Context) {
 		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
 		"telegram_oauth":              common.TelegramOAuthEnabled,
 		"telegram_bot_name":           common.TelegramBotName,
-		"system_name":                 common.SystemName,
-		"logo":                        common.Logo,
-		"footer_html":                 common.Footer,
+		"system_name":                 service.GetConfig(tenantId, "SystemName", common.SystemName),
+		"logo":                        service.GetConfig(tenantId, "Logo", common.Logo),
+		"footer_html":                 service.GetConfig(tenantId, "Footer", common.Footer),
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
+		"wx_mini_login":               service.IsWxMiniLoginEnabled(tenantId),
 		"server_address":              system_setting.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
-		"top_up_link":                 common.TopUpLink,
+		"top_up_link":                 service.GetConfig(tenantId, "TopUpLink", common.TopUpLink),
 		"topup_subscription_notice":   strings.TrimSpace(common.OptionMap["TopupSubscriptionNotice"]),
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
@@ -79,9 +81,9 @@ func GetStatus(c *gin.Context) {
 		"custom_currency_symbol":        operation_setting.GetGeneralSetting().CustomCurrencySymbol,
 		"custom_currency_exchange_rate": operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
 		"enable_batch_update":           common.BatchUpdateEnabled,
-		"enable_drawing":                common.DrawingEnabled,
-		"enable_task":                   common.TaskEnabled,
-		"enable_data_export":            common.DataExportEnabled,
+		"enable_drawing":                service.GetConfigBool(tenantId, "DrawingEnabled", common.DrawingEnabled),
+		"enable_task":                   service.GetConfigBool(tenantId, "TaskEnabled", common.TaskEnabled),
+		"enable_data_export":            service.GetConfigBool(tenantId, "DataExportEnabled", common.DataExportEnabled),
 		"data_export_default_time":      common.DataExportDefaultTime,
 		"default_collapse_sidebar":      common.DefaultCollapseSidebar,
 		"mj_notify_enabled":             setting.MjNotifyEnabled,
@@ -90,14 +92,14 @@ func GetStatus(c *gin.Context) {
 		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
 
-		"usd_exchange_rate": operation_setting.USDExchangeRate,
-		"price":             operation_setting.Price,
-		"min_invoice_amount": operation_setting.MinInvoiceAmount,
-		"invoice_provider": common.InvoiceProvider,
-		"invoice_auto_issue_enabled": common.InvoiceAutoIssueEnabled,
+		"usd_exchange_rate":               operation_setting.USDExchangeRate,
+		"price":                           operation_setting.Price,
+		"min_invoice_amount":              operation_setting.MinInvoiceAmount,
+		"invoice_provider":                common.InvoiceProvider,
+		"invoice_auto_issue_enabled":      common.InvoiceAutoIssueEnabled,
 		"invoice_default_issue_kind_code": strings.TrimSpace(common.OptionMap["InvoiceDefaultIssueKindCode"]),
-		"invoice_default_goods_name": strings.TrimSpace(common.OptionMap["InvoiceDefaultGoodsName"]),
-		"stripe_unit_price": setting.StripeUnitPrice,
+		"invoice_default_goods_name":      strings.TrimSpace(common.OptionMap["InvoiceDefaultGoodsName"]),
+		"stripe_unit_price":               setting.StripeUnitPrice,
 
 		// 面板启用开关
 		"api_info_enabled":      cs.ApiInfoEnabled,
@@ -109,27 +111,27 @@ func GetStatus(c *gin.Context) {
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
-		"oidc_enabled":                system_setting.GetOIDCSettings().Enabled,
-		"oidc_client_id":              system_setting.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint": system_setting.GetOIDCSettings().AuthorizationEndpoint,
-		"passkey_login":               passkeySetting.Enabled,
-		"passkey_display_name":        passkeySetting.RPDisplayName,
-		"passkey_rp_id":               passkeySetting.RPID,
-		"passkey_origins":             passkeySetting.Origins,
-		"passkey_allow_insecure":      passkeySetting.AllowInsecureOrigin,
-		"passkey_user_verification":   passkeySetting.UserVerification,
-		"passkey_attachment":          passkeySetting.AttachmentPreference,
-		"setup":                       constant.Setup,
-		"user_agreement_enabled":      legalSetting.UserAgreement != "",
-		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"refund_policy_enabled":       legalSetting.RefundPolicy != "",
-		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
-		"top_up_rebate_count":         common.TopUpRebateCount,
-		"top_up_rebate_percent":       common.TopUpRebatePercent,
-		"quota_for_inviter":           common.QuotaForInviter,
-		"quota_for_invitee":           common.QuotaForInvitee,
+		"oidc_enabled":                 system_setting.GetOIDCSettings().Enabled,
+		"oidc_client_id":               system_setting.GetOIDCSettings().ClientId,
+		"oidc_authorization_endpoint":  system_setting.GetOIDCSettings().AuthorizationEndpoint,
+		"passkey_login":                passkeySetting.Enabled,
+		"passkey_display_name":         passkeySetting.RPDisplayName,
+		"passkey_rp_id":                passkeySetting.RPID,
+		"passkey_origins":              passkeySetting.Origins,
+		"passkey_allow_insecure":       passkeySetting.AllowInsecureOrigin,
+		"passkey_user_verification":    passkeySetting.UserVerification,
+		"passkey_attachment":           passkeySetting.AttachmentPreference,
+		"setup":                        constant.Setup,
+		"user_agreement_enabled":       legalSetting.UserAgreement != "",
+		"privacy_policy_enabled":       legalSetting.PrivacyPolicy != "",
+		"refund_policy_enabled":        legalSetting.RefundPolicy != "",
+		"checkin_enabled":              operation_setting.GetCheckinSetting().Enabled,
+		"top_up_rebate_count":          common.TopUpRebateCount,
+		"top_up_rebate_percent":        common.TopUpRebatePercent,
+		"quota_for_inviter":            common.QuotaForInviter,
+		"quota_for_invitee":            common.QuotaForInvitee,
 		"subscription_recommend_count": common.SubscriptionRecommendCount,
-		"_qn":                         "new-api",
+		"_qn":                          "new-api",
 	}
 
 	// 根据启用状态注入可选内容
@@ -180,9 +182,8 @@ func GetStatus(c *gin.Context) {
 }
 
 func GetNotice(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	notice := common.OptionMap["Notice"]
-	common.OptionMapRWMutex.RUnlock()
+	tenantId := middleware.GetTenantId(c)
+	notice := service.GetConfig(tenantId, "Notice", "")
 
 	lang := c.Query("lang")
 	if lang != "" && lang != "zh" && notice != "" {
@@ -201,12 +202,11 @@ func GetNotice(c *gin.Context) {
 }
 
 func GetAbout(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
+	tenantId := middleware.GetTenantId(c)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    common.OptionMap["About"],
+		"data":    service.GetConfig(tenantId, "About", ""),
 	})
 	return
 }
@@ -250,12 +250,11 @@ func GetMidjourney(c *gin.Context) {
 }
 
 func GetHomePageContent(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
+	tenantId := middleware.GetTenantId(c)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    common.OptionMap["HomePageContent"],
+		"data":    service.GetConfig(tenantId, "HomePageContent", ""),
 	})
 	return
 }
@@ -279,9 +278,20 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	localPart := parts[0]
 	domainPart := parts[1]
-	if common.EmailDomainRestrictionEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if service.GetConfigBool(tenantId, "EmailDomainRestrictionEnabled", common.EmailDomainRestrictionEnabled) {
+		whitelist := common.EmailDomainWhitelist
+		if override := service.GetConfig(tenantId, "EmailDomainWhitelist", ""); override != "" {
+			items := strings.Split(override, ",")
+			whitelist = make([]string, 0, len(items))
+			for _, p := range items {
+				if trimmed := strings.TrimSpace(p); trimmed != "" {
+					whitelist = append(whitelist, trimmed)
+				}
+			}
+		}
 		allowed := false
-		for _, domain := range common.EmailDomainWhitelist {
+		for _, domain := range whitelist {
 			if domainPart == domain {
 				allowed = true
 				break
@@ -306,7 +316,7 @@ func SendEmailVerification(c *gin.Context) {
 		}
 	}
 
-	if model.IsEmailAlreadyTaken(email) {
+	if model.IsEmailAlreadyTaken(email, middleware.GetTenantId(c)) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "邮箱地址已被占用",
@@ -343,7 +353,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 		})
 		return
 	}
-	if !model.IsEmailAlreadyTaken(email) {
+	if !model.IsEmailAlreadyTaken(email, middleware.GetTenantId(c)) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该邮箱地址未注册",
@@ -396,7 +406,7 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	password := common.GenerateVerificationCode(12)
-	err = model.ResetUserPasswordByEmail(req.Email, password)
+	err = model.ResetUserPasswordByEmail(req.Email, password, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return

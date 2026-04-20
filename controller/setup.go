@@ -111,6 +111,7 @@ func PostSetup(c *gin.Context) {
 			return
 		}
 		rootUser := model.User{
+			TenantId:    model.DefaultTenantId,
 			Username:    req.Username,
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
@@ -119,7 +120,7 @@ func PostSetup(c *gin.Context) {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		err = model.DB.Create(&rootUser).Error
+		err = model.WithTenantBypass(model.DB).Create(&rootUser).Error
 		if err != nil {
 			c.JSON(200, gin.H{
 				"success": false,
@@ -155,11 +156,21 @@ func PostSetup(c *gin.Context) {
 	// Update setup status
 	constant.Setup = true
 
-	setup := model.Setup{
-		Version:       common.Version,
-		InitializedAt: time.Now().Unix(),
+	// 若 migrateDB 已创建了占位 Setup 行（只含 schema_version），在它上面补 Version/InitializedAt；
+	// 否则新建一行。
+	existing := model.GetSetup()
+	if existing == nil {
+		err = model.DB.Create(&model.Setup{
+			Version:       common.Version,
+			SchemaVersion: model.CurrentSchemaVersion,
+			InitializedAt: time.Now().Unix(),
+		}).Error
+	} else {
+		err = model.DB.Model(existing).Updates(map[string]interface{}{
+			"version":        common.Version,
+			"initialized_at": time.Now().Unix(),
+		}).Error
 	}
-	err = model.DB.Create(&setup).Error
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,

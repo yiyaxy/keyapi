@@ -85,6 +85,12 @@ const (
 	// quota error
 	ErrorCodeInsufficientUserQuota      ErrorCode = "insufficient_user_quota"
 	ErrorCodePreConsumeTokenQuotaFailed ErrorCode = "pre_consume_token_quota_failed"
+
+	// tenant quota / rate-limit errors
+	ErrorCodeTenantQuotaExceeded  ErrorCode = "tenant_quota_exceeded"
+	ErrorCodeTenantRPMExceeded    ErrorCode = "tenant_rpm_exceeded"
+	ErrorCodeTenantTPMExceeded    ErrorCode = "tenant_tpm_exceeded"
+	ErrorCodeTenantModelForbidden ErrorCode = "tenant_model_forbidden"
 )
 
 type NewAPIError struct {

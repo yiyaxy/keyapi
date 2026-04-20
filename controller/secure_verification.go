@@ -51,8 +51,8 @@ func UniversalVerify(c *gin.Context) {
 	}
 
 	// 获取用户信息
-	user := &model.User{Id: userId}
-	if err := user.FillUserById(); err != nil {
+	user, err := model.GetUserByIdWithContext(c, userId, true)
+	if err != nil {
 		common.ApiError(c, fmt.Errorf("获取用户信息失败: %v", err))
 		return
 	}
@@ -77,7 +77,6 @@ func UniversalVerify(c *gin.Context) {
 	// 根据验证方式进行验证
 	var verified bool
 	var verifyMethod string
-	var err error
 
 	switch req.Method {
 	case "2fa":
@@ -127,7 +126,7 @@ func UniversalVerify(c *gin.Context) {
 	}
 
 	// 记录日志
-	model.RecordLog(userId, model.LogTypeSystem, fmt.Sprintf("通用安全验证成功 (验证方式: %s)", verifyMethod))
+	model.RecordLogCtx(c, userId, model.LogTypeSystem, fmt.Sprintf("通用安全验证成功 (验证方式: %s)", verifyMethod))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

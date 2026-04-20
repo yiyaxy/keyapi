@@ -8,6 +8,7 @@ import (
 
 type InvoiceUpload struct {
 	Id               int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId         int    `json:"tenant_id" gorm:"index;default:1"`
 	UploaderId       int    `json:"uploader_id" gorm:"index"`
 	ObjectKey        string `json:"object_key" gorm:"type:varchar(512);uniqueIndex;not null"`
 	OriginalFilename string `json:"original_filename" gorm:"type:varchar(255);not null;default:''"`

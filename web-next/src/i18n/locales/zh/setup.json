@@ -1,0 +1,20 @@
+{
+  "page.title": "首次初始化",
+  "page.sub": "创建管理员账号并配置一次性的部署选项。",
+  "already_done.title": "已完成初始化",
+  "already_done.body": "本系统已经完成首次初始化，请使用管理员账号登录。",
+  "already_done.cta": "去登录",
+  "section.admin": "管理员账号",
+  "admin.exists": "已存在超级管理员，账号创建步骤已自动跳过。",
+  "section.options": "部署选项",
+  "field.username": "用户名",
+  "field.password": "密码",
+  "field.confirm": "再次输入密码",
+  "field.self_use": "自用模式",
+  "field.self_use.hint": "禁用注册与部分公开功能，适合个人或单租户部署。",
+  "field.demo": "Demo 模式",
+  "field.demo.hint": "标记为公开 Demo 站，部分操作会被锁定。",
+  "submit": "完成初始化",
+  "success": "初始化完成，即将跳转…",
+  "mismatch": "两次密码不一致"
+}

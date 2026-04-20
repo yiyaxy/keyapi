@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -32,15 +33,17 @@ func IpUsers(c *gin.Context) {
 		return
 	}
 
+	tenantId := middleware.GetTenantId(c)
+
 	// Get login users
-	loginUsers, err := model.GetDistinctUsersByIp(ip)
+	loginUsers, err := model.GetDistinctUsersByIp(tenantId, ip)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 
 	// Get API usage users
-	apiUsers, err := model.GetUsersFromLogsByIp(ip)
+	apiUsers, err := model.GetUsersFromLogsByIp(tenantId, ip)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -65,7 +68,8 @@ func IpAnalytics(c *gin.Context) {
 		return
 	}
 
-	result, err := model.GetIpAnalytics(startTs, endTs)
+	tenantId := middleware.GetTenantId(c)
+	result, err := model.GetIpAnalytics(tenantId, startTs, endTs)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -89,7 +93,8 @@ func IpRecords(c *gin.Context) {
 		pageSize = 20
 	}
 
-	records, total, err := model.GetIpRecordsByIp(ip, page, pageSize)
+	tenantId := middleware.GetTenantId(c)
+	records, total, err := model.GetIpRecordsByIp(tenantId, ip, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -120,7 +125,8 @@ func GetUserIpHistory(c *gin.Context) {
 		pageSize = 20
 	}
 
-	records, total, err := model.GetIpRecordsByUserId(userId, page, pageSize)
+	tenantId := middleware.GetTenantId(c)
+	records, total, err := model.GetIpRecordsByUserId(tenantId, userId, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -151,7 +157,8 @@ func GetUserApiIpHistory(c *gin.Context) {
 		pageSize = 20
 	}
 
-	records, total, err := model.GetApiIpRecordsByUserId(userId, page, pageSize)
+	tenantId := middleware.GetTenantId(c)
+	records, total, err := model.GetApiIpRecordsByUserId(tenantId, userId, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return

@@ -10,9 +10,9 @@ import (
 // UserOAuthBinding stores the binding relationship between users and custom OAuth providers
 type UserOAuthBinding struct {
 	Id             int       `json:"id" gorm:"primaryKey"`
-	UserId         int       `json:"user_id" gorm:"not null;uniqueIndex:ux_user_provider"`                                        // User ID - one binding per user per provider
-	ProviderId     int       `json:"provider_id" gorm:"not null;uniqueIndex:ux_user_provider;uniqueIndex:ux_provider_userid"`     // Custom OAuth provider ID
-	ProviderUserId string    `json:"provider_user_id" gorm:"type:varchar(256);not null;uniqueIndex:ux_provider_userid"`           // User ID from OAuth provider - one OAuth account per provider
+	UserId         int       `json:"user_id" gorm:"not null;uniqueIndex:ux_user_provider"`                                    // User ID - one binding per user per provider
+	ProviderId     int       `json:"provider_id" gorm:"not null;uniqueIndex:ux_user_provider;uniqueIndex:ux_provider_userid"` // Custom OAuth provider ID
+	ProviderUserId string    `json:"provider_user_id" gorm:"type:varchar(256);not null;uniqueIndex:ux_provider_userid"`       // User ID from OAuth provider - one OAuth account per provider
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -38,15 +38,23 @@ func GetUserOAuthBinding(userId, providerId int) (*UserOAuthBinding, error) {
 }
 
 // GetUserByOAuthBinding finds a user by provider ID and provider user ID
-func GetUserByOAuthBinding(providerId int, providerUserId string) (*User, error) {
+func GetUserByOAuthBinding(providerId int, providerUserId string, tenantId ...int) (*User, error) {
 	var binding UserOAuthBinding
-	err := DB.Where("provider_id = ? AND provider_user_id = ?", providerId, providerUserId).First(&binding).Error
+	query := DB.Where("provider_id = ? AND provider_user_id = ?", providerId, providerUserId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Joins("JOIN users ON users.id = user_oauth_bindings.user_id").Where("users.tenant_id = ?", tenantId[0])
+	}
+	err := query.First(&binding).Error
 	if err != nil {
 		return nil, err
 	}
 
 	var user User
-	err = DB.First(&user, binding.UserId).Error
+	userQuery := DB.Where("id = ?", binding.UserId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		userQuery = userQuery.Where("tenant_id = ?", tenantId[0])
+	}
+	err = userQuery.First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -54,9 +62,13 @@ func GetUserByOAuthBinding(providerId int, providerUserId string) (*User, error)
 }
 
 // IsProviderUserIdTaken checks if a provider user ID is already bound to any user
-func IsProviderUserIdTaken(providerId int, providerUserId string) bool {
+func IsProviderUserIdTaken(providerId int, providerUserId string, tenantId ...int) bool {
 	var count int64
-	DB.Model(&UserOAuthBinding{}).Where("provider_id = ? AND provider_user_id = ?", providerId, providerUserId).Count(&count)
+	query := DB.Model(&UserOAuthBinding{}).Where("provider_id = ? AND provider_user_id = ?", providerId, providerUserId)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Joins("JOIN users ON users.id = user_oauth_bindings.user_id").Where("users.tenant_id = ?", tenantId[0])
+	}
+	query.Count(&count)
 	return count > 0
 }
 
@@ -73,7 +85,11 @@ func CreateUserOAuthBinding(binding *UserOAuthBinding) error {
 	}
 
 	// Check if this provider user ID is already taken
-	if IsProviderUserIdTaken(binding.ProviderId, binding.ProviderUserId) {
+	user, err := GetUserById(binding.UserId, true)
+	if err != nil {
+		return err
+	}
+	if IsProviderUserIdTaken(binding.ProviderId, binding.ProviderUserId, user.TenantId) {
 		return errors.New("this OAuth account is already bound to another user")
 	}
 
@@ -108,7 +124,13 @@ func CreateUserOAuthBindingWithTx(tx *gorm.DB, binding *UserOAuthBinding) error 
 func UpdateUserOAuthBinding(userId, providerId int, newProviderUserId string) error {
 	// Check if the new provider user ID is already taken by another user
 	var existingBinding UserOAuthBinding
-	err := DB.Where("provider_id = ? AND provider_user_id = ?", providerId, newProviderUserId).First(&existingBinding).Error
+	user, err := GetUserById(userId, true)
+	if err != nil {
+		return err
+	}
+	err = DB.Joins("JOIN users ON users.id = user_oauth_bindings.user_id").
+		Where("provider_id = ? AND provider_user_id = ? AND users.tenant_id = ?", providerId, newProviderUserId, user.TenantId).
+		First(&existingBinding).Error
 	if err == nil && existingBinding.UserId != userId {
 		return errors.New("this OAuth account is already bound to another user")
 	}

@@ -263,9 +263,9 @@ func PasskeyLoginFinish(c *gin.Context) {
 			return nil, fmt.Errorf("未找到 Passkey 凭证: %w", err)
 		}
 
-		// 通过凭证获取用户
+		// 通过凭证获取用户（预登录阶段，无 session/tenant context，bypass guardrail）
 		user := &model.User{Id: credential.UserID}
-		if err := user.FillUserById(); err != nil {
+		if err := model.WithTenantBypass(model.DB).Where(model.User{Id: credential.UserID}).First(user).Error; err != nil {
 			return nil, fmt.Errorf("用户信息获取失败: %w", err)
 		}
 
@@ -334,8 +334,8 @@ func AdminResetPasskey(c *gin.Context) {
 		return
 	}
 
-	user := &model.User{Id: id}
-	if err := user.FillUserById(); err != nil {
+	user, err := model.GetUserByIdWithContext(c, id, true)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -496,8 +496,8 @@ func getSessionUser(c *gin.Context) (*model.User, error) {
 	if !ok {
 		return nil, errors.New("无效的会话信息")
 	}
-	user := &model.User{Id: id}
-	if err := user.FillUserById(); err != nil {
+	user, err := model.GetUserByIdWithContext(c, id, true)
+	if err != nil {
 		return nil, err
 	}
 	if user.Status != common.UserStatusEnabled {

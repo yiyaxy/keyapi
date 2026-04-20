@@ -48,6 +48,20 @@
 				"navigationBarTitleText": "消费记录",
 				"navigationStyle": "custom"
 			}
+		},
+		{
+			"path": "pages/qr-confirm/index",
+			"style": {
+				"navigationBarTitleText": "扫码登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/topup/index",
+			"style": {
+				"navigationBarTitleText": "充值",
+				"navigationStyle": "custom"
+			}
 		}
 	],
 	"easycom": {

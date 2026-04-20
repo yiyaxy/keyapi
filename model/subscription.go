@@ -132,9 +132,12 @@ func getSubscriptionPlanInfoCache() *cachex.HybridCache[SubscriptionPlanInfo] {
 	return subscriptionPlanInfoCache
 }
 
-func subscriptionPlanCacheKey(id int) string {
+func subscriptionPlanCacheKey(tenantId int, id int) string {
 	if id <= 0 {
 		return ""
+	}
+	if tenantId > 0 {
+		return fmt.Sprintf("%d:%d", tenantId, id)
 	}
 	return strconv.Itoa(id)
 }
@@ -144,14 +147,16 @@ func InvalidateSubscriptionPlanCache(planId int) {
 		return
 	}
 	cache := getSubscriptionPlanCache()
-	_, _ = cache.DeleteMany([]string{subscriptionPlanCacheKey(planId)})
+	// Invalidate both tenant-scoped and global keys
+	_, _ = cache.DeleteMany([]string{subscriptionPlanCacheKey(0, planId)})
 	infoCache := getSubscriptionPlanInfoCache()
 	_ = infoCache.Purge()
 }
 
 // Subscription plan
 type SubscriptionPlan struct {
-	Id int `json:"id"`
+	Id       int `json:"id"`
+	TenantId int `json:"tenant_id" gorm:"index;default:1"`
 
 	Title           string `json:"title" gorm:"type:varchar(128);not null"`
 	Subtitle        string `json:"subtitle" gorm:"type:varchar(255);default:''"`
@@ -165,9 +170,9 @@ type SubscriptionPlan struct {
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
 	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
-	Status  string `json:"status" gorm:"type:varchar(16);not null;default:'active';index"`
-	Enabled bool   `json:"enabled" gorm:"default:true"`
-	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
+	Status    string `json:"status" gorm:"type:varchar(16);not null;default:'active';index"`
+	Enabled   bool   `json:"enabled" gorm:"default:true"`
+	SortOrder int    `json:"sort_order" gorm:"type:int;default:0"`
 
 	StripePriceId  string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
 	CreemProductId string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
@@ -210,10 +215,11 @@ func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
 
 // Subscription order (payment -> webhook -> create UserSubscription)
 type SubscriptionOrder struct {
-	Id     int     `json:"id"`
-	UserId int     `json:"user_id" gorm:"index"`
-	PlanId int     `json:"plan_id" gorm:"index"`
-	Money  float64 `json:"money"`
+	Id       int     `json:"id"`
+	TenantId int     `json:"tenant_id" gorm:"index;default:1"`
+	UserId   int     `json:"user_id" gorm:"index"`
+	PlanId   int     `json:"plan_id" gorm:"index"`
+	Money    float64 `json:"money"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -251,12 +257,16 @@ func (o *SubscriptionOrder) Update() error {
 	return DB.Save(o).Error
 }
 
-func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
+func GetSubscriptionOrderByTradeNo(tradeNo string, tenantId ...int) *SubscriptionOrder {
 	if tradeNo == "" {
 		return nil
 	}
 	var order SubscriptionOrder
-	if err := DB.Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
+	query := DB.Where("trade_no = ?", tradeNo)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	if err := query.First(&order).Error; err != nil {
 		return nil
 	}
 	return &order
@@ -271,9 +281,10 @@ const (
 )
 
 type UserSubscription struct {
-	Id     int `json:"id"`
-	UserId int `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
-	PlanId int `json:"plan_id" gorm:"index"`
+	Id       int `json:"id"`
+	TenantId int `json:"tenant_id" gorm:"index;default:1"`
+	UserId   int `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
+	PlanId   int `json:"plan_id" gorm:"index"`
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
@@ -415,15 +426,15 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	return next.Unix()
 }
 
-func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
-	return getSubscriptionPlanByIdTx(nil, id)
+func GetSubscriptionPlanById(tenantId int, id int) (*SubscriptionPlan, error) {
+	return getSubscriptionPlanByIdTx(nil, tenantId, id)
 }
 
-func getSubscriptionPlanByIdTx(tx *gorm.DB, id int) (*SubscriptionPlan, error) {
+func getSubscriptionPlanByIdTx(tx *gorm.DB, tenantId int, id int) (*SubscriptionPlan, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid plan id")
 	}
-	key := subscriptionPlanCacheKey(id)
+	key := subscriptionPlanCacheKey(tenantId, id)
 	if key != "" {
 		if cached, found, err := getSubscriptionPlanCache().Get(key); err == nil && found {
 			return &cached, nil
@@ -434,21 +445,28 @@ func getSubscriptionPlanByIdTx(tx *gorm.DB, id int) (*SubscriptionPlan, error) {
 	if tx != nil {
 		query = tx
 	}
-	if err := query.Where("id = ?", id).First(&plan).Error; err != nil {
+	query = query.Where("id = ?", id)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	if err := query.First(&plan).Error; err != nil {
 		return nil, err
 	}
 	_ = getSubscriptionPlanCache().SetWithTTL(key, plan, subscriptionPlanCacheTTL())
 	return &plan, nil
 }
 
-func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {
+func CountUserSubscriptionsByPlan(tenantId int, userId int, planId int) (int64, error) {
 	if userId <= 0 || planId <= 0 {
 		return 0, errors.New("invalid userId or planId")
 	}
 	var count int64
-	if err := DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND plan_id = ?", userId, planId).
-		Count(&count).Error; err != nil {
+	query := DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND plan_id = ?", userId, planId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	if err := query.Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -626,7 +644,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
+		plan, err := GetSubscriptionPlanById(0, order.PlanId)
 		if err != nil {
 			return err
 		}
@@ -661,7 +679,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	// Group upgrade is deferred to activation
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s（待激活）", logPlanTitle, logMoney, logPaymentMethod)
-		RecordTopUpLog(logUserId, 0, msg)
+		RecordTopUpLogWithTenant(GetUserTenantId(logUserId), logUserId, 0, msg)
 	}
 	if logRewardAmount > 0 && logUserId > 0 {
 		go ProcessSubscriptionRebate(logUserId, logRewardAmount, logPlanTitle)
@@ -705,13 +723,13 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 		}
 		// Always persist epay snapshot (even if already success, idempotent update of snapshot fields)
 		snapUpdates := map[string]interface{}{
-			"epay_trade_no":        snap.TradeNo,
-			"epay_order_id_wx_al":  snap.OrderIdWxAl,
-			"epay_type":            snap.Type,
-			"epay_tdid":            snap.Tdid,
-			"epay_pid":             snap.Pid,
-			"epay_trade_status":    snap.TradeStatus,
-			"epay_notify_payload":  snap.NotifyPayload,
+			"epay_trade_no":       snap.TradeNo,
+			"epay_order_id_wx_al": snap.OrderIdWxAl,
+			"epay_type":           snap.Type,
+			"epay_tdid":           snap.Tdid,
+			"epay_pid":            snap.Pid,
+			"epay_trade_status":   snap.TradeStatus,
+			"epay_notify_payload": snap.NotifyPayload,
 		}
 		if err := tx.Model(&order).Updates(snapUpdates).Error; err != nil {
 			return err
@@ -722,7 +740,7 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
+		plan, err := GetSubscriptionPlanById(0, order.PlanId)
 		if err != nil {
 			return err
 		}
@@ -754,7 +772,7 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 	// Group upgrade is deferred to activation
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s（待激活）", logPlanTitle, logMoney, logPaymentMethod)
-		RecordTopUpLog(logUserId, 0, msg)
+		RecordTopUpLogWithTenant(GetUserTenantId(logUserId), logUserId, 0, msg)
 	}
 	if logRewardAmount > 0 && logUserId > 0 {
 		go ProcessSubscriptionRebate(logUserId, logRewardAmount, logPlanTitle)
@@ -801,7 +819,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	}
 
 	// 给邀请者增加 AffQuota 和 AffHistoryQuota
-	err = DB.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]interface{}{
+	err = DB.Model(&User{}).Where("id = ? AND tenant_id = ?", user.InviterId, user.TenantId).Updates(map[string]interface{}{
 		"aff_quota":   gorm.Expr("aff_quota + ?", rewardQuota),
 		"aff_history": gorm.Expr("aff_history + ?", rewardQuota),
 	}).Error
@@ -812,6 +830,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 
 	// 记录返利日志
 	CreateAffRebateLog(&AffRebateLog{
+		TenantId:    user.TenantId,
 		UserId:      user.InviterId,
 		InviteeId:   userId,
 		InviteeName: user.Username,
@@ -821,7 +840,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	})
 
 	// 被邀请人 subscription_purchase_count +1
-	err = DB.Model(&User{}).Where("id = ?", userId).Update("subscription_purchase_count", gorm.Expr("subscription_purchase_count + ?", 1)).Error
+	err = DB.Model(&User{}).Where("id = ? AND tenant_id = ?", userId, user.TenantId).Update("subscription_purchase_count", gorm.Expr("subscription_purchase_count + ?", 1)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("ProcessSubscriptionRebate: 更新用户订阅购买次数失败 userId=%d, err=%v", userId, err))
 		return
@@ -832,7 +851,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	if rebateSetting.SubscriptionRebateCount == -1 {
 		countDisplay = fmt.Sprintf("%d/∞", user.SubscriptionPurchaseCount+1)
 	}
-	RecordLog(user.InviterId, LogTypeSystem, fmt.Sprintf("邀请用户订阅返利「%s」 %s（订阅次数: %s）",
+	RecordLogWithTenant(user.TenantId, user.InviterId, LogTypeSystem, fmt.Sprintf("邀请用户订阅返利「%s」 %s（订阅次数: %s）",
 		planTitle, logger.LogQuota(rewardQuota), countDisplay))
 	common.SysLog(fmt.Sprintf("ProcessSubscriptionRebate: 返利成功 inviterId=%d, userId=%d, rewardQuota=%d, planTitle=%s, count=%s",
 		user.InviterId, userId, rewardQuota, planTitle, countDisplay))
@@ -847,6 +866,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if err := tx.Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			topup = TopUp{
+				TenantId:          order.TenantId,
 				UserId:            order.UserId,
 				Amount:            0,
 				Money:             order.Money,
@@ -893,6 +913,7 @@ func InsertSubscriptionTopUpPending(order *SubscriptionOrder) error {
 		return errors.New("order is nil")
 	}
 	topup := &TopUp{
+		TenantId:      order.TenantId,
 		UserId:        order.UserId,
 		Amount:        0,
 		Money:         order.Money,
@@ -906,7 +927,7 @@ func InsertSubscriptionTopUpPending(order *SubscriptionOrder) error {
 }
 
 // GetAllSubscriptionOrders returns paginated subscription orders with optional filters.
-func GetAllSubscriptionOrders(pageInfo *common.PageInfo, keyword string, status string) (orders []*SubscriptionOrder, total int64, err error) {
+func GetAllSubscriptionOrders(tenantId int, pageInfo *common.PageInfo, keyword string, status string) (orders []*SubscriptionOrder, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -918,6 +939,9 @@ func GetAllSubscriptionOrders(pageInfo *common.PageInfo, keyword string, status 
 	}()
 
 	query := tx.Model(&SubscriptionOrder{})
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		like := "%%" + keyword + "%%"
 		query = query.Where("trade_no LIKE ?", like)
@@ -965,11 +989,11 @@ func ExpireSubscriptionOrder(tradeNo string) error {
 }
 
 // Admin bind (no payment). Creates a UserSubscription from a plan.
-func AdminBindSubscription(userId int, planId int, sourceNote string) (string, error) {
+func AdminBindSubscription(tenantId int, userId int, planId int, sourceNote string) (string, error) {
 	if userId <= 0 || planId <= 0 {
 		return "", errors.New("invalid userId or planId")
 	}
-	plan, err := GetSubscriptionPlanById(planId)
+	plan, err := GetSubscriptionPlanById(tenantId, planId)
 	if err != nil {
 		return "", err
 	}
@@ -988,22 +1012,25 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 }
 
 // ActivateUserSubscription activates an inactive subscription, setting StartTime/EndTime from now.
-func ActivateUserSubscription(userId int, subscriptionId int) error {
+func ActivateUserSubscription(tenantId int, userId int, subscriptionId int) error {
 	if userId <= 0 || subscriptionId <= 0 {
 		return errors.New("invalid userId or subscriptionId")
 	}
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ? AND user_id = ?", subscriptionId, userId)
+		if tenantId > 0 {
+			query = query.Where("tenant_id = ?", tenantId)
+		}
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ? AND user_id = ?", subscriptionId, userId).
-			First(&sub).Error; err != nil {
+		if err := query.First(&sub).Error; err != nil {
 			return errors.New("订阅不存在")
 		}
 		if sub.Status != UserSubscriptionStatusInactive {
 			return errors.New("该订阅不是待激活状态")
 		}
-		plan, err := GetSubscriptionPlanById(sub.PlanId)
+		plan, err := GetSubscriptionPlanById(tenantId, sub.PlanId)
 		if err != nil {
 			return fmt.Errorf("获取套餐信息失败: %w", err)
 		}
@@ -1056,14 +1083,17 @@ func ActivateUserSubscription(userId int, subscriptionId int) error {
 }
 
 // GetAllActiveUserSubscriptions returns all active subscriptions for a user.
-func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
+func GetAllActiveUserSubscriptions(tenantId int, userId int) ([]SubscriptionSummary, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
 	now := common.GetTimestamp()
+	query := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	var subs []UserSubscription
-	err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
-		Order("end_time desc, id desc").
+	err := query.Order("end_time desc, id desc").
 		Find(&subs).Error
 	if err != nil {
 		return nil, err
@@ -1073,28 +1103,34 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 
 // HasActiveUserSubscription returns whether the user has any active subscription.
 // This is a lightweight existence check to avoid heavy pre-consume transactions.
-func HasActiveUserSubscription(userId int) (bool, error) {
+func HasActiveUserSubscription(tenantId int, userId int) (bool, error) {
 	if userId <= 0 {
 		return false, errors.New("invalid userId")
 	}
 	now := common.GetTimestamp()
+	query := DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	var count int64
-	if err := DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
-		Count(&count).Error; err != nil {
+	if err := query.Count(&count).Error; err != nil {
 		return false, err
 	}
 	return count > 0, nil
 }
 
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.
-func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
+func GetAllUserSubscriptions(tenantId int, userId int) ([]SubscriptionSummary, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
+	query := DB.Where("user_id = ?", userId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	var subs []UserSubscription
-	err := DB.Where("user_id = ?", userId).
-		Order("CASE WHEN status = 'inactive' THEN 0 ELSE 1 END, end_time desc, id desc").
+	err := query.Order("CASE WHEN status = 'inactive' THEN 0 ELSE 1 END, end_time desc, id desc").
 		Find(&subs).Error
 	if err != nil {
 		return nil, err
@@ -1117,7 +1153,7 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 }
 
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.
-func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
+func AdminInvalidateUserSubscription(tenantId int, userSubscriptionId int) (string, error) {
 	if userSubscriptionId <= 0 {
 		return "", errors.New("invalid userSubscriptionId")
 	}
@@ -1126,9 +1162,13 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	downgradeGroup := ""
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId)
+		if tenantId > 0 {
+			query = query.Where("tenant_id = ?", tenantId)
+		}
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		if err := query.First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
@@ -1162,7 +1202,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 }
 
 // AdminDeleteUserSubscription hard-deletes a user subscription.
-func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
+func AdminDeleteUserSubscription(tenantId int, userSubscriptionId int) (string, error) {
 	if userSubscriptionId <= 0 {
 		return "", errors.New("invalid userSubscriptionId")
 	}
@@ -1171,9 +1211,13 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	downgradeGroup := ""
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId)
+		if tenantId > 0 {
+			query = query.Where("tenant_id = ?", tenantId)
+		}
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		if err := query.First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
@@ -1214,14 +1258,20 @@ type SubscriptionPreConsumeResult struct {
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
-func ExpireDueSubscriptions(limit int) (int, error) {
+// tenantId<=0 时按"全租户扫描"语义运行（定时任务场景），显式走 WithTenantBypass。
+func ExpireDueSubscriptions(tenantId int, limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	now := GetDBTimestamp()
+	var query *gorm.DB
+	if tenantId > 0 {
+		query = DB.Where("tenant_id = ? AND status = ? AND end_time > 0 AND end_time <= ?", tenantId, "active", now)
+	} else {
+		query = WithTenantBypass(DB).Where("status = ? AND end_time > 0 AND end_time <= ?", "active", now)
+	}
 	var subs []UserSubscription
-	if err := DB.Where("status = ? AND end_time > 0 AND end_time <= ?", "active", now).
-		Order("end_time asc, id asc").
+	if err := query.Order("end_time asc, id asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {
 		return 0, err
@@ -1303,6 +1353,7 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 // SubscriptionPreConsumeRecord stores idempotent pre-consume operations per request.
 type SubscriptionPreConsumeRecord struct {
 	Id                 int    `json:"id"`
+	TenantId           int    `json:"tenant_id" gorm:"index;default:1"`
 	RequestId          string `json:"request_id" gorm:"type:varchar(64);uniqueIndex"`
 	UserId             int    `json:"user_id" gorm:"index"`
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
@@ -1383,7 +1434,7 @@ func ReorderSubscriptionsWithPreferred(subs []UserSubscription, preferredSubId i
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
 // If preferredSubId > 0, it tries that subscription first before falling back to the default order.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, preferredSubId int) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscription(tenantId int, requestId string, userId int, modelName string, quotaType int, amount int64, preferredSubId int) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1419,10 +1470,13 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			return nil
 		}
 
+		subsQuery := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now)
+		if tenantId > 0 {
+			subsQuery = subsQuery.Where("tenant_id = ?", tenantId)
+		}
 		var subs []UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
-			Order("end_time asc, id asc").
+		if err := subsQuery.Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
 			return errors.New("no active subscription")
 		}
@@ -1432,7 +1486,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		ReorderSubscriptionsWithPreferred(subs, preferredSubId)
 		for _, candidate := range subs {
 			sub := candidate
-			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			plan, err := getSubscriptionPlanByIdTx(tx, tenantId, sub.PlanId)
 			if err != nil {
 				return err
 			}
@@ -1520,14 +1574,21 @@ func RefundSubscriptionPreConsume(requestId string) error {
 }
 
 // ResetDueSubscriptions resets subscriptions whose next_reset_time has passed.
-func ResetDueSubscriptions(limit int) (int, error) {
+// ResetDueSubscriptions 重置到期自动续期的订阅配额。
+// tenantId<=0 表示定时任务场景全租户扫描，显式 bypass。
+func ResetDueSubscriptions(tenantId int, limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	now := GetDBTimestamp()
+	var query *gorm.DB
+	if tenantId > 0 {
+		query = DB.Where("tenant_id = ? AND next_reset_time > 0 AND next_reset_time <= ? AND status = ?", tenantId, now, "active")
+	} else {
+		query = WithTenantBypass(DB).Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active")
+	}
 	var subs []UserSubscription
-	if err := DB.Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
-		Order("next_reset_time asc").
+	if err := query.Order("next_reset_time asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {
 		return 0, err
@@ -1538,7 +1599,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	resetCount := 0
 	for _, sub := range subs {
 		subCopy := sub
-		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+		plan, err := getSubscriptionPlanByIdTx(nil, tenantId, sub.PlanId)
 		if err != nil || plan == nil {
 			continue
 		}
@@ -1563,12 +1624,19 @@ func ResetDueSubscriptions(limit int) (int, error) {
 }
 
 // CleanupSubscriptionPreConsumeRecords removes old idempotency records to keep table small.
-func CleanupSubscriptionPreConsumeRecords(olderThanSeconds int64) (int64, error) {
+// tenantId<=0 表示定时任务场景全租户清理，显式 bypass guardrail。
+func CleanupSubscriptionPreConsumeRecords(tenantId int, olderThanSeconds int64) (int64, error) {
 	if olderThanSeconds <= 0 {
 		olderThanSeconds = 7 * 24 * 3600
 	}
 	cutoff := GetDBTimestamp() - olderThanSeconds
-	res := DB.Where("updated_at < ?", cutoff).Delete(&SubscriptionPreConsumeRecord{})
+	var query *gorm.DB
+	if tenantId > 0 {
+		query = DB.Where("tenant_id = ? AND updated_at < ?", tenantId, cutoff)
+	} else {
+		query = WithTenantBypass(DB).Where("updated_at < ?", cutoff)
+	}
+	res := query.Delete(&SubscriptionPreConsumeRecord{})
 	return res.RowsAffected, res.Error
 }
 
@@ -1577,7 +1645,7 @@ type SubscriptionPlanInfo struct {
 	PlanTitle string
 }
 
-func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*SubscriptionPlanInfo, error) {
+func GetSubscriptionPlanInfoByUserSubscriptionId(tenantId int, userSubscriptionId int) (*SubscriptionPlanInfo, error) {
 	if userSubscriptionId <= 0 {
 		return nil, errors.New("invalid userSubscriptionId")
 	}
@@ -1585,11 +1653,15 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 	if cached, found, err := getSubscriptionPlanInfoCache().Get(cacheKey); err == nil && found {
 		return &cached, nil
 	}
+	query := DB.Where("id = ?", userSubscriptionId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	var sub UserSubscription
-	if err := DB.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+	if err := query.First(&sub).Error; err != nil {
 		return nil, err
 	}
-	plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+	plan, err := getSubscriptionPlanByIdTx(nil, tenantId, sub.PlanId)
 	if err != nil {
 		return nil, err
 	}
@@ -1625,7 +1697,7 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 }
 
 // GetAllSubscriptionOrdersWithUser returns paginated subscription orders with LEFT JOIN to get username.
-func GetAllSubscriptionOrdersWithUser(pageInfo *common.PageInfo, keyword string, status string) ([]SubscriptionOrderWithUser, int64, error) {
+func GetAllSubscriptionOrdersWithUser(tenantId int, pageInfo *common.PageInfo, keyword string, status string) ([]SubscriptionOrderWithUser, int64, error) {
 	var results []SubscriptionOrderWithUser
 	var total int64
 
@@ -1639,6 +1711,9 @@ func GetAllSubscriptionOrdersWithUser(pageInfo *common.PageInfo, keyword string,
 		Select(orderTable + ".*, " + usernameCol + " AS username").
 		Joins("LEFT JOIN " + userTable + " ON " + orderTable + ".user_id = " + userTable + ".id")
 
+	if tenantId > 0 {
+		query = query.Where("subscription_orders.tenant_id = ?", tenantId)
+	}
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where(tradeNoCol+" LIKE ? OR "+usernameCol+" LIKE ?", like, like)
@@ -1663,7 +1738,7 @@ func GetAllSubscriptionOrdersWithUser(pageInfo *common.PageInfo, keyword string,
 
 // GetSubscriptionPlansByIds fetches plans by IDs in one DB call, using cache where available.
 // Returns a map of plan_id → *SubscriptionPlan.
-func GetSubscriptionPlansByIds(ids []int) (map[int]*SubscriptionPlan, error) {
+func GetSubscriptionPlansByIds(tenantId int, ids []int) (map[int]*SubscriptionPlan, error) {
 	if len(ids) == 0 {
 		return map[int]*SubscriptionPlan{}, nil
 	}
@@ -1676,7 +1751,7 @@ func GetSubscriptionPlansByIds(ids []int) (map[int]*SubscriptionPlan, error) {
 	result := make(map[int]*SubscriptionPlan, len(unique))
 	missing := make([]int, 0, len(unique))
 	for id := range unique {
-		key := subscriptionPlanCacheKey(id)
+		key := subscriptionPlanCacheKey(tenantId, id)
 		if cached, found, err := getSubscriptionPlanCache().Get(key); err == nil && found {
 			cp := cached
 			result[id] = &cp
@@ -1687,25 +1762,30 @@ func GetSubscriptionPlansByIds(ids []int) (map[int]*SubscriptionPlan, error) {
 	if len(missing) == 0 {
 		return result, nil
 	}
+	query := DB.Where("id IN ?", missing)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
 	var plans []SubscriptionPlan
-	if err := DB.Where("id IN ?", missing).Find(&plans).Error; err != nil {
+	if err := query.Find(&plans).Error; err != nil {
 		return nil, err
 	}
 	for i := range plans {
 		p := plans[i]
 		result[p.Id] = &p
-		key := subscriptionPlanCacheKey(p.Id)
+		key := subscriptionPlanCacheKey(tenantId, p.Id)
 		_ = getSubscriptionPlanCache().SetWithTTL(key, p, subscriptionPlanCacheTTL())
 	}
 	return result, nil
 }
 
 // DeleteSubscriptionOrder hard-deletes a subscription order by trade_no.
+// trade_no 全局唯一，允许 bypass guardrail 做跨租户唯一索引删除。
 func DeleteSubscriptionOrder(tradeNo string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
-	result := DB.Where("trade_no = ?", tradeNo).Delete(&SubscriptionOrder{})
+	result := WithTenantBypass(DB).Where("trade_no = ?", tradeNo).Delete(&SubscriptionOrder{})
 	if result.Error != nil {
 		return result.Error
 	}

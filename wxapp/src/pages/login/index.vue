@@ -13,55 +13,26 @@
 
     <!-- 登录卡片 -->
     <view class="login-card">
-      <text class="card-title">账号登录</text>
+      <text class="card-title">欢迎登录</text>
+      <text class="card-desc">使用微信账号一键登录</text>
 
-      <!-- 用户名 -->
-      <view class="field">
-        <view class="field-label">
-          <u-icon name="account" size="34" color="#4F6EF7" />
-          <text class="label-text">用户名</text>
-        </view>
-        <input
-          class="field-input"
-          v-model="username"
-          placeholder="请输入用户名"
-          placeholder-class="ph"
-          :disabled="loading"
-          confirm-type="next"
-        />
-      </view>
-
-      <view class="divider" />
-
-      <!-- 密码 -->
-      <view class="field">
-        <view class="field-label">
-          <u-icon name="lock" size="34" color="#4F6EF7" />
-          <text class="label-text">密码</text>
-        </view>
-        <input
-          class="field-input"
-          v-model="password"
-          placeholder="请输入密码"
-          placeholder-class="ph"
-          password
-          :disabled="loading"
-          confirm-type="done"
-          @confirm="doLogin"
-        />
-      </view>
-
-      <!-- 登录按钮 -->
+      <!-- 微信登录按钮 -->
       <view
-        class="btn-login"
+        class="btn-wechat"
         :class="{ 'btn-loading': loading }"
-        @click="doLogin"
+        @click="doWechatLogin"
       >
-        <text v-if="!loading">登 录</text>
-        <view v-else class="btn-spin">
-          <u-loading-icon color="#fff" size="32" />
-          <text style="margin-left: 12rpx;">登录中...</text>
-        </view>
+        <u-icon
+          v-if="!loading"
+          name="weixin-fill"
+          size="40"
+          color="#fff"
+          style="margin-right: 14rpx;"
+        />
+        <u-loading-icon v-else color="#fff" size="32" />
+        <text style="margin-left: 12rpx;">
+          {{ loading ? '登录中...' : '微信一键登录' }}
+        </text>
       </view>
     </view>
 
@@ -78,8 +49,6 @@ import env from '@/config/env.js'
 
 const statusBarH = ref(0)
 const loading = ref(false)
-const username = ref('')
-const password = ref('')
 
 onLoad(() => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
@@ -88,47 +57,54 @@ onLoad(() => {
   }
 })
 
-async function doLogin() {
-  const u = username.value.trim()
-  const p = password.value.trim()
-  if (!u) return uni.showToast({ title: '请输入用户名', icon: 'none' })
-  if (!p) return uni.showToast({ title: '请输入密码', icon: 'none' })
+function wxGetCode() {
+  return new Promise((resolve, reject) => {
+    uni.login({
+      provider: 'weixin',
+      success(res) {
+        if (res.code) return resolve(res.code)
+        reject(new Error(res.errMsg || '获取微信登录凭证失败'))
+      },
+      fail(err) {
+        reject(new Error(err?.errMsg || '调用微信登录失败'))
+      },
+    })
+  })
+}
 
+function postLogin(code) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: env.basePath + '/api/oauth/wx_mini/login',
+      method: 'POST',
+      data: { code },
+      header: { 'Content-Type': 'application/json' },
+      success(res) {
+        const body = res.data
+        if (!body) return reject(new Error('响应为空'))
+        if (body.success === false) {
+          return reject(new Error(body.message || '登录失败'))
+        }
+        const rawCookie = res.header['Set-Cookie'] || res.header['set-cookie'] || ''
+        const cookie = request.extractCookie(rawCookie)
+        if (!cookie) return reject(new Error('未收到登录会话，请重试'))
+        userStore.setToken(cookie)
+        if (body.data) userStore.setUserInfo(body.data)
+        resolve()
+      },
+      fail() {
+        reject(new Error('网络连接失败'))
+      },
+    })
+  })
+}
+
+async function doWechatLogin() {
+  if (loading.value) return
   loading.value = true
   try {
-    await new Promise((resolve, reject) => {
-      uni.request({
-        url: env.basePath + '/api/user/login',
-        method: 'POST',
-        data: { username: u, password: p },
-        header: { 'Content-Type': 'application/json' },
-        success(res) {
-          const body = res.data
-          if (!body) return reject(new Error('响应为空'))
-
-          if (body.success === false) {
-            return reject(new Error(body.message || '用户名或密码错误'))
-          }
-
-          // 提取 Set-Cookie（微信小程序需要手动处理）
-          const rawCookie =
-            res.header['Set-Cookie'] ||
-            res.header['set-cookie'] ||
-            ''
-          const cookie = request.extractCookie(rawCookie)
-          userStore.setToken(cookie)
-
-          // 缓存基本用户信息
-          if (body.data) userStore.setUserInfo(body.data)
-
-          resolve()
-        },
-        fail(err) {
-          reject(new Error('网络连接失败'))
-        },
-      })
-    })
-
+    const code = await wxGetCode()
+    await postLogin(code)
     uni.showToast({ title: '登录成功', icon: 'success', duration: 1000 })
     setTimeout(() => uni.reLaunch({ url: '/pages/home/index' }), 900)
   } catch (err) {
@@ -159,7 +135,7 @@ async function doLogin() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 100rpx;
+  margin-top: 120rpx;
   margin-bottom: 72rpx;
 }
 .logo-icon {
@@ -195,56 +171,29 @@ async function doLogin() {
   width: 100%;
   background: #fff;
   border-radius: 24rpx;
-  padding: 48rpx 40rpx;
+  padding: 56rpx 40rpx 48rpx;
   box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .card-title {
-  font-size: 34rpx;
+  font-size: 36rpx;
   font-weight: 600;
   color: #1a1a2e;
-  display: block;
-  margin-bottom: 40rpx;
+  margin-bottom: 16rpx;
 }
-
-/* 字段 */
-.field {
-  margin-bottom: 8rpx;
-}
-.field-label {
-  display: flex;
-  align-items: center;
-  margin-bottom: 14rpx;
-}
-.label-text {
+.card-desc {
   font-size: 26rpx;
   color: #6b7280;
-  margin-left: 10rpx;
-}
-.field-input {
-  width: 100%;
-  height: 88rpx;
-  background: #f8f9ff;
-  border-radius: 12rpx;
-  padding: 0 24rpx;
-  font-size: 28rpx;
-  color: #1a1a2e;
-  box-sizing: border-box;
-}
-.ph {
-  color: #9ca3af;
-}
-.divider {
-  height: 1rpx;
-  background: #f0f0f0;
-  margin: 20rpx 0 28rpx;
+  margin-bottom: 56rpx;
 }
 
-/* 登录按钮 */
-.btn-login {
-  margin-top: 48rpx;
+/* 微信登录按钮 */
+.btn-wechat {
   width: 100%;
   height: 96rpx;
-  background: linear-gradient(135deg, #4F6EF7, #6C8EFF);
+  background: linear-gradient(135deg, #09BB07, #07a405);
   border-radius: 14rpx;
   display: flex;
   align-items: center;
@@ -252,17 +201,11 @@ async function doLogin() {
   color: #fff;
   font-size: 32rpx;
   font-weight: 600;
-  box-shadow: 0 8rpx 24rpx rgba(79, 110, 247, 0.35);
-  letter-spacing: 4rpx;
+  box-shadow: 0 8rpx 24rpx rgba(9, 187, 7, 0.35);
+  letter-spacing: 2rpx;
 }
 .btn-loading {
   opacity: 0.8;
-}
-.btn-spin {
-  display: flex;
-  align-items: center;
-  font-size: 28rpx;
-  color: #fff;
 }
 
 /* 底部提示 */

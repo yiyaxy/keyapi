@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -16,7 +17,7 @@ func getAnalyticsTimeRange(c *gin.Context) (int64, int64) {
 
 func GetAnalyticsByChannel(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.SumQuotaByChannel(startTs, endTs)
+	result, err := model.SumQuotaByChannel(startTs, endTs, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -26,7 +27,7 @@ func GetAnalyticsByChannel(c *gin.Context) {
 
 func GetAnalyticsByModel(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.SumQuotaByModel(startTs, endTs)
+	result, err := model.SumQuotaByModel(startTs, endTs, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -36,7 +37,7 @@ func GetAnalyticsByModel(c *gin.Context) {
 
 func GetAnalyticsByUser(c *gin.Context) {
 	startTs, endTs := getAnalyticsTimeRange(c)
-	result, err := model.SumQuotaByUser(startTs, endTs)
+	result, err := model.SumQuotaByUser(startTs, endTs, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -46,7 +47,7 @@ func GetAnalyticsByUser(c *gin.Context) {
 
 func GetSiteRPM(c *gin.Context) {
 	windowSeconds, _ := strconv.ParseInt(c.DefaultQuery("window_seconds", "60"), 10, 64)
-	result, err := model.GetSiteRPM(windowSeconds)
+	result, err := model.GetSiteRPM(windowSeconds, middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -91,11 +92,10 @@ func GetSiteRPMHistory(c *gin.Context) {
 }
 
 func GetChannelMonitor(c *gin.Context) {
-	data, err := model.GetChannelMonitorData()
+	data, err := model.GetChannelMonitorData(middleware.GetTenantId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, data)
 }
-

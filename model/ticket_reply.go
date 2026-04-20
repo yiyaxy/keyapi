@@ -8,6 +8,7 @@ import (
 
 type TicketReply struct {
 	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId  int    `json:"tenant_id" gorm:"index;default:1"`
 	TicketId  int    `json:"ticket_id" gorm:"index"`
 	Role      string `json:"role" gorm:"type:varchar(16);index;not null"` // user/admin
 	SenderId  int    `json:"sender_id" gorm:"index"`

@@ -24,3 +24,6 @@ yarn-error.log*
 .idea
 package-lock.json
 yarn.lock
+
+# superpowers brainstorming artifacts (visual companion mockups, state)
+.superpowers/

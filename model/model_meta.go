@@ -109,7 +109,7 @@ func GetAllModels(offset int, limit int) ([]*Model, error) {
 	return models, err
 }
 
-func GetBoundChannelsByModelsMap(modelNames []string) (map[string][]BoundChannel, error) {
+func GetBoundChannelsByModelsMap(modelNames []string, tenantId ...int) (map[string][]BoundChannel, error) {
 	result := make(map[string][]BoundChannel)
 	if len(modelNames) == 0 {
 		return result, nil
@@ -120,12 +120,14 @@ func GetBoundChannelsByModelsMap(modelNames []string) (map[string][]BoundChannel
 		Type  int
 	}
 	var rows []row
-	err := DB.Table("channels").
+	q := DB.Table("channels").
 		Select("abilities.model as model, channels.name as name, channels.type as type").
 		Joins("JOIN abilities ON abilities.channel_id = channels.id").
-		Where("abilities.model IN ? AND abilities.enabled = ?", modelNames, true).
-		Distinct().
-		Scan(&rows).Error
+		Where("abilities.model IN ? AND abilities.enabled = ?", modelNames, true)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		q = q.Where("channels.tenant_id = ?", tenantId[0])
+	}
+	err := q.Distinct().Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}

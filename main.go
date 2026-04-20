@@ -23,6 +23,8 @@ import (
 	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/payment"
+	_ "github.com/QuantumNous/new-api/service/payment/wechat"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -35,10 +37,14 @@ import (
 	_ "net/http/pprof"
 )
 
-//go:embed web/dist
+// Frontend is web-next (the React 19 rewrite). web/dist is the legacy
+// build and is no longer embedded — `cd web-next && bun run build` must
+// run before `go build` so this embed has something to pick up.
+//
+//go:embed web-next/dist
 var buildFS embed.FS
 
-//go:embed web/dist/index.html
+//go:embed web-next/dist/index.html
 var indexPage []byte
 
 func main() {
@@ -134,6 +140,21 @@ func main() {
 
 	// Channel upstream model update check task
 	controller.StartChannelUpstreamModelUpdateTask()
+
+	// 租户告警巡检任务：master 节点每 5 分钟全量刷新一次，同时触发新告警邮件推送
+	if common.IsMasterNode {
+		gopool.Go(func() {
+			service.StartTenantAlertSweepLoop(5 * time.Minute)
+		})
+		// 租户账单 & 计划状态机：每小时跑一次
+		gopool.Go(func() {
+			service.StartTenantBillingAndPlanLoop(time.Hour)
+		})
+		// 微信支付对账循环：每 5 分钟扫 pending 订单，丢回调也能兜底
+		gopool.Go(func() {
+			payment.StartPaymentReconcileLoop(5 * time.Minute)
+		})
+	}
 
 	if common.IsMasterNode && constant.UpdateTask {
 		gopool.Go(func() {
@@ -278,6 +299,14 @@ func InitResources() error {
 	if err != nil {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
+	}
+
+	// Install the payment master-key resolver, enabling PAYMENT_MASTER_KEY env override.
+	model.InitPaymentCrypto(payment.PaymentMasterKey)
+	if os.Getenv("PAYMENT_MASTER_KEY") != "" {
+		common.SysLog("payment master key: using PAYMENT_MASTER_KEY env override")
+	} else {
+		common.SysLog("payment master key: using HKDF(CryptoSecret) default")
 	}
 
 	model.CheckSetup()

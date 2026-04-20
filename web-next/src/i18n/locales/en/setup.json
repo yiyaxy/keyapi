@@ -1,0 +1,20 @@
+{
+  "page.title": "First-time setup",
+  "page.sub": "Initialize the admin account and one-off deployment toggles.",
+  "already_done.title": "Already initialized",
+  "already_done.body": "The system has already been set up. Sign in with the admin account.",
+  "already_done.cta": "Go to sign in",
+  "section.admin": "Admin account",
+  "admin.exists": "A root admin already exists. The account section is skipped.",
+  "section.options": "Deployment options",
+  "field.username": "Username",
+  "field.password": "Password",
+  "field.confirm": "Confirm password",
+  "field.self_use": "Self-use mode",
+  "field.self_use.hint": "Disables registration and certain public features. Recommended for single-tenant personal deployments.",
+  "field.demo": "Demo mode",
+  "field.demo.hint": "Marks the site as a public demo. Some actions are locked.",
+  "submit": "Complete setup",
+  "success": "Setup complete. Redirecting…",
+  "mismatch": "Passwords do not match"
+}

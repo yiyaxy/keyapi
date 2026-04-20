@@ -255,7 +255,7 @@ func validateTicketUploadReusable(upload *model.TicketUpload, now int64) error {
 	return nil
 }
 
-func finalizeTicketAttachments(ctx context.Context, tx *gorm.DB, storage TicketStorage, ticketID int, replyID int, uploaderID int, objectKeys []string, now int64) error {
+func finalizeTicketAttachments(ctx context.Context, tx *gorm.DB, storage TicketStorage, tenantId int, ticketID int, replyID int, uploaderID int, objectKeys []string, now int64) error {
 	objectKeys = compactUniqueObjectKeys(objectKeys)
 	if len(objectKeys) == 0 {
 		return nil
@@ -287,6 +287,7 @@ func finalizeTicketAttachments(ctx context.Context, tx *gorm.DB, storage TicketS
 		}
 
 		att := &model.TicketAttachment{
+			TenantId:         tenantId,
 			TicketId:         ticketID,
 			ReplyId:          replyID,
 			UploaderId:       uploaderID,
@@ -311,7 +312,7 @@ func finalizeTicketAttachments(ctx context.Context, tx *gorm.DB, storage TicketS
 	return nil
 }
 
-func CreateTicket(ctx context.Context, storage TicketStorage, userID int, subject string, content string, objectKeys []string) (*model.Ticket, *model.TicketReply, error) {
+func CreateTicket(ctx context.Context, storage TicketStorage, tenantId int, userID int, subject string, content string, objectKeys []string) (*model.Ticket, *model.TicketReply, error) {
 	objectKeys = compactUniqueObjectKeys(objectKeys)
 	if storage == nil {
 		var err error
@@ -339,6 +340,7 @@ func CreateTicket(ctx context.Context, storage TicketStorage, userID int, subjec
 		now := nowTimestamp()
 
 		ticket := &model.Ticket{
+			TenantId:    tenantId,
 			UserId:      userID,
 			Category:    model.TicketCategoryAfterSales,
 			Subject:     subject,
@@ -358,6 +360,7 @@ func CreateTicket(ctx context.Context, storage TicketStorage, userID int, subjec
 		}
 
 		reply := &model.TicketReply{
+			TenantId:  tenantId,
 			TicketId:  ticket.Id,
 			Role:      string(TicketReplyRoleUser),
 			SenderId:  userID,
@@ -371,7 +374,7 @@ func CreateTicket(ctx context.Context, storage TicketStorage, userID int, subjec
 			return err
 		}
 
-		if err := finalizeTicketAttachments(ctx, tx, storage, ticket.Id, reply.Id, userID, objectKeys, now); err != nil {
+		if err := finalizeTicketAttachments(ctx, tx, storage, tenantId, ticket.Id, reply.Id, userID, objectKeys, now); err != nil {
 			return err
 		}
 
@@ -386,23 +389,23 @@ func CreateTicket(ctx context.Context, storage TicketStorage, userID int, subjec
 	return createdTicket, createdReply, nil
 }
 
-func TicketReplyUser(ctx context.Context, userId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
+func TicketReplyUser(ctx context.Context, tenantId int, userId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
 	storage, err := defaultTicketStorage()
 	if err != nil {
 		return nil, err
 	}
-	return ticketReply(ctx, storage, TicketReplyRoleUser, userId, ticketId, content, objectKeys)
+	return ticketReply(ctx, storage, tenantId, TicketReplyRoleUser, userId, ticketId, content, objectKeys)
 }
 
-func TicketAdminReply(ctx context.Context, adminId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
+func TicketAdminReply(ctx context.Context, tenantId int, adminId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
 	storage, err := defaultTicketStorage()
 	if err != nil {
 		return nil, err
 	}
-	return ticketReply(ctx, storage, TicketReplyRoleAdmin, adminId, ticketId, content, objectKeys)
+	return ticketReply(ctx, storage, tenantId, TicketReplyRoleAdmin, adminId, ticketId, content, objectKeys)
 }
 
-func ticketReply(ctx context.Context, storage TicketStorage, role TicketReplyRole, senderId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
+func ticketReply(ctx context.Context, storage TicketStorage, tenantId int, role TicketReplyRole, senderId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
 	objectKeys = compactUniqueObjectKeys(objectKeys)
 	if storage == nil {
 		return nil, fmt.Errorf("storage is nil")
@@ -426,7 +429,11 @@ func ticketReply(ctx context.Context, storage TicketStorage, role TicketReplyRol
 		now := nowTimestamp()
 
 		var ticket model.Ticket
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", ticketId).First(&ticket).Error; err != nil {
+		tq := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", ticketId)
+		if tenantId > 0 {
+			tq = tq.Where("tenant_id = ?", tenantId)
+		}
+		if err := tq.First(&ticket).Error; err != nil {
 			return err
 		}
 		if err := validateTicketCategory(ticket.Category); err != nil {
@@ -434,6 +441,7 @@ func ticketReply(ctx context.Context, storage TicketStorage, role TicketReplyRol
 		}
 
 		reply := &model.TicketReply{
+			TenantId:  tenantId,
 			TicketId:  ticket.Id,
 			Role:      string(role),
 			SenderId:  senderId,
@@ -451,7 +459,7 @@ func ticketReply(ctx context.Context, storage TicketStorage, role TicketReplyRol
 			return err
 		}
 
-		if err := finalizeTicketAttachments(ctx, tx, storage, ticket.Id, reply.Id, senderId, objectKeys, now); err != nil {
+		if err := finalizeTicketAttachments(ctx, tx, storage, tenantId, ticket.Id, reply.Id, senderId, objectKeys, now); err != nil {
 			return err
 		}
 
@@ -464,7 +472,7 @@ func ticketReply(ctx context.Context, storage TicketStorage, role TicketReplyRol
 	return createdReply, nil
 }
 
-func TicketListUser(ctx context.Context, userId int, status string, keyword string, pageInfo *common.PageInfo) ([]model.Ticket, int64, error) {
+func TicketListUser(ctx context.Context, tenantId int, userId int, status string, keyword string, pageInfo *common.PageInfo) ([]model.Ticket, int64, error) {
 	if userId <= 0 {
 		return nil, 0, types.NewErrorWithStatusCode(fmt.Errorf("invalid user id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -480,6 +488,9 @@ func TicketListUser(ctx context.Context, userId int, status string, keyword stri
 	}
 
 	q := model.DB.Model(&model.Ticket{}).Where("user_id = ?", userId)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}
@@ -503,7 +514,7 @@ func TicketListUser(ctx context.Context, userId int, status string, keyword stri
 	return items, total, nil
 }
 
-func TicketAdminList(ctx context.Context, status string, userId int, keyword string, pageInfo *common.PageInfo) ([]model.Ticket, int64, error) {
+func TicketAdminList(ctx context.Context, tenantId int, status string, userId int, keyword string, pageInfo *common.PageInfo) ([]model.Ticket, int64, error) {
 	status = strings.TrimSpace(status)
 	keyword = strings.TrimSpace(keyword)
 	if status != "" {
@@ -519,6 +530,9 @@ func TicketAdminList(ctx context.Context, status string, userId int, keyword str
 	}
 
 	q := model.DB.Model(&model.Ticket{})
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
 	if userId > 0 {
 		q = q.Where("user_id = ?", userId)
 	}
@@ -545,11 +559,11 @@ func TicketAdminList(ctx context.Context, status string, userId int, keyword str
 	return items, total, nil
 }
 
-func TicketGetUserDetail(ctx context.Context, userId int, ticketId int) (model.Ticket, []model.TicketReply, []model.TicketAttachment, error) {
+func TicketGetUserDetail(ctx context.Context, tenantId int, userId int, ticketId int) (model.Ticket, []model.TicketReply, []model.TicketAttachment, error) {
 	if userId <= 0 || ticketId <= 0 {
 		return model.Ticket{}, nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid userId/ticketId"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	return getTicketDetail(ctx, ticketId, func(t *model.Ticket) error {
+	return getTicketDetail(ctx, tenantId, ticketId, func(t *model.Ticket) error {
 		if t.UserId != userId {
 			return types.NewErrorWithStatusCode(fmt.Errorf("access denied"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 		}
@@ -557,16 +571,20 @@ func TicketGetUserDetail(ctx context.Context, userId int, ticketId int) (model.T
 	})
 }
 
-func TicketAdminGetDetail(ctx context.Context, ticketId int) (model.Ticket, []model.TicketReply, []model.TicketAttachment, error) {
+func TicketAdminGetDetail(ctx context.Context, tenantId int, ticketId int) (model.Ticket, []model.TicketReply, []model.TicketAttachment, error) {
 	if ticketId <= 0 {
 		return model.Ticket{}, nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid ticketId"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	return getTicketDetail(ctx, ticketId, nil)
+	return getTicketDetail(ctx, tenantId, ticketId, nil)
 }
 
-func getTicketDetail(ctx context.Context, ticketId int, check func(*model.Ticket) error) (model.Ticket, []model.TicketReply, []model.TicketAttachment, error) {
+func getTicketDetail(ctx context.Context, tenantId int, ticketId int, check func(*model.Ticket) error) (model.Ticket, []model.TicketReply, []model.TicketAttachment, error) {
 	var ticket model.Ticket
-	if err := model.DB.Where("id = ?", ticketId).First(&ticket).Error; err != nil {
+	tq := model.DB.Where("id = ?", ticketId)
+	if tenantId > 0 {
+		tq = tq.Where("tenant_id = ?", tenantId)
+	}
+	if err := tq.First(&ticket).Error; err != nil {
 		return model.Ticket{}, nil, nil, err
 	}
 	if err := validateTicketCategory(ticket.Category); err != nil {
@@ -578,18 +596,26 @@ func getTicketDetail(ctx context.Context, ticketId int, check func(*model.Ticket
 		}
 	}
 
+	rq := model.DB.Where("ticket_id = ?", ticketId)
+	if tenantId > 0 {
+		rq = rq.Where("tenant_id = ?", tenantId)
+	}
 	var replies []model.TicketReply
-	if err := model.DB.Where("ticket_id = ?", ticketId).Order("created_at ASC").Find(&replies).Error; err != nil {
+	if err := rq.Order("created_at ASC").Find(&replies).Error; err != nil {
 		return model.Ticket{}, nil, nil, err
 	}
+	aq := model.DB.Where("ticket_id = ?", ticketId)
+	if tenantId > 0 {
+		aq = aq.Where("tenant_id = ?", tenantId)
+	}
 	var attachments []model.TicketAttachment
-	if err := model.DB.Where("ticket_id = ?", ticketId).Order("created_at ASC").Find(&attachments).Error; err != nil {
+	if err := aq.Order("created_at ASC").Find(&attachments).Error; err != nil {
 		return model.Ticket{}, nil, nil, err
 	}
 	return ticket, replies, attachments, nil
 }
 
-func TicketPresignAttachmentForUser(ctx context.Context, userId int, attId int, disposition string) (string, int64, error) {
+func TicketPresignAttachmentForUser(ctx context.Context, tenantId int, userId int, attId int, disposition string) (string, int64, error) {
 	if userId <= 0 || attId <= 0 {
 		return "", 0, types.NewErrorWithStatusCode(fmt.Errorf("invalid userId/attId"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -599,11 +625,19 @@ func TicketPresignAttachmentForUser(ctx context.Context, userId int, attId int, 
 	}
 
 	var att model.TicketAttachment
-	if err := model.DB.Where("id = ?", attId).First(&att).Error; err != nil {
+	aq := model.DB.Where("id = ?", attId)
+	if tenantId > 0 {
+		aq = aq.Where("tenant_id = ?", tenantId)
+	}
+	if err := aq.First(&att).Error; err != nil {
 		return "", 0, err
 	}
 	var ticket model.Ticket
-	if err := model.DB.Where("id = ?", att.TicketId).First(&ticket).Error; err != nil {
+	tq := model.DB.Where("id = ?", att.TicketId)
+	if tenantId > 0 {
+		tq = tq.Where("tenant_id = ?", tenantId)
+	}
+	if err := tq.First(&ticket).Error; err != nil {
 		return "", 0, err
 	}
 	if ticket.UserId != userId {
@@ -624,7 +658,7 @@ func TicketPresignAttachmentForUser(ctx context.Context, userId int, attId int, 
 	return url, expiresAt, nil
 }
 
-func TicketPresignAttachmentForAdmin(ctx context.Context, attId int, disposition string) (string, int64, error) {
+func TicketPresignAttachmentForAdmin(ctx context.Context, tenantId int, attId int, disposition string) (string, int64, error) {
 	if attId <= 0 {
 		return "", 0, types.NewErrorWithStatusCode(fmt.Errorf("invalid attId"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -634,7 +668,11 @@ func TicketPresignAttachmentForAdmin(ctx context.Context, attId int, disposition
 	}
 
 	var att model.TicketAttachment
-	if err := model.DB.Where("id = ?", attId).First(&att).Error; err != nil {
+	aq := model.DB.Where("id = ?", attId)
+	if tenantId > 0 {
+		aq = aq.Where("tenant_id = ?", tenantId)
+	}
+	if err := aq.First(&att).Error; err != nil {
 		return "", 0, err
 	}
 
@@ -652,7 +690,7 @@ func TicketPresignAttachmentForAdmin(ctx context.Context, attId int, disposition
 	return url, expiresAt, nil
 }
 
-func TicketAdminUpdateStatus(ctx context.Context, adminId int, ticketId int, status string) (*model.Ticket, error) {
+func TicketAdminUpdateStatus(ctx context.Context, tenantId int, adminId int, ticketId int, status string) (*model.Ticket, error) {
 	_ = adminId
 	if ticketId <= 0 {
 		return nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid ticketId"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -669,7 +707,11 @@ func TicketAdminUpdateStatus(ctx context.Context, adminId int, ticketId int, sta
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		now := nowTimestamp()
 		var t model.Ticket
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", ticketId).First(&t).Error; err != nil {
+		tq := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", ticketId)
+		if tenantId > 0 {
+			tq = tq.Where("tenant_id = ?", tenantId)
+		}
+		if err := tq.First(&t).Error; err != nil {
 			return err
 		}
 		if err := validateTicketCategory(t.Category); err != nil {
@@ -689,15 +731,15 @@ func TicketAdminUpdateStatus(ctx context.Context, adminId int, ticketId int, sta
 	return updated, nil
 }
 
-func TicketPresignUpload(ctx context.Context, userID int, filename, contentType string, sizeBytes int64) (objectKey, uploadURL string, requiredHeaders map[string]string, expiresAt int64, err error) {
+func TicketPresignUpload(ctx context.Context, tenantId int, userID int, filename, contentType string, sizeBytes int64) (objectKey, uploadURL string, requiredHeaders map[string]string, expiresAt int64, err error) {
 	storage, err := defaultTicketStorage()
 	if err != nil {
 		return "", "", nil, 0, err
 	}
-	return TicketPresignUploadWithStorage(ctx, storage, userID, filename, contentType, sizeBytes)
+	return TicketPresignUploadWithStorage(ctx, storage, tenantId, userID, filename, contentType, sizeBytes)
 }
 
-func TicketPresignUploadWithStorage(ctx context.Context, storage TicketStorage, userID int, filename, contentType string, sizeBytes int64) (objectKey, uploadURL string, requiredHeaders map[string]string, expiresAt int64, err error) {
+func TicketPresignUploadWithStorage(ctx context.Context, storage TicketStorage, tenantId int, userID int, filename, contentType string, sizeBytes int64) (objectKey, uploadURL string, requiredHeaders map[string]string, expiresAt int64, err error) {
 	if storage == nil {
 		return "", "", nil, 0, fmt.Errorf("storage is nil")
 	}
@@ -726,6 +768,7 @@ func TicketPresignUploadWithStorage(ctx context.Context, storage TicketStorage, 
 
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
 		upload := &model.TicketUpload{
+			TenantId:         tenantId,
 			UserId:           userID,
 			ObjectKey:        objectKey,
 			OriginalFilename: filename,

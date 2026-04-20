@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -23,7 +24,8 @@ func GetAgentReports(c *gin.Context) {
 	reportType := strings.TrimSpace(c.Query("report_type"))
 	keyword := strings.TrimSpace(c.Query("keyword"))
 
-	reports, total, err := model.GetAgentReports(page, pageSize, reportType, keyword)
+	tenantId := middleware.GetTenantId(c)
+	reports, total, err := model.GetAgentReports(tenantId, page, pageSize, reportType, keyword)
 	if err != nil {
 		common.ApiErrorMsg(c, "获取报告失败")
 		return
@@ -44,7 +46,8 @@ func GetAgentReportDetail(c *gin.Context) {
 		return
 	}
 
-	report, err := model.GetAgentReportById(id)
+	tenantId := middleware.GetTenantId(c)
+	report, err := model.GetAgentReportById(tenantId, id)
 	if err != nil {
 		common.ApiErrorMsg(c, "报告不存在")
 		return
@@ -75,6 +78,7 @@ func CreateAgentReport(c *gin.Context) {
 	}
 
 	report := &model.AgentReport{
+		TenantId:    middleware.GetTenantId(c),
 		Title:       strings.TrimSpace(req.Title),
 		ReportType:  strings.TrimSpace(req.ReportType),
 		Summary:     strings.TrimSpace(req.Summary),
@@ -130,7 +134,8 @@ func UpdateAgentReport(c *gin.Context) {
 		return
 	}
 
-	if err := model.UpdateAgentReport(id, updates); err != nil {
+	tenantId := middleware.GetTenantId(c)
+	if err := model.UpdateAgentReport(tenantId, id, updates); err != nil {
 		common.ApiErrorMsg(c, "更新失败")
 		return
 	}
@@ -145,7 +150,8 @@ func DeleteAgentReport(c *gin.Context) {
 		return
 	}
 
-	if err := model.DeleteAgentReport(id); err != nil {
+	tenantId := middleware.GetTenantId(c)
+	if err := model.DeleteAgentReport(tenantId, id); err != nil {
 		common.ApiErrorMsg(c, "删除失败")
 		return
 	}

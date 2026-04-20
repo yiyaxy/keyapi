@@ -97,7 +97,7 @@ func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
 
 func updatePricing() {
 	//modelRatios := common.GetModelRatios()
-	enableAbilities, err := GetAllEnableAbilityWithChannels()
+	enableAbilities, err := GetAllEnableAbilityWithChannels(0) // 0 = platform-global (background task)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("GetAllEnableAbilityWithChannels error: %v", err))
 		return

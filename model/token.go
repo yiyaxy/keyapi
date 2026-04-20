@@ -14,6 +14,7 @@ import (
 
 type Token struct {
 	Id                 int            `json:"id"`
+	TenantId           int            `json:"tenant_id" gorm:"index;not null;default:1"`
 	UserId             int            `json:"user_id" gorm:"index"`
 	Key                string         `json:"key" gorm:"type:char(48);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`
@@ -79,10 +80,10 @@ func (token *Token) GetIpLimits() []string {
 	return ipLimits
 }
 
-func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
+func GetAllUserTokens(userId int, startIdx int, num int, tenantId int) ([]*Token, error) {
 	var tokens []*Token
-	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err := DB.Where("tenant_id = ? AND user_id = ?", tenantId, userId).
+		Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -125,7 +126,7 @@ func sanitizeLikePattern(input string) (string, error) {
 
 const searchHardLimit = 100
 
-func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+func SearchUserTokens(userId int, keyword string, token string, offset int, limit int, tenantId int) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
@@ -142,7 +143,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	maxTokens := operation_setting.GetMaxUserTokens()
 	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
 	if hasFuzzy {
-		count, err := CountUserTokens(userId)
+		count, err := CountUserTokens(userId, tenantId)
 		if err != nil {
 			common.SysLog("failed to count user tokens: " + err.Error())
 			return nil, 0, errors.New("获取令牌数量失败")
@@ -152,7 +153,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := DB.Model(&Token{}).Where("tenant_id = ? AND user_id = ?", tenantId, userId)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -285,7 +286,12 @@ func GetTokenByKeyWithContext(ctx context.Context, key string, fromDB bool) (tok
 		// Try Redis first
 		token, err := cacheGetTokenByKey(key)
 		if err == nil {
-			return token, nil
+			// Verify cached token belongs to the requesting tenant
+			if tenantId := ExplicitTenantIDFromContext(ctx); tenantId > 0 && token.TenantId != tenantId {
+				// Tenant mismatch — treat as cache miss, fall through to DB
+			} else {
+				return token, nil
+			}
 		}
 		// Don't return error - fall through to DB
 	}
@@ -293,6 +299,10 @@ func GetTokenByKeyWithContext(ctx context.Context, key string, fromDB bool) (tok
 	q := DB
 	if ctx != nil {
 		q = DB.WithContext(ctx)
+	}
+	// Multi-tenant: scope by tenant when context carries tenant_id
+	if tenantId := TenantIDFromContext(ctx); tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
 	}
 	err = q.Where(commonKeyCol+" = ?", key).First(&token).Error
 	return token, err
@@ -394,7 +404,7 @@ func DeleteTokenById(id int, userId int) (err error) {
 	return token.Delete()
 }
 
-func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
+func IncreaseTokenQuota(tokenId int, key string, quota int, tenantId ...int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
@@ -407,14 +417,22 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 		})
 	}
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeTokenQuota, resolvedTenantId, tokenId, quota)
 		return nil
 	}
-	return increaseTokenQuota(tokenId, quota)
+	return increaseTokenQuota(tokenId, quota, tenantId...)
 }
 
-func increaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
+func increaseTokenQuota(id int, quota int, tenantId ...int) (err error) {
+	query := DB.Model(&Token{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err = query.Updates(
 		map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
 			"used_quota":    gorm.Expr("used_quota - ?", quota),
@@ -424,7 +442,7 @@ func increaseTokenQuota(id int, quota int) (err error) {
 	return err
 }
 
-func DecreaseTokenQuota(id int, key string, quota int) (err error) {
+func DecreaseTokenQuota(id int, key string, quota int, tenantId ...int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
@@ -437,14 +455,22 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 		})
 	}
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
+		resolvedTenantId := 0
+		if len(tenantId) > 0 {
+			resolvedTenantId = tenantId[0]
+		}
+		addNewRecord(BatchUpdateTypeTokenQuota, resolvedTenantId, id, -quota)
 		return nil
 	}
-	return decreaseTokenQuota(id, quota)
+	return decreaseTokenQuota(id, quota, tenantId...)
 }
 
-func decreaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
+func decreaseTokenQuota(id int, quota int, tenantId ...int) (err error) {
+	query := DB.Model(&Token{}).Where("id = ?", id)
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		query = query.Where("tenant_id = ?", tenantId[0])
+	}
+	err = query.Updates(
 		map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
@@ -455,14 +481,25 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 }
 
 // CountUserTokens returns total number of tokens for the given user, used for pagination
-func CountUserTokens(userId int) (int64, error) {
+func CountUserTokens(userId int, tenantId int) (int64, error) {
 	var total int64
-	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	err := DB.Model(&Token{}).Where("tenant_id = ? AND user_id = ?", tenantId, userId).Count(&total).Error
 	return total, err
 }
 
+// CountTenantTokens returns the number of non-deleted tokens owned by the tenant.
+// Used to enforce TenantPlan.MaxTokens at token-creation time.
+func CountTenantTokens(tenantId int) (int64, error) {
+	if tenantId <= 0 {
+		return 0, fmt.Errorf("invalid tenantId: %d", tenantId)
+	}
+	var count int64
+	err := DB.Model(&Token{}).Where("tenant_id = ?", tenantId).Count(&count).Error
+	return count, err
+}
+
 // BatchDeleteTokens 删除指定用户的一组令牌，返回成功删除数量
-func BatchDeleteTokens(ids []int, userId int) (int, error) {
+func BatchDeleteTokens(ids []int, userId int, tenantId int) (int, error) {
 	if len(ids) == 0 {
 		return 0, errors.New("ids 不能为空！")
 	}
@@ -470,12 +507,12 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	tx := DB.Begin()
 
 	var tokens []Token
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Find(&tokens).Error; err != nil {
+	if err := tx.Where("tenant_id = ? AND user_id = ? AND id IN (?)", tenantId, userId, ids).Find(&tokens).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	if err := tx.Where("tenant_id = ? AND user_id = ? AND id IN (?)", tenantId, userId, ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
@@ -501,4 +538,40 @@ func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 		Where("user_id = ? AND id IN (?)", userId, ids).
 		Find(&tokens).Error
 	return tokens, err
+}
+
+// GetTokenByIdsTenant is the tenant-aware variant of GetTokenByIds.
+// Controllers use this to enforce tenant isolation on user-scoped token lookups.
+// Fail-closed: rejects any of id/userId/tenantId being 0.
+func GetTokenByIdsTenant(id, userId, tenantId int) (*Token, error) {
+	if id == 0 || userId == 0 || tenantId == 0 {
+		return nil, errors.New("id, userId, tenantId are required")
+	}
+	token := Token{Id: id, UserId: userId, TenantId: tenantId}
+	err := DB.First(&token, "id = ? AND user_id = ? AND tenant_id = ?", id, userId, tenantId).Error
+	return &token, err
+}
+
+// GetTokenKeysByIdsTenant is the tenant-aware variant of GetTokenKeysByIds.
+func GetTokenKeysByIdsTenant(ids []int, userId, tenantId int) ([]Token, error) {
+	if len(ids) == 0 || userId == 0 || tenantId == 0 {
+		return nil, errors.New("ids, userId, tenantId are required")
+	}
+	var tokens []Token
+	err := DB.Select("id", commonKeyCol).
+		Where("user_id = ? AND tenant_id = ? AND id IN (?)", userId, tenantId, ids).
+		Find(&tokens).Error
+	return tokens, err
+}
+
+// DeleteTokenByIdTenant is the tenant-aware variant of DeleteTokenById.
+func DeleteTokenByIdTenant(id, userId, tenantId int) error {
+	if id == 0 || userId == 0 || tenantId == 0 {
+		return errors.New("id, userId, tenantId are required")
+	}
+	token := Token{Id: id, UserId: userId, TenantId: tenantId}
+	if err := DB.Where(token).First(&token).Error; err != nil {
+		return err
+	}
+	return token.Delete()
 }

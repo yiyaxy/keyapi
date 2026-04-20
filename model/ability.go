@@ -17,6 +17,7 @@ type Ability struct {
 	Group     string  `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
 	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
 	ChannelId int     `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
+	TenantId  int     `json:"tenant_id" gorm:"index;not null;default:1"`
 	Enabled   bool    `json:"enabled"`
 	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
 	Weight    uint    `json:"weight" gorm:"default:0;index"`
@@ -28,43 +29,59 @@ type AbilityWithChannel struct {
 	ChannelType int `json:"channel_type"`
 }
 
-func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
+func GetAllEnableAbilityWithChannels(tenantId int) ([]AbilityWithChannel, error) {
 	var abilities []AbilityWithChannel
-	err := DB.Table("abilities").
+	q := DB.Table("abilities").
 		Select("abilities.*, channels.type as channel_type").
 		Joins("left join channels on abilities.channel_id = channels.id").
-		Where("abilities.enabled = ?", true).
-		Scan(&abilities).Error
+		Where("abilities.enabled = ?", true)
+	if tenantId > 0 {
+		q = q.Where("abilities.tenant_id = ?", tenantId)
+	}
+	err := q.Scan(&abilities).Error
 	return abilities, err
 }
 
-func GetGroupEnabledModels(group string) []string {
+func GetGroupEnabledModels(group string, tenantId int) []string {
 	var models []string
-	// Find distinct models
-	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
+	q := DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	q.Distinct("model").Pluck("model", &models)
 	return models
 }
 
-func GetEnabledModels() []string {
+func GetEnabledModels(tenantId int) []string {
 	var models []string
-	// Find distinct models
-	DB.Table("abilities").Where("enabled = ?", true).Distinct("model").Pluck("model", &models)
+	q := DB.Table("abilities").Where("enabled = ?", true)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	q.Distinct("model").Pluck("model", &models)
 	return models
 }
 
-func GetAllEnableAbilities() []Ability {
+func GetAllEnableAbilities(tenantId int) []Ability {
 	var abilities []Ability
-	DB.Find(&abilities, "enabled = ?", true)
+	q := DB.Where("enabled = ?", true)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	q.Find(&abilities)
 	return abilities
 }
 
-func getPriority(group string, model string, retry int) (int, error) {
+func getPriority(group string, model string, retry int, tenantId int) (int, error) {
 
 	var priorities []int
-	err := DB.Model(&Ability{}).
+	q := DB.Model(&Ability{}).
 		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
-		Order("priority DESC").              // 按优先级降序排序
+		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	err := q.Order("priority DESC").              // 按优先级降序排序
 		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
 
 	if err != nil {
@@ -88,26 +105,39 @@ func getPriority(group string, model string, retry int) (int, error) {
 	return priorityToUse, nil
 }
 
-func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
-	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
-	if retry != 0 {
-		priority, err := getPriority(group, model, retry)
-		if err != nil {
-			return nil, err
-		} else {
-			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
+func getChannelQuery(group string, model string, retry int, tenantId int) (*gorm.DB, error) {
+	baseQ := func() *gorm.DB {
+		q := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+		if tenantId > 0 {
+			q = q.Where("tenant_id = ?", tenantId)
 		}
+		return q
 	}
 
-	return channelQuery, nil
+	if retry != 0 {
+		priority, err := getPriority(group, model, retry, tenantId)
+		if err != nil {
+			return nil, err
+		}
+		return baseQ().Where("priority = ?", priority), nil
+	}
+
+	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	if tenantId > 0 {
+		maxPrioritySubQuery = maxPrioritySubQuery.Where("tenant_id = ?", tenantId)
+	}
+	return baseQ().Where("priority = (?)", maxPrioritySubQuery), nil
 }
 
-func GetChannel(group string, model string, retry int) (*Channel, error) {
+func GetChannel(group string, model string, retry int, tenantId ...int) (*Channel, error) {
 	var abilities []Ability
+	tid := 0
+	if len(tenantId) > 0 {
+		tid = tenantId[0]
+	}
 
 	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
+	channelQuery, err := getChannelQuery(group, model, retry, tid)
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +189,7 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 				Group:     group,
 				Model:     model,
 				ChannelId: channel.Id,
+				TenantId:  channel.TenantId,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
 				Priority:  channel.Priority,
 				Weight:    uint(channel.GetWeight()),
@@ -231,6 +262,7 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				Group:     group,
 				Model:     model,
 				ChannelId: channel.Id,
+				TenantId:  channel.TenantId,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
 				Priority:  channel.Priority,
 				Weight:    uint(channel.GetWeight()),
@@ -264,8 +296,12 @@ func UpdateAbilityStatus(channelId int, status bool) error {
 	return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
 }
 
-func UpdateAbilityStatusByTag(tag string, status bool) error {
-	return DB.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", status).Error
+func UpdateAbilityStatusByTag(tag string, status bool, tenantId int) error {
+	q := DB.Model(&Ability{}).Where("tag = ?", tag)
+	if tenantId > 0 {
+		q = q.Where("tenant_id = ?", tenantId)
+	}
+	return q.Select("enabled").Update("enabled", status).Error
 }
 
 func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {

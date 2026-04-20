@@ -22,6 +22,7 @@ const (
 
 type Ticket struct {
 	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantId    int    `json:"tenant_id" gorm:"index;default:1"`
 	UserId      int    `json:"user_id" gorm:"index"`
 	Category    string `json:"category" gorm:"type:varchar(32);index;not null"`
 	Subject     string `json:"subject" gorm:"type:varchar(255);not null"`

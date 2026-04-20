@@ -1,6 +1,6 @@
 # VERSIONS.md
 
-Detailed change history for CaMeL-api. For architecture and build instructions, see [CLAUDE.md](./CLAUDE.md).
+Detailed change history for CaMeL-api. For architecture and build instructions, see [CLAUDE.md](CLAUDEAI.md).
 
 ## v2.6.0329 (2026-03-29): 票通支付宝乐企联用支付信息接入（方案二：直接开具传入支付信息版）
 

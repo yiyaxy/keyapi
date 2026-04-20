@@ -323,7 +323,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota, relayInfo.TenantId)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
@@ -412,6 +412,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		// prompt/cache fields here, otherwise old upstream payloads may be double-counted.
 		other["input_tokens_total"] = usage.InputTokens
 	}
+
+	// Tenant TPM counter: accumulate real upstream prompt+completion tokens for this minute.
+	// 用 usage.* 而不是 summary.*：OpenRouter Claude 路径会在 L121/L129 把 summary.PromptTokens
+	// 扣掉 cache read / cache creation 用于计费，但 TPM 代表租户实际消耗的 token 总量，
+	// 不应受计费归一化影响。usage 结构在本函数内不被修改，保持为原始上游值。
+	IncrementTenantTPM(relayInfo.TenantId, usage.PromptTokens+usage.CompletionTokens)
 
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
