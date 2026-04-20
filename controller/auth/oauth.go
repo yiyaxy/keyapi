@@ -1,7 +1,8 @@
-package controller
+package auth
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/controller"
 	"net/http"
 	"strconv"
 
@@ -127,7 +128,7 @@ func HandleOAuth(c *gin.Context) {
 
 	// 9. Setup login
 	c.Set("login_type", "oauth_"+c.Param("provider"))
-	setupLogin(user, c)
+	controller.SetupLogin(user, c)
 }
 
 // handleOAuthBind handles binding OAuth account to existing user

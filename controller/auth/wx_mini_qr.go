@@ -1,7 +1,8 @@
-package controller
+package auth
 
 import (
 	"encoding/base64"
+	"github.com/QuantumNous/new-api/controller"
 	"net/http"
 	"strings"
 
@@ -25,9 +26,9 @@ import (
 const wxQrMiniPage = "pages/qr-confirm/index"
 
 type wxQrTicketResponse struct {
-	Ticket     string `json:"ticket"`
-	QrImage    string `json:"qr_image"` // data URL: "data:image/png;base64,..."
-	ExpiresIn  int    `json:"expires_in"`
+	Ticket    string `json:"ticket"`
+	QrImage   string `json:"qr_image"` // data URL: "data:image/png;base64,..."
+	ExpiresIn int    `json:"expires_in"`
 }
 
 type wxQrPollResponse struct {
@@ -190,5 +191,5 @@ func LoginWithWxQrTicket(c *gin.Context) {
 	}
 
 	c.Set("login_type", "oauth_wx_mini_qr")
-	setupLogin(user, c)
+	controller.SetupLogin(user, c)
 }

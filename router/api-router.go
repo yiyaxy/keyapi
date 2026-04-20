@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/controller/auth"
 	"github.com/QuantumNous/new-api/controller/codex"
 	"github.com/QuantumNous/new-api/controller/invoice"
 	"github.com/QuantumNous/new-api/controller/payment"
@@ -44,21 +45,21 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)
 		// OAuth routes - specific routes must come before :provider wildcard
-		apiRouter.GET("/oauth/state", middleware.CriticalRateLimit(), controller.GenerateOAuthCode)
+		apiRouter.GET("/oauth/state", middleware.CriticalRateLimit(), auth.GenerateOAuthCode)
 		apiRouter.POST("/oauth/email/bind", middleware.CriticalRateLimit(), controller.EmailBind)
 		// Non-standard OAuth (WeChat, Telegram) - keep original routes
-		apiRouter.GET("/oauth/wechat", middleware.CriticalRateLimit(), controller.WeChatAuth)
-		apiRouter.POST("/oauth/wechat/bind", middleware.CriticalRateLimit(), controller.WeChatBind)
-		apiRouter.POST("/oauth/wx_mini/login", middleware.CriticalRateLimit(), controller.WxMiniLogin)
+		apiRouter.GET("/oauth/wechat", middleware.CriticalRateLimit(), auth.WeChatAuth)
+		apiRouter.POST("/oauth/wechat/bind", middleware.CriticalRateLimit(), auth.WeChatBind)
+		apiRouter.POST("/oauth/wx_mini/login", middleware.CriticalRateLimit(), auth.WxMiniLogin)
 		// WeChat mini-program scan-to-login (PC web)
-		apiRouter.POST("/oauth/wx_qr/ticket", middleware.CriticalRateLimit(), controller.GenerateWxQrTicket)
-		apiRouter.GET("/oauth/wx_qr/poll", controller.PollWxQrTicket)
-		apiRouter.POST("/oauth/wx_qr/confirm", middleware.CriticalRateLimit(), controller.ConfirmWxQrTicket)
-		apiRouter.POST("/oauth/wx_qr/login", middleware.CriticalRateLimit(), controller.LoginWithWxQrTicket)
-		apiRouter.GET("/oauth/telegram/login", middleware.CriticalRateLimit(), controller.TelegramLogin)
-		apiRouter.GET("/oauth/telegram/bind", middleware.CriticalRateLimit(), controller.TelegramBind)
+		apiRouter.POST("/oauth/wx_qr/ticket", middleware.CriticalRateLimit(), auth.GenerateWxQrTicket)
+		apiRouter.GET("/oauth/wx_qr/poll", auth.PollWxQrTicket)
+		apiRouter.POST("/oauth/wx_qr/confirm", middleware.CriticalRateLimit(), auth.ConfirmWxQrTicket)
+		apiRouter.POST("/oauth/wx_qr/login", middleware.CriticalRateLimit(), auth.LoginWithWxQrTicket)
+		apiRouter.GET("/oauth/telegram/login", middleware.CriticalRateLimit(), auth.TelegramLogin)
+		apiRouter.GET("/oauth/telegram/bind", middleware.CriticalRateLimit(), auth.TelegramBind)
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
-		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
+		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), auth.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
 		apiRouter.POST("/stripe/webhook", payment.StripeWebhook)
@@ -70,7 +71,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/payment/wechat/refund_notify/:tenant_id", payment.HandleWechatRefundNotify)
 
 		// Universal secure verification routes
-		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
+		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), auth.UniversalVerify)
 
 		ticketRoute := apiRouter.Group("/ticket")
 		ticketRoute.Use(middleware.UserAuth())
@@ -131,9 +132,9 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			userRoute.POST("/register", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Register)
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Login)
-			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), controller.Verify2FALogin)
-			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), controller.PasskeyLoginBegin)
-			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), controller.PasskeyLoginFinish)
+			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), auth.Verify2FALogin)
+			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), auth.PasskeyLoginBegin)
+			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), auth.PasskeyLoginFinish)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
 			userRoute.POST("/logout", controller.Logout)
 			userRoute.POST("/epay/notify", payment.EpayNotify)
@@ -152,12 +153,12 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.PUT("/self", controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
 				selfRoute.GET("/token", controller.GenerateAccessToken)
-				selfRoute.GET("/passkey", controller.PasskeyStatus)
-				selfRoute.POST("/passkey/register/begin", controller.PasskeyRegisterBegin)
-				selfRoute.POST("/passkey/register/finish", controller.PasskeyRegisterFinish)
-				selfRoute.POST("/passkey/verify/begin", controller.PasskeyVerifyBegin)
-				selfRoute.POST("/passkey/verify/finish", controller.PasskeyVerifyFinish)
-				selfRoute.DELETE("/passkey", controller.PasskeyDelete)
+				selfRoute.GET("/passkey", auth.PasskeyStatus)
+				selfRoute.POST("/passkey/register/begin", auth.PasskeyRegisterBegin)
+				selfRoute.POST("/passkey/register/finish", auth.PasskeyRegisterFinish)
+				selfRoute.POST("/passkey/verify/begin", auth.PasskeyVerifyBegin)
+				selfRoute.POST("/passkey/verify/finish", auth.PasskeyVerifyFinish)
+				selfRoute.DELETE("/passkey", auth.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.GET("/topup/info", payment.GetTopUpInfo)
 				selfRoute.GET("/topup/self", payment.GetUserTopUps)
@@ -172,19 +173,19 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
 				// 2FA routes
-				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
-				selfRoute.POST("/2fa/setup", controller.Setup2FA)
-				selfRoute.POST("/2fa/enable", controller.Enable2FA)
-				selfRoute.POST("/2fa/disable", controller.Disable2FA)
-				selfRoute.POST("/2fa/backup_codes", controller.RegenerateBackupCodes)
+				selfRoute.GET("/2fa/status", auth.Get2FAStatus)
+				selfRoute.POST("/2fa/setup", auth.Setup2FA)
+				selfRoute.POST("/2fa/enable", auth.Enable2FA)
+				selfRoute.POST("/2fa/disable", auth.Disable2FA)
+				selfRoute.POST("/2fa/backup_codes", auth.RegenerateBackupCodes)
 
 				// Check-in routes
 				selfRoute.GET("/checkin", controller.GetCheckinStatus)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
 
 				// Custom OAuth bindings
-				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
-				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+				selfRoute.GET("/oauth/bindings", auth.GetUserOAuthBindings)
+				selfRoute.DELETE("/oauth/bindings/:provider_id", auth.UnbindCustomOAuth)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -194,19 +195,19 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/topup", payment.GetAllTopUps)
 				adminRoute.POST("/topup/complete", payment.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
-				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
-				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
+				adminRoute.GET("/:id/oauth/bindings", auth.GetUserOAuthBindingsByAdmin)
+				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", auth.UnbindCustomOAuthByAdmin)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
-				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
+				adminRoute.DELETE("/:id/reset_passkey", auth.AdminResetPasskey)
 
 				// Admin 2FA routes
-				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
-				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
+				adminRoute.GET("/2fa/stats", auth.Admin2FAStats)
+				adminRoute.DELETE("/:id/2fa", auth.AdminDisable2FA)
 
 				// Admin IP history
 				adminRoute.GET("/:id/ips", controller.GetUserIpHistory)
@@ -266,12 +267,12 @@ func SetApiRouter(router *gin.Engine) {
 		customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
 		customOAuthRoute.Use(middleware.RootAuth())
 		{
-			customOAuthRoute.POST("/discovery", controller.FetchCustomOAuthDiscovery)
-			customOAuthRoute.GET("/", controller.GetCustomOAuthProviders)
-			customOAuthRoute.GET("/:id", controller.GetCustomOAuthProvider)
-			customOAuthRoute.POST("/", controller.CreateCustomOAuthProvider)
-			customOAuthRoute.PUT("/:id", controller.UpdateCustomOAuthProvider)
-			customOAuthRoute.DELETE("/:id", controller.DeleteCustomOAuthProvider)
+			customOAuthRoute.POST("/discovery", auth.FetchCustomOAuthDiscovery)
+			customOAuthRoute.GET("/", auth.GetCustomOAuthProviders)
+			customOAuthRoute.GET("/:id", auth.GetCustomOAuthProvider)
+			customOAuthRoute.POST("/", auth.CreateCustomOAuthProvider)
+			customOAuthRoute.PUT("/:id", auth.UpdateCustomOAuthProvider)
+			customOAuthRoute.DELETE("/:id", auth.DeleteCustomOAuthProvider)
 		}
 		performanceRoute := apiRouter.Group("/performance")
 		performanceRoute.Use(middleware.RootAuth())

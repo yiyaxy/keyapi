@@ -85,11 +85,14 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	setupLogin(&user, c)
+	SetupLogin(&user, c)
 }
 
-// setup session & cookies and then return user info
-func setupLogin(user *model.User, c *gin.Context) {
+// SetupLogin starts the post-auth session (cookies, role context, user JSON
+// response). Exported so other controller subpackages (auth/, etc.) can
+// finalize login after their own verification step without importing each
+// other.
+func SetupLogin(user *model.User, c *gin.Context) {
 	info, err := model.GetTenantMembershipAuthInfo(middleware.GetTenantId(c), user)
 	if err != nil {
 		common.ApiErrorMsg(c, "当前用户不属于该租户")

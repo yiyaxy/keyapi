@@ -1,7 +1,8 @@
-package controller
+package auth
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/controller"
 	"net/http"
 	"strconv"
 
@@ -117,5 +118,5 @@ func WxMiniLogin(c *gin.Context) {
 	}
 
 	c.Set("login_type", "oauth_wx_mini")
-	setupLogin(user, c)
+	controller.SetupLogin(user, c)
 }

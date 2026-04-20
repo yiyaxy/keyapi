@@ -1,8 +1,9 @@
-package controller
+package auth
 
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/controller"
 	"net/http"
 	"strconv"
 	"time"
@@ -323,7 +324,7 @@ func PasskeyLoginFinish(c *gin.Context) {
 	}
 
 	c.Set("login_type", "passkey")
-	setupLogin(modelUser, c)
+	controller.SetupLogin(modelUser, c)
 	return
 }
 

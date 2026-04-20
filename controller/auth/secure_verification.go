@@ -1,4 +1,4 @@
-package controller
+package auth
 
 import (
 	"fmt"
@@ -136,6 +136,21 @@ func UniversalVerify(c *gin.Context) {
 			"expires_at": now + SecureVerificationTimeout,
 		},
 	})
+}
+
+// validateTwoFactorAuth checks a code against the user's TOTP secret or
+// their one-time backup codes. Moved in from controller/channel.go where
+// it was orphaned — this subpackage is the only caller.
+func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
+	if cleanCode, err := common.ValidateNumericCode(code); err == nil {
+		if isValid, _ := twoFA.ValidateTOTPAndUpdateUsage(cleanCode); isValid {
+			return true
+		}
+	}
+	if isValid, err := twoFA.ValidateBackupCodeAndUpdateUsage(code); err == nil && isValid {
+		return true
+	}
+	return false
 }
 
 func setSecureVerificationSession(c *gin.Context) (int64, error) {

@@ -1,9 +1,10 @@
-package controller
+package auth
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/controller"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -136,7 +137,7 @@ func WeChatAuth(c *gin.Context) {
 		return
 	}
 	c.Set("login_type", "oauth_wechat")
-	setupLogin(&user, c)
+	controller.SetupLogin(&user, c)
 }
 
 type wechatBindRequest struct {
