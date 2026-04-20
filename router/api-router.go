@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/controller/codex"
+	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/middleware"
 
 	// Import oauth package to register providers via init()
@@ -57,13 +58,13 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
-		apiRouter.POST("/stripe/webhook", controller.StripeWebhook)
-		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
-		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
+		apiRouter.POST("/stripe/webhook", payment.StripeWebhook)
+		apiRouter.POST("/creem/webhook", payment.CreemWebhook)
+		apiRouter.POST("/waffo/webhook", payment.WaffoWebhook)
 		// WeChat Pay S2 callback — no auth; signature verified inside handler
-		apiRouter.POST("/payment/wechat/notify/:tenant_id/:order_type", controller.HandleWechatNotify)
+		apiRouter.POST("/payment/wechat/notify/:tenant_id/:order_type", payment.HandleWechatNotify)
 		// WeChat Pay S3 refund callback — no auth; signature verified inside handler
-		apiRouter.POST("/payment/wechat/refund_notify/:tenant_id", controller.HandleWechatRefundNotify)
+		apiRouter.POST("/payment/wechat/refund_notify/:tenant_id", payment.HandleWechatRefundNotify)
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
@@ -132,8 +133,8 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), controller.PasskeyLoginFinish)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
 			userRoute.POST("/logout", controller.Logout)
-			userRoute.POST("/epay/notify", controller.EpayNotify)
-			userRoute.GET("/epay/notify", controller.EpayNotify)
+			userRoute.POST("/epay/notify", payment.EpayNotify)
+			userRoute.GET("/epay/notify", payment.EpayNotify)
 			userRoute.GET("/groups", controller.GetUserGroups)
 
 			selfRoute := userRoute.Group("/")
@@ -155,15 +156,15 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", controller.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", controller.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
-				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
-				selfRoute.GET("/topup/self", controller.GetUserTopUps)
+				selfRoute.GET("/topup/info", payment.GetTopUpInfo)
+				selfRoute.GET("/topup/self", payment.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
-				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
-				selfRoute.POST("/amount", controller.RequestAmount)
-				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.RequestStripePay)
-				selfRoute.POST("/stripe/amount", controller.RequestStripeAmount)
-				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)
-				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
+				selfRoute.POST("/pay", middleware.CriticalRateLimit(), payment.RequestEpay)
+				selfRoute.POST("/amount", payment.RequestAmount)
+				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), payment.RequestStripePay)
+				selfRoute.POST("/stripe/amount", payment.RequestStripeAmount)
+				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), payment.RequestCreemPay)
+				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), payment.RequestWaffoPay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
@@ -187,8 +188,8 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute.Use(middleware.TenantAdminAuth())
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
-				adminRoute.GET("/topup", controller.GetAllTopUps)
-				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
+				adminRoute.GET("/topup", payment.GetAllTopUps)
+				adminRoute.POST("/topup/complete", payment.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
@@ -217,9 +218,9 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/activate/:id", controller.ActivateSubscription)
-			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
-			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
-			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
+			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), payment.SubscriptionRequestEpay)
+			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), payment.SubscriptionRequestStripePay)
+			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), payment.SubscriptionRequestCreemPay)
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(middleware.TenantAdminAuth())
@@ -242,10 +243,10 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		// Subscription payment callbacks (no auth)
-		apiRouter.POST("/subscription/epay/notify", controller.SubscriptionEpayNotify)
-		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
-		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
-		apiRouter.POST("/subscription/epay/return", controller.SubscriptionEpayReturn)
+		apiRouter.POST("/subscription/epay/notify", payment.SubscriptionEpayNotify)
+		apiRouter.GET("/subscription/epay/notify", payment.SubscriptionEpayNotify)
+		apiRouter.GET("/subscription/epay/return", payment.SubscriptionEpayReturn)
+		apiRouter.POST("/subscription/epay/return", payment.SubscriptionEpayReturn)
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
@@ -432,7 +433,7 @@ func SetApiRouter(router *gin.Engine) {
 		purchaseRoute.Use(middleware.TenantAdminAuth())
 		{
 			purchaseRoute.GET("/topup", controller.AdminListTopUpOrders)
-			purchaseRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
+			purchaseRoute.POST("/topup/complete", payment.AdminCompleteTopUp)
 			purchaseRoute.POST("/topup/expire", controller.AdminExpireTopUpOrder)
 			purchaseRoute.POST("/topup/delete", controller.AdminDeleteTopUpOrder)
 			purchaseRoute.GET("/subscription", controller.AdminListSubscriptionOrdersFull)
@@ -641,12 +642,12 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.POST("/payment/configs/wechat/test", controller.TestTenantWechatConfig)
 			tenantRoute.DELETE("/payment/configs/wechat", controller.DeleteTenantWechatConfig)
 			// WeChat Pay S2 ordering + callback
-			tenantRoute.POST("/payment/wechat/sub/native", controller.CreateWechatSubNative)
-			tenantRoute.POST("/payment/wechat/sub/jsapi", controller.CreateWechatSubJsapi)
-			tenantRoute.GET("/payment/orders", controller.ListTenantPaymentOrders)
+			tenantRoute.POST("/payment/wechat/sub/native", payment.CreateWechatSubNative)
+			tenantRoute.POST("/payment/wechat/sub/jsapi", payment.CreateWechatSubJsapi)
+			tenantRoute.GET("/payment/orders", payment.ListTenantPaymentOrders)
 			// WeChat Pay S3 refunds
-			tenantRoute.POST("/payment/refunds", controller.CreateWechatRefund)
-			tenantRoute.GET("/payment/refunds", controller.ListTenantPaymentRefundsHandler)
+			tenantRoute.POST("/payment/refunds", payment.CreateWechatRefund)
+			tenantRoute.GET("/payment/refunds", payment.ListTenantPaymentRefundsHandler)
 		}
 
 		platformTenantRoute := apiRouter.Group("/platform/tenants")
@@ -669,10 +670,10 @@ func SetApiRouter(router *gin.Engine) {
 		paymentRoute := apiRouter.Group("/payment")
 		paymentRoute.Use(middleware.UserAuth())
 		{
-			paymentRoute.POST("/wechat/topup/native", controller.CreateWechatTopupNative)
-			paymentRoute.POST("/wechat/topup/h5", controller.CreateWechatTopupH5)
-			paymentRoute.POST("/wechat/topup/jsapi", controller.CreateWechatTopupJsapi)
-			paymentRoute.GET("/orders/:out_trade_no", controller.GetPaymentOrderByOutTradeNoHandler)
+			paymentRoute.POST("/wechat/topup/native", payment.CreateWechatTopupNative)
+			paymentRoute.POST("/wechat/topup/h5", payment.CreateWechatTopupH5)
+			paymentRoute.POST("/wechat/topup/jsapi", payment.CreateWechatTopupJsapi)
+			paymentRoute.GET("/orders/:out_trade_no", payment.GetPaymentOrderByOutTradeNoHandler)
 		}
 	}
 }

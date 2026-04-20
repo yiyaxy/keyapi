@@ -1,4 +1,4 @@
-package controller
+package payment
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service/payment"
+	paymentsvc "github.com/QuantumNous/new-api/service/payment"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
@@ -111,7 +111,7 @@ func CreateWechatRefund(c *gin.Context) {
 		return
 	}
 
-	refund, err := payment.CreateRefund(c.Request.Context(), payment.CreateRefundInput{
+	refund, err := paymentsvc.CreateRefund(c.Request.Context(), paymentsvc.CreateRefundInput{
 		TenantId:       tid,
 		InitiatedBy:    actorId,
 		OutTradeNo:     req.OutTradeNo,
@@ -169,7 +169,7 @@ func ListTenantPaymentRefundsHandler(c *gin.Context) {
 // HandleWechatRefundNotify handles POST /api/payment/wechat/refund_notify/:tenant_id.
 //
 // Same shape as HandleWechatNotify but terminal transitions are driven by
-// payment.ApplyRefundSuccess (for SUCCESS) or MarkRefundFailed / close
+// paymentsvc.ApplyRefundSuccess (for SUCCESS) or MarkRefundFailed / close
 // (for CLOSED/ABNORMAL). PROCESSING is a no-op ack.
 func HandleWechatRefundNotify(c *gin.Context) {
 	tenantId, err := strconv.Atoi(c.Param("tenant_id"))
@@ -190,7 +190,7 @@ func HandleWechatRefundNotify(c *gin.Context) {
 		}
 	}
 
-	provider, ok := payment.Get("wechat")
+	provider, ok := paymentsvc.Get("wechat")
 	if !ok {
 		respondNotifyFail(c, "wechat provider missing")
 		return
@@ -215,7 +215,7 @@ func HandleWechatRefundNotify(c *gin.Context) {
 
 	switch strings.ToUpper(result.RefundStatus) {
 	case "SUCCESS":
-		if err := payment.ApplyRefundSuccess(
+		if err := paymentsvc.ApplyRefundSuccess(
 			c.Request.Context(),
 			result.OutRefundNo, result.RefundId, result.SuccessTime, result.Amount,
 		); err != nil {

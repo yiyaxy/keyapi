@@ -1,4 +1,4 @@
-package controller
+package payment
 
 import (
 	"io"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service/payment"
+	paymentsvc "github.com/QuantumNous/new-api/service/payment"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,7 +20,7 @@ import (
 //  3. Extract relevant headers into a plain map for provider layer.
 //  4. provider.VerifyAndParseNotify returns NotifyResult.
 //  5. Defense-in-depth: out_trade_no prefix must match :tenant_id and :order_type.
-//  6. If Success, call service/payment.ApplyPaymentSuccess (idempotent).
+//  6. If Success, call service/paymentsvc.ApplyPaymentSuccess (idempotent).
 //  7. Respond with HTTP 200 + the WeChat-required {"code":"SUCCESS","message":"OK"}.
 //     On any error, respond 200 + {"code":"FAIL","message":...} so WeChat retries.
 func HandleWechatNotify(c *gin.Context) {
@@ -50,7 +50,7 @@ func HandleWechatNotify(c *gin.Context) {
 		}
 	}
 
-	provider, ok := payment.Get("wechat")
+	provider, ok := paymentsvc.Get("wechat")
 	if !ok {
 		respondNotifyFail(c, "wechat provider missing")
 		return
@@ -78,7 +78,7 @@ func HandleWechatNotify(c *gin.Context) {
 		respondNotifyOk(c)
 		return
 	}
-	if err := payment.ApplyPaymentSuccess(c.Request.Context(), result.OutTradeNo, result.TransactionId, result.PaidAt); err != nil {
+	if err := paymentsvc.ApplyPaymentSuccess(c.Request.Context(), result.OutTradeNo, result.TransactionId, result.PaidAt); err != nil {
 		common.SysError("ApplyPaymentSuccess failed: " + err.Error())
 		respondNotifyFail(c, "apply failed")
 		return

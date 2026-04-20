@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -555,8 +556,8 @@ func AdminCompleteSubscriptionOrder(c *gin.Context) {
 		return
 	}
 
-	LockOrder(req.TradeNo)
-	defer UnlockOrder(req.TradeNo)
+	payment.LockOrder(req.TradeNo)
+	defer payment.UnlockOrder(req.TradeNo)
 
 	if err := model.CompleteSubscriptionOrder(req.TradeNo, ""); err != nil {
 		common.ApiError(c, err)

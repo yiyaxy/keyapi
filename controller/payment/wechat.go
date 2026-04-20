@@ -1,4 +1,4 @@
-package controller
+package payment
 
 import (
 	"errors"
@@ -8,13 +8,19 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service/payment"
+	paymentsvc "github.com/QuantumNous/new-api/service/payment"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
+
+// wxMiniIdPrefix marks the mini-program variant of WeChat user_id.
+// Source of truth is controller/wx_mini.go; duplicated here to keep
+// this subpackage free of upward imports. Do not change without
+// updating both sites.
+const wxMiniIdPrefix = "wxmini:"
 
 // ---------- Topup ----------
 
@@ -137,7 +143,7 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 			openid = resolved
 		}
 
-		resp, order, err := payment.CreateTopupOrder(c.Request.Context(), payment.CreateTopupOrderInput{
+		resp, order, err := paymentsvc.CreateTopupOrder(c.Request.Context(), paymentsvc.CreateTopupOrderInput{
 			TenantId:    tid,
 			UserId:      userId,
 			AmountCents: amountCents,
@@ -233,7 +239,7 @@ func createSubHandler(productForm string) gin.HandlerFunc {
 			return
 		}
 
-		resp, order, err := payment.CreateSubOrder(c.Request.Context(), payment.CreateSubOrderInput{
+		resp, order, err := paymentsvc.CreateSubOrder(c.Request.Context(), paymentsvc.CreateSubOrderInput{
 			TenantId:        tid,
 			UserId:          userId,
 			AmountCents:     plan.RenewPriceAmount,

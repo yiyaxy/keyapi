@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
@@ -37,8 +38,8 @@ func AdminExpireTopUpOrder(c *gin.Context) {
 		return
 	}
 
-	LockOrder(req.TradeNo)
-	defer UnlockOrder(req.TradeNo)
+	payment.LockOrder(req.TradeNo)
+	defer payment.UnlockOrder(req.TradeNo)
 
 	if err := model.ExpireTopUpOrder(req.TradeNo); err != nil {
 		common.ApiError(c, err)
@@ -131,8 +132,8 @@ func AdminExpireSubscriptionOrderAction(c *gin.Context) {
 		return
 	}
 
-	LockOrder(req.TradeNo)
-	defer UnlockOrder(req.TradeNo)
+	payment.LockOrder(req.TradeNo)
+	defer payment.UnlockOrder(req.TradeNo)
 
 	if err := model.ExpireSubscriptionOrder(req.TradeNo); err != nil {
 		common.ApiError(c, err)
