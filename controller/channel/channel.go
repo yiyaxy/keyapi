@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type OpenAIModel struct {
@@ -140,9 +141,12 @@ func GetAllChannels(c *gin.Context) {
 			total = int64(len(channelData))
 		}
 	} else {
-		baseQuery := model.DB.Model(&model.Channel{})
-		if role < common.RoleRootUser {
-			baseQuery = baseQuery.Where("tenant_id = ?", middleware.GetTenantId(c))
+		// 超管跨租户看板 -> WithTenantBypass；普通管理员 -> 租户范围
+		var baseQuery *gorm.DB
+		if role >= common.RoleRootUser {
+			baseQuery = model.WithTenantBypass(model.DB).Model(&model.Channel{})
+		} else {
+			baseQuery = model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
 		}
 		if typeFilter >= 0 {
 			baseQuery = baseQuery.Where("type = ?", typeFilter)
@@ -175,9 +179,11 @@ func GetAllChannels(c *gin.Context) {
 		clearChannelInfo(datum)
 	}
 
-	countQuery := model.DB.Model(&model.Channel{})
-	if role < common.RoleRootUser {
-		countQuery = countQuery.Where("tenant_id = ?", middleware.GetTenantId(c))
+	var countQuery *gorm.DB
+	if role >= common.RoleRootUser {
+		countQuery = model.WithTenantBypass(model.DB).Model(&model.Channel{})
+	} else {
+		countQuery = model.DB.Model(&model.Channel{}).Where("tenant_id = ?", middleware.GetTenantId(c))
 	}
 	if scopeFilter != "" {
 		countQuery = countQuery.Where("scope = ?", scopeFilter)
