@@ -1186,3 +1186,75 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 	}
 	return counts, nil
 }
+
+// GetChannelsByTagForTenant returns channels with the given tag that are
+// visible to the tenant (own + platform). See spec §9.3.
+func GetChannelsByTagForTenant(tag string, tenantId int, idSort bool, selectAll bool) ([]*Channel, error) {
+	var channels []*Channel
+	if tenantId <= 0 {
+		return channels, nil
+	}
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+	query := DB.Where("tag = ? AND (scope = ? OR tenant_id = ?)", tag, ChannelScopePlatform, tenantId).Order(order)
+	if !selectAll {
+		query = query.Omit("key")
+	}
+	err := query.Find(&channels).Error
+	return channels, err
+}
+
+// GetPaginatedTagsForTenant returns distinct non-empty tags visible to
+// the tenant (own + platform).
+func GetPaginatedTagsForTenant(tenantId int, offset, limit int) ([]*string, error) {
+	var tags []*string
+	if tenantId <= 0 {
+		return tags, nil
+	}
+	err := DB.Model(&Channel{}).Select("DISTINCT tag").
+		Where("tag != '' AND (scope = ? OR tenant_id = ?)", ChannelScopePlatform, tenantId).
+		Offset(offset).Limit(limit).Find(&tags).Error
+	return tags, err
+}
+
+// SearchTagsForTenant searches tags visible to the tenant.
+// The `key = ?` predicate is NOT included here (anti-oracle; see §7.5).
+func SearchTagsForTenant(tenantId int, keyword, group, modelName string, idSort bool) ([]*string, error) {
+	var tags []*string
+	if tenantId <= 0 {
+		return tags, nil
+	}
+	modelsCol := "`models`"
+	if common.UsingPostgreSQL {
+		modelsCol = `"models"`
+	}
+	baseURLCol := "`base_url`"
+	if common.UsingPostgreSQL {
+		baseURLCol = `"base_url"`
+	}
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+	baseQuery := DB.Model(&Channel{}).
+		Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
+	var whereClause string
+	var args []interface{}
+	if group != "" && group != "null" {
+		var groupCondition string
+		if common.UsingMySQL {
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+		} else {
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+		}
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%", "%,"+group+",%")
+	} else {
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%")
+	}
+	err := baseQuery.Where(whereClause, args...).Order(order).Select("DISTINCT tag").Find(&tags).Error
+	return tags, err
+}
