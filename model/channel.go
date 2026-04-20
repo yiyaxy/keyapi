@@ -377,6 +377,55 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 	return SearchChannelsByTenant(0, keyword, group, model, idSort)
 }
 
+// SearchChannelsForTenant searches channels visible to the given tenant
+// (own + platform), excluding the `key = ?` predicate that SearchChannelsByTenant
+// supports. This removes the "key existence oracle" — see spec §7.5.
+func SearchChannelsForTenant(tenantId int, keyword, group, modelName string, idSort bool) ([]*Channel, error) {
+	var channels []*Channel
+	if tenantId <= 0 {
+		return channels, nil
+	}
+
+	modelsCol := "`models`"
+	if common.UsingPostgreSQL {
+		modelsCol = `"models"`
+	}
+	baseURLCol := "`base_url`"
+	if common.UsingPostgreSQL {
+		baseURLCol = `"base_url"`
+	}
+
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+
+	baseQuery := DB.Model(&Channel{}).Omit("key").
+		Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
+
+	var whereClause string
+	var args []interface{}
+	// Note: NO `key = ?` predicate here (anti-oracle).
+	if group != "" && group != "null" {
+		var groupCondition string
+		if common.UsingMySQL {
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+		} else {
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+		}
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%", "%,"+group+",%")
+	} else {
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%")
+	}
+
+	if err := baseQuery.Where(whereClause, args...).Order(order).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
 func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil
