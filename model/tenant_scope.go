@@ -281,6 +281,26 @@ func tenantGuardScope(db *gorm.DB) {
 		}
 	}
 
+	// Check 2.5 (NEW): allow reads scoped to scope='platform' even without tenant_id.
+	// Only applies to tables that have a scope column — channels and abilities today.
+	// See spec §8.1.
+	//
+	// NOTE: gorm formats parameterised WHERE expressions as e.g. "{[{scope = ? [platform] false}]}",
+	// so the literal value "platform" appears unquoted inside square brackets rather than
+	// as 'platform'.  We therefore check for the bare word "platform" in the expression.
+	// The scope-column guard prevents this from accidentally whitelisting unrelated tables.
+	if len(db.Statement.BuildClauses) > 0 && db.Statement.BuildClauses[0] == "SELECT" && whereExpr != "" {
+		tableName := db.Statement.Schema.Table
+		if tableName == "channels" || tableName == "abilities" {
+			// naive textual match is fine here; the expression comes from gorm's Where() calls
+			if strings.Contains(whereExpr, "scope") &&
+				(strings.Contains(whereExpr, "'platform'") || strings.Contains(whereExpr, "\"platform\"") ||
+					strings.Contains(whereExpr, "[platform]") || strings.Contains(whereExpr, " platform ")) {
+				return
+			}
+		}
+	}
+
 	// Check 3：唯一索引查询自动放行。
 	// 如果 WHERE 里对 PK 或单列唯一索引做等值/IN 查询，结果行本身就是跨租户唯一的，
 	// 再加 tenant_id 条件只是冗余；不加也不会发生跨租户数据混淆。
