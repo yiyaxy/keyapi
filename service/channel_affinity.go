@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -319,8 +321,9 @@ func extractChannelAffinityValue(c *gin.Context, src operation_setting.ChannelAf
 	}
 }
 
-func buildChannelAffinityCacheKeySuffix(rule operation_setting.ChannelAffinityRule, usingGroup string, affinityValue string) string {
-	parts := make([]string, 0, 3)
+func buildChannelAffinityCacheKeySuffix(rule operation_setting.ChannelAffinityRule, tenantId int, usingGroup string, affinityValue string) string {
+	parts := make([]string, 0, 4)
+	parts = append(parts, fmt.Sprintf("t%d", tenantId))
 	if rule.IncludeRuleName && rule.Name != "" {
 		parts = append(parts, rule.Name)
 	}
@@ -329,6 +332,35 @@ func buildChannelAffinityCacheKeySuffix(rule operation_setting.ChannelAffinityRu
 	}
 	parts = append(parts, affinityValue)
 	return strings.Join(parts, ":")
+}
+
+// IsAffinityChannelValidForTenant returns false when a cached affinity hit
+// should be invalidated for the current tenant (wrong scope, disabled, or
+// blocked by mode). See spec §4.4.
+func IsAffinityChannelValidForTenant(c *gin.Context, ch *model.Channel) bool {
+	if ch == nil {
+		return false
+	}
+	tenantId := 0
+	if v, ok := c.Get(string(constant.ContextKeyTenantId)); ok {
+		if id, ok2 := v.(int); ok2 {
+			tenantId = id
+		}
+	}
+	if ch.Scope == model.ChannelScopeTenant {
+		// Own channels: must strictly match the current tenant.
+		return ch.TenantId == tenantId
+	}
+	// Platform channel: check mode + disabled set.
+	disabled := model.GetCachedTenantDisabledChannels(tenantId)
+	if _, off := disabled[ch.Id]; off {
+		return false
+	}
+	mode := model.GetCachedTenantMode(tenantId)
+	if mode == model.PlatformChannelModeOnlyPrivate {
+		return false
+	}
+	return true
 }
 
 func setChannelAffinityContext(c *gin.Context, meta channelAffinityMeta) {
@@ -573,7 +605,13 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 		if ttlSeconds <= 0 {
 			ttlSeconds = setting.DefaultTTLSeconds
 		}
-		cacheKeySuffix := buildChannelAffinityCacheKeySuffix(rule, usingGroup, affinityValue)
+		tenantId := 0
+		if v, ok := c.Get(string(constant.ContextKeyTenantId)); ok {
+			if id, ok2 := v.(int); ok2 {
+				tenantId = id
+			}
+		}
+		cacheKeySuffix := buildChannelAffinityCacheKeySuffix(rule, tenantId, usingGroup, affinityValue)
 		cacheKeyFull := channelAffinityCacheNamespace + ":" + cacheKeySuffix
 		setChannelAffinityContext(c, channelAffinityMeta{
 			CacheKey:       cacheKeyFull,

@@ -103,6 +103,14 @@ func Distribute() func(c *gin.Context) {
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
+					// Re-validate the affinity hit against current tenant scope/mode/disable.
+					// Stale affinity can point to a channel the tenant no longer uses or has disabled.
+					// See spec §4.4.
+					if err == nil && preferred != nil {
+						if !service.IsAffinityChannelValidForTenant(c, preferred) {
+							preferred = nil
+						}
+					}
 					if err == nil && preferred != nil {
 						if preferred.Status != common.ChannelStatusEnabled {
 							if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
