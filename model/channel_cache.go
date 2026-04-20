@@ -157,18 +157,22 @@ func InitChannelCache() {
 }
 
 // GetChannelGroupsCopy returns a copy of group names that have at least one enabled channel for the given tenant.
+// The result is the union of tenant-specific groups and platform groups (tenant_id=0 / scope=platform).
 func GetChannelGroupsCopy(tenantId int) map[string]bool {
 	if !common.MemoryCacheEnabled {
 		return getChannelGroupsFromDB(tenantId)
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
-	prefix := fmt.Sprintf("%d:", tenantId)
+	tenantPrefix := fmt.Sprintf("%d:", tenantId)
+	platformPrefix := "0:"
 	result := make(map[string]bool)
 	for tgKey := range group2model2channels {
-		if strings.HasPrefix(tgKey, prefix) {
-			group := strings.TrimPrefix(tgKey, prefix)
-			result[group] = true
+		if strings.HasPrefix(tgKey, tenantPrefix) {
+			result[strings.TrimPrefix(tgKey, tenantPrefix)] = true
+		} else if tenantId != 0 && strings.HasPrefix(tgKey, platformPrefix) {
+			// Also include platform groups (scope=platform / tenant_id=0) for non-platform callers.
+			result[strings.TrimPrefix(tgKey, platformPrefix)] = true
 		}
 	}
 	return result
@@ -193,11 +197,13 @@ func GroupHasChannels(group string, tenantId int) bool {
 }
 
 // getChannelGroupsFromDB queries distinct groups from abilities table (non-cache fallback).
+// Returns the union of tenant-specific groups and platform groups (tenant_id=0).
 func getChannelGroupsFromDB(tenantId int) map[string]bool {
 	var groups []string
 	q := DB.Model(&Ability{}).Where("enabled = ?", true)
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+		// Include both tenant-specific and platform (tenant_id=0) groups.
+		q = q.Where("tenant_id = ? OR tenant_id = ?", tenantId, 0)
 	}
 	q.Distinct(commonGroupCol).Pluck(commonGroupCol, &groups)
 	result := make(map[string]bool)
