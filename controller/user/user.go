@@ -1020,16 +1020,23 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	tenantId := middleware.GetTenantId(c)
+	platformRole := c.GetInt("platform_role")
 	// Tenant gate: verify target user belongs to current tenant
-	if err := model.RequireTenantMembership(middleware.GetTenantId(c), req.Id, c.GetInt("platform_role")); err != nil {
+	if err := model.RequireTenantMembership(tenantId, req.Id, platformRole); err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	user := model.User{
-		Id: req.Id,
+	var user model.User
+	{
+		q := model.DB.Unscoped()
+		if platformRole >= common.RoleRootUser {
+			q = model.WithTenantBypass(q)
+		} else {
+			q = q.Where("tenant_id = ?", tenantId)
+		}
+		_ = q.Where("id = ?", req.Id).First(&user).Error
 	}
-	// Fill attributes
-	model.DB.Unscoped().Where(&user).First(&user)
 	if user.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
 		return
@@ -1100,22 +1107,35 @@ func ManageUser(c *gin.Context) {
 	}
 
 	if req.Action == "disable" || req.Action == "enable" {
-		platformUser, err := model.GetUserById(user.Id, true)
-		if err != nil {
+		var platformUser model.User
+		pq := model.DB
+		if platformRole >= common.RoleRootUser {
+			pq = model.WithTenantBypass(pq)
+		} else {
+			pq = pq.Where("tenant_id = ?", tenantId)
+		}
+		if err := pq.Where("id = ?", user.Id).First(&platformUser).Error; err != nil {
 			common.ApiError(c, err)
 			return
 		}
 		platformUser.Status = user.Status
-		user = *platformUser
+		user = platformUser
 		if err := user.Update(false); err != nil {
 			common.ApiError(c, err)
 			return
 		}
 	}
 	if req.Action == "promote" || req.Action == "demote" {
-		if current, err := model.GetUserById(user.Id, false); err == nil && current != nil {
-			user = *current
-			_ = model.ApplyMembershipViewToUser(middleware.GetTenantId(c), &user)
+		var current model.User
+		cq := model.DB
+		if platformRole >= common.RoleRootUser {
+			cq = model.WithTenantBypass(cq)
+		} else {
+			cq = cq.Where("tenant_id = ?", tenantId)
+		}
+		if err := cq.Omit("password").Where("id = ?", user.Id).First(&current).Error; err == nil {
+			user = current
+			_ = model.ApplyMembershipViewToUser(tenantId, &user)
 		}
 	}
 	clearUser := model.User{
