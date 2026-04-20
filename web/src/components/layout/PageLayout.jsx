@@ -162,8 +162,7 @@ const PageLayout = () => {
             style={{
               position: 'fixed',
               left: 0,
-              // TODO(task-15): replace with --header-height token from index.css
-              top: '56px',
+              top: 'var(--header-height)',
               zIndex: 99,
               bottom: 0,
             }}

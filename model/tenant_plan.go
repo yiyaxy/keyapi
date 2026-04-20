@@ -24,6 +24,13 @@ type TenantPlan struct {
 	Status        int    `json:"status" gorm:"default:1"`               // 1=active
 	ExpiresAt     int64  `json:"expires_at" gorm:"bigint;default:0"`    // 0 = never expires
 	GracePeriodSeconds int64 `json:"grace_period_seconds" gorm:"default:0"` // grace period after expires_at before disabling; 0 = no grace, immediate disable
+	// Renewal pricing (S2). Platform admin configures via UpdateTenantPlanRequest.
+	// - RenewPeriodDays: how many days each renewal order extends ExpiresAt.
+	// - RenewPriceAmount: unit price in CNY cents. <=0 disables renewal ordering.
+	// - RenewCurrency: v1 only "CNY".
+	RenewPeriodDays  int    `json:"renew_period_days" gorm:"default:30"`
+	RenewPriceAmount int64  `json:"renew_price_amount" gorm:"bigint;default:0"`
+	RenewCurrency    string `json:"renew_currency" gorm:"type:varchar(8);default:'CNY'"`
 	CreatedAt     int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
 	UpdatedAt     int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }

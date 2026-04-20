@@ -15,9 +15,18 @@
 
 /* ==================== 全局基础样式 ==================== */
 :root {
-  --sidebar-width: 180px;
-  --sidebar-width-collapsed: 60px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
   --sidebar-current-width: var(--sidebar-width);
+  --header-height: 56px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sider,
+  .app-sider *,
+  .app-layout *[style*='transition'] {
+    transition: none !important;
+  }
 }
 
 body.sidebar-collapsed {

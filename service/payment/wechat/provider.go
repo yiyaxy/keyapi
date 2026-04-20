@@ -2,9 +2,11 @@ package wechat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/payment"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/certificates"
 )
 
@@ -43,4 +45,18 @@ func (providerImpl) TestCredentials(ctx context.Context, cfg *model.TenantPaymen
 		return fmt.Errorf("wechat returned no platform certificates")
 	}
 	return nil
+}
+
+// --- stubs for S2 Tasks 5-10; real implementations land progressively ---
+
+func (providerImpl) CreateOrder(ctx context.Context, req payment.CreateOrderRequest) (*payment.CreateOrderResponse, error) {
+	return nil, errors.New("wechat CreateOrder: not implemented yet")
+}
+
+func (providerImpl) VerifyAndParseNotify(ctx context.Context, tenantId int, body []byte, headers map[string]string) (*payment.NotifyResult, error) {
+	return nil, errors.New("wechat VerifyAndParseNotify: not implemented yet")
+}
+
+func (providerImpl) QueryOrder(ctx context.Context, tenantId int, outTradeNo string) (*payment.QueryOrderResult, error) {
+	return nil, errors.New("wechat QueryOrder: not implemented yet")
 }
