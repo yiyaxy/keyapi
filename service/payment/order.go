@@ -399,7 +399,7 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 	tenantForLog := homeTenant
 	money := float64(order.Amount) / 100.0
 	logContent := fmt.Sprintf("使用微信支付充值成功，充值金额: %v，支付金额：%.2f 元",
-		logger.FormatQuota(int(delta)), money)
+		logger.FormatTopupDisplayAmount(meta.AmountUnits, delta), money)
 	*postCommit = append(*postCommit, func() {
 		// 1. Topup log entry — visible in user log UI.
 		model.RecordTopUpLogWithTenant(tenantForLog, userId, int(delta), logContent)

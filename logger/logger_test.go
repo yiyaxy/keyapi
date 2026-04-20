@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/trace"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -79,5 +80,33 @@ func TestLogInfo_FallbackToGoroutineLocalTrace(t *testing.T) {
 	got := out.String()
 	if !strings.Contains(got, "JOB-test-000000000000aabb") {
 		t.Fatalf("expected goroutine-local trace in output, got %q", got)
+	}
+}
+
+func TestFormatTopupDisplayAmount_CNYUsesAmountUnits(t *testing.T) {
+	gs := operation_setting.GetGeneralSetting()
+	origDisplay := gs.QuotaDisplayType
+	t.Cleanup(func() {
+		gs.QuotaDisplayType = origDisplay
+	})
+
+	gs.QuotaDisplayType = operation_setting.QuotaDisplayTypeCNY
+	got := FormatTopupDisplayAmount(1, 68493)
+	if got != "1.00 元" {
+		t.Fatalf("FormatTopupDisplayAmount(1, 68493) = %q, want %q", got, "1.00 元")
+	}
+}
+
+func TestFormatTopupDisplayAmount_TokensPrefersRawQuota(t *testing.T) {
+	gs := operation_setting.GetGeneralSetting()
+	origDisplay := gs.QuotaDisplayType
+	t.Cleanup(func() {
+		gs.QuotaDisplayType = origDisplay
+	})
+
+	gs.QuotaDisplayType = operation_setting.QuotaDisplayTypeTokens
+	got := FormatTopupDisplayAmount(1, 500000)
+	if got != "500000" {
+		t.Fatalf("FormatTopupDisplayAmount(1, 500000) = %q, want %q", got, "500000")
 	}
 }

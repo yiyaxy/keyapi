@@ -178,6 +178,29 @@ func FormatQuota(quota int) string {
 }
 
 // LogJson 仅供测试使用 only for test
+// FormatTopupDisplayAmount formats the user-selected topup face value using
+// the active quota display mode instead of reverse-calculating from raw quota.
+func FormatTopupDisplayAmount(amountUnits int64, rawQuota int64) string {
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
+		return fmt.Sprintf("%.2f 元", float64(amountUnits))
+	case operation_setting.QuotaDisplayTypeCustom:
+		symbol := operation_setting.GetGeneralSetting().CustomCurrencySymbol
+		if symbol == "" {
+			symbol = "陇"
+		}
+		return fmt.Sprintf("%s%.2f", symbol, float64(amountUnits))
+	case operation_setting.QuotaDisplayTypeTokens:
+		displayAmount := rawQuota
+		if displayAmount <= 0 {
+			displayAmount = amountUnits
+		}
+		return fmt.Sprintf("%d", displayAmount)
+	default:
+		return fmt.Sprintf("$%.2f", float64(amountUnits))
+	}
+}
+
 func LogJson(ctx context.Context, msg string, obj any) {
 	jsonStr, err := common.Marshal(obj)
 	if err != nil {

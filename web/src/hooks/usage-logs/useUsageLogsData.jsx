@@ -457,6 +457,12 @@ export const useLogsData = () => {
           value: logs[i].request_id,
         });
       }
+      if (logs[i]?.content && logs[i].type !== 2) {
+        expandDataLocal.push({
+          key: t('日志详情'),
+          value: logs[i].content,
+        });
+      }
       if (other?.ws || other?.audio) {
         expandDataLocal.push({
           key: t('语音输入'),
