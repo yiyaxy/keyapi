@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/codex"
 	"github.com/QuantumNous/new-api/controller/invoice"
 	"github.com/QuantumNous/new-api/controller/payment"
+	"github.com/QuantumNous/new-api/controller/tenant"
 	"github.com/QuantumNous/new-api/controller/ticket"
 	"github.com/QuantumNous/new-api/middleware"
 
@@ -617,32 +618,32 @@ func SetApiRouter(router *gin.Engine) {
 		tenantRoute := apiRouter.Group("/tenant")
 		tenantRoute.Use(middleware.TenantAdminAuth())
 		{
-			tenantRoute.GET("/info", controller.GetTenant)
-			tenantRoute.PUT("/", controller.UpdateTenant)
-			tenantRoute.GET("/members", controller.ListTenantMembers)
-			tenantRoute.PUT("/members", controller.UpdateTenantMember)
-			tenantRoute.POST("/invite", controller.InviteMember)
-			tenantRoute.DELETE("/members", controller.RemoveMember)
-			tenantRoute.GET("/config", controller.GetTenantConfig)
-			tenantRoute.PUT("/config", controller.UpdateTenantConfig)
-			tenantRoute.DELETE("/config", controller.DeleteTenantConfig)
-			tenantRoute.GET("/dashboard", controller.GetTenantDashboard)
-			tenantRoute.GET("/usage/trend", controller.GetTenantUsageTrend)
-			tenantRoute.GET("/usage/models", controller.GetTenantModelUsage)
-			tenantRoute.GET("/alerts", controller.GetTenantAlerts)
-			tenantRoute.GET("/alerts/history", controller.GetTenantAlertHistory)
-			tenantRoute.POST("/alerts/:id/ack", controller.AckTenantAlert)
-			tenantRoute.POST("/alerts/:id/resolve", controller.ResolveTenantAlertHandler)
-			tenantRoute.GET("/audit", controller.GetTenantAuditLogs)
-			tenantRoute.GET("/bills", controller.ListTenantBillsHandler)
-			tenantRoute.POST("/bills/current/refresh", controller.RefreshCurrentTenantBillHandler)
-			tenantRoute.GET("/ledger", controller.ListTenantLedgerHandler)
-			tenantRoute.GET("/plan", controller.GetTenantPlanInfo)
+			tenantRoute.GET("/info", tenant.GetTenant)
+			tenantRoute.PUT("/", tenant.UpdateTenant)
+			tenantRoute.GET("/members", tenant.ListTenantMembers)
+			tenantRoute.PUT("/members", tenant.UpdateTenantMember)
+			tenantRoute.POST("/invite", tenant.InviteMember)
+			tenantRoute.DELETE("/members", tenant.RemoveMember)
+			tenantRoute.GET("/config", tenant.GetTenantConfig)
+			tenantRoute.PUT("/config", tenant.UpdateTenantConfig)
+			tenantRoute.DELETE("/config", tenant.DeleteTenantConfig)
+			tenantRoute.GET("/dashboard", tenant.GetTenantDashboard)
+			tenantRoute.GET("/usage/trend", tenant.GetTenantUsageTrend)
+			tenantRoute.GET("/usage/models", tenant.GetTenantModelUsage)
+			tenantRoute.GET("/alerts", tenant.GetTenantAlerts)
+			tenantRoute.GET("/alerts/history", tenant.GetTenantAlertHistory)
+			tenantRoute.POST("/alerts/:id/ack", tenant.AckTenantAlert)
+			tenantRoute.POST("/alerts/:id/resolve", tenant.ResolveTenantAlertHandler)
+			tenantRoute.GET("/audit", tenant.GetTenantAuditLogs)
+			tenantRoute.GET("/bills", tenant.ListTenantBillsHandler)
+			tenantRoute.POST("/bills/current/refresh", tenant.RefreshCurrentTenantBillHandler)
+			tenantRoute.GET("/ledger", tenant.ListTenantLedgerHandler)
+			tenantRoute.GET("/plan", tenant.GetTenantPlanInfo)
 			// Payment configuration (see docs/superpowers/specs/2026-04-17-wechat-pay-multi-tenant-design.md §7.1)
-			tenantRoute.GET("/payment/configs", controller.GetTenantPaymentConfigs)
-			tenantRoute.PUT("/payment/configs/wechat", controller.UpdateTenantWechatConfig)
-			tenantRoute.POST("/payment/configs/wechat/test", controller.TestTenantWechatConfig)
-			tenantRoute.DELETE("/payment/configs/wechat", controller.DeleteTenantWechatConfig)
+			tenantRoute.GET("/payment/configs", tenant.GetTenantPaymentConfigs)
+			tenantRoute.PUT("/payment/configs/wechat", tenant.UpdateTenantWechatConfig)
+			tenantRoute.POST("/payment/configs/wechat/test", tenant.TestTenantWechatConfig)
+			tenantRoute.DELETE("/payment/configs/wechat", tenant.DeleteTenantWechatConfig)
 			// WeChat Pay S2 ordering + callback
 			tenantRoute.POST("/payment/wechat/sub/native", payment.CreateWechatSubNative)
 			tenantRoute.POST("/payment/wechat/sub/jsapi", payment.CreateWechatSubJsapi)
@@ -655,17 +656,17 @@ func SetApiRouter(router *gin.Engine) {
 		platformTenantRoute := apiRouter.Group("/platform/tenants")
 		platformTenantRoute.Use(middleware.PlatformAdminAuth())
 		{
-			platformTenantRoute.GET("/", controller.ListAllTenantsHandler)
-			platformTenantRoute.POST("/", controller.CreateTenant)
-			platformTenantRoute.DELETE("/:id", controller.DeleteTenant)
-			platformTenantRoute.GET("/plans", controller.ListTenantPlans)
-			platformTenantRoute.PUT("/:id/plan", controller.UpdateTenantPlanHandler)
+			platformTenantRoute.GET("/", tenant.ListAllTenantsHandler)
+			platformTenantRoute.POST("/", tenant.CreateTenant)
+			platformTenantRoute.DELETE("/:id", tenant.DeleteTenant)
+			platformTenantRoute.GET("/plans", tenant.ListTenantPlans)
+			platformTenantRoute.PUT("/:id/plan", tenant.UpdateTenantPlanHandler)
 		}
 
 		tenantInviteRoute := apiRouter.Group("/tenant/invite")
 		tenantInviteRoute.Use(middleware.UserAuth())
 		{
-			tenantInviteRoute.GET("/accept", controller.AcceptInvite)
+			tenantInviteRoute.GET("/accept", tenant.AcceptInvite)
 		}
 
 		// WeChat Pay S2 user-facing ordering

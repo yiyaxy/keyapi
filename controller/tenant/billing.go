@@ -1,4 +1,4 @@
-package controller
+package tenant
 
 import (
 	"github.com/QuantumNous/new-api/common"
