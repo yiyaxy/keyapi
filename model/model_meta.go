@@ -115,23 +115,45 @@ func GetBoundChannelsByModelsMap(modelNames []string, tenantId ...int) (map[stri
 		return result, nil
 	}
 	type row struct {
-		Model string
-		Name  string
-		Type  int
+		Model     string
+		Name      string
+		Type      int
+		Scope     string
+		ChannelId int
 	}
 	var rows []row
 	q := DB.Table("channels").
-		Select("abilities.model as model, channels.name as name, channels.type as type").
+		Select("abilities.model as model, channels.name as name, channels.type as type, channels.scope as scope, channels.id as channel_id").
 		Joins("JOIN abilities ON abilities.channel_id = channels.id").
 		Where("abilities.model IN ? AND abilities.enabled = ?", modelNames, true)
 	if len(tenantId) > 0 && tenantId[0] > 0 {
-		q = q.Where("channels.tenant_id = ?", tenantId[0])
+		tid := tenantId[0]
+		q = q.Where("channels.scope = ? OR channels.tenant_id = ?", ChannelScopePlatform, tid)
 	}
-	err := q.Distinct().Scan(&rows).Error
-	if err != nil {
+	if err := q.Distinct().Scan(&rows).Error; err != nil {
 		return nil, err
 	}
+
+	// Apply tenant mode + override only when tenantId is given.
+	var mode string
+	var disabled map[int]struct{}
+	if len(tenantId) > 0 && tenantId[0] > 0 {
+		mode = GetCachedTenantMode(tenantId[0])
+		disabled = GetCachedTenantDisabledChannels(tenantId[0])
+	}
 	for _, r := range rows {
+		if r.Scope == ChannelScopePlatform {
+			if _, off := disabled[r.ChannelId]; off {
+				continue
+			}
+			if mode == PlatformChannelModeOnlyPrivate {
+				continue
+			}
+		} else {
+			if mode == PlatformChannelModeOnlyPlatform {
+				continue
+			}
+		}
 		result[r.Model] = append(result[r.Model], BoundChannel{Name: r.Name, Type: r.Type})
 	}
 	return result, nil
