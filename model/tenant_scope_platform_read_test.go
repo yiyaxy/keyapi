@@ -32,3 +32,32 @@ func TestGuardrailStillBlocksUnscopedChannelRead(t *testing.T) {
 		t.Fatal("expected guardrail rejection for unscoped channel read")
 	}
 }
+
+// TestGuardrailBlocksPlatformScopeUpdate asserts the whitelist is SELECT-only:
+// an UPDATE with a scope='platform' WHERE clause must still be rejected by
+// the guardrail (requires WithTenantBypass for platform writes).
+func TestGuardrailBlocksPlatformScopeUpdate(t *testing.T) {
+	if DB == nil {
+		t.Skip("no DB")
+	}
+	RegisterTenantCallbacks(DB)
+	err := DB.Model(&Channel{}).Where("scope = ?", ChannelScopePlatform).
+		Updates(map[string]any{"name": "hacked"}).Error
+	if err == nil {
+		t.Fatal("guardrail must reject unscoped UPDATE even when WHERE contains scope='platform'")
+	}
+}
+
+// TestGuardrailBlocksSplitInjection asserts attackers can't bypass the
+// whitelist by scattering "scope" and "[platform]" across unrelated columns.
+func TestGuardrailBlocksSplitInjection(t *testing.T) {
+	if DB == nil {
+		t.Skip("no DB")
+	}
+	RegisterTenantCallbacks(DB)
+	var channels []Channel
+	err := DB.Where("name = ? AND base_url = ?", "scope", "[platform]").Find(&channels).Error
+	if err == nil {
+		t.Fatal("guardrail must reject read where 'scope' and '[platform]' are scattered across non-scope columns")
+	}
+}

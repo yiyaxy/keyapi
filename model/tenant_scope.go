@@ -285,17 +285,13 @@ func tenantGuardScope(db *gorm.DB) {
 	// Only applies to tables that have a scope column — channels and abilities today.
 	// See spec §8.1.
 	//
-	// NOTE: gorm formats parameterised WHERE expressions as e.g. "{[{scope = ? [platform] false}]}",
-	// so the literal value "platform" appears unquoted inside square brackets rather than
-	// as 'platform'.  We therefore check for the bare word "platform" in the expression.
-	// The scope-column guard prevents this from accidentally whitelisting unrelated tables.
-	if len(db.Statement.BuildClauses) > 0 && db.Statement.BuildClauses[0] == "SELECT" && whereExpr != "" {
+	// Match the exact GORM-serialised form "scope = ? [platform]" — a single
+	// substring — to prevent split-field injection (two columns whose values
+	// together spell "scope" and "[platform]" but are not the scope column).
+	if db.Statement.BuildClauses[0] == "SELECT" && whereExpr != "" {
 		tableName := db.Statement.Schema.Table
 		if tableName == "channels" || tableName == "abilities" {
-			// naive textual match is fine here; the expression comes from gorm's Where() calls
-			if strings.Contains(whereExpr, "scope") &&
-				(strings.Contains(whereExpr, "'platform'") || strings.Contains(whereExpr, "\"platform\"") ||
-					strings.Contains(whereExpr, "[platform]") || strings.Contains(whereExpr, " platform ")) {
+			if strings.Contains(whereExpr, "scope = ? [platform]") {
 				return
 			}
 		}
