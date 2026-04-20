@@ -448,13 +448,18 @@ func SearchChannelsForTenant(tenantId int, keyword, group, modelName string, idS
 	return channels, nil
 }
 
+// GetChannelByIdWithTenant reads a channel row.
+//  - tenantId > 0：按 (id, tenant_id) 精确匹配，用于租户 / 平台读取自家行。
+//  - tenantId <= 0：视为平台超管跨租户查询，显式 WithTenantBypass 放行 guardrail。
 func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
-	var err error = nil
-	query := DB.Where("id = ?", id)
+	var query *gorm.DB
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		query = DB.Where("id = ? AND tenant_id = ?", id, tenantId)
+	} else {
+		query = WithTenantBypass(DB).Where("id = ?", id)
 	}
+	var err error
 	if selectAll {
 		err = query.First(channel).Error
 	} else {
