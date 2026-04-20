@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/controller/auth"
+	"github.com/QuantumNous/new-api/controller/catalog"
 	"github.com/QuantumNous/new-api/controller/codex"
 	"github.com/QuantumNous/new-api/controller/invoice"
 	"github.com/QuantumNous/new-api/controller/obs"
@@ -31,7 +32,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/setup", controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
-		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
+		apiRouter.GET("/models", middleware.UserAuth(), catalog.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
@@ -296,8 +297,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			channelRoute.GET("/", controller.GetAllChannels)
 			channelRoute.GET("/search", controller.SearchChannels)
-			channelRoute.GET("/models", controller.ChannelListModels)
-			channelRoute.GET("/models_enabled", controller.EnabledListModels)
+			channelRoute.GET("/models", catalog.ChannelListModels)
+			channelRoute.GET("/models_enabled", catalog.EnabledListModels)
 			channelRoute.GET("/:id", controller.GetChannel)
 			channelRoute.POST("/:id/key", middleware.RootAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.GetChannelKey)
 			channelRoute.GET("/test", controller.TestAllChannels)
@@ -569,26 +570,26 @@ func SetApiRouter(router *gin.Engine) {
 		vendorRoute := apiRouter.Group("/vendors")
 		vendorRoute.Use(middleware.PlatformAdminAuth())
 		{
-			vendorRoute.GET("/", controller.GetAllVendors)
-			vendorRoute.GET("/search", controller.SearchVendors)
-			vendorRoute.GET("/:id", controller.GetVendorMeta)
-			vendorRoute.POST("/", controller.CreateVendorMeta)
-			vendorRoute.PUT("/", controller.UpdateVendorMeta)
-			vendorRoute.DELETE("/:id", controller.DeleteVendorMeta)
+			vendorRoute.GET("/", catalog.GetAllVendors)
+			vendorRoute.GET("/search", catalog.SearchVendors)
+			vendorRoute.GET("/:id", catalog.GetVendorMeta)
+			vendorRoute.POST("/", catalog.CreateVendorMeta)
+			vendorRoute.PUT("/", catalog.UpdateVendorMeta)
+			vendorRoute.DELETE("/:id", catalog.DeleteVendorMeta)
 		}
 
 		modelsRoute := apiRouter.Group("/models")
 		modelsRoute.Use(middleware.PlatformAdminAuth())
 		{
-			modelsRoute.GET("/sync_upstream/preview", controller.SyncUpstreamPreview)
-			modelsRoute.POST("/sync_upstream", controller.SyncUpstreamModels)
-			modelsRoute.GET("/missing", controller.GetMissingModels)
-			modelsRoute.GET("/", controller.GetAllModelsMeta)
-			modelsRoute.GET("/search", controller.SearchModelsMeta)
-			modelsRoute.GET("/:id", controller.GetModelMeta)
-			modelsRoute.POST("/", controller.CreateModelMeta)
-			modelsRoute.PUT("/", controller.UpdateModelMeta)
-			modelsRoute.DELETE("/:id", controller.DeleteModelMeta)
+			modelsRoute.GET("/sync_upstream/preview", catalog.SyncUpstreamPreview)
+			modelsRoute.POST("/sync_upstream", catalog.SyncUpstreamModels)
+			modelsRoute.GET("/missing", catalog.GetMissingModels)
+			modelsRoute.GET("/", catalog.GetAllModelsMeta)
+			modelsRoute.GET("/search", catalog.SearchModelsMeta)
+			modelsRoute.GET("/:id", catalog.GetModelMeta)
+			modelsRoute.POST("/", catalog.CreateModelMeta)
+			modelsRoute.PUT("/", catalog.UpdateModelMeta)
+			modelsRoute.DELETE("/:id", catalog.DeleteModelMeta)
 		}
 
 		// Deployments (model deployment management)
