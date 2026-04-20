@@ -45,3 +45,37 @@ func SanitizeListForTenantView(list []*Channel) {
 		SanitizeForTenantView(c)
 	}
 }
+
+// SanitizeForCopy returns a new Channel value suitable for insert: only
+// whitelisted metadata fields are carried from src. Key, HeaderOverride,
+// ParamOverride, OtherSettings, Other, Balance, UsedQuota, TestTime,
+// ResponseTime, and multi-key state are NEVER copied. The caller must
+// supply the target tenantId; scope is forced to tenant.
+// See spec §9.2.
+func SanitizeForCopy(src *Channel, targetTenantId int) *Channel {
+	if src == nil {
+		return nil
+	}
+	dst := Channel{
+		// whitelist
+		Type:         src.Type,
+		Name:         src.Name,
+		Models:       src.Models,
+		Group:        src.Group,
+		ModelMapping: src.ModelMapping,
+		Priority:     src.Priority,
+		Weight:       src.Weight,
+		Tag:          src.Tag,
+
+		// forced fields
+		Id:       0,
+		Scope:    ChannelScopeTenant,
+		TenantId: targetTenantId,
+		Status:   src.Status,
+
+		// Setting copied only after whitelist-filter via code below; initially empty.
+		// For v1 simplicity we do not copy Setting at all — user reconfigures in UI.
+		// This is a conservative choice; can be relaxed later.
+	}
+	return &dst
+}

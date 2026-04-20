@@ -92,3 +92,52 @@ func TestSanitizeForTenantView_TenantOnlyOmitsKey(t *testing.T) {
 		t.Error("own Balance must be preserved")
 	}
 }
+
+func TestSanitizeForCopy_StripsKeyAndSensitive(t *testing.T) {
+	setting := `{"proxy":"x"}`
+	header := `{"H":"v"}`
+	paramOv := `{"p":1}`
+	src := &Channel{
+		Id: 1, Name: "src", Type: 1, Models: "gpt-4o", Group: "default",
+		Scope: ChannelScopePlatform, TenantId: 0,
+		Key: "sk-secret", Setting: &setting, HeaderOverride: &header, ParamOverride: &paramOv,
+		OtherSettings: "x", Other: "y",
+		Balance: 99, UsedQuota: 50, TestTime: 1, ResponseTime: 2,
+		ChannelInfo: ChannelInfo{IsMultiKey: true, MultiKeyStatusList: map[int]int{0: 1}},
+	}
+	dst := SanitizeForCopy(src, 7) // target tenantId
+	if dst.Id != 0 {
+		t.Error("Id must be 0 for new row")
+	}
+	if dst.Scope != ChannelScopeTenant {
+		t.Error("Copy must land as tenant scope")
+	}
+	if dst.TenantId != 7 {
+		t.Error("TenantId must be target tenant")
+	}
+	if dst.Key != "" {
+		t.Error("Key must not be copied")
+	}
+	if dst.HeaderOverride != nil && *dst.HeaderOverride != "" {
+		t.Error("HeaderOverride must not be copied")
+	}
+	if dst.ParamOverride != nil && *dst.ParamOverride != "" {
+		t.Error("ParamOverride must not be copied")
+	}
+	if dst.OtherSettings != "" {
+		t.Error("OtherSettings must not be copied")
+	}
+	if dst.Other != "" {
+		t.Error("Other must not be copied")
+	}
+	if dst.Balance != 0 || dst.UsedQuota != 0 || dst.TestTime != 0 || dst.ResponseTime != 0 {
+		t.Error("balance/quota/test/response must be zeroed")
+	}
+	if dst.ChannelInfo.IsMultiKey || dst.ChannelInfo.MultiKeyStatusList != nil {
+		t.Error("ChannelInfo multi-key state must not be copied")
+	}
+	// Whitelist preserved:
+	if dst.Name != "src" || dst.Type != 1 || dst.Models != "gpt-4o" || dst.Group != "default" {
+		t.Error("whitelist fields (Name, Type, Models, Group) must be preserved")
+	}
+}
