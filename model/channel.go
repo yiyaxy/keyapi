@@ -18,6 +18,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	ChannelScopePlatform = "platform"
+	ChannelScopeTenant   = "tenant"
+)
+
 type Channel struct {
 	Id                 int     `json:"id"`
 	TenantId           int     `json:"tenant_id" gorm:"index;not null;default:1"`
@@ -52,6 +57,11 @@ type Channel struct {
 	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
+
+	// Scope distinguishes "platform" (shared, tenant_id=0) and "tenant" (owned).
+	// See docs/superpowers/specs/2026-04-20-shared-channels-design.md §3.1.
+	Scope       string   `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
+	MarkupRatio *float64 `json:"markup_ratio" gorm:"type:decimal(10,4);default:null"`
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
