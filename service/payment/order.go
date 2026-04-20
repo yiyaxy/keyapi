@@ -16,19 +16,16 @@ import (
 )
 
 // CreateTopupOrderInput is what the topup controller hands in.
-// AmountUnits is the "display units" value that would be stored in
-// top_ups.Amount under the epay/stripe flow — i.e. already normalized
-// for tokens mode (req.Amount / QuotaPerUnit). The success handler
-// reconstructs internal quota via AmountUnits * QuotaPerUnit, so both
-// display modes round-trip the user's original request exactly. Do NOT
-// pass raw req.Amount here without normalizing — in tokens mode that
-// would over-issue quota by a factor of QuotaPerUnit (e.g. 500k tokens
-// requested → 250 billion tokens credited).
+// AmountUnits keeps the legacy top_ups.Amount semantics used by invoice /
+// history views. QuotaDelta is the authoritative raw quota to credit on
+// success and must be computed at order-creation time from the original
+// request amount.
 type CreateTopupOrderInput struct {
 	TenantId    int   // order.TenantId = session tenant (收款归属)
 	UserId      int   // order.UserId = payer
 	AmountCents int64 // CNY cents (what WeChat charges)
 	AmountUnits int64 // top_ups.Amount value; see doc above
+	QuotaDelta  int64 // authoritative raw quota to credit on success
 	ProductForm string
 	Openid      string // jsapi only
 	ClientIp    string // h5 only
@@ -64,8 +61,14 @@ func CreateTopupOrder(ctx context.Context, in CreateTopupOrderInput) (*CreateOrd
 	if in.TenantId <= 0 || in.UserId <= 0 || in.AmountCents <= 0 || in.AmountUnits <= 0 {
 		return nil, nil, errors.New("invalid topup input")
 	}
-	// Metadata key name matches the applyTopupSuccess reader exactly.
-	meta, _ := json.Marshal(map[string]any{"amount_units": in.AmountUnits})
+	if in.QuotaDelta <= 0 {
+		return nil, nil, errors.New("invalid topup input: quota_delta required")
+	}
+	// Metadata keys match the applyTopupSuccess reader exactly.
+	meta, _ := json.Marshal(map[string]any{
+		"amount_units": in.AmountUnits,
+		"quota_delta":  in.QuotaDelta,
+	})
 	return createOrder(ctx, createOrderArgs{
 		TenantId:    in.TenantId,
 		UserId:      in.UserId,
@@ -260,6 +263,34 @@ func ApplyPaymentSuccess(ctx context.Context, outTradeNo string, transactionId s
 	return nil
 }
 
+// readQuotaDeltaFromMetadata prefers the authoritative quota_delta field and
+// falls back to the legacy amount_units × QuotaPerUnit contract for old or
+// in-flight orders that predate quota_delta.
+func readQuotaDeltaFromMetadata(rawMetadata string, quotaPerUnit float64) (int64, error) {
+	var meta struct {
+		AmountUnits int64 `json:"amount_units"`
+		QuotaDelta  int64 `json:"quota_delta"`
+	}
+	if rawMetadata == "" {
+		return 0, fmt.Errorf("empty metadata")
+	}
+	if err := json.Unmarshal([]byte(rawMetadata), &meta); err != nil {
+		return 0, fmt.Errorf("parse topup metadata: %w", err)
+	}
+	if meta.QuotaDelta > 0 {
+		return meta.QuotaDelta, nil
+	}
+	if meta.AmountUnits <= 0 {
+		return 0, fmt.Errorf("neither quota_delta nor amount_units set")
+	}
+	qpu := decimal.NewFromFloat(quotaPerUnit)
+	delta := decimal.NewFromInt(meta.AmountUnits).Mul(qpu).IntPart()
+	if delta <= 0 {
+		return 0, fmt.Errorf("legacy fallback computed non-positive delta")
+	}
+	return delta, nil
+}
+
 // applyTopupSuccess credits the user's quota, writes a top_ups row and an
 // audit log entry inside the caller's tx, then schedules postCommit
 // side-effects (topup log, rebate, cache sync) that run only after the tx
@@ -268,10 +299,16 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 	if order.UserId <= 0 {
 		return errors.New("topup order missing UserId")
 	}
-	// Metadata carries amount_units (already-normalized display units;
-	// see CreateTopupOrderInput doc). Quota is derived here using the
-	// same formula epay uses at callback time (controller/topup.go:371-
-	// 373), so both display modes round-trip the user's original request.
+	// Resolve the quota to credit. New orders stamp metadata.quota_delta as
+	// the authoritative value; old or in-flight orders fall back to the
+	// legacy amount_units × QuotaPerUnit contract.
+	quotaToAdd, err := readQuotaDeltaFromMetadata(order.Metadata, common.QuotaPerUnit)
+	if err != nil {
+		return fmt.Errorf("resolve quota delta for order %d: %w", order.Id, err)
+	}
+
+	// amount_units is still persisted into top_ups.Amount for legacy
+	// display/history semantics even though quota_delta is authoritative.
 	var meta struct {
 		AmountUnits int64 `json:"amount_units"`
 	}
@@ -279,14 +316,6 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 		if err := json.Unmarshal([]byte(order.Metadata), &meta); err != nil {
 			return fmt.Errorf("parse topup metadata: %w", err)
 		}
-	}
-	if meta.AmountUnits <= 0 {
-		return fmt.Errorf("invalid amount_units for topup order %d", order.Id)
-	}
-	quotaToAdd := decimal.NewFromInt(meta.AmountUnits).
-		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
-	if quotaToAdd <= 0 {
-		return fmt.Errorf("computed non-positive quota for order %d", order.Id)
 	}
 
 	// Add quota to the user's HOME tenant row (users.tenant_id), NOT
@@ -324,6 +353,7 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 		TenantId:      order.TenantId,
 		UserId:        order.UserId,
 		Amount:        meta.AmountUnits,
+		RawQuota:      quotaToAdd,
 		Money:         float64(order.Amount) / 100.0, // CNY yuan
 		TradeNo:       order.OutTradeNo,
 		PaymentMethod: "wxpay",

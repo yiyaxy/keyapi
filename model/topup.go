@@ -26,13 +26,17 @@ type TopUp struct {
 	ClientIP      string  `json:"client_ip" gorm:"type:varchar(64);default:''"`
 
 	// Epay callback snapshot fields (populated on success notify)
-	EpayTradeNo      string `json:"epay_trade_no" gorm:"type:varchar(128);default:''"`
-	EpayOrderIdWxAl  string `json:"epay_order_id_wx_al" gorm:"type:varchar(128);default:''"`
-	EpayType         string `json:"epay_type" gorm:"type:varchar(32);default:''"`
-	EpayTdid         string `json:"epay_tdid" gorm:"type:varchar(128);default:''"`
-	EpayPid          string `json:"epay_pid" gorm:"type:varchar(64);default:''"`
-	EpayTradeStatus  string `json:"epay_trade_status" gorm:"type:varchar(64);default:''"`
+	EpayTradeNo       string `json:"epay_trade_no" gorm:"type:varchar(128);default:''"`
+	EpayOrderIdWxAl   string `json:"epay_order_id_wx_al" gorm:"type:varchar(128);default:''"`
+	EpayType          string `json:"epay_type" gorm:"type:varchar(32);default:''"`
+	EpayTdid          string `json:"epay_tdid" gorm:"type:varchar(128);default:''"`
+	EpayPid           string `json:"epay_pid" gorm:"type:varchar(64);default:''"`
+	EpayTradeStatus   string `json:"epay_trade_status" gorm:"type:varchar(64);default:''"`
 	EpayNotifyPayload string `json:"epay_notify_payload" gorm:"type:text;default:''"`
+	// RawQuota is the authoritative raw quota to credit on success for
+	// post-migration WeChat/Epay rows. Legacy rows keep 0 and must fall
+	// back to Amount-based reconstruction when no better source exists.
+	RawQuota int64 `json:"raw_quota" gorm:"not null;default:0"`
 }
 
 // TopUpWithUser is a DTO for admin queries that includes the username.
@@ -328,9 +332,14 @@ func ManualCompleteTopUp(tradeNo string) error {
 		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
 		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
 		if topUp.PaymentMethod == "stripe" {
+			// Stripe stores the discounted USD amount in Money. Its quota
+			// semantics are unchanged here and tracked separately.
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
+		} else if topUp.RawQuota > 0 {
+			quotaToAdd = int(topUp.RawQuota)
 		} else {
+			// Pre-migration fallback for rows that do not have RawQuota yet.
 			dAmount := decimal.NewFromInt(topUp.Amount)
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
@@ -597,7 +606,7 @@ func GetAllTopUpsWithUser(tenantId int, pageInfo *common.PageInfo, keyword strin
 		Joins("LEFT JOIN " + userTable + " ON " + topUpTable + ".user_id = " + userTable + ".id")
 
 	// Exclude subscription orders (trade_no starts with "SUB" or "sub_ref_")
-	query = query.Where(tradeNoCol+" NOT LIKE 'SUB%' AND "+tradeNoCol+" NOT LIKE 'sub_ref_%'")
+	query = query.Where(tradeNoCol + " NOT LIKE 'SUB%' AND " + tradeNoCol + " NOT LIKE 'sub_ref_%'")
 
 	if tenantId > 0 {
 		query = query.Where("top_ups.tenant_id = ?", tenantId)

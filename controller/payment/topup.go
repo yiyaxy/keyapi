@@ -118,13 +118,13 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 			return nil
 		}(),
-		"creem_products": setting.CreemProducts,
-		"pay_methods":         payMethods,
-		"min_topup":           operation_setting.MinTopUp,
-		"stripe_min_topup":    setting.StripeMinTopUp,
-		"waffo_min_topup":     setting.WaffoMinTopUp,
-		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
+		"creem_products":   setting.CreemProducts,
+		"pay_methods":      payMethods,
+		"min_topup":        operation_setting.MinTopUp,
+		"stripe_min_topup": setting.StripeMinTopUp,
+		"waffo_min_topup":  setting.WaffoMinTopUp,
+		"amount_options":   operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":         operation_setting.GetPaymentSetting().AmountDiscount,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -155,10 +155,19 @@ func GetEpayClient() *epay.Client {
 func getPayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
-	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+	// - USD/CNY: 前端传 amount 为金额单位
+	// - TOKENS: 前端传 tokens，需要换成 USD 金额
+	// - CUSTOM: 前端传自定义币，需要先按 custom rate 换成 USD，再乘 Price 得到 CNY
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeTokens:
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		dAmount = dAmount.Div(dQuotaPerUnit)
+	case operation_setting.QuotaDisplayTypeCustom:
+		rate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+		if rate <= 0 {
+			return 0
+		}
+		dAmount = dAmount.Div(decimal.NewFromFloat(rate))
 	}
 
 	topupGroupRatio := common.GetTopupGroupRatio(group)
@@ -249,16 +258,24 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
-	amount := req.Amount
+	amountUnits := req.Amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dAmount := decimal.NewFromInt(int64(amount))
+		dAmount := decimal.NewFromInt(amountUnits)
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		amount = dAmount.Div(dQuotaPerUnit).IntPart()
+		amountUnits = dAmount.Div(dQuotaPerUnit).IntPart()
+	}
+	// Compute the authoritative raw quota from the original request amount
+	// so all display modes (USD/CNY/TOKENS/CUSTOM) share one contract.
+	quotaDelta := operation_setting.ComputeTopupQuotaDelta(req.Amount)
+	if quotaDelta <= 0 {
+		c.JSON(200, gin.H{"message": "error", "data": "无法计算充值额度（检查 QuotaDisplayType 配置）"})
+		return
 	}
 	topUp := &model.TopUp{
 		TenantId:      middleware.GetTenantId(c),
 		UserId:        id,
-		Amount:        amount,
+		Amount:        amountUnits,
+		RawQuota:      quotaDelta,
 		Money:         payMoney,
 		TradeNo:       tradeNo,
 		PaymentMethod: req.PaymentMethod,
@@ -393,11 +410,20 @@ func EpayNotify(c *gin.Context) {
 				log.Printf("易支付回调更新订单失败: %v", topUp)
 				return
 			}
-			//user, _ := model.GetUserById(topUp.UserId, false)
-			//user.Quota += topUp.Amount * 500000
-			dAmount := decimal.NewFromInt(int64(topUp.Amount))
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
+			// Prefer the stored authoritative quota on new rows; fall back to
+			// the legacy Amount × QuotaPerUnit formula for pre-migration rows.
+			var quotaToAdd int
+			if topUp.RawQuota > 0 {
+				quotaToAdd = int(topUp.RawQuota)
+			} else {
+				dAmount := decimal.NewFromInt(topUp.Amount)
+				dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+				quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+			}
+			if quotaToAdd <= 0 {
+				log.Printf("易支付回调 quota 计算异常: %v", topUp)
+				return
+			}
 			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true, model.GetUserTenantId(topUp.UserId))
 			if err != nil {
 				log.Printf("易支付回调更新用户失败: %v", topUp)
@@ -530,4 +556,3 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
-

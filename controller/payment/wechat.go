@@ -36,29 +36,28 @@ type wechatTopupRequest struct {
 // Accepting an independent "WeChat pricing" path would split behavior
 // by channel — we refuse that.
 //
-// Returns (amountCents, amountUnits, err) where:
+// Returns (amountCents, amountUnits, quotaDelta, err) where:
 //   - amountCents = CNY price to charge (WeChat API wants integer cents)
 //   - amountUnits = what gets stored in top_ups.Amount; identical to the
 //     epay/stripe value. In CNY/USD display mode this equals the raw
 //     request amount; in Tokens display mode this equals
-//     req.Amount / QuotaPerUnit. The success handler reconstructs quota
-//     via `amountUnits * QuotaPerUnit`, so both modes round-trip the
-//     user's original request.
-func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountUnits int64, err error) {
+//     req.Amount / QuotaPerUnit.
+//   - quotaDelta = authoritative raw quota to credit on success.
+func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountUnits int64, quotaDelta int64, err error) {
 	if amount < getMinTopup() {
-		return 0, 0, fmt.Errorf("充值数量不能小于 %d", getMinTopup())
+		return 0, 0, 0, fmt.Errorf("充值数量不能小于 %d", getMinTopup())
 	}
 	userId := c.GetInt("id")
 	if userId <= 0 {
-		return 0, 0, errors.New("未登录")
+		return 0, 0, 0, errors.New("未登录")
 	}
 	group, gerr := model.GetUserGroup(userId, true)
 	if gerr != nil {
-		return 0, 0, fmt.Errorf("获取用户分组失败: %w", gerr)
+		return 0, 0, 0, fmt.Errorf("获取用户分组失败: %w", gerr)
 	}
 	payMoney := getPayMoney(amount, group)
 	if payMoney < 0.01 {
-		return 0, 0, errors.New("充值金额过低")
+		return 0, 0, 0, errors.New("充值金额过低")
 	}
 	amountCents = decimal.NewFromFloat(payMoney).
 		Mul(decimal.NewFromInt(100)).Round(0).IntPart()
@@ -69,8 +68,12 @@ func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountU
 		amountUnits = decimal.NewFromInt(amount).
 			Div(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
 		if amountUnits <= 0 {
-			return 0, 0, errors.New("充值数量过小")
+			return 0, 0, 0, errors.New("充值数量过小")
 		}
+	}
+	quotaDelta = operation_setting.ComputeTopupQuotaDelta(amount)
+	if quotaDelta <= 0 {
+		return 0, 0, 0, errors.New("无法计算充值额度（检查 QuotaDisplayType / USDExchangeRate / CustomCurrencyExchangeRate 配置）")
 	}
 	return
 }
@@ -117,7 +120,7 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 			common.ApiErrorMsg(c, "参数错误")
 			return
 		}
-		amountCents, amountUnits, err := resolveTopupPrice(c, req.Amount)
+		amountCents, amountUnits, quotaDelta, err := resolveTopupPrice(c, req.Amount)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -148,6 +151,7 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 			UserId:      userId,
 			AmountCents: amountCents,
 			AmountUnits: amountUnits,
+			QuotaDelta:  quotaDelta,
 			ProductForm: productForm,
 			Openid:      openid,
 			ClientIp:    c.ClientIP(),
