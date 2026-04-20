@@ -3,7 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/controller"
+	usercontroller "github.com/QuantumNous/new-api/controller/user"
 	"net/http"
 	"strconv"
 
@@ -485,7 +485,7 @@ func Verify2FALogin(c *gin.Context) {
 	session.Save()
 
 	c.Set("login_type", "2fa")
-	controller.SetupLogin(user, c)
+	usercontroller.SetupLogin(user, c)
 }
 
 // Admin2FAStats 管理员获取2FA统计信息

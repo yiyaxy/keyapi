@@ -4,7 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/QuantumNous/new-api/controller"
+	usercontroller "github.com/QuantumNous/new-api/controller/user"
 	"io"
 	"net/http"
 	"sort"
@@ -105,7 +105,7 @@ func TelegramLogin(c *gin.Context) {
 		return
 	}
 	c.Set("login_type", "oauth_telegram")
-	controller.SetupLogin(&user, c)
+	usercontroller.SetupLogin(&user, c)
 }
 
 func checkTelegramAuthorization(params map[string][]string, token string) bool {

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/controller/tenant"
 	"github.com/QuantumNous/new-api/controller/ticket"
+	"github.com/QuantumNous/new-api/controller/user"
 	"github.com/QuantumNous/new-api/middleware"
 
 	// Import oauth package to register providers via init()
@@ -50,7 +51,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)
 		// OAuth routes - specific routes must come before :provider wildcard
 		apiRouter.GET("/oauth/state", middleware.CriticalRateLimit(), auth.GenerateOAuthCode)
-		apiRouter.POST("/oauth/email/bind", middleware.CriticalRateLimit(), controller.EmailBind)
+		apiRouter.POST("/oauth/email/bind", middleware.CriticalRateLimit(), user.EmailBind)
 		// Non-standard OAuth (WeChat, Telegram) - keep original routes
 		apiRouter.GET("/oauth/wechat", middleware.CriticalRateLimit(), auth.WeChatAuth)
 		apiRouter.POST("/oauth/wechat/bind", middleware.CriticalRateLimit(), auth.WeChatBind)
@@ -134,13 +135,13 @@ func SetApiRouter(router *gin.Engine) {
 
 		userRoute := apiRouter.Group("/user")
 		{
-			userRoute.POST("/register", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Register)
-			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Login)
+			userRoute.POST("/register", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), user.Register)
+			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), user.Login)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), auth.Verify2FALogin)
 			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), auth.PasskeyLoginBegin)
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), auth.PasskeyLoginFinish)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
-			userRoute.POST("/logout", controller.Logout)
+			userRoute.POST("/logout", user.Logout)
 			userRoute.POST("/epay/notify", payment.EpayNotify)
 			userRoute.GET("/epay/notify", payment.EpayNotify)
 			userRoute.GET("/groups", catalog.GetUserGroups)
@@ -150,31 +151,31 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				selfRoute.GET("/self/groups", catalog.GetUserGroups)
 				selfRoute.GET("/self/channel-groups", catalog.GetChannelGroups)
-				selfRoute.GET("/self", controller.GetSelf)
-				selfRoute.GET("/tenants", controller.ListCurrentUserTenants)
-				selfRoute.POST("/tenant/switch", controller.SwitchTenant)
-				selfRoute.GET("/models", controller.GetUserModels)
-				selfRoute.PUT("/self", controller.UpdateSelf)
-				selfRoute.DELETE("/self", controller.DeleteSelf)
-				selfRoute.GET("/token", controller.GenerateAccessToken)
+				selfRoute.GET("/self", user.GetSelf)
+				selfRoute.GET("/tenants", user.ListCurrentUserTenants)
+				selfRoute.POST("/tenant/switch", user.SwitchTenant)
+				selfRoute.GET("/models", user.GetUserModels)
+				selfRoute.PUT("/self", user.UpdateSelf)
+				selfRoute.DELETE("/self", user.DeleteSelf)
+				selfRoute.GET("/token", user.GenerateAccessToken)
 				selfRoute.GET("/passkey", auth.PasskeyStatus)
 				selfRoute.POST("/passkey/register/begin", auth.PasskeyRegisterBegin)
 				selfRoute.POST("/passkey/register/finish", auth.PasskeyRegisterFinish)
 				selfRoute.POST("/passkey/verify/begin", auth.PasskeyVerifyBegin)
 				selfRoute.POST("/passkey/verify/finish", auth.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", auth.PasskeyDelete)
-				selfRoute.GET("/aff", controller.GetAffCode)
+				selfRoute.GET("/aff", user.GetAffCode)
 				selfRoute.GET("/topup/info", payment.GetTopUpInfo)
 				selfRoute.GET("/topup/self", payment.GetUserTopUps)
-				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
+				selfRoute.POST("/topup", middleware.CriticalRateLimit(), user.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), payment.RequestEpay)
 				selfRoute.POST("/amount", payment.RequestAmount)
 				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), payment.RequestStripePay)
 				selfRoute.POST("/stripe/amount", payment.RequestStripeAmount)
 				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), payment.RequestCreemPay)
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), payment.RequestWaffoPay)
-				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
-				selfRoute.PUT("/setting", controller.UpdateUserSetting)
+				selfRoute.POST("/aff_transfer", user.TransferAffQuota)
+				selfRoute.PUT("/setting", user.UpdateUserSetting)
 
 				// 2FA routes
 				selfRoute.GET("/2fa/status", auth.Get2FAStatus)
@@ -184,8 +185,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/2fa/backup_codes", auth.RegenerateBackupCodes)
 
 				// Check-in routes
-				selfRoute.GET("/checkin", controller.GetCheckinStatus)
-				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
+				selfRoute.GET("/checkin", user.GetCheckinStatus)
+				selfRoute.POST("/checkin", middleware.TurnstileCheck(), user.DoCheckin)
 
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", auth.GetUserOAuthBindings)
@@ -195,18 +196,18 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.TenantAdminAuth())
 			{
-				adminRoute.GET("/", controller.GetAllUsers)
+				adminRoute.GET("/", user.GetAllUsers)
 				adminRoute.GET("/topup", payment.GetAllTopUps)
 				adminRoute.POST("/topup/complete", payment.AdminCompleteTopUp)
-				adminRoute.GET("/search", controller.SearchUsers)
+				adminRoute.GET("/search", user.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", auth.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", auth.UnbindCustomOAuthByAdmin)
-				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
-				adminRoute.GET("/:id", controller.GetUser)
-				adminRoute.POST("/", controller.CreateUser)
-				adminRoute.POST("/manage", controller.ManageUser)
-				adminRoute.PUT("/", controller.UpdateUser)
-				adminRoute.DELETE("/:id", controller.DeleteUser)
+				adminRoute.DELETE("/:id/bindings/:binding_type", user.AdminClearUserBinding)
+				adminRoute.GET("/:id", user.GetUser)
+				adminRoute.POST("/", user.CreateUser)
+				adminRoute.POST("/manage", user.ManageUser)
+				adminRoute.PUT("/", user.UpdateUser)
+				adminRoute.DELETE("/:id", user.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", auth.AdminResetPasskey)
 
 				// Admin 2FA routes
@@ -340,15 +341,15 @@ func SetApiRouter(router *gin.Engine) {
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{
-			tokenRoute.GET("/", controller.GetAllTokens)
-			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
-			tokenRoute.GET("/:id", controller.GetToken)
-			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
-			tokenRoute.POST("/", controller.AddToken)
-			tokenRoute.PUT("/", controller.UpdateToken)
-			tokenRoute.DELETE("/:id", controller.DeleteToken)
-			tokenRoute.POST("/batch", controller.DeleteTokenBatch)
-			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKeysBatch)
+			tokenRoute.GET("/", user.GetAllTokens)
+			tokenRoute.GET("/search", middleware.SearchRateLimit(), user.SearchTokens)
+			tokenRoute.GET("/:id", user.GetToken)
+			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), user.GetTokenKey)
+			tokenRoute.POST("/", user.AddToken)
+			tokenRoute.PUT("/", user.UpdateToken)
+			tokenRoute.DELETE("/:id", user.DeleteToken)
+			tokenRoute.POST("/batch", user.DeleteTokenBatch)
+			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), user.GetTokenKeysBatch)
 		}
 
 		usageRoute := apiRouter.Group("/usage")
@@ -357,7 +358,7 @@ func SetApiRouter(router *gin.Engine) {
 			tokenUsageRoute := usageRoute.Group("/token")
 			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{
-				tokenUsageRoute.GET("/", controller.GetTokenUsage)
+				tokenUsageRoute.GET("/", user.GetTokenUsage)
 			}
 		}
 
@@ -476,11 +477,11 @@ func SetApiRouter(router *gin.Engine) {
 		rebateSettingRoute := apiRouter.Group("/user_rebate_setting")
 		rebateSettingRoute.Use(middleware.TenantAdminAuth())
 		{
-			rebateSettingRoute.GET("/", controller.GetAllUserRebateSettings)
-			rebateSettingRoute.GET("/:id", controller.GetUserRebateSetting)
-			rebateSettingRoute.POST("/", controller.CreateUserRebateSetting)
-			rebateSettingRoute.PUT("/", controller.UpdateUserRebateSetting)
-			rebateSettingRoute.DELETE("/:id", controller.DeleteUserRebateSetting)
+			rebateSettingRoute.GET("/", user.GetAllUserRebateSettings)
+			rebateSettingRoute.GET("/:id", user.GetUserRebateSetting)
+			rebateSettingRoute.POST("/", user.CreateUserRebateSetting)
+			rebateSettingRoute.PUT("/", user.UpdateUserRebateSetting)
+			rebateSettingRoute.DELETE("/:id", user.DeleteUserRebateSetting)
 		}
 
 		// Message routes (admin)

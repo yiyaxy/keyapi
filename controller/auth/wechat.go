@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/controller"
+	usercontroller "github.com/QuantumNous/new-api/controller/user"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -137,7 +137,7 @@ func WeChatAuth(c *gin.Context) {
 		return
 	}
 	c.Set("login_type", "oauth_wechat")
-	controller.SetupLogin(&user, c)
+	usercontroller.SetupLogin(&user, c)
 }
 
 type wechatBindRequest struct {

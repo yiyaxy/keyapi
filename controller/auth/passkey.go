@@ -3,7 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/controller"
+	usercontroller "github.com/QuantumNous/new-api/controller/user"
 	"net/http"
 	"strconv"
 	"time"
@@ -324,7 +324,7 @@ func PasskeyLoginFinish(c *gin.Context) {
 	}
 
 	c.Set("login_type", "passkey")
-	controller.SetupLogin(modelUser, c)
+	usercontroller.SetupLogin(modelUser, c)
 	return
 }
 

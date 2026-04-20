@@ -2,7 +2,7 @@ package auth
 
 import (
 	"encoding/base64"
-	"github.com/QuantumNous/new-api/controller"
+	usercontroller "github.com/QuantumNous/new-api/controller/user"
 	"net/http"
 	"strings"
 
@@ -191,5 +191,5 @@ func LoginWithWxQrTicket(c *gin.Context) {
 	}
 
 	c.Set("login_type", "oauth_wx_mini_qr")
-	controller.SetupLogin(user, c)
+	usercontroller.SetupLogin(user, c)
 }
