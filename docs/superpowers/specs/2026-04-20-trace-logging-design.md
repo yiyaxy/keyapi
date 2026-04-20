@@ -23,11 +23,14 @@
 
 ### 1.2 本次目标(v1)
 
-- **日志全覆盖 TraceId**:SQL / SYS / 业务 / Gin HTTP 四类日志每一行都有 TraceId 列
+- **日志统一写入口**:SQL / SYS / 业务 / Gin HTTP 四类日志全部走 `gin.DefaultWriter` / `gin.DefaultErrorWriter`,受 `LogWriterMu` 保护,**同一份日志文件里可 `grep`**
+- **明确覆盖范围**:
+  - **完全覆盖**:HTTP 主链路(RequestId middleware 之后的所有同步调用)、`main.go` 内所有长驻后台任务入口(见 3.4 清单)、启动阶段
+  - **部分覆盖**:HTTP 请求内部通过 `gopool.Go` / `go func()` 起的异步 goroutine(如 relay 流处理),仅当调用方显式改用 `trace.GoInherit(...)` 包装时才带 trace,否则显示 `"-"`。v1 不强制迁移这些点
 - **统一时间戳**:所有日志使用 `2006/01/02 15:04:05.000`(毫秒精度)
 - **无侵入获取 TraceId**:基于 goroutine-local 存储,不改 DB 调用点,不改现有业务代码签名
 - **三类 TraceId 前缀**:`HTTP-*`(请求)、`JOB-<name>-*`(后台任务)、`SYS-*`(启动 / 未命名任务兜底)
-- **降级安全**:任何地方拿不到 TraceId 都返回 `"-"`,不 panic、不阻塞业务
+- **降级安全**:`trace.Get()` 任何情况返回 `"-"`;`logger.Log*` 面对 `nil` context 也必须安全降级,不 panic
 
 ### 1.3 v1 明确不做
 
@@ -46,7 +49,7 @@
 |--------|------|------|
 | **TraceId 传递机制** | Goroutine-Local(通过 `github.com/timandy/routine`) | 项目 353 处 `DB.XXX` 不用 `WithContext`,Context 传递要改动巨大;goroutine-local 是零改动最优解 |
 | **库选择** | `github.com/timandy/routine` | 专为 Java 风格 ThreadLocal 设计,支持 `InheritableThreadLocal`,国内 Go 项目使用广泛,久经验证 |
-| **继承策略** | `InheritableThreadLocal` + 只包装明确的任务入口 | 裸 `go func()` 的子 goroutine 在有父 trace 时自动继承;后台任务入口显式 `trace.NewJob(...)` 开始新 trace |
+| **继承边界(重要)** | **只有 `routine.Go(fn)` / `routine.WrapTask(fn).Run()` / `trace.GoJob` / `trace.GoInherit` 这四种包装启动的子 goroutine 才继承父 trace。** 原生 `go func() { ... }` 和 `gopool.Go(...)` **一律不继承**,子 goroutine 中 `trace.Get()` 返回 `"-"` | `timandy/routine` 的 `InheritableThreadLocal` 只在自己的 `routine.Go` 里 snapshot + restore,Go 本身不提供 goroutine 继承 hook。spec 所有假设都建立在这个边界上 |
 | **TraceId 格式** | `<前缀>-<8位hex>`,最长 `JOB-<name>-<hex>`(name ≤ 10) | 可读、定宽、`grep` 友好;8 位 hex ≈ 40 亿空间,运行时段内足够唯一 |
 | **TraceId 列宽** | 22 字符左对齐 | 视觉扫齐,长于 22 的名字会打破对齐但仍能读 |
 | **时间戳格式** | `2006/01/02 15:04:05.000`(本地时区) | 保留现有格式风格,只是加毫秒;本地时区对单机运维友好 |
@@ -121,12 +124,18 @@ func NewSys(name string) string {
     return prefixSys + "-" + name + "-" + randHex8()
 }
 
-// GoJob 在子 goroutine 中用指定 name 执行 fn;若父 goroutine 已有 TraceId,则子 goroutine 继承父的 TraceId;否则生成新的 JOB trace。
-// 执行完成后自动 Clear,不污染 goroutine 池。
+// GoJob 在新 goroutine 中为这次执行启动一条全新的 JOB-<name>-<hex> trace。
+// 语义明确:无论父 goroutine 是否已有 trace,都生成新的 JOB trace,不继承。
+// 场景:长驻后台任务、定时调度入口(main.go 里的 loop 启动点)。
+// 执行完成后自动 Clear,不污染 gopool worker 池。
+// 实现:内部用 routine.Go(...) 启动;进入后第一件事就是 Set(新 JOB id),把可能继承来的值覆盖掉。
 func GoJob(name string, fn func())
 
-// GoInherit 仅继承父 goroutine TraceId,不生成新的;父为空时子为空。
-// 适合"业务请求内部起 goroutine 做辅助工作"的场景(如流式 relay)。
+// GoInherit 在新 goroutine 中继承父 goroutine 的 TraceId 执行 fn。
+// 父 goroutine 未设置时,子 goroutine 也是未设置状态(Get 返回 "-")。
+// 场景:HTTP 请求内部起的辅助 goroutine,希望日志继续带 HTTP-xxx 前缀(如 relay 流处理)。
+// 实现:用 routine.Go(...) 启动,靠 InheritableThreadLocal 自动继承。
+// 执行完成后自动 Clear(显式写,不依赖父值)。
 func GoInherit(fn func())
 ```
 
@@ -165,11 +174,17 @@ func FmtTrace() string {
 
 #### `model/gorm_logger.go`
 
-在 `Trace()` 三个 case(正常 / 慢查询 / 错误)的 `Printf` 前加两列 `FmtLogTime(time.Now())` 和 `FmtTrace()`。示例:
+**两处关键修改**:
+
+1. **接入统一 writer**:当前实现用 `fmt.Printf` 直接写 stdout,绕过了 `gin.DefaultWriter` / `gin.DefaultErrorWriter` 和 `LogWriterMu`,导致 SQL 日志不进入日志轮转文件,也不与其他日志互斥写。改为通过 `LogWriterMu.RLock()` 向 `gin.DefaultWriter`(正常 / 慢查询)和 `gin.DefaultErrorWriter`(错误)写入。这是 v1 "`grep <traceId>` 串起完整链路"能成立的必要前提。
+2. **加时间 + trace 列**:`Trace()` 三个 case(正常 / 慢查询 / 错误)的输出都加 `FmtLogTime(time.Now())` 和 `FmtTrace()` 两列。
+
+示例(正常 SQL,Info 级别):
 
 ```go
-// 正常 SQL (Info 级别)
-fmt.Printf("%s[SQL]%s %s | %s | %s | %s%s%s | %s\n",
+common.LogWriterMu.RLock()
+_, _ = fmt.Fprintf(gin.DefaultWriter,
+    "%s[SQL]%s %s | %s | %s | %s%s%s | %s\n",
     cGray, cReset,
     common.FmtLogTime(time.Now()),
     common.FmtTrace(),
@@ -177,7 +192,10 @@ fmt.Printf("%s[SQL]%s %s | %s | %s | %s%s%s | %s\n",
     cGray, caller, cReset,
     sql,
 )
+common.LogWriterMu.RUnlock()
 ```
+
+错误行走 `gin.DefaultErrorWriter`,保持与 `logger.LogError` 一致。
 
 #### `common/sys_log.go`
 
@@ -193,16 +211,23 @@ fmt.Fprintf(w, "[SYS] %s | %s | %s\n", FmtLogTime(t), FmtTrace(), s)
 
 ```go
 func logHelper(ctx context.Context, level string, msg string) {
-    id, _ := ctx.Value(common.RequestIdKey).(string)
+    var id string
+    if ctx != nil {
+        if v, ok := ctx.Value(common.RequestIdKey).(string); ok {
+            id = v
+        }
+    }
     if id == "" {
-        id = trace.Get()  // fallback 到 goroutine-local
+        id = trace.Get()  // fallback 到 goroutine-local;未设置时内部返回 "-"
     }
     now := time.Now()
-    // ...
+    // ... writer 选择逻辑不变 ...
     _, _ = fmt.Fprintf(writer, "[%s] %s | %-*s | %s\n",
         level, common.FmtLogTime(now), common.TraceColumnWidth, id, msg)
 }
 ```
+
+**关键防御性检查**:`ctx != nil` 判断必须加——仓库里已有 `logger.LogError(nil, ...)` 调用点(至少 `dto/gemini.go:131/138/155`),伪码里直接 `ctx.Value(...)` 会 panic,违背 "降级安全" 目标。这是本次改造 **不能缺** 的一步。
 
 注意:这里直接用 `id`(可能是 `HTTP-xxx` 或 fallback 的 `-`),不调用 `FmtTrace()`,因为 `FmtTrace()` 只读 goroutine-local,而这里 ctx 的 RequestId 是主源。
 
@@ -246,23 +271,48 @@ func RequestId() func(c *gin.Context) {
 
 ### 3.4 后台任务入口改造
 
-在每个"定时调度 / 长驻 goroutine"的入口调用 `trace.Set(trace.NewJob("<name>"))` + `defer trace.Clear()`,或用 `trace.GoJob("<name>", fn)` 包装:
+**改造原则**:v1 **完全覆盖 `main.go` 启动的所有长驻 goroutine**,每个入口用以下两种方式之一:
 
-| 文件 | 任务名 (name) |
-|------|----------------|
-| `service/subscription_reset_task.go` | `subreset` |
-| `service/task_polling.go` | `taskpoll` |
-| `service/codex_credential_refresh_task.go` | `codexref` |
-| `service/invoice_issue_service.go` | `invissue` |
-| `model/site_rpm_snapshot.go` 的快照写入循环入口 | `rpmsnap` |
-| `model/ip_ban.go` 的 ip ban 清理定时器入口 | `ipban` |
-| `model/option.go` 的 `syncing options` 定时任务入口 | `optsync` |
-| `model/midjourney.go` 的 midjourney 轮询入口 | `mjpoll` |
-| 其他 gopool.Go 起的命名后台任务(按实际发现补) | — |
+- 方式 A(推荐,新代码):把 `go fn()` / `gopool.Go(fn)` 替换为 `trace.GoJob("<name>", fn)`
+- 方式 B(已有函数,不想改调用点):在被调用函数开头加 `trace.Set(trace.NewJob("<name>")); defer trace.Clear()`
 
-`main.go` 启动阶段一次性调用 `trace.Set(trace.NewSys("bootstrap"))`(仅在 main goroutine 内有效),为启动时的初始化 SQL / SYS 日志加上 `SYS-bootstrap-*` 标记。
+**`main.go` 长驻 goroutine 完整清单**(来自 `main.go:80–180`):
 
-**未包装的 goroutine**:业务请求内部起的辅助 goroutine(如 `relay/channel/*` 的流处理)通过 `InheritableThreadLocal` 自动继承父 trace。若发现某些 goroutine 拿不到 trace(日志显示 `-`),按需改为 `routine.Go(...)` 或 `trace.GoInherit(...)`。
+| # | 启动点(main.go) | 任务函数 | 任务名 (name) |
+|---|-------------------|----------|----------------|
+| 1 | L88(`go func` 包含 `go func` 嵌套) | `model.InitChannelCache` | `chcacheinit` |
+| 2 | L98 | `model.SyncChannelCache` | `chcachesync` |
+| 3 | L102 | `model.SyncOptions` | `optsync` |
+| 4 | L105 | `model.UpdateQuotaData` | `quotaupdate` |
+| 5 | L112 | `channel.AutomaticallyUpdateChannels` | `chupdate` |
+| 6 | L115 | `channel.AutomaticallyTestChannels` | `chtest` |
+| 7 | L118 | `service.StartCodexCredentialAutoRefreshTask` | `codexref` |
+| 8 | L121 | `service.StartSubscriptionQuotaResetTask` | `subreset` |
+| 9 | L125 | `model.StartSiteRPMSnapshotWriter` | `rpmsnap` |
+| 10 | L130 | `service.InvoiceQueryWorker` | `invquery` |
+| 11 | L143 | `channel.StartChannelUpstreamModelUpdateTask` | `chupstream` |
+| 12 | L147 | `service.StartTenantAlertSweepLoop` | `tenalert` |
+| 13 | L151 | `service.StartTenantBillingAndPlanLoop` | `tenbill` |
+| 14 | L155 | `payment.StartPaymentReconcileLoop` | `payrecon` |
+| 15 | L161 | `media.UpdateMidjourneyTaskBulk` | `mjpoll` |
+| 16 | L164 | `media.UpdateTaskBulk` | `taskpoll` |
+| 17 | L175 | pprof http server | `pprof` |
+| 18 | L178 | `common.Monitor` | `monitor` |
+| 19 | `model.InitBatchUpdater`(L171)内部起的 goroutine | 按实际函数名 | `batchupdate` |
+
+**实现要点**:
+- #11 `StartChannelUpstreamModelUpdateTask` 和 #7 `StartCodexCredentialAutoRefreshTask` / #8 `StartSubscriptionQuotaResetTask` 等是**函数内部**起 goroutine(不在 main.go 里直接 go),走方式 B,改对应函数
+- main.go 里直接 `go ...` / `gopool.Go(...)` 的点(#1–#6、#9、#10、#12–#18)走方式 A,改 main.go
+- **上线前 checklist**:静态扫一遍 `main.go` 里所有 `go ` 和 `gopool.Go`,每一处必须对应到上表某行,否则漏了
+
+**启动阶段**:
+- `main.go` 进入 `main()` 时调用 `trace.Set(trace.NewSys("bootstrap"))`,覆盖所有初始化期间的同步 SQL / SYS 日志
+- 在 HTTP server 启动前 `trace.Clear()`,避免 bootstrap trace 污染主 goroutine 后续行为
+
+**v1 不包装的 goroutine(显式声明为"部分覆盖")**:
+- HTTP 请求 handler 内部起的辅助 goroutine(relay 流处理、异步扣费、日志投递等),涉及 `controller/relay.go`、`relay/channel/api_request.go`、`relay/helper/stream_scanner.go` 等至少 **20+ 处**
+- 这些点的子 goroutine 中 `trace.Get()` 返回 `"-"`,日志链路在异步边界处中断
+- **后续专题迁移**:按使用频率排序,每个迁移点改 `gopool.Go(fn)` → `trace.GoInherit(fn)`,一次改一个包,纳入独立 PR。v1 不做,但在文档里留言让后续工程师知道这里是已知缺口
 
 ### 3.5 依赖
 
@@ -279,27 +329,32 @@ require github.com/timandy/routine v1.1.5
 ## 4. 数据流 / 序列图
 
 ```
-HTTP 请求链路:
+HTTP 请求链路(同步部分完全覆盖):
   Client ──→ Gin
-             └→ RequestId middleware: trace.Set("HTTP-a3f2c1b8")
-                └→ Handler
+             └→ RequestId middleware: trace.Set("HTTP-a3f2c1b8")  + defer trace.Clear()
+                └→ Handler(同步)
                    └→ DB.Find(...) → GORM Trace 回调读 trace.Get() → "HTTP-a3f2c1b8"
-                   └→ logger.LogInfo(ctx, ...) → 读 ctx 里的 RequestId → "HTTP-a3f2c1b8"
+                   └→ logger.LogInfo(ctx, ...) → 读 ctx RequestId → "HTTP-a3f2c1b8"
                    └→ common.SysLog(...) → 读 trace.Get() → "HTTP-a3f2c1b8"
-             └→ middleware 结束: defer trace.Clear()
+                └→ Handler 内部 gopool.Go(...) / go func():
+                   └→ 子 goroutine 中 trace.Get() → "-"   (⚠ v1 不覆盖)
+                   (要带 trace 必须显式改成 trace.GoInherit(...))
 
-后台任务链路:
-  main → gopool.Go(scheduleSubscriptionReset)
-         └→ trace.GoJob("subreset", runResetLoop)
-            └→ trace.Set("JOB-subreset-b9e8d2c1")
-               └→ DB.Find(...) → GORM 日志 "JOB-subreset-b9e8d2c1"
-               └→ common.SysLog(...) → "JOB-subreset-b9e8d2c1"
-            └→ trace.Clear()
+后台任务链路(main.go 启动点完全覆盖):
+  main → trace.GoJob("subreset", service.StartSubscriptionQuotaResetTask)
+         └→ routine.Go:
+            ├→ trace.Set("JOB-subreset-b9e8d2c1")
+            ├→ fn() 执行期间:
+            │   └→ DB.Find(...) → GORM 日志 "JOB-subreset-b9e8d2c1"
+            │   └→ common.SysLog(...) → "JOB-subreset-b9e8d2c1"
+            └→ defer trace.Clear()
 
 启动阶段:
-  main → trace.Set(trace.NewSys("bootstrap"))
+  main() 入口 → trace.Set(trace.NewSys("bootstrap"))
          ├→ model.InitDB() → SQL 日志 "SYS-bootstrap-c1d3e5f7"
-         └→ 启动完成后 trace.Clear()
+         ├→ model.InitOptions() → 同上
+         └→ HTTP server Run 前 → trace.Clear()
+            (避免 main goroutine 后续行为继续带 bootstrap 标签)
 ```
 
 ---
@@ -311,9 +366,10 @@ HTTP 请求链路:
 | `trace.Get()` 在未 Set 的 goroutine 调用 | 返回 `"-"`,不 panic |
 | `timandy/routine` 内部 panic(Go 版本不兼容的极端情况) | `Get()` 加 `defer recover`,回退返回 `"-"` |
 | `crypto/rand` 失败 | `randHex8` 回退 `mrand.Uint32`,继续生成 |
-| 后台任务忘记 `trace.NewJob` | 日志显示 `"-"`,可定位但不好读;通过代码 review 逐步补全 |
-| 继承失败(裸 `go func()` 在无父 trace 的 goroutine 中) | 日志显示 `"-"`,同上 |
-| 日志输出并发安全 | 沿用现有 `LogWriterMu` 读写锁,不变 |
+| 后台任务忘记 `trace.NewJob` | 日志显示 `"-"`,可定位但不好读;3.4 的 checklist 要求逐个核对 main.go,plan 阶段兜底 |
+| HTTP 请求内异步(`gopool.Go` / 裸 `go func`)的子 goroutine | 日志显示 `"-"`,**v1 明确不覆盖**,属已知缺口,后续专项迁移到 `trace.GoInherit` |
+| `logger.Log*` 传入 `nil` ctx(例如 `dto/gemini.go`) | `logHelper` 走 `ctx == nil` 分支 → fallback 到 `trace.Get()` → `"-"`;不 panic |
+| 日志输出并发安全 | 沿用现有 `LogWriterMu` 读写锁;GORM logger 从 `fmt.Printf` 改为 `gin.DefaultWriter` 后也受该锁保护 |
 
 ---
 
@@ -333,6 +389,11 @@ HTTP 请求链路:
 - `FmtLogTime` 对固定 `time.Time` 输出 `2006/01/02 15:04:05.000` 格式
 - `FmtTrace` 在 goroutine-local 未 Set 时返回 `"- " * N`(22 字符),Set 后返回左对齐到 22 的字符串
 
+**`logger/logger_test.go`**(新增或扩充):
+- `LogError(nil, "...")` 不 panic,输出里 trace 列是 `"-"`
+- `LogInfo(ctx_with_requestid, "...")` 输出包含该 RequestId
+- `LogInfo(context.Background(), "...")` 且 goroutine-local 有 trace → 输出包含 `trace.Get()` 的值
+
 ### 6.2 集成测试
 
 **`model/gorm_logger_test.go`**(新增):
@@ -347,8 +408,11 @@ HTTP 请求链路:
 - [ ] 启动 server,请求 `/api/user/self`,Gin / 业务 / SQL 日志 TraceId 一致
 - [ ] 等后台任务触发,SQL / SYS 日志带 `JOB-<name>-*` 前缀
 - [ ] `grep HTTP-<id>` 完整拉出一次请求的所有相关日志
+- [ ] **日志文件统一性**:查看 `$LOG_DIR/oneapi-*.log`,SQL 行和 SYS 行都在同一份文件里(验证 GORM 已接入 `gin.DefaultWriter`)
+- [ ] **nil ctx 不 panic**:触发 `dto/gemini.go` 里 `logger.LogError(nil, ...)` 的路径(发一次带错误 tools 的 Gemini 请求),server 应正常返回 4xx,不应 crash
 - [ ] `DEBUG=true` 下打开 Info 级别,所有 SQL 都有 TraceId
 - [ ] `DEBUG=false` 下关闭 Info,只有慢查询 / 错误有 TraceId 列(格式仍对齐)
+- [ ] 启动阶段所有 bootstrap 期的 SQL / SYS 日志前缀是 `SYS-bootstrap-*`
 
 ### 6.4 不测
 
@@ -372,18 +436,19 @@ HTTP 请求链路:
 | 8 | `middleware/logger.go` | 修改 | Gin format 加毫秒 + trace 定宽列 |
 | 9 | `middleware/request-id.go` | 修改 | `trace.Set` + `defer trace.Clear`;RequestId 格式改 `HTTP-<hex8>` |
 | 10 | `model/gorm_logger.go` | 修改 | 三个 case 的 Printf 加时间 + trace 列 |
-| 11 | `model/gorm_logger_test.go` | 新建 | 集成测试 |
-| 12 | `service/subscription_reset_task.go` | 修改 | 任务入口加 `trace.NewJob("subreset")` |
-| 13 | `service/task_polling.go`(按实际文件名) | 修改 | `trace.NewJob("taskpoll")` |
-| 14 | `service/codex_credential_refresh_task.go` | 修改 | `trace.NewJob("codexref")` |
-| 15 | `service/invoice_issue_service.go` | 修改 | `trace.NewJob("invissue")` |
-| 16 | `model/site_rpm_snapshot.go` 调度入口 | 修改 | `trace.NewJob("rpmsnap")` |
-| 17 | `model/ip_ban.go` 清理定时器入口 | 修改 | `trace.NewJob("ipban")` |
-| 18 | `model/option.go` sync 定时任务入口 | 修改 | `trace.NewJob("optsync")` |
-| 19 | `model/midjourney.go` 轮询入口 | 修改 | `trace.NewJob("mjpoll")` |
-| 20 | `main.go` | 修改 | 启动阶段 `trace.Set(trace.NewSys("bootstrap"))` |
+| 11 | `model/gorm_logger_test.go` | 新建 | 集成测试(含 writer 统一性) |
+| 11.5 | `logger/logger_test.go` | 新建或扩充 | 覆盖 nil ctx / ctx-with-id / goroutine-local fallback 三种路径 |
+| 12 | `main.go` | 修改 | (a) 启动起点 `trace.Set(trace.NewSys("bootstrap"))`,HTTP server 启动前 `trace.Clear()`;(b) 将 L88–L178 间的 14+ 处 `go ...` / `gopool.Go(...)` 按 3.4 表改为 `trace.GoJob("<name>", ...)` |
+| 13 | `service/subscription_reset_task.go` | 修改 | 入口函数开头 `trace.Set(trace.NewJob("subreset")); defer trace.Clear()` |
+| 14 | `service/codex_credential_refresh_task.go` | 修改 | 同上,`codexref` |
+| 15 | `controller/channel/upstream_update.go`(`StartChannelUpstreamModelUpdateTask`) | 修改 | 同上,`chupstream` |
+| 16 | `service/invoice_query_worker.go`(按实际文件)| 修改 | 同上,`invquery` |
+| 17 | `model/batch_updater.go`(按实际文件,`InitBatchUpdater` 内部 goroutine)| 修改 | 同上,`batchupdate` |
 
-实际执行时 #12–#19 可能有偏差(文件名 / 调度入口位置),以 plan 阶段真实代码为准。
+**实际执行时 #13–#17 文件名 / 函数位置以 plan 阶段核实为准**。plan 阶段必须完成:
+- 逐个验证 3.4 清单 19 行对应的真实源码位置
+- 扫 `main.go` 所有 `go ` / `gopool.Go`,每一处必须对应表中一行,无漏网
+- 识别函数"内部"起 goroutine 的情况(方式 B),补入改动清单
 
 ---
 
@@ -393,9 +458,11 @@ HTTP 请求链路:
 |------|--------|------|------|
 | `timandy/routine` 在 Go 1.25 上运行异常 | 低 | 中 | CI 跑现有测试套件 + 新增 trace 单元测试;若出问题回退到选项 B(goid + sync.Map) |
 | 大量日志 I/O 压测性能下降 | 低 | 低 | 仅新增 1 次 goroutine-local 读 + 1 次 `fmt.Sprintf`,ns 级 |
-| 后台任务入口漏包装 | 中 | 低 | 日志显示 `"-"`,不破坏功能;上线后观察补全 |
+| `main.go` 长驻 goroutine 漏包装 | 低 | 中 | 3.4 有完整清单 + 上线前 checklist 要求逐个核对;漏一个某类任务 SQL/SYS 显示 `"-"` |
+| HTTP 请求内部异步 goroutine 不继承(已知缺口) | 高 | 中 | v1 **显式不覆盖**,日志中异步部分显示 `"-"`;后续独立 PR 按使用频率迁移到 `trace.GoInherit`。文档里明确告知工程师此边界 |
 | RequestId 格式变化破坏外部依赖 | 低 | 中 | 若确实有外部系统用旧格式,可保留原生成逻辑,只加 `trace.Set` 调用 |
-| `InheritableThreadLocal` 在 gopool worker 池复用 goroutine 时继承"幽灵 trace" | 中 | 低 | 所有通过 `trace.GoJob` / `trace.GoInherit` 包装的入口都 `defer trace.Clear()`,避免 pool 复用污染 |
+| `gopool` worker 池复用 goroutine 时继承"幽灵 trace" | 中 | 低 | `trace.GoJob` / `trace.GoInherit` 强制 `defer trace.Clear()`;未包装的裸 `gopool.Go` 不受 TraceLocal 影响(routine 库对它们不起作用) |
+| 接入 `gin.DefaultWriter` 后 SQL 日志数量暴增、写入速度瓶颈 | 低 | 中 | `DEBUG=false` 默认只打慢查询 + 错误,量级与现状一致;`DEBUG=true` 是开发态场景,不追求高 QPS |
 | Windows 终端 ANSI 颜色码乱码 | 低 | 极低 | 现状就是如此,不改;写入日志文件时颜色码可见但可接受 |
 
 ---
