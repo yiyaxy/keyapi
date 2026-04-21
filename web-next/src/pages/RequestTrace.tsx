@@ -118,7 +118,7 @@ export function RequestTracePage() {
                   <td className='px-3 py-2'>
                     {r.quota > 0 ? fmtDisplay(r.quota, cfg) : '—'}
                   </td>
-                  <td className='px-3 py-2'>{r.use_time > 0 ? `${r.use_time} ms` : '—'}</td>
+                  <td className='px-3 py-2'>{r.use_time > 0 ? `${r.use_time}s` : '—'}</td>
                   <td className='max-w-[280px] px-3 py-2'>
                     <div className='truncate text-12 text-fg-2'>{r.content || '—'}</div>
                   </td>

@@ -30,10 +30,16 @@ const TYPE_KEY: Record<LogType, string> = {
   7: 'filters.type.channel_test',
 };
 
-function formatLatency(t: ReturnType<typeof useTranslation>['t'], ms: number): string {
-  if (!ms) return '—';
-  if (ms < 1000) return t('table.latency.ms', { ms });
-  return t('table.latency.s', { s: (ms / 1000).toFixed(1) });
+function formatLatency(t: ReturnType<typeof useTranslation>['t'], seconds: number): string {
+  // 后端 use_time 存的是秒（service/text_quota.go: time.Now().Unix() - StartTime.Unix()），
+  // 这里按秒做档位：< 60 秒按秒显示；>= 60 秒切成「X 分 Y 秒」。
+  if (!seconds) return '—';
+  if (seconds >= 60) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return t('table.latency.m', { m, s });
+  }
+  return t('table.latency.s', { s: seconds });
 }
 
 export function LogsTable({
