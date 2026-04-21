@@ -110,6 +110,10 @@ export default function InvoiceUserPage() {
     setSelectedRowKeys([]);
   };
 
+  const belowMin = selectedRowKeys.length > 0 && totalSelectedMoney < minInvoiceAmount;
+  const amountGap = Math.max(0, minInvoiceAmount - totalSelectedMoney);
+  const applyDisabled = selectedRowKeys.length === 0 || belowMin;
+
   const handleApply = () => {
     if (selectedRowKeys.length === 0) {
       showError(t('invoice.noSelection'));
@@ -260,12 +264,43 @@ export default function InvoiceUserPage() {
         {activeTab === 'orders' && (
           <>
             <div className='flex flex-wrap gap-2 items-center justify-between mb-3'>
-              <Text type='secondary'>{t('invoice.invoiceableOrdersTitle')}</Text>
+              <Space>
+                <Text type='secondary'>{t('invoice.invoiceableOrdersTitle')}</Text>
+                {selectedRowKeys.length > 0 && (
+                  <Tag color={belowMin ? 'red' : 'green'} size='large' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {belowMin
+                      ? t('invoice.selectedBelowMin', {
+                          count: selectedRowKeys.length,
+                          selected: totalSelectedMoney,
+                          min: minInvoiceAmount,
+                          gap: amountGap,
+                        })
+                      : t('invoice.selectedOk', {
+                          count: selectedRowKeys.length,
+                          selected: totalSelectedMoney,
+                          min: minInvoiceAmount,
+                        })}
+                  </Tag>
+                )}
+              </Space>
               <Space>
                 <Button icon={<IconRefresh />} onClick={loadOrders}>{t('invoice.refresh')}</Button>
-                <Button icon={<IconPlus />} type='primary' onClick={handleApply}>{t('invoice.apply')}</Button>
+                <Button icon={<IconPlus />} type='primary' disabled={applyDisabled} onClick={handleApply}>{t('invoice.apply')}</Button>
               </Space>
             </div>
+            {belowMin && (
+              <Banner
+                type='warning'
+                fullMode={false}
+                closeIcon={null}
+                className='mb-3'
+                description={t('invoice.minAmountRequiredDetail', {
+                  selected: totalSelectedMoney,
+                  min: minInvoiceAmount,
+                  gap: amountGap,
+                })}
+              />
+            )}
             <div className='flex flex-wrap gap-2 items-center mb-4'>
               <Input prefix={<IconSearch />} placeholder={t('invoice.keywordPlaceholder')} value={keywordInput} onChange={setKeywordInput} style={{ width: 260 }} />
               <Button icon={<IconSearch />} onClick={handleSearch}>{t('invoice.search')}</Button>

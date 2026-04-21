@@ -235,11 +235,6 @@ export function useSetPlatformChannelMode() {
   });
 }
 
-export type ChannelTestResult = {
-  response_time: number;
-  message?: string;
-};
-
 // useChannelTypeModels maps channel type id → list of builtin model names,
 // sourced from DashboardListModels (/api/models). Used by the channel form
 // to suggest relevant models for the currently-selected provider type.
@@ -270,19 +265,3 @@ export function useAdminGroups() {
   });
 }
 
-export function useTestChannel() {
-  return useMutation({
-    mutationFn: async (id: number) => {
-      // Endpoint returns { success, message, time } with NO `data` field,
-      // so the response interceptor leaves the body in res.data as-is.
-      const res = await api.get<{ success?: boolean; message?: string; time?: number }>(
-        `/api/channel/test/${id}`
-      );
-      const payload = res.data;
-      return {
-        response_time: typeof payload?.time === 'number' ? Math.round(payload.time * 1000) : 0,
-        message: payload?.message,
-      } satisfies ChannelTestResult;
-    },
-  });
-}

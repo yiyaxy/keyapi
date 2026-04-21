@@ -6,6 +6,7 @@ import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ChannelFormDialog } from '@/components/channels/ChannelFormDialog';
 import { ChannelsFilters, type ChannelsFilterState } from '@/components/channels/ChannelsFilters';
 import { ChannelsTable } from '@/components/channels/ChannelsTable';
+import { ChannelTestDialog } from '@/components/channels/ChannelTestDialog';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LogsPagination } from '@/components/logs/LogsPagination';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,6 @@ import {
   useDeleteChannel,
   usePlatformChannelMode,
   useSetPlatformChannelMode,
-  useTestChannel,
   useToggleChannelStatus,
   type Channel,
 } from '@/hooks/useChannels';
@@ -38,7 +38,7 @@ export function ChannelsAdminPage() {
   const [page, setPage] = useState(1);
   const [formTarget, setFormTarget] = useState<'new' | Channel | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null);
-  const [testingId, setTestingId] = useState<number | null>(null);
+  const [testTarget, setTestTarget] = useState<Channel | null>(null);
 
   const channels = useChannels({
     p: page,
@@ -52,12 +52,14 @@ export function ChannelsAdminPage() {
   const setMode = useSetPlatformChannelMode();
   const toggle = useToggleChannelStatus();
   const del = useDeleteChannel();
-  const test = useTestChannel();
 
   const items = channels.data?.items ?? [];
   const total = channels.data?.total ?? 0;
   const myChannels = useMemo(() => items.filter((item) => item.scope !== 'platform'), [items]);
-  const platformChannels = useMemo(() => items.filter((item) => item.scope === 'platform'), [items]);
+  const platformChannels = useMemo(
+    () => items.filter((item) => item.scope === 'platform'),
+    [items]
+  );
   const currentMode = mode.data?.mode ?? 'private_priority';
 
   return (
@@ -131,12 +133,14 @@ export function ChannelsAdminPage() {
             <div className='space-y-5'>
               <Card className='border-line bg-bg-1 shadow-none'>
                 <CardHeader className='pb-3'>
-                  <CardTitle className='text-16 font-semibold tracking-tight'>My channels</CardTitle>
+                  <CardTitle className='text-16 font-semibold tracking-tight'>
+                    My channels
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0'>
                   <ChannelsTable
                     items={myChannels}
-                    testingId={testingId}
+                    testingId={null}
                     onEdit={(c) => setFormTarget(c)}
                     onDelete={(c) => setDeleteTarget(c)}
                     onToggle={(c) =>
@@ -145,14 +149,7 @@ export function ChannelsAdminPage() {
                         { onError: (e) => toast.error((e as Error).message) }
                       )
                     }
-                    onTest={(c) => {
-                      setTestingId(c.id);
-                      test.mutate(c.id, {
-                        onSettled: () => setTestingId(null),
-                        onSuccess: (r) => toast.success(t('test.ok', { latency: r.response_time })),
-                        onError: (e) => toast.error(t('test.fail', { message: (e as Error).message })),
-                      });
-                    }}
+                    onTest={(c) => setTestTarget(c)}
                     showScope
                   />
                 </CardContent>
@@ -160,14 +157,18 @@ export function ChannelsAdminPage() {
 
               <Card className='border-line bg-bg-1 shadow-none'>
                 <CardHeader className='pb-3'>
-                  <CardTitle className='text-16 font-semibold tracking-tight'>Platform channels</CardTitle>
+                  <CardTitle className='text-16 font-semibold tracking-tight'>
+                    Platform channels
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className='space-y-3 pt-0'>
                   {platformChannels.map((channel) => (
                     <div
                       key={channel.id}
                       className={`flex items-center justify-between rounded-md border px-4 py-3 ${
-                        channel.tenant_disabled ? 'border-line bg-bg-0 opacity-60' : 'border-line bg-bg-0'
+                        channel.tenant_disabled
+                          ? 'border-line bg-bg-0 opacity-60'
+                          : 'border-line bg-bg-0'
                       }`}
                     >
                       <div className='min-w-0'>
@@ -176,7 +177,10 @@ export function ChannelsAdminPage() {
                           <span className='text-12 text-fg-2'>{channel.models}</span>
                         </div>
                         <div className='mt-1 text-12 text-fg-2'>
-                          {channel.group} · {channel.markup_ratio ? `${channel.markup_ratio.toFixed(2)}x markup` : 'plan markup'}
+                          {channel.group} ·{' '}
+                          {channel.markup_ratio
+                            ? `${channel.markup_ratio.toFixed(2)}x markup`
+                            : 'plan markup'}
                         </div>
                       </div>
                       <div className='flex items-center gap-3'>
@@ -206,7 +210,7 @@ export function ChannelsAdminPage() {
           ) : (
             <ChannelsTable
               items={items}
-              testingId={testingId}
+              testingId={null}
               onEdit={(c) => setFormTarget(c)}
               onDelete={(c) => setDeleteTarget(c)}
               onToggle={(c) =>
@@ -217,14 +221,7 @@ export function ChannelsAdminPage() {
                   }
                 )
               }
-              onTest={(c) => {
-                setTestingId(c.id);
-                test.mutate(c.id, {
-                  onSettled: () => setTestingId(null),
-                  onSuccess: (r) => toast.success(t('test.ok', { latency: r.response_time })),
-                  onError: (e) => toast.error(t('test.fail', { message: (e as Error).message })),
-                });
-              }}
+              onTest={(c) => setTestTarget(c)}
               showScope
               showMarkup={isRoot}
             />
@@ -248,13 +245,23 @@ export function ChannelsAdminPage() {
           onConfirm={() => {
             const target = deleteTarget;
             setDeleteTarget(null);
-              del.mutate({ id: target.id, tenantView }, {
+            del.mutate(
+              { id: target.id, tenantView },
+              {
                 onSuccess: () => toast.success(t('delete.confirm') + ' ✓'),
                 onError: (err) => toast.error((err as Error).message),
-              });
+              }
+            );
           }}
         />
       )}
+      <ChannelTestDialog
+        channel={testTarget}
+        onOpenChange={(o) => {
+          if (!o) setTestTarget(null);
+        }}
+        onAfterTest={() => void channels.refetch()}
+      />
     </div>
   );
 }

@@ -13,6 +13,7 @@ export type PublicConfig = {
   price?: number;
   custom_currency_symbol?: string;
   custom_currency_exchange_rate?: number;
+  min_invoice_amount?: number;
 };
 
 // Fallbacks mirror the old web's defaults (helpers/render.jsx): a safe
@@ -24,6 +25,7 @@ const DEFAULT: PublicConfig = {
   price: 7,
   custom_currency_symbol: '¤',
   custom_currency_exchange_rate: 1,
+  min_invoice_amount: 200,
 };
 
 export function usePublicConfig() {
@@ -52,16 +54,16 @@ export function toDisplay(
   }
   const usd = raw / cfg.quota_per_unit;
   if (cfg.quota_display_type === 'CNY') {
-    return { value: usd * (cfg.usd_exchange_rate || 1), symbol: '¥', digits: 2 };
+    return { value: usd * (cfg.usd_exchange_rate || 1), symbol: '¥', digits: 6 };
   }
   if (cfg.quota_display_type === 'CUSTOM') {
     return {
       value: usd * (cfg.custom_currency_exchange_rate || 1),
       symbol: cfg.custom_currency_symbol || '¤',
-      digits: 2,
+      digits: 6,
     };
   }
-  return { value: usd, symbol: '$', digits: 2 };
+  return { value: usd, symbol: '$', digits: 6 };
 }
 
 // fromDisplay inverts toDisplay — admins type in the display unit, we

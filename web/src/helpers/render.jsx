@@ -1178,13 +1178,13 @@ export function getCurrencyConfig() {
  * @param {number} digits - 小数位数
  * @returns {string} - 格式化后的货币字符串
  */
-export function convertUSDToCurrency(usdAmount, digits = 2) {
+export function convertUSDToCurrency(usdAmount, digits = 6) {
   const { symbol, rate } = getCurrencyConfig();
   const convertedAmount = usdAmount * rate;
   return symbol + convertedAmount.toFixed(digits);
 }
 
-export function renderQuota(quota, digits = 2) {
+export function renderQuota(quota, digits = 6) {
   let quotaPerUnit = localStorage.getItem('quota_per_unit');
   const quotaDisplayType = localStorage.getItem('quota_display_type') || 'USD';
   quotaPerUnit = parseFloat(quotaPerUnit);

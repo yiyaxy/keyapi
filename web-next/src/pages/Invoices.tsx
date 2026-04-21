@@ -16,6 +16,7 @@ import {
   type InvoiceApplication,
   type InvoiceableOrder,
 } from '@/hooks/useInvoice';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -59,11 +60,15 @@ export function InvoicesPage() {
   const orders = useInvoiceableOrders({ p: page, page_size: PAGE_SIZE });
   const apps = useInvoiceApplications({ p: page, page_size: PAGE_SIZE });
   const cancel = useCancelInvoiceApplication();
+  const publicConfig = usePublicConfig();
+  const minAmount = Number(publicConfig.min_invoice_amount) || 200;
 
   const selectedList = Object.values(selected).filter(
     (v): v is InvoiceableOrder => v !== undefined
   );
   const selectedAmount = selectedList.reduce((a, b) => a + b.money, 0);
+  const belowMin = selectedList.length > 0 && selectedAmount < minAmount;
+  const amountGap = Math.max(0, minAmount - selectedAmount);
 
   function toggle(order: InvoiceableOrder) {
     const key = `${order.source_type}:${order.source_id}`;
@@ -108,6 +113,9 @@ export function InvoicesPage() {
           onToggle={toggle}
           selectedCount={selectedList.length}
           selectedAmount={selectedAmount}
+          minAmount={minAmount}
+          belowMin={belowMin}
+          amountGap={amountGap}
           onApply={() => setCreateOpen(true)}
           onRefetch={() => void orders.refetch()}
           t={t}
@@ -180,6 +188,9 @@ function OrdersTab({
   onToggle,
   selectedCount,
   selectedAmount,
+  minAmount,
+  belowMin,
+  amountGap,
   onApply,
   onRefetch,
   t,
@@ -194,6 +205,9 @@ function OrdersTab({
   onToggle: (o: InvoiceableOrder) => void;
   selectedCount: number;
   selectedAmount: number;
+  minAmount: number;
+  belowMin: boolean;
+  amountGap: number;
   onApply: () => void;
   onRefetch: () => void;
   t: Translator;
@@ -212,19 +226,46 @@ function OrdersTab({
           {t('orders.empty')}
         </div>
       ) : (
-        <>
+        <div className='space-y-3'>
+          <div className='flex items-center justify-between rounded-md border border-line bg-bg-1 px-3 py-2 text-13 text-fg-2'>
+            <span>{t('orders.min_amount_hint', { amount: `¥${minAmount.toFixed(2)}` })}</span>
+          </div>
           {selectedCount > 0 && (
-            <div className='flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-13'>
+            <div
+              className={cn(
+                'flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-13 tabular-nums',
+                belowMin
+                  ? 'border-warn-soft bg-warn-soft text-fg-0'
+                  : 'border-primary/30 bg-primary/5 text-fg-0'
+              )}
+            >
               <span>
-                {t('orders.selected', {
-                  count: selectedCount,
-                  amount: `¥${selectedAmount.toFixed(2)}`,
-                })}
+                {belowMin
+                  ? t('orders.selected_below_min', {
+                      count: selectedCount,
+                      selected: `¥${selectedAmount.toFixed(2)}`,
+                      min: `¥${minAmount.toFixed(2)}`,
+                      gap: `¥${amountGap.toFixed(2)}`,
+                    })
+                  : t('orders.selected', {
+                      count: selectedCount,
+                      amount: `¥${selectedAmount.toFixed(2)}`,
+                    })}
               </span>
-              <Button size='sm' onClick={onApply}>
+              <Button size='sm' disabled={belowMin} onClick={onApply}>
                 {t('orders.apply', { count: selectedCount })}
               </Button>
             </div>
+          )}
+          {belowMin && (
+            <InlineBanner
+              level='warn'
+              message={t('orders.min_amount_required', {
+                selected: `¥${selectedAmount.toFixed(2)}`,
+                min: `¥${minAmount.toFixed(2)}`,
+                gap: `¥${amountGap.toFixed(2)}`,
+              })}
+            />
           )}
           <div className='overflow-x-auto rounded-md border border-line'>
             <table className='w-full border-collapse tabular-nums'>
@@ -261,7 +302,7 @@ function OrdersTab({
             </table>
           </div>
           <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={onPage} />
-        </>
+        </div>
       )}
     </>
   );
