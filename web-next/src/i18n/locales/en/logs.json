@@ -46,5 +46,13 @@
   "admin.filters.channel": "Channel ID",
   "admin.table.col.username": "User",
   "admin.table.col.channel": "Channel",
-  "admin.table.col.ip": "IP"
+  "admin.table.col.ip": "IP",
+  "cost.title": "Cost breakdown",
+  "cost.input_cost": "Input cost",
+  "cost.output_cost": "Output cost",
+  "cost.input_price": "Input price",
+  "cost.output_price": "Output price",
+  "cost.multiplier": "Multiplier",
+  "cost.original": "Original",
+  "cost.billed": "Billed"
 }

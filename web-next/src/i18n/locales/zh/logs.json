@@ -46,5 +46,13 @@
   "admin.filters.channel": "渠道 ID",
   "admin.table.col.username": "用户",
   "admin.table.col.channel": "渠道",
-  "admin.table.col.ip": "IP"
+  "admin.table.col.ip": "IP",
+  "cost.title": "成本明细",
+  "cost.input_cost": "输入成本",
+  "cost.output_cost": "输出成本",
+  "cost.input_price": "输入单价",
+  "cost.output_price": "输出单价",
+  "cost.multiplier": "倍率",
+  "cost.original": "原始",
+  "cost.billed": "计费"
 }

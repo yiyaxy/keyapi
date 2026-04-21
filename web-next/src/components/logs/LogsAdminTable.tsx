@@ -6,6 +6,8 @@ import type { LogRow, LogType } from '@/hooks/useLogs';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
+import { CostBreakdown } from './CostBreakdown';
+
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
   1: 'default',
@@ -74,7 +76,9 @@ export function LogsAdminTable({
                   : '—'}
               </td>
               <td className='px-3 py-2'>
-                {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
+                <CostBreakdown row={r} cfg={cfg}>
+                  {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
+                </CostBreakdown>
               </td>
               <td className='px-3 py-2 font-mono text-12 text-fg-2'>{r.ip || '—'}</td>
               <td className='px-3 py-2'>

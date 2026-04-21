@@ -6,6 +6,8 @@ import type { LogRow, LogType } from '@/hooks/useLogs';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
+import { CostBreakdown } from './CostBreakdown';
+
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
   1: 'default',
@@ -77,7 +79,9 @@ export function LogsTable({
                     : '—'}
                 </td>
                 <td className='px-3 py-2'>
-                  {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
+                  <CostBreakdown row={r} cfg={cfg}>
+                    {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
+                  </CostBreakdown>
                 </td>
                 <td className='px-3 py-2'>{formatLatency(t, r.use_time)}</td>
                 <td className='px-3 py-2'>
