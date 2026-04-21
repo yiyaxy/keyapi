@@ -69,7 +69,7 @@
             <view class="menu-icon" style="background:#e8faf0;">
               <u-icon name="coupon" size="40" color="#18A058" />
             </view>
-            <text class="menu-label">兑换码充值</text>
+            <text class="menu-label">充值</text>
           </view>
           <u-icon name="arrow-right" size="30" color="#9ca3af" />
         </view>
