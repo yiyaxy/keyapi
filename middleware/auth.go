@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/tenant_ctx"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -18,6 +20,35 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
+
+// applyTenantFromToken 在请求未显式携带租户时，用 token.TenantId 注入 ctx 三处
+// （gin.Context / request.Context / goroutine-local tenant_ctx），让后续所有
+// 租户隔离查询自然按 token 归属的租户走。
+//
+// 返回：
+//   - cleanup: 非 nil 时调用方必须 defer 调用（goroutine-local 清理，防止 net/http
+//     keep-alive 复用 goroutine 时把本次租户泄漏给下一次请求）
+//   - ok=false: 请求已显式解析到 tenant 但与 token.TenantId 不一致，调用方应 403
+func applyTenantFromToken(c *gin.Context, token *model.Token) (cleanup func(), ok bool) {
+	if token == nil {
+		return nil, true
+	}
+	requestTenantId := GetTenantId(c)
+	if requestTenantId == 0 {
+		if token.TenantId > 0 {
+			c.Set(string(constant.ContextKeyTenantId), token.TenantId)
+			ctx := context.WithValue(c.Request.Context(), constant.ContextKeyTenantId, token.TenantId)
+			c.Request = c.Request.WithContext(ctx)
+			tenant_ctx.Set(token.TenantId)
+			return tenant_ctx.Clear, true
+		}
+		return nil, true
+	}
+	if token.TenantId != 0 && token.TenantId != requestTenantId {
+		return nil, false
+	}
+	return nil, true
+}
 
 func validUserInfo(username string, role int) bool {
 	// check username is empty
@@ -290,6 +321,20 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			return
 		}
 
+		// Multi-tenant: 同 TokenAuth，按 token.TenantId 注入 ctx 或校验一致性。
+		cleanup, ok := applyTenantFromToken(c, token)
+		if !ok {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "token does not belong to this tenant",
+			})
+			c.Abort()
+			return
+		}
+		if cleanup != nil {
+			defer cleanup()
+		}
+
 		userCache, err := model.GetUserCacheWithContext(c.Request.Context(), token.UserId)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -383,11 +428,17 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 
-		// Multi-tenant: reject token if it doesn't belong to the resolved tenant
-		requestTenantId := GetTenantId(c)
-		if token.TenantId != 0 && token.TenantId != requestTenantId {
+		// Multi-tenant: 外部 API 请求走 sk-key 鉴权时通常不带 X-Tenant-Id/子域名，
+		// TenantResolve 不会写 tenant。此时以 token.TenantId 为权威注入 ctx，
+		// 让后续所有租户隔离查询自然生效；若请求已显式解析到 tenant，则必须
+		// 与 token.TenantId 一致，否则拒绝。
+		cleanup, ok := applyTenantFromToken(c, token)
+		if !ok {
 			abortWithOpenAiMessage(c, http.StatusForbidden, "token does not belong to this tenant")
 			return
+		}
+		if cleanup != nil {
+			defer cleanup()
 		}
 
 		allowIps := token.GetIpLimits()
