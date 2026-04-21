@@ -100,6 +100,13 @@ func PollWxQrTicket(c *gin.Context) {
 // Called from the mini-program after the user scans and taps "confirm".
 // Body: {ticket, code}. No session auth — the WeChat code itself proves
 // identity via jscode2session.
+//
+// Dispatches by ticket.Purpose:
+//   - login (default): resolve/create a user, mark ticket confirmed with that
+//     user id so the PC /login endpoint can issue a session.
+//   - bind: resolve openid only (no user creation), decide if binding is a
+//     clean add or requires a merge (another account in the same tenant
+//     already holds this openid), and record that decision on the ticket.
 func ConfirmWxQrTicket(c *gin.Context) {
 	var req wxQrConfirmRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
@@ -128,9 +135,14 @@ func ConfirmWxQrTicket(c *gin.Context) {
 		return
 	}
 
-	// IMPORTANT: scoped to the tenant the web session belongs to, NOT the
-	// tenant the mini-program request comes from (the mini-program request
-	// has no real tenant context — TenantResolve defaults to DefaultTenantId).
+	if t.Purpose == service.WxQrPurposeBind {
+		confirmWxQrBindTicket(c, t, req.Code)
+		return
+	}
+
+	// Default: login purpose (ticket.Purpose empty = legacy login ticket).
+	// Scoped to the tenant the web session belongs to, NOT the tenant of the
+	// mini-program request (mini-program has no real tenant context).
 	user, err := wxMiniResolveUser(req.Code, t.TenantId)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -146,6 +158,85 @@ func ConfirmWxQrTicket(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"confirmed": true})
+}
+
+// confirmWxQrBindTicket decides whether the scan produces a clean bind, an
+// idempotent no-op, or a merge-required state. Never creates a user.
+func confirmWxQrBindTicket(c *gin.Context, t *service.WxQrTicket, code string) {
+	openid, err := service.ExchangeWxMiniCode(t.TenantId, code)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	wechatId := wxMiniIdPrefix + openid
+
+	// Initiator (A): the PC-logged-in user who created the ticket. The
+	// ticket only makes sense while that user is still active on the web.
+	initiator, err := model.GetUserById(t.UserId, true)
+	if err != nil {
+		common.ApiErrorMsg(c, "发起绑定的账户已失效，请刷新")
+		return
+	}
+	if initiator.TenantId != t.TenantId {
+		common.ApiErrorMsg(c, "站点与绑定会话不匹配")
+		return
+	}
+	if initiator.Status != common.UserStatusEnabled {
+		common.ApiErrorMsg(c, "发起绑定的账户已被禁用")
+		return
+	}
+
+	t.MergeCandidateOpenId = wechatId
+
+	// Idempotent: A already bound to this WeChat — just mark confirmed so PC
+	// finalize resolves to "already bound, nothing to do" (or a no-op write).
+	if initiator.WeChatId == wechatId {
+		t.Status = service.WxQrStatusConfirmed
+		if err := service.UpdateWxQrTicket(t); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+		common.ApiSuccess(c, gin.H{"confirmed": true})
+		return
+	}
+
+	if !model.IsWeChatIdAlreadyTaken(wechatId, t.TenantId) {
+		// Clean path: no conflict, PC finalize will just write wechat_id.
+		t.Status = service.WxQrStatusConfirmed
+		if err := service.UpdateWxQrTicket(t); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+		common.ApiSuccess(c, gin.H{"confirmed": true})
+		return
+	}
+
+	// Conflict path: another same-tenant user holds this openid. Find them
+	// and stash their id; PC polls, sees merge_required, asks the user.
+	other := model.User{TenantId: t.TenantId, WeChatId: wechatId}
+	if err := other.FillUserByWeChatIdWithTenant(t.TenantId); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if other.Id == 0 || other.Id == initiator.Id {
+		// Shouldn't happen (IsWeChatIdAlreadyTaken said someone exists) but
+		// guard so we don't enqueue a merge against self.
+		t.Status = service.WxQrStatusConfirmed
+		if err := service.UpdateWxQrTicket(t); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+		common.ApiSuccess(c, gin.H{"confirmed": true})
+		return
+	}
+
+	t.Status = service.WxQrStatusMergeRequired
+	t.MergeCandidateUserId = other.Id
+	if err := service.UpdateWxQrTicket(t); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, gin.H{"confirmed": true, "merge_required": true})
 }
 
 // LoginWithWxQrTicket handles POST /api/oauth/wx_qr/login.

@@ -61,6 +61,12 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/wx_qr/poll", auth.PollWxQrTicket)
 		apiRouter.POST("/oauth/wx_qr/confirm", middleware.CriticalRateLimit(), auth.ConfirmWxQrTicket)
 		apiRouter.POST("/oauth/wx_qr/login", middleware.CriticalRateLimit(), auth.LoginWithWxQrTicket)
+		// Mini-program fetches ticket purpose so it can show login vs bind copy.
+		apiRouter.GET("/oauth/wx_qr/info", auth.GetWxQrTicketInfo)
+		// WeChat mini-program scan-to-bind (authenticated PC web)
+		apiRouter.POST("/oauth/wx_qr/bind/ticket", middleware.UserAuth(), middleware.CriticalRateLimit(), auth.GenerateWxQrBindTicket)
+		apiRouter.GET("/oauth/wx_qr/bind/poll", middleware.UserAuth(), auth.PollWxQrBindTicket)
+		apiRouter.POST("/oauth/wx_qr/bind/finalize", middleware.UserAuth(), middleware.CriticalRateLimit(), auth.FinalizeWxQrBind)
 		apiRouter.GET("/oauth/telegram/login", middleware.CriticalRateLimit(), auth.TelegramLogin)
 		apiRouter.GET("/oauth/telegram/bind", middleware.CriticalRateLimit(), auth.TelegramBind)
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
