@@ -242,7 +242,15 @@ func applyPlatformMarkup(c *gin.Context, info *relaycommon.RelayInfo, priceData 
 	if info == nil || priceData == nil {
 		return
 	}
-	channelID := info.ChannelId
+	// ChannelMeta 是 *RelayInfo 的匿名指针嵌入（见 relay_info.go），
+	// 在各 handler 入口 InitChannelMeta 之前都是 nil。本函数会在
+	// controller.Relay -> ModelPriceHelper 里被提前调用（pre-consume
+	// 阶段），此时 ChannelMeta 尚未初始化，直接访问/回写 info.ChannelId
+	// 会 nil deref。ChannelMeta 为 nil 时从 ctx 兜底取 channel id，不回写。
+	var channelID int
+	if info.ChannelMeta != nil {
+		channelID = info.ChannelId
+	}
 	if channelID <= 0 && c != nil {
 		channelID = common.GetContextKeyInt(c, constant.ContextKeyChannelId)
 	}
@@ -251,7 +259,9 @@ func applyPlatformMarkup(c *gin.Context, info *relaycommon.RelayInfo, priceData 
 		info.PriceMarkupSource = "none"
 		return
 	}
-	info.ChannelId = channelID
+	if info.ChannelMeta != nil {
+		info.ChannelId = channelID
+	}
 
 	ch, err := model.CacheGetChannel(channelID)
 	if err != nil || ch == nil {
