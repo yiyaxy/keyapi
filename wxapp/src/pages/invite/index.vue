@@ -79,7 +79,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
 import { getSelf } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
@@ -107,6 +107,7 @@ function copyCode() {
 }
 
 async function loadData() {
+  if (refreshing.value) return
   refreshing.value = true
   try {
     const data = await getSelf()
@@ -132,9 +133,6 @@ onLoad(() => {
   }
 })
 
-onShow(() => {
-  if (userStore.isLoggedIn) loadData()
-})
 </script>
 
 <style lang="scss" scoped>

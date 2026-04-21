@@ -1,6 +1,6 @@
 <template>
   <view class="page">
-    <u-navbar title="充值" :auto-back="true" bgColor="#fff" :placeholder="true" />
+    <u-navbar title="充值" :auto-back="false" bgColor="#fff" :placeholder="true" @clickLeft="handleBack" />
 
     <!-- Tab 切换 -->
     <view class="tab-bar">
@@ -21,7 +21,7 @@
       <!-- 余额卡 -->
       <view class="balance-card">
         <text class="balance-label">当前余额</text>
-        <text class="balance-num">{{ fmtQuota(userStore.userInfo?.quota) }}</text>
+        <text class="balance-num">{{ q2cny(userStore.userInfo?.quota) }}</text>
       </view>
 
       <!-- 金额选择 -->
@@ -135,6 +135,15 @@ import { userStore } from '@/store/user.js'
 import { redeemCode, getSelf, createWechatTopupJsapi, getPaymentOrder } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
+// ─── 导航 ────────────────────────────────────────────────────────────────────
+function handleBack() {
+  if (getCurrentPages().length > 1) {
+    uni.navigateBack()
+  } else {
+    uni.reLaunch({ url: '/pages/home/index' })
+  }
+}
+
 // ─── Tab ────────────────────────────────────────────────────────────────────
 const activeTab = ref('wechat')
 
@@ -170,15 +179,6 @@ function onCustomInput() {
   customMode.value = customInput.value !== ''
 }
 
-function fmtQuota(q) {
-  if (q == null) return '—'
-  const per = userStore.quotaPerUnit || 500000
-  const v = (q / per).toFixed(2)
-  const type = userStore.quotaDisplayType
-  if (type === 'CNY') return `¥${(Number(v) * userStore.usdExchangeRate).toFixed(2)}`
-  if (type === 'TOKENS') return `${q.toLocaleString?.() ?? q}`
-  return `$${v}`
-}
 
 function callWxPayment(sign) {
   return new Promise((resolve, reject) => {
