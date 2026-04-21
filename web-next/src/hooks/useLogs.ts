@@ -3,7 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 
-export type LogType = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export type LogType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export const LOG_TYPE_LABELS: Record<LogType, string> = {
   0: 'unknown',
@@ -13,6 +13,7 @@ export const LOG_TYPE_LABELS: Record<LogType, string> = {
   4: 'system',
   5: 'error',
   6: 'refund',
+  7: 'channel_test',
 };
 
 export type LogRow = {

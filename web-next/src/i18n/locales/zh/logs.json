@@ -9,6 +9,7 @@
   "filters.type.system": "系统",
   "filters.type.error": "错误",
   "filters.type.refund": "退款",
+  "filters.type.channel_test": "渠道测试",
   "filters.token": "令牌名称",
   "filters.model": "模型",
   "filters.request_id": "请求 ID",

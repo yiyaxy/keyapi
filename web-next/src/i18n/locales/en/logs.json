@@ -9,6 +9,7 @@
   "filters.type.system": "System",
   "filters.type.error": "Error",
   "filters.type.refund": "Refund",
+  "filters.type.channel_test": "Channel test",
   "filters.token": "Token name",
   "filters.model": "Model",
   "filters.request_id": "Request ID",

@@ -14,6 +14,7 @@ const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'o
   4: 'outline',
   5: 'destructive',
   6: 'default',
+  7: 'outline',
 };
 
 const TYPE_KEY: Record<LogType, string> = {
@@ -24,6 +25,7 @@ const TYPE_KEY: Record<LogType, string> = {
   4: 'filters.type.system',
   5: 'filters.type.error',
   6: 'filters.type.refund',
+  7: 'filters.type.channel_test',
 };
 
 export function LogsAdminTable({
