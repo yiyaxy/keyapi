@@ -19,7 +19,11 @@ export type OtherData = {
 export function parseOther(raw: string): OtherData {
   if (!raw) return {};
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as OtherData;
+    }
+    return {};
   } catch {
     return {};
   }
