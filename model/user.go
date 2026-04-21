@@ -56,6 +56,9 @@ type User struct {
 	Remark                    string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer            string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
 	IpSet                     string         `json:"ip_set,omitempty" gorm:"type:text;column:ip_set;default:''"`
+	// MergedInto 非零时，表示本账户已被合并到 MergedInto 指向的主账户，
+	// 账户随之软删除、WeChatId 清空，历史数据仍可追溯到此行（审计用）。
+	MergedInto int `json:"merged_into,omitempty" gorm:"type:int;default:0;index"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
