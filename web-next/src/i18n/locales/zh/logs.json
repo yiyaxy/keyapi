@@ -26,6 +26,7 @@
   "table.col.latency": "耗时",
   "table.col.detail": "详情",
   "table.tokens.detail": "{{prompt}} + {{completion}}",
+  "table.tokens.with_cache": "{{prompt}} + {{completion}}（缓存 {{cache}}）",
   "table.latency.ms": "{{ms}} 毫秒",
   "table.latency.s": "{{s}} 秒",
   "table.unit.free": "免费",
@@ -54,5 +55,7 @@
   "cost.output_price": "输出单价",
   "cost.multiplier": "倍率",
   "cost.original": "原始",
-  "cost.billed": "计费"
+  "cost.billed": "计费",
+  "cost.cache_tokens": "缓存命中",
+  "cost.cache_cost": "缓存成本"
 }

@@ -26,6 +26,7 @@
   "table.col.latency": "Latency",
   "table.col.detail": "Detail",
   "table.tokens.detail": "{{prompt}} + {{completion}}",
+  "table.tokens.with_cache": "{{prompt}} + {{completion}} (cached {{cache}})",
   "table.latency.ms": "{{ms}} ms",
   "table.latency.s": "{{s}} s",
   "table.unit.free": "free",
@@ -54,5 +55,7 @@
   "cost.output_price": "Output price",
   "cost.multiplier": "Multiplier",
   "cost.original": "Original",
-  "cost.billed": "Billed"
+  "cost.billed": "Billed",
+  "cost.cache_tokens": "Cache hit",
+  "cost.cache_cost": "Cache cost"
 }

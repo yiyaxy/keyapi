@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { LogRow } from '@/hooks/useLogs';
 import { type PublicConfig, toDisplay } from '@/hooks/usePublicConfig';
 
-type OtherData = {
+export type OtherData = {
   model_ratio?: number;
   completion_ratio?: number;
   group_ratio?: number;
@@ -16,7 +16,7 @@ type OtherData = {
   model_price?: number;
 };
 
-function parseOther(raw: string): OtherData {
+export function parseOther(raw: string): OtherData {
   if (!raw) return {};
   try {
     return JSON.parse(raw);
@@ -65,11 +65,20 @@ export function CostBreakdown({
   const completionRatio = other.completion_ratio ?? 1;
   const groupRatio = other.user_group_ratio ?? other.group_ratio ?? 1;
   const channelRatio = other.channel_ratio ?? 1;
+  const cacheRatio = other.cache_ratio ?? 1;
+  const cacheTokens = Math.min(other.cache_tokens ?? 0, row.prompt_tokens);
+  const hasCache = cacheTokens > 0 && cacheRatio > 0 && cacheRatio !== 1;
 
   const inputPricePerM = modelRatio * 2.0;
   const outputPricePerM = modelRatio * 2.0 * completionRatio;
 
-  const inputCostUsd = (row.prompt_tokens / 1_000_000) * inputPricePerM;
+  // 缓存命中的 prompt tokens 按 cache_ratio 折扣计价，其余按正常输入价。
+  const normalInputTokens = row.prompt_tokens - (hasCache ? cacheTokens : 0);
+  const normalInputCostUsd = (normalInputTokens / 1_000_000) * inputPricePerM;
+  const cachedInputCostUsd = hasCache
+    ? (cacheTokens / 1_000_000) * inputPricePerM * cacheRatio
+    : 0;
+  const inputCostUsd = normalInputCostUsd + cachedInputCostUsd;
   const outputCostUsd = (row.completion_tokens / 1_000_000) * outputPricePerM;
   const originalUsd = (inputCostUsd + outputCostUsd) * groupRatio;
 
@@ -102,6 +111,22 @@ export function CostBreakdown({
           <dd className='text-right font-medium'>
             {fmtUnit(outputCostUsd * groupRatio, cfg)}
           </dd>
+
+          {hasCache && (
+            <>
+              <dt className='text-fg-2'>{t('cost.cache_tokens')}</dt>
+              <dd className='text-right font-medium'>
+                {new Intl.NumberFormat().format(cacheTokens)}
+                {' · '}
+                {cacheRatio}x
+              </dd>
+
+              <dt className='text-fg-2'>{t('cost.cache_cost')}</dt>
+              <dd className='text-right font-medium'>
+                {fmtUnit(cachedInputCostUsd * groupRatio, cfg)}
+              </dd>
+            </>
+          )}
 
           <dt className='text-fg-2'>{t('cost.input_price')}</dt>
           <dd className='text-right font-medium text-[var(--semi-color-link)]'>

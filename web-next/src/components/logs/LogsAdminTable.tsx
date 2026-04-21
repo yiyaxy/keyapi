@@ -6,7 +6,7 @@ import type { LogRow, LogType } from '@/hooks/useLogs';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
-import { CostBreakdown } from './CostBreakdown';
+import { CostBreakdown, parseOther } from './CostBreakdown';
 
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
@@ -68,12 +68,21 @@ export function LogsAdminTable({
               <td className='px-3 py-2'>{r.token_name || '—'}</td>
               <td className='px-3 py-2'>{r.channel_name || r.channel || '—'}</td>
               <td className='px-3 py-2'>
-                {r.prompt_tokens + r.completion_tokens > 0
-                  ? t('table.tokens.detail', {
+                {(() => {
+                  if (r.prompt_tokens + r.completion_tokens <= 0) return '—';
+                  const cache = parseOther(r.other).cache_tokens ?? 0;
+                  if (cache > 0) {
+                    return t('table.tokens.with_cache', {
                       prompt: fmtNum(r.prompt_tokens),
                       completion: fmtNum(r.completion_tokens),
-                    })
-                  : '—'}
+                      cache: fmtNum(cache),
+                    });
+                  }
+                  return t('table.tokens.detail', {
+                    prompt: fmtNum(r.prompt_tokens),
+                    completion: fmtNum(r.completion_tokens),
+                  });
+                })()}
               </td>
               <td className='px-3 py-2'>
                 <CostBreakdown row={r} cfg={cfg}>
