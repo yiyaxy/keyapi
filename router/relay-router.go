@@ -3,6 +3,8 @@ package router
 import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/controller/catalog"
+	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/types"
@@ -26,20 +28,20 @@ func SetRelayRouter(router *gin.Engine) {
 		modelsRouter.GET("", func(c *gin.Context) {
 			switch {
 			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
-				controller.ListModels(c, constant.ChannelTypeAnthropic)
+				catalog.ListModels(c, constant.ChannelTypeAnthropic)
 			case c.GetHeader("x-goog-api-key") != "" || c.Query("key") != "": // 单独的适配
-				controller.RetrieveModel(c, constant.ChannelTypeGemini)
+				catalog.RetrieveModel(c, constant.ChannelTypeGemini)
 			default:
-				controller.ListModels(c, constant.ChannelTypeOpenAI)
+				catalog.ListModels(c, constant.ChannelTypeOpenAI)
 			}
 		})
 
 		modelsRouter.GET("/:model", func(c *gin.Context) {
 			switch {
 			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
-				controller.RetrieveModel(c, constant.ChannelTypeAnthropic)
+				catalog.RetrieveModel(c, constant.ChannelTypeAnthropic)
 			default:
-				controller.RetrieveModel(c, constant.ChannelTypeOpenAI)
+				catalog.RetrieveModel(c, constant.ChannelTypeOpenAI)
 			}
 		})
 	}
@@ -49,7 +51,7 @@ func SetRelayRouter(router *gin.Engine) {
 	geminiRouter.Use(middleware.TokenAuth())
 	{
 		geminiRouter.GET("", func(c *gin.Context) {
-			controller.ListModels(c, constant.ChannelTypeGemini)
+			catalog.ListModels(c, constant.ChannelTypeGemini)
 		})
 	}
 
@@ -58,7 +60,7 @@ func SetRelayRouter(router *gin.Engine) {
 	geminiCompatibleRouter.Use(middleware.TokenAuth())
 	{
 		geminiCompatibleRouter.GET("", func(c *gin.Context) {
-			controller.ListModels(c, constant.ChannelTypeOpenAI)
+			catalog.ListModels(c, constant.ChannelTypeOpenAI)
 		})
 	}
 
@@ -67,7 +69,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
 	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
 	{
-		playgroundRouter.POST("/chat/completions", controller.Playground)
+		playgroundRouter.POST("/chat/completions", media.Playground)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RelayPrometheusMiddleware())

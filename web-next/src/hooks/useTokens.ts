@@ -64,7 +64,10 @@ export function useUpdateToken() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: UpdateTokenBody) => {
-      return api.put('/api/token/', body);
+      const { status_only, ...payload } = body;
+      return api.put('/api/token/', payload, {
+        params: status_only ? { status_only } : undefined,
+      });
     },
     onMutate: async (body) => {
       await qc.cancelQueries({ queryKey: ['tokens', 'list'] });
@@ -117,12 +120,18 @@ export function useToggleTokenStatus() {
   const update = useUpdateToken();
   return {
     ...update,
-    mutate: (arg: { id: number; nextStatus: 1 | 2 }) =>
-      update.mutate({
-        id: arg.id,
-        status: arg.nextStatus,
-        status_only: 1,
-      } as UpdateTokenBody),
+    mutate: (
+      arg: { id: number; nextStatus: 1 | 2 },
+      ...rest: Parameters<typeof update.mutate> extends [any, ...infer R] ? R : never
+    ) =>
+      update.mutate(
+        {
+          id: arg.id,
+          status: arg.nextStatus,
+          status_only: 1,
+        } as UpdateTokenBody,
+        ...rest
+      ),
     mutateAsync: (arg: { id: number; nextStatus: 1 | 2 }) =>
       update.mutateAsync({
         id: arg.id,

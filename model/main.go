@@ -487,6 +487,7 @@ func migrateDBFast() error {
 		{&TenantPaymentConfig{}, "TenantPaymentConfig"},
 		{&PaymentOrder{}, "PaymentOrder"},
 		{&PaymentRefund{}, "PaymentRefund"},
+		{&TenantChannelOverride{}, "TenantChannelOverride"},
 	}
 
 	for _, m := range migrations {

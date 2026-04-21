@@ -22,6 +22,7 @@ type Ability struct {
 	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
 	Weight    uint    `json:"weight" gorm:"default:0;index"`
 	Tag       *string `json:"tag" gorm:"index"`
+	Scope     string  `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
 }
 
 type AbilityWithChannel struct {
@@ -46,7 +47,7 @@ func GetGroupEnabledModels(group string, tenantId int) []string {
 	var models []string
 	q := DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true)
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+		q = q.Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
 	}
 	q.Distinct("model").Pluck("model", &models)
 	return models
@@ -56,7 +57,7 @@ func GetEnabledModels(tenantId int) []string {
 	var models []string
 	q := DB.Table("abilities").Where("enabled = ?", true)
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+		q = q.Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
 	}
 	q.Distinct("model").Pluck("model", &models)
 	return models
@@ -70,6 +71,29 @@ func GetAllEnableAbilities(tenantId int) []Ability {
 	}
 	q.Find(&abilities)
 	return abilities
+}
+
+// FixTenantAbilities rebuilds abilities for one tenant's own channels only.
+func FixTenantAbilities(tenantId int) (success, fails int, err error) {
+	if tenantId <= 0 {
+		return 0, 0, errors.New("tenantId required")
+	}
+	if err := DB.Where("tenant_id = ? AND scope = ?", tenantId, ChannelScopeTenant).Delete(&Ability{}).Error; err != nil {
+		return 0, 0, err
+	}
+	var channels []*Channel
+	if err := DB.Where("tenant_id = ? AND scope = ?", tenantId, ChannelScopeTenant).Find(&channels).Error; err != nil {
+		return 0, 0, err
+	}
+	for _, ch := range channels {
+		if e := ch.AddAbilities(nil); e != nil {
+			fails++
+		} else {
+			success++
+		}
+	}
+	InitChannelCache()
+	return success, fails, nil
 }
 
 func getPriority(group string, model string, retry int, tenantId int) (int, error) {
@@ -216,12 +240,18 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 }
 
 func (channel *Channel) DeleteAbilities() error {
-	return DB.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
+	return DB.Where("channel_id = ? AND tenant_id = ?", channel.Id, channel.TenantId).Delete(&Ability{}).Error
 }
 
 // UpdateAbilities updates abilities of this channel.
 // Make sure the channel is completed before calling this function.
 func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
 	isNewTx := false
 	// 如果没有传入事务，创建新的事务
 	if tx == nil {
@@ -238,7 +268,7 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	}
 
 	// First delete all abilities of this channel
-	err := tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
+	err := tx.Where("channel_id = ? AND tenant_id = ?", channel.Id, channel.TenantId).Delete(&Ability{}).Error
 	if err != nil {
 		if isNewTx {
 			tx.Rollback()
@@ -292,19 +322,28 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	return nil
 }
 
-func UpdateAbilityStatus(channelId int, status bool) error {
-	return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
+func UpdateAbilityStatus(tenantId int, channelId int, status bool) error {
+	if tenantId <= 0 || channelId <= 0 {
+		return errors.New("tenantId 和 channelId 不能为空")
+	}
+	return DB.Model(&Ability{}).
+		Where("channel_id = ? AND tenant_id = ?", channelId, tenantId).
+		Select("enabled").Update("enabled", status).Error
 }
 
 func UpdateAbilityStatusByTag(tag string, status bool, tenantId int) error {
-	q := DB.Model(&Ability{}).Where("tag = ?", tag)
-	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
 	}
-	return q.Select("enabled").Update("enabled", status).Error
+	return DB.Model(&Ability{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Select("enabled").Update("enabled", status).Error
 }
 
-func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {
+func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint, tenantId int) error {
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
+	}
 	ability := Ability{}
 	if newTag != nil {
 		ability.Tag = newTag
@@ -315,11 +354,15 @@ func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uin
 	if weight != nil {
 		ability.Weight = *weight
 	}
-	return DB.Model(&Ability{}).Where("tag = ?", tag).Updates(ability).Error
+	return DB.Model(&Ability{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Updates(ability).Error
 }
 
 var fixLock = sync.Mutex{}
 
+// FixAbility 是平台级跨租户维护操作：清空 abilities 表并根据所有渠道重建。
+// 显式用 WithTenantBypass 放行 tenant guardrail（超管 only）。
 func FixAbility() (int, int, error) {
 	lock := fixLock.TryLock()
 	if !lock {
@@ -327,15 +370,17 @@ func FixAbility() (int, int, error) {
 	}
 	defer fixLock.Unlock()
 
+	bypassDB := WithTenantBypass(DB)
+
 	// truncate abilities table
 	if common.UsingSQLite {
-		err := DB.Exec("DELETE FROM abilities").Error
+		err := bypassDB.Exec("DELETE FROM abilities").Error
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
 			return 0, 0, err
 		}
 	} else {
-		err := DB.Exec("TRUNCATE TABLE abilities").Error
+		err := bypassDB.Exec("TRUNCATE TABLE abilities").Error
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Truncate abilities failed: %s", err.Error()))
 			return 0, 0, err
@@ -343,7 +388,7 @@ func FixAbility() (int, int, error) {
 	}
 	var channels []*Channel
 	// Find all channels
-	err := DB.Model(&Channel{}).Find(&channels).Error
+	err := bypassDB.Model(&Channel{}).Find(&channels).Error
 	if err != nil {
 		return 0, 0, err
 	}
@@ -355,7 +400,7 @@ func FixAbility() (int, int, error) {
 	for _, chunk := range lo.Chunk(channels, 50) {
 		ids := lo.Map(chunk, func(c *Channel, _ int) int { return c.Id })
 		// Delete all abilities of this channel
-		err = DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
+		err = bypassDB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
 			failCount += len(chunk)

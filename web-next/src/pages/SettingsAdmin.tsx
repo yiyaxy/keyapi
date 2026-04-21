@@ -12,6 +12,13 @@ import { StringListEditor } from '@/components/settings/StringListEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -82,6 +89,60 @@ function BoolRow({
           );
         }}
       />
+    </div>
+  );
+}
+
+function SelectRow({
+  field,
+  value,
+  onSaved,
+}: {
+  field: FieldDef;
+  value: string;
+  onSaved: (next: string) => void;
+}) {
+  const { t, i18n } = useTranslation('settings');
+  const update = useUpdateOption();
+  const options = field.options ?? [];
+  return (
+    <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
+      <div className='flex items-center justify-between gap-4'>
+        <div className='min-w-0'>
+          <Label className='text-13'>{labelFor(field.label, i18n.language)}</Label>
+          <div className='font-mono text-11 text-fg-2'>{field.key}</div>
+        </div>
+        <Select
+          value={value}
+          disabled={update.isPending}
+          onValueChange={(next) => {
+            update.mutate(
+              { key: field.key, value: next },
+              {
+                onSuccess: () => {
+                  onSaved(next);
+                  toast.success(t('toast.save.success'));
+                },
+                onError: (e) => toast.error((e as Error).message),
+              }
+            );
+          }}
+        >
+          <SelectTrigger className='w-48'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {labelFor(o.label, i18n.language)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {field.help && (
+        <p className='text-12 text-fg-2'>{labelFor(field.help, i18n.language)}</p>
+      )}
     </div>
   );
 }
@@ -173,6 +234,9 @@ function TextRow({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
+      )}
+      {field.help && (
+        <p className='text-12 text-fg-2'>{labelFor(field.help, i18n.language)}</p>
       )}
     </div>
   );
@@ -283,6 +347,16 @@ function FieldList({
         if (f.kind === 'bool') {
           return (
             <BoolRow
+              key={f.key}
+              field={f}
+              value={values[f.key]!}
+              onSaved={(next) => onSaved(f.key, next)}
+            />
+          );
+        }
+        if (f.kind === 'select') {
+          return (
+            <SelectRow
               key={f.key}
               field={f}
               value={values[f.key]!}

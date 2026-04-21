@@ -14,10 +14,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fmtDaySec, fmtMoney, fmtNum } from '@/lib/format';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDaySec, fmtDisplay, fmtNum } from '@/lib/format';
 import { aggregateByUtcDay, type QuotaDataRow } from '@/lib/usage-aggregate';
-
-const QUOTA_PER_UNIT = 500_000;
 
 type Props = {
   rows: QuotaDataRow[] | undefined;
@@ -29,6 +28,7 @@ type Props = {
 
 export function UsageTrendCard({ rows, isPending, startSec, endSec, range }: Props) {
   const { t } = useTranslation('dashboard');
+  const cfg = usePublicConfig();
   if (isPending) {
     return (
       <Card>
@@ -68,14 +68,14 @@ export function UsageTrendCard({ rows, isPending, startSec, endSec, range }: Pro
                 stroke='var(--text-2)'
               />
               <YAxis
-                tickFormatter={(q: number) => fmtMoney(q / QUOTA_PER_UNIT)}
+                tickFormatter={(q: number) => fmtDisplay(q, cfg)}
                 stroke='var(--text-2)'
               />
               <Tooltip
                 formatter={(value: number, _name, ctx: { payload?: { count?: number } }) => {
                   const count = ctx.payload?.count ?? 0;
                   return [
-                    fmtMoney(value / QUOTA_PER_UNIT),
+                    fmtDisplay(value, cfg),
                     t('usage.tooltip.requests', { count, formattedCount: fmtNum(count) }),
                   ];
                 }}

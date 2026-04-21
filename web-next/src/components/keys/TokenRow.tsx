@@ -10,13 +10,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import type { Token } from '@/hooks/useTokens';
-import { fmtDateSec, fmtMoney } from '@/lib/format';
+import { fmtDateSec, fmtDisplay } from '@/lib/format';
 import { parseGroupChain } from '@/lib/token-schema';
 
 import { KeyCell } from './KeyCell';
-
-const QUOTA_PER_UNIT = 500_000;
 
 function statusBadge(status: number) {
   if (status === 2) return 'disabled';
@@ -34,6 +33,7 @@ type Props = {
 
 export function TokenRow({ token, onEdit, onDelete, onToggleStatus }: Props) {
   const { t } = useTranslation('keys');
+  const cfg = usePublicConfig();
   const groups = parseGroupChain(token.group);
   const chainLabel = groups.length <= 1 ? (groups[0] ?? 'auto') : groups.join(' → ');
   const badge = statusBadge(token.status);
@@ -44,12 +44,12 @@ export function TokenRow({ token, onEdit, onDelete, onToggleStatus }: Props) {
     ? t('status.unlimited')
     : total === 0
       ? '—'
-      : `${fmtMoney(token.used_quota / QUOTA_PER_UNIT)} / ${fmtMoney(total / QUOTA_PER_UNIT)}`;
+      : `${fmtDisplay(token.used_quota, cfg)} / ${fmtDisplay(total, cfg)}`;
 
   return (
     <tr className={disabled ? 'opacity-60' : ''}>
       <td className='px-4 py-3'>
-        <div className='text-13 font-medium text-fg-0'>{token.name || 'Untitled'}</div>
+        <div className='text-13 font-medium text-fg-0'>{token.name || t('token.untitled')}</div>
         <div className='text-12 text-fg-2'>{chainLabel}</div>
       </td>
       <td className='px-4 py-3'>
@@ -65,12 +65,12 @@ export function TokenRow({ token, onEdit, onDelete, onToggleStatus }: Props) {
       <td className='px-4 py-3 text-right'>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='icon' aria-label='Actions'>
+            <Button variant='ghost' size='icon' aria-label={t('menu.actions')}>
               <MoreHorizontal size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end'>
-            <DropdownMenuItem onClick={() => onEdit(token)}>Edit</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onEdit(token)}>{t('menu.edit')}</DropdownMenuItem>
             {(token.status === 1 || token.status === 2) && (
               <DropdownMenuItem onClick={() => onToggleStatus(token)}>
                 {token.status === 1 ? t('status.disabled') : t('status.enabled')}

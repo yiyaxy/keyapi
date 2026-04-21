@@ -1,6 +1,8 @@
 package model
 
 import (
+	"fmt"
+
 	"gorm.io/gorm/clause"
 )
 
@@ -84,4 +86,45 @@ func GetTenantOptionsByKeys(tenantId int, keys []string) (map[string]string, err
 
 func (TenantOption) TableName() string {
 	return "tenant_options"
+}
+
+const (
+	TenantOptionKeyPlatformChannelMode = "platform_channel_mode"
+
+	PlatformChannelModePrivatePriority  = "private_priority"
+	PlatformChannelModePlatformPriority = "platform_priority"
+	PlatformChannelModeOnlyPrivate      = "only_private"
+	PlatformChannelModeOnlyPlatform     = "only_platform"
+)
+
+func isValidPlatformChannelMode(s string) bool {
+	switch s {
+	case PlatformChannelModePrivatePriority,
+		PlatformChannelModePlatformPriority,
+		PlatformChannelModeOnlyPrivate,
+		PlatformChannelModeOnlyPlatform:
+		return true
+	}
+	return false
+}
+
+// GetTenantPlatformChannelMode returns the tenant's configured mode.
+// Returns PlatformChannelModePrivatePriority if unset or if the stored value is invalid.
+func GetTenantPlatformChannelMode(tenantId int) (string, error) {
+	if tenantId <= 0 {
+		return PlatformChannelModePrivatePriority, nil
+	}
+	v, ok := GetTenantOption(tenantId, TenantOptionKeyPlatformChannelMode)
+	if !ok || !isValidPlatformChannelMode(v) {
+		return PlatformChannelModePrivatePriority, nil
+	}
+	return v, nil
+}
+
+// SetTenantPlatformChannelMode validates and persists the mode.
+func SetTenantPlatformChannelMode(tenantId int, mode string) error {
+	if !isValidPlatformChannelMode(mode) {
+		return fmt.Errorf("invalid platform_channel_mode: %q", mode)
+	}
+	return SetTenantOption(tenantId, TenantOptionKeyPlatformChannelMode, mode)
 }

@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/trace"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/controller/channel"
+	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
@@ -28,7 +30,6 @@ import (
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -48,6 +49,8 @@ var buildFS embed.FS
 var indexPage []byte
 
 func main() {
+	// Bootstrap TraceId for synchronous init SQL / SYS logs.
+	trace.Set(trace.NewSys("bootstrap"))
 	startTime := time.Now()
 
 	err := InitResources()
@@ -94,24 +97,34 @@ func main() {
 			model.InitChannelCache()
 		}()
 
-		go model.SyncChannelCache(common.SyncFrequency)
+		trace.GoJob("chcachesync", func() {
+			model.SyncChannelCache(common.SyncFrequency)
+		})
 	}
 
 	// 热更新配置
-	go model.SyncOptions(common.SyncFrequency)
+	trace.GoJob("optsync", func() {
+		model.SyncOptions(common.SyncFrequency)
+	})
 
 	// 数据看板
-	go model.UpdateQuotaData()
+	trace.GoJob("quotaupdate", func() {
+		model.UpdateQuotaData()
+	})
 
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
 		if err != nil {
 			common.FatalLog("failed to parse CHANNEL_UPDATE_FREQUENCY: " + err.Error())
 		}
-		go controller.AutomaticallyUpdateChannels(frequency)
+		trace.GoJob("chupdate", func() {
+			channel.AutomaticallyUpdateChannels(frequency)
+		})
 	}
 
-	go controller.AutomaticallyTestChannels()
+	trace.GoJob("chtest", func() {
+		channel.AutomaticallyTestChannels()
+	})
 
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
 	service.StartCodexCredentialAutoRefreshTask()
@@ -121,12 +134,16 @@ func main() {
 
 	// Site RPM snapshot writer (master-only, retained permanently)
 	if common.IsMasterNode {
-		go model.StartSiteRPMSnapshotWriter()
+		trace.GoJob("rpmsnap", func() {
+			model.StartSiteRPMSnapshotWriter()
+		})
 	}
 
 	// Invoice query worker (polls PiaoTong for async invoice status)
 	if common.IsMasterNode {
-		go service.InvoiceQueryWorker()
+		trace.GoJob("invquery", func() {
+			service.InvoiceQueryWorker()
+		})
 	}
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
@@ -139,29 +156,29 @@ func main() {
 	}
 
 	// Channel upstream model update check task
-	controller.StartChannelUpstreamModelUpdateTask()
+	channel.StartChannelUpstreamModelUpdateTask()
 
 	// 租户告警巡检任务：master 节点每 5 分钟全量刷新一次，同时触发新告警邮件推送
 	if common.IsMasterNode {
-		gopool.Go(func() {
+		trace.GoJob("tenalert", func() {
 			service.StartTenantAlertSweepLoop(5 * time.Minute)
 		})
 		// 租户账单 & 计划状态机：每小时跑一次
-		gopool.Go(func() {
+		trace.GoJob("tenbill", func() {
 			service.StartTenantBillingAndPlanLoop(time.Hour)
 		})
 		// 微信支付对账循环：每 5 分钟扫 pending 订单，丢回调也能兜底
-		gopool.Go(func() {
+		trace.GoJob("payrecon", func() {
 			payment.StartPaymentReconcileLoop(5 * time.Minute)
 		})
 	}
 
 	if common.IsMasterNode && constant.UpdateTask {
-		gopool.Go(func() {
-			controller.UpdateMidjourneyTaskBulk()
+		trace.GoJob("mjpoll", func() {
+			media.UpdateMidjourneyTaskBulk()
 		})
-		gopool.Go(func() {
-			controller.UpdateTaskBulk()
+		trace.GoJob("taskpoll", func() {
+			media.UpdateTaskBulk()
 		})
 	}
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
@@ -171,10 +188,12 @@ func main() {
 	}
 
 	if os.Getenv("ENABLE_PPROF") == "true" {
-		gopool.Go(func() {
+		trace.GoJob("pprof", func() {
 			log.Println(http.ListenAndServe("0.0.0.0:8005", nil))
 		})
-		go common.Monitor()
+		trace.GoJob("monitor", func() {
+			common.Monitor()
+		})
 		common.SysLog("pprof enabled")
 	}
 

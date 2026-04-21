@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/trace"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 
@@ -32,6 +33,9 @@ func StartSubscriptionQuotaResetTask() {
 			return
 		}
 		gopool.Go(func() {
+			trace.Set(trace.NewJob("subreset"))
+			defer trace.Clear()
+
 			logger.LogInfo(context.Background(), fmt.Sprintf("subscription quota reset task started: tick=%s", subscriptionResetTickInterval))
 			ticker := time.NewTicker(subscriptionResetTickInterval)
 			defer ticker.Stop()

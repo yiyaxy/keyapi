@@ -30,6 +30,7 @@ import {
   type Channel,
   type ChannelInput,
 } from '@/hooks/useChannels';
+import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api';
 import { CHANNEL_TYPES } from '@/lib/channelTypes';
 
@@ -290,11 +291,13 @@ export function ChannelFormDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { t } = useTranslation('channels');
+  const { user } = useAuth();
   const create = useCreateChannel();
   const update = useUpdateChannel();
   const adminGroups = useAdminGroups();
   const channelTypeModels = useChannelTypeModels();
   const isEdit = Boolean(channel);
+  const tenantView = !(user && Math.max(user.role, user.platform_role) >= 100);
   const [modelSearch, setModelSearch] = useState('');
 
   const form = useForm<Values>({
@@ -336,10 +339,13 @@ export function ChannelFormDialog({
     try {
       if (channel) {
         const updatePayload: Parameters<typeof update.mutateAsync>[0] = {
-          ...payload,
-          id: channel.id,
+          input: {
+            ...payload,
+            id: channel.id,
+          },
+          tenantView,
         };
-        if (values.key.trim()) updatePayload.key = values.key.trim();
+        if (values.key.trim()) updatePayload.input.key = values.key.trim();
         await update.mutateAsync(updatePayload);
       } else {
         await create.mutateAsync({
@@ -349,6 +355,7 @@ export function ChannelFormDialog({
             multi_key_mode: values.multi_key_mode,
             batch_add_set_key_prefix_2_name: values.batch_add_set_key_prefix_2_name,
           },
+          tenantView,
         });
       }
       toast.success(t('form.saved'));

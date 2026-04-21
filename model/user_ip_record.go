@@ -42,7 +42,7 @@ func RecordLoginIp(tenantId int, userId int, username, ip, loginType, userAgent 
 		common.SysError(fmt.Sprintf("failed to record login IP: %v", err))
 	}
 	// Maintain user IP set
-	AddIpToUserSet(userId, ip)
+	AddIpToUserSet(tenantId, userId, ip)
 }
 
 // UpdateIpLocation updates the ip_location field for a given IP address.

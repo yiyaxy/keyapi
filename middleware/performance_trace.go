@@ -10,6 +10,7 @@ import (
 )
 
 // PerformanceTrace 性能追踪中间件 - 记录请求各阶段耗时
+// TraceId 自动由 common.SysLog 从 goroutine-local 带入,不再在消息体嵌 id
 func PerformanceTrace() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 只追踪中继请求
@@ -19,55 +20,44 @@ func PerformanceTrace() gin.HandlerFunc {
 		}
 
 		startTime := time.Now()
-		requestID := c.GetString("X-Request-Id")
-		if requestID == "" {
-			requestID = fmt.Sprintf("%d", time.Now().UnixNano())
-		}
 
 		// 记录请求开始
-		common.SysLog(fmt.Sprintf("[PERF][%s] === Request Start === Path: %s", requestID, c.Request.URL.Path))
+		common.SysLog(fmt.Sprintf("[PERF] === Request Start === Path: %s", c.Request.URL.Path))
 
 		// 记录中间件链开始时间
 		c.Set("perf_start", startTime)
-		c.Set("perf_request_id", requestID)
-
-		// 记录中间件完成时间
 		c.Next()
 
 		// 请求处理完成
 		totalDuration := time.Since(startTime)
 
-		// 获取各阶段耗时
 		authTime := getStageTime(c, "perf_auth_done")
 		distributeTime := getStageTime(c, "perf_distribute_done")
 		relayTime := getStageTime(c, "perf_relay_done")
 		firstByteTime := getStageTime(c, "perf_first_byte")
 
-		// 输出性能报告
-		common.SysLog(fmt.Sprintf("[PERF][%s] === Performance Report ===", requestID))
-		common.SysLog(fmt.Sprintf("[PERF][%s] Total:        %v", requestID, totalDuration))
-		common.SysLog(fmt.Sprintf("[PERF][%s] Auth:         %v", requestID, authTime))
-		common.SysLog(fmt.Sprintf("[PERF][%s] Distribute:   %v", requestID, distributeTime))
-		common.SysLog(fmt.Sprintf("[PERF][%s] Relay:        %v", requestID, relayTime))
-		common.SysLog(fmt.Sprintf("[PERF][%s] FirstByte:    %v", requestID, firstByteTime))
+		common.SysLog("[PERF] === Performance Report ===")
+		common.SysLog(fmt.Sprintf("[PERF] Total:        %v", totalDuration))
+		common.SysLog(fmt.Sprintf("[PERF] Auth:         %v", authTime))
+		common.SysLog(fmt.Sprintf("[PERF] Distribute:   %v", distributeTime))
+		common.SysLog(fmt.Sprintf("[PERF] Relay:        %v", relayTime))
+		common.SysLog(fmt.Sprintf("[PERF] FirstByte:    %v", firstByteTime))
 
-		// 计算各阶段占比
 		if totalDuration > 0 {
 			authPercent := float64(authTime) / float64(totalDuration) * 100
 			distributePercent := float64(distributeTime) / float64(totalDuration) * 100
 			relayPercent := float64(relayTime) / float64(totalDuration) * 100
 
-			common.SysLog(fmt.Sprintf("[PERF][%s] Auth%%:        %.2f%%", requestID, authPercent))
-			common.SysLog(fmt.Sprintf("[PERF][%s] Distribute%%:  %.2f%%", requestID, distributePercent))
-			common.SysLog(fmt.Sprintf("[PERF][%s] Relay%%:       %.2f%%", requestID, relayPercent))
+			common.SysLog(fmt.Sprintf("[PERF] Auth%%:        %.2f%%", authPercent))
+			common.SysLog(fmt.Sprintf("[PERF] Distribute%%:  %.2f%%", distributePercent))
+			common.SysLog(fmt.Sprintf("[PERF] Relay%%:       %.2f%%", relayPercent))
 		}
 
-		// 警告：如果首字延迟超过 5 秒
 		if firstByteTime > 5*time.Second {
-			common.SysLog(fmt.Sprintf("[PERF][%s] ⚠️  WARNING: First byte time > 5s!", requestID))
+			common.SysLog("[PERF] ⚠️  WARNING: First byte time > 5s!")
 		}
 
-		common.SysLog(fmt.Sprintf("[PERF][%s] === End ===", requestID))
+		common.SysLog("[PERF] === End ===")
 	}
 }
 
@@ -82,9 +72,8 @@ func MarkStage(c *gin.Context, stage string) {
 	elapsed := time.Since(start)
 	c.Set(stage, elapsed)
 
-	requestID := c.GetString("perf_request_id")
 	stageName := getStageName(stage)
-	common.SysLog(fmt.Sprintf("[PERF][%s] %s: %v", requestID, stageName, elapsed))
+	common.SysLog(fmt.Sprintf("[PERF] %s: %v", stageName, elapsed))
 }
 
 func getStageTime(c *gin.Context, stage string) time.Duration {

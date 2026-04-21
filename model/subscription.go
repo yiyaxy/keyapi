@@ -472,15 +472,17 @@ func CountUserSubscriptionsByPlan(tenantId int, userId int, planId int) (int64, 
 	return count, nil
 }
 
-func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
-	if userId <= 0 {
-		return "", errors.New("invalid userId")
+func getUserGroupByIdTx(tx *gorm.DB, tenantId int, userId int) (string, error) {
+	if userId <= 0 || tenantId <= 0 {
+		return "", errors.New("invalid tenantId/userId")
 	}
 	if tx == nil {
 		tx = DB
 	}
 	var group string
-	if err := tx.Model(&User{}).Where("id = ?", userId).Select(commonGroupCol).Find(&group).Error; err != nil {
+	if err := tx.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", userId, tenantId).
+		Select(commonGroupCol).Find(&group).Error; err != nil {
 		return "", err
 	}
 	return group, nil
@@ -494,7 +496,7 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	if upgradeGroup == "" {
 		return "", nil
 	}
-	currentGroup, err := getUserGroupByIdTx(tx, sub.UserId)
+	currentGroup, err := getUserGroupByIdTx(tx, sub.TenantId, sub.UserId)
 	if err != nil {
 		return "", err
 	}
@@ -502,8 +504,8 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 		return "", nil
 	}
 	var activeSub UserSubscription
-	activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND id <> ? AND upgrade_group <> ''",
-		sub.UserId, "active", now, sub.Id).
+	activeQuery := tx.Where("user_id = ? AND tenant_id = ? AND status = ? AND end_time > ? AND id <> ? AND upgrade_group <> ''",
+		sub.UserId, sub.TenantId, "active", now, sub.Id).
 		Order("end_time desc, id desc").
 		Limit(1).
 		Find(&activeSub)
@@ -514,27 +516,28 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	if prevGroup == "" || prevGroup == currentGroup {
 		return "", nil
 	}
-	if err := tx.Model(&User{}).Where("id = ?", sub.UserId).
+	if err := tx.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", sub.UserId, sub.TenantId).
 		Update("group", prevGroup).Error; err != nil {
 		return "", err
 	}
 	return prevGroup, nil
 }
 
-func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, source string, deferActivation ...bool) (*UserSubscription, error) {
+func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, tenantId int, userId int, plan *SubscriptionPlan, source string, deferActivation ...bool) (*UserSubscription, error) {
 	if tx == nil {
 		return nil, errors.New("tx is nil")
 	}
 	if plan == nil || plan.Id == 0 {
 		return nil, errors.New("invalid plan")
 	}
-	if userId <= 0 {
-		return nil, errors.New("invalid user id")
+	if tenantId <= 0 || userId <= 0 {
+		return nil, errors.New("invalid tenantId/userId")
 	}
 	if plan.MaxPurchasePerUser > 0 {
 		var count int64
 		if err := tx.Model(&UserSubscription{}).
-			Where("user_id = ? AND plan_id = ?", userId, plan.Id).
+			Where("user_id = ? AND tenant_id = ? AND plan_id = ?", userId, tenantId, plan.Id).
 			Count(&count).Error; err != nil {
 			return nil, err
 		}
@@ -548,6 +551,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if shouldDefer {
 		// Deferred activation: create as inactive, no time calculation, no group upgrade
 		sub := &UserSubscription{
+			TenantId:      tenantId,
 			UserId:        userId,
 			PlanId:        plan.Id,
 			AmountTotal:   plan.TotalAmount,
@@ -585,19 +589,21 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	upgradeGroup := strings.TrimSpace(plan.UpgradeGroup)
 	prevGroup := ""
 	if upgradeGroup != "" {
-		currentGroup, err := getUserGroupByIdTx(tx, userId)
+		currentGroup, err := getUserGroupByIdTx(tx, tenantId, userId)
 		if err != nil {
 			return nil, err
 		}
 		if currentGroup != upgradeGroup {
 			prevGroup = currentGroup
-			if err := tx.Model(&User{}).Where("id = ?", userId).
+			if err := tx.Model(&User{}).
+				Where("id = ? AND tenant_id = ?", userId, tenantId).
 				Update("group", upgradeGroup).Error; err != nil {
 				return nil, err
 			}
 		}
 	}
 	sub := &UserSubscription{
+		TenantId: tenantId,
 		UserId:        userId,
 		PlanId:        plan.Id,
 		AmountTotal:   plan.TotalAmount,
@@ -651,7 +657,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		if !plan.Enabled {
 			// still allow completion for already purchased orders
 		}
-		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order", true)
+		_, err = CreateUserSubscriptionFromPlanTx(tx, order.TenantId, order.UserId, plan, "order", true)
 		if err != nil {
 			return err
 		}
@@ -663,7 +669,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		if providerPayload != "" {
 			order.ProviderPayload = providerPayload
 		}
-		if err := tx.Save(&order).Error; err != nil {
+		if err := tx.Model(&SubscriptionOrder{}).
+			Where("id = ? AND tenant_id = ?", order.Id, order.TenantId).
+			Select("*").Updates(&order).Error; err != nil {
 			return err
 		}
 		logUserId = order.UserId
@@ -744,7 +752,7 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 		if err != nil {
 			return err
 		}
-		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order", true)
+		_, err = CreateUserSubscriptionFromPlanTx(tx, order.TenantId, order.UserId, plan, "order", true)
 		if err != nil {
 			return err
 		}
@@ -756,7 +764,9 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 		if providerPayload != "" {
 			order.ProviderPayload = providerPayload
 		}
-		if err := tx.Save(&order).Error; err != nil {
+		if err := tx.Model(&SubscriptionOrder{}).
+			Where("id = ? AND tenant_id = ?", order.Id, order.TenantId).
+			Select("*").Updates(&order).Error; err != nil {
 			return err
 		}
 		logUserId = order.UserId
@@ -984,7 +994,9 @@ func ExpireSubscriptionOrder(tradeNo string) error {
 		}
 		order.Status = common.TopUpStatusExpired
 		order.CompleteTime = common.GetTimestamp()
-		return tx.Save(&order).Error
+		return tx.Model(&SubscriptionOrder{}).
+			Where("id = ? AND tenant_id = ?", order.Id, order.TenantId).
+			Select("*").Updates(&order).Error
 	})
 }
 
@@ -998,7 +1010,7 @@ func AdminBindSubscription(tenantId int, userId int, planId int, sourceNote stri
 		return "", err
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
+		_, err := CreateUserSubscriptionFromPlanTx(tx, tenantId, userId, plan, "admin")
 		return err
 	})
 	if err != nil {
@@ -1013,18 +1025,15 @@ func AdminBindSubscription(tenantId int, userId int, planId int, sourceNote stri
 
 // ActivateUserSubscription activates an inactive subscription, setting StartTime/EndTime from now.
 func ActivateUserSubscription(tenantId int, userId int, subscriptionId int) error {
-	if userId <= 0 || subscriptionId <= 0 {
-		return errors.New("invalid userId or subscriptionId")
+	if tenantId <= 0 || userId <= 0 || subscriptionId <= 0 {
+		return errors.New("invalid tenantId/userId/subscriptionId")
 	}
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		query := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ? AND user_id = ?", subscriptionId, userId)
-		if tenantId > 0 {
-			query = query.Where("tenant_id = ?", tenantId)
-		}
 		var sub UserSubscription
-		if err := query.First(&sub).Error; err != nil {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ? AND user_id = ? AND tenant_id = ?", subscriptionId, userId, tenantId).
+			First(&sub).Error; err != nil {
 			return errors.New("订阅不存在")
 		}
 		if sub.Status != UserSubscriptionStatusInactive {
@@ -1050,13 +1059,14 @@ func ActivateUserSubscription(tenantId int, userId int, subscriptionId int) erro
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
 		prevGroup := ""
 		if upgradeGroup != "" {
-			currentGroup, err := getUserGroupByIdTx(tx, userId)
+			currentGroup, err := getUserGroupByIdTx(tx, tenantId, userId)
 			if err != nil {
 				return err
 			}
 			if currentGroup != upgradeGroup {
 				prevGroup = currentGroup
-				if err := tx.Model(&User{}).Where("id = ?", userId).
+				if err := tx.Model(&User{}).
+					Where("id = ? AND tenant_id = ?", userId, tenantId).
 					Update("group", upgradeGroup).Error; err != nil {
 					return err
 				}
@@ -1071,7 +1081,9 @@ func ActivateUserSubscription(tenantId int, userId int, subscriptionId int) erro
 			"prev_user_group": prevGroup,
 			"updated_at":      common.GetTimestamp(),
 		}
-		return tx.Model(&UserSubscription{}).Where("id = ?", subscriptionId).Updates(updates).Error
+		return tx.Model(&UserSubscription{}).
+			Where("id = ? AND tenant_id = ?", subscriptionId, tenantId).
+			Updates(updates).Error
 	})
 	if err != nil {
 		return err
@@ -1203,21 +1215,18 @@ func AdminInvalidateUserSubscription(tenantId int, userSubscriptionId int) (stri
 
 // AdminDeleteUserSubscription hard-deletes a user subscription.
 func AdminDeleteUserSubscription(tenantId int, userSubscriptionId int) (string, error) {
-	if userSubscriptionId <= 0 {
-		return "", errors.New("invalid userSubscriptionId")
+	if tenantId <= 0 || userSubscriptionId <= 0 {
+		return "", errors.New("tenantId 和 userSubscriptionId 不能为空")
 	}
 	now := common.GetTimestamp()
 	cacheGroup := ""
 	downgradeGroup := ""
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		query := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId)
-		if tenantId > 0 {
-			query = query.Where("tenant_id = ?", tenantId)
-		}
 		var sub UserSubscription
-		if err := query.First(&sub).Error; err != nil {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ? AND tenant_id = ?", userSubscriptionId, tenantId).
+			First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
@@ -1229,7 +1238,7 @@ func AdminDeleteUserSubscription(tenantId int, userSubscriptionId int) (string, 
 			cacheGroup = target
 			downgradeGroup = target
 		}
-		if err := tx.Where("id = ?", userSubscriptionId).Delete(&UserSubscription{}).Error; err != nil {
+		if err := tx.Where("id = ? AND tenant_id = ?", userSubscriptionId, tenantId).Delete(&UserSubscription{}).Error; err != nil {
 			return err
 		}
 		return nil
@@ -1280,17 +1289,19 @@ func ExpireDueSubscriptions(tenantId int, limit int) (int, error) {
 		return 0, nil
 	}
 	expiredCount := 0
-	userIds := make(map[int]struct{}, len(subs))
+	// 记录每个 userId 对应的 tenantId（用户归属租户唯一）
+	userTenant := make(map[int]int, len(subs))
 	for _, sub := range subs {
-		if sub.UserId > 0 {
-			userIds[sub.UserId] = struct{}{}
+		if sub.UserId > 0 && sub.TenantId > 0 {
+			userTenant[sub.UserId] = sub.TenantId
 		}
 	}
-	for userId := range userIds {
+	for userId, uTenantId := range userTenant {
 		cacheGroup := ""
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			res := tx.Model(&UserSubscription{}).
-				Where("user_id = ? AND status = ? AND end_time > 0 AND end_time <= ?", userId, "active", now).
+				Where("user_id = ? AND tenant_id = ? AND status = ? AND end_time > 0 AND end_time <= ?",
+					userId, uTenantId, "active", now).
 				Updates(map[string]interface{}{
 					"status":     "expired",
 					"updated_at": common.GetTimestamp(),
@@ -1302,8 +1313,8 @@ func ExpireDueSubscriptions(tenantId int, limit int) (int, error) {
 
 			// If there's an active upgraded subscription, keep current group.
 			var activeSub UserSubscription
-			activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''",
-				userId, "active", now).
+			activeQuery := tx.Where("user_id = ? AND tenant_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''",
+				userId, uTenantId, "active", now).
 				Order("end_time desc, id desc").
 				Limit(1).
 				Find(&activeSub)
@@ -1313,8 +1324,8 @@ func ExpireDueSubscriptions(tenantId int, limit int) (int, error) {
 
 			// No active upgraded subscription, downgrade to previous group if needed.
 			var lastExpired UserSubscription
-			expiredQuery := tx.Where("user_id = ? AND status = ? AND upgrade_group <> ''",
-				userId, "expired").
+			expiredQuery := tx.Where("user_id = ? AND tenant_id = ? AND status = ? AND upgrade_group <> ''",
+				userId, uTenantId, "expired").
 				Order("end_time desc, id desc").
 				Limit(1).
 				Find(&lastExpired)
@@ -1326,14 +1337,15 @@ func ExpireDueSubscriptions(tenantId int, limit int) (int, error) {
 			if upgradeGroup == "" || prevGroup == "" {
 				return nil
 			}
-			currentGroup, err := getUserGroupByIdTx(tx, userId)
+			currentGroup, err := getUserGroupByIdTx(tx, uTenantId, userId)
 			if err != nil {
 				return err
 			}
 			if currentGroup != upgradeGroup || currentGroup == prevGroup {
 				return nil
 			}
-			if err := tx.Model(&User{}).Where("id = ?", userId).
+			if err := tx.Model(&User{}).
+				Where("id = ? AND tenant_id = ?", userId, uTenantId).
 				Update("group", prevGroup).Error; err != nil {
 				return err
 			}

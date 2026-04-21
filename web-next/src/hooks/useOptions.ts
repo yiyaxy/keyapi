@@ -26,6 +26,10 @@ export function useUpdateOption() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['options'] });
+      // Quota / currency / payment option changes feed usePublicConfig
+      // consumers (Topup, RechargeCard, Pricing, QuotaCard, …). Drop the
+      // public-config cache so those views re-render without a full reload.
+      void qc.invalidateQueries({ queryKey: ['public-config'] });
     },
   });
 }

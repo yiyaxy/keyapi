@@ -10,11 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { type User } from '@/hooks/useAuth';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { useUpdateSelf } from '@/hooks/useUpdateSelf';
 import { ApiError } from '@/lib/api';
-import { fmtMoney } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { fmtDisplay } from '@/lib/format';
 
 const schema = z.object({
   display_name: z.string().max(20).optional(),
@@ -29,6 +28,7 @@ function roleLabel(role: number, platformRole: number): 'user' | 'admin' | 'root
 
 export function ProfileSection({ user }: { user: User }) {
   const { t } = useTranslation('account');
+  const cfg = usePublicConfig();
   const update = useUpdateSelf();
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -75,7 +75,7 @@ export function ProfileSection({ user }: { user: User }) {
           <div className='space-y-1'>
             <Label className='text-fg-2'>{t('profile.balance')}</Label>
             <div className='text-13 tabular-nums text-fg-0'>
-              {fmtMoney(user.quota / QUOTA_PER_UNIT)}
+              {fmtDisplay(user.quota, cfg)}
             </div>
           </div>
           <div className='space-y-1'>

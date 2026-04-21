@@ -141,6 +141,36 @@ func (s *BillingSession) GetPreConsumedQuota() int {
 	return s.preConsumedQuota
 }
 
+// PreConsumeAdditional increases the already locked pre-consume amount.
+// Used when retry switches to a pricier channel and we need to top up before
+// continuing the request.
+func (s *BillingSession) PreConsumeAdditional(c *gin.Context, delta int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if delta <= 0 || s.settled || s.refunded || s.fundingSettled {
+		return nil
+	}
+	if delta > 0 {
+		if err := PreConsumeTokenQuota(s.relayInfo, delta); err != nil {
+			return err
+		}
+		s.tokenConsumed += delta
+	}
+	if err := s.funding.PreConsume(delta); err != nil {
+		if delta > 0 && !s.relayInfo.IsPlayground {
+			if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta, s.relayInfo.TenantId); rollbackErr != nil {
+				common.SysLog(fmt.Sprintf("error rolling back token quota during billing top-up (userId=%d, tokenId=%d, amount=%d, fundingErr=%s): %s",
+					s.relayInfo.UserId, s.relayInfo.TokenId, delta, err.Error(), rollbackErr.Error()))
+			}
+			s.tokenConsumed -= delta
+		}
+		return err
+	}
+	s.preConsumedQuota += delta
+	s.syncRelayInfo()
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // PreConsume — 统一预扣费入口（含信任额度旁路）
 // ---------------------------------------------------------------------------

@@ -432,7 +432,7 @@ func CreateInvoiceApplication(ctx context.Context, tenantId int, p CreateInvoice
 			case model.InvoiceItemSourceTopUp:
 				var top model.TopUp
 				err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-					Where("id = ?", it.SourceId).
+					Where("id = ? AND tenant_id = ?", it.SourceId, tenantId).
 					First(&top).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -491,7 +491,7 @@ func CreateInvoiceApplication(ctx context.Context, tenantId int, p CreateInvoice
 			case model.InvoiceItemSourceSubscription:
 				var sub model.SubscriptionOrder
 				err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-					Where("id = ?", it.SourceId).
+					Where("id = ? AND tenant_id = ?", it.SourceId, tenantId).
 					First(&sub).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) {

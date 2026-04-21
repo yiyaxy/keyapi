@@ -314,7 +314,7 @@ func finalizeTicketAttachments(ctx context.Context, tx *gorm.DB, storage TicketS
 
 func CreateTicket(ctx context.Context, storage TicketStorage, tenantId int, userID int, subject string, content string, objectKeys []string) (*model.Ticket, *model.TicketReply, error) {
 	objectKeys = compactUniqueObjectKeys(objectKeys)
-	if storage == nil {
+	if storage == nil && len(objectKeys) > 0 {
 		var err error
 		storage, err = defaultTicketStorage()
 		if err != nil {
@@ -390,24 +390,32 @@ func CreateTicket(ctx context.Context, storage TicketStorage, tenantId int, user
 }
 
 func TicketReplyUser(ctx context.Context, tenantId int, userId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
-	storage, err := defaultTicketStorage()
-	if err != nil {
-		return nil, err
+	var storage TicketStorage
+	if len(compactUniqueObjectKeys(objectKeys)) > 0 {
+		var err error
+		storage, err = defaultTicketStorage()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return ticketReply(ctx, storage, tenantId, TicketReplyRoleUser, userId, ticketId, content, objectKeys)
 }
 
 func TicketAdminReply(ctx context.Context, tenantId int, adminId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
-	storage, err := defaultTicketStorage()
-	if err != nil {
-		return nil, err
+	var storage TicketStorage
+	if len(compactUniqueObjectKeys(objectKeys)) > 0 {
+		var err error
+		storage, err = defaultTicketStorage()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return ticketReply(ctx, storage, tenantId, TicketReplyRoleAdmin, adminId, ticketId, content, objectKeys)
 }
 
 func ticketReply(ctx context.Context, storage TicketStorage, tenantId int, role TicketReplyRole, senderId int, ticketId int, content string, objectKeys []string) (*model.TicketReply, error) {
 	objectKeys = compactUniqueObjectKeys(objectKeys)
-	if storage == nil {
+	if len(objectKeys) > 0 && storage == nil {
 		return nil, fmt.Errorf("storage is nil")
 	}
 	if senderId <= 0 || ticketId <= 0 {

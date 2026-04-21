@@ -18,10 +18,8 @@ function statusMeta(status: string): {
   switch (status) {
     case 'open':
       return { key: 'status.open', variant: 'default' };
-    case 'pending':
-      return { key: 'status.pending', variant: 'secondary' };
-    case 'replied':
-      return { key: 'status.replied', variant: 'outline' };
+    case 'processing':
+      return { key: 'status.processing', variant: 'secondary' };
     case 'closed':
       return { key: 'status.closed', variant: 'destructive' };
     default:
@@ -79,7 +77,10 @@ export function TicketsAdminPage() {
                       <td className='px-3 py-2 text-fg-2'>{tkt.id}</td>
                       <td className='px-3 py-2 font-mono text-fg-1'>#{tkt.user_id}</td>
                       <td className='px-3 py-2'>
-                        <Link to={`/admin/tickets/${tkt.id}`} className='text-fg-0 hover:underline'>
+                        <Link
+                          to={`/admin/tickets/${tkt.id}`}
+                          className='text-primary underline underline-offset-4 decoration-primary/30 hover:decoration-primary'
+                        >
                           {tkt.subject}
                         </Link>
                       </td>

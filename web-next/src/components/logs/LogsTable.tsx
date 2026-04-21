@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { LogRow, LogType } from '@/hooks/useLogs';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
@@ -25,8 +26,6 @@ const TYPE_KEY: Record<LogType, string> = {
   6: 'filters.type.refund',
 };
 
-const QUOTA_PER_UNIT = 500_000;
-
 function formatLatency(t: ReturnType<typeof useTranslation>['t'], ms: number): string {
   if (!ms) return '—';
   if (ms < 1000) return t('table.latency.ms', { ms });
@@ -41,6 +40,7 @@ export function LogsTable({
   onRowClick: (r: LogRow) => void;
 }) {
   const { t } = useTranslation('logs');
+  const cfg = usePublicConfig();
   return (
     <div className='overflow-x-auto rounded-md border border-line'>
       <table className='w-full border-collapse tabular-nums'>
@@ -58,7 +58,6 @@ export function LogsTable({
         </thead>
         <tbody>
           {rows.map((r) => {
-            const usd = r.quota / QUOTA_PER_UNIT;
             return (
               <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
                 <td className='px-3 py-2 text-fg-1'>{fmtDateSec(r.created_at)}</td>
@@ -75,7 +74,7 @@ export function LogsTable({
                       })
                     : '—'}
                 </td>
-                <td className='px-3 py-2'>{r.quota > 0 ? fmtMoney(usd) : t('table.unit.free')}</td>
+                <td className='px-3 py-2'>{r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}</td>
                 <td className='px-3 py-2'>{formatLatency(t, r.use_time)}</td>
                 <td className='px-3 py-2'>
                   <Button type='button' variant='ghost' size='sm' onClick={() => onRowClick(r)}>

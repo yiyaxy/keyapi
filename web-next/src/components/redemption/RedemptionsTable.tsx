@@ -3,10 +3,9 @@ import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import type { Redemption } from '@/hooks/useRedemptions';
-import { fmtDateSec, fmtMoney } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { fmtDateSec, fmtDisplay } from '@/lib/format';
 
 function statusMeta(r: Redemption): {
   key: string;
@@ -27,6 +26,7 @@ export function RedemptionsTable({
   onDelete: (r: Redemption) => void;
 }) {
   const { t } = useTranslation('redemption');
+  const cfg = usePublicConfig();
 
   async function copy(key: string) {
     try {
@@ -60,7 +60,7 @@ export function RedemptionsTable({
               <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
                 <td className='px-3 py-2 text-fg-2'>{r.id}</td>
                 <td className='px-3 py-2'>{r.name}</td>
-                <td className='px-3 py-2'>{fmtMoney(r.quota / QUOTA_PER_UNIT)}</td>
+                <td className='px-3 py-2'>{fmtDisplay(r.quota, cfg)}</td>
                 <td className='px-3 py-2'>
                   <Badge variant={meta.variant}>{t(meta.key)}</Badge>
                 </td>

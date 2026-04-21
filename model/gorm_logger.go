@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/trace"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -25,8 +27,8 @@ import (
 //   - 默认 Warn：只有慢查询 + 真错误会打
 //   - DEBUG=true → Info：每条 SQL 都打
 type prettyGormLogger struct {
-	level         logger.LogLevel
-	slowThreshold time.Duration
+	level          logger.LogLevel
+	slowThreshold  time.Duration
 	ignoreNotFound bool
 }
 
@@ -60,19 +62,25 @@ func (l *prettyGormLogger) LogMode(level logger.LogLevel) logger.Interface {
 
 func (l *prettyGormLogger) Info(_ context.Context, msg string, data ...interface{}) {
 	if l.level >= logger.Info {
-		fmt.Printf("%s[GORM]%s %s\n", cCyan, cReset, fmt.Sprintf(msg, data...))
+		common.LogWriterMu.RLock()
+		_, _ = fmt.Fprintf(gin.DefaultWriter, "%s[GORM]%s %s\n", cCyan, cReset, fmt.Sprintf(msg, data...))
+		common.LogWriterMu.RUnlock()
 	}
 }
 
 func (l *prettyGormLogger) Warn(_ context.Context, msg string, data ...interface{}) {
 	if l.level >= logger.Warn {
-		fmt.Printf("%s[GORM WARN]%s %s\n", cYellow, cReset, fmt.Sprintf(msg, data...))
+		common.LogWriterMu.RLock()
+		_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "%s[GORM WARN]%s %s\n", cYellow, cReset, fmt.Sprintf(msg, data...))
+		common.LogWriterMu.RUnlock()
 	}
 }
 
 func (l *prettyGormLogger) Error(_ context.Context, msg string, data ...interface{}) {
 	if l.level >= logger.Error {
-		fmt.Printf("%s[GORM ERROR]%s %s\n", cRed, cReset, fmt.Sprintf(msg, data...))
+		common.LogWriterMu.RLock()
+		_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "%s[GORM ERROR]%s %s\n", cRed, cReset, fmt.Sprintf(msg, data...))
+		common.LogWriterMu.RUnlock()
 	}
 }
 
@@ -85,6 +93,8 @@ func (l *prettyGormLogger) Trace(_ context.Context, begin time.Time, fc func() (
 	sql, rows := fc()
 	sql = compactSQL(sql)
 	caller := shortCaller()
+	now := time.Now()
+	traceID := trace.Get()
 
 	isNotFound := errors.Is(err, gorm.ErrRecordNotFound)
 	hasRealErr := err != nil && !(isNotFound && l.ignoreNotFound)
@@ -92,30 +102,44 @@ func (l *prettyGormLogger) Trace(_ context.Context, begin time.Time, fc func() (
 
 	switch {
 	case hasRealErr && l.level >= logger.Error:
-		// 错误行：红色，两行（错误 + SQL），易于扫描
-		fmt.Printf("%s[SQL ERR]%s %s | %s\n    %s%s%s\n",
+		common.LogWriterMu.RLock()
+		_, _ = fmt.Fprintf(gin.DefaultErrorWriter,
+			"%s[SQL ERR]%s %s | %-*s | %s | %s\n    %s%s%s\n    %s↳ %s%s\n",
 			cRed, cReset,
+			common.FmtLogTime(now),
+			common.TraceColumnWidth, traceID,
 			formatTimeAndRows(elapsed, rows),
 			caller,
 			cRed, sql, cReset,
+			cRed, err.Error(), cReset,
 		)
-		fmt.Printf("    %s↳ %s%s\n", cRed, err.Error(), cReset)
+		common.LogWriterMu.RUnlock()
 
 	case isSlow && l.level >= logger.Warn:
-		fmt.Printf("%s[SQL SLOW]%s %s | %s\n    %s%s%s\n",
+		common.LogWriterMu.RLock()
+		_, _ = fmt.Fprintf(gin.DefaultWriter,
+			"%s[SQL SLOW]%s %s | %-*s | %s | %s\n    %s%s%s\n",
 			cYellow, cReset,
+			common.FmtLogTime(now),
+			common.TraceColumnWidth, traceID,
 			formatTimeAndRows(elapsed, rows),
 			caller,
 			cYellow, sql, cReset,
 		)
+		common.LogWriterMu.RUnlock()
 
 	case l.level >= logger.Info:
-		fmt.Printf("%s[SQL]%s %s | %s%s%s | %s\n",
+		common.LogWriterMu.RLock()
+		_, _ = fmt.Fprintf(gin.DefaultWriter,
+			"%s[SQL]%s %s | %-*s | %s | %s%s%s | %s\n",
 			cGray, cReset,
+			common.FmtLogTime(now),
+			common.TraceColumnWidth, traceID,
 			formatTimeAndRows(elapsed, rows),
 			cGray, caller, cReset,
 			sql,
 		)
+		common.LogWriterMu.RUnlock()
 	}
 }
 

@@ -6,17 +6,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import {
   useActivateSubscription,
   useSubscriptionPlans,
   useSubscriptionSelf,
   type SubscriptionPlanDTO,
 } from '@/hooks/useSubscription';
-import { fmtDateSec, fmtMoney } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { fmtDateSec, fmtDisplay, fmtMoney } from '@/lib/format';
 
 function formatPrice(p: SubscriptionPlanDTO): string {
+  // Plan price has its own currency field — when backend tagged it as USD we
+  // render via fmtMoney (keeps the $ prefix). Non-USD currencies show raw.
   if (p.currency === 'USD') return fmtMoney(p.price_amount);
   return `${p.currency} ${p.price_amount.toFixed(2)}`;
 }
@@ -35,6 +36,7 @@ function cycleLabel(p: SubscriptionPlanDTO, t: ReturnType<typeof useTranslation>
 
 export function PlanPage() {
   const { t } = useTranslation('plan');
+  const cfg = usePublicConfig();
   const plans = useSubscriptionPlans();
   const self = useSubscriptionSelf();
   const activate = useActivateSubscription();
@@ -68,8 +70,8 @@ export function PlanPage() {
                 self.data.total_quota > 0 && (
                   <div className='text-12 text-fg-2'>
                     {t('current.used_quota', {
-                      used: fmtMoney(self.data.used_quota / QUOTA_PER_UNIT),
-                      total: fmtMoney(self.data.total_quota / QUOTA_PER_UNIT),
+                      used: fmtDisplay(self.data.used_quota, cfg),
+                      total: fmtDisplay(self.data.total_quota, cfg),
                     })}
                   </div>
                 )}

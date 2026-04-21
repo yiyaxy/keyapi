@@ -8,10 +8,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import type { AdminUser } from '@/hooks/useUsers';
-import { fmtMoney } from '@/lib/format';
+import { fmtDisplay } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
 const ROLE_COMMON = 1;
 const ROLE_ADMIN = 10;
 const ROLE_ROOT = 100;
@@ -34,6 +34,7 @@ export function UsersTable({
   onManage: (u: AdminUser, action: 'enable' | 'disable' | 'promote' | 'demote') => void;
 }) {
   const { t } = useTranslation('users');
+  const cfg = usePublicConfig();
   return (
     <div className='overflow-x-auto rounded-md border border-line'>
       <table className='w-full border-collapse tabular-nums'>
@@ -74,7 +75,7 @@ export function UsersTable({
                     {t(isEnabled ? 'status.enabled' : 'status.disabled')}
                   </Badge>
                 </td>
-                <td className='px-3 py-2'>{fmtMoney(u.quota / QUOTA_PER_UNIT)}</td>
+                <td className='px-3 py-2'>{fmtDisplay(u.quota, cfg)}</td>
                 <td className='px-3 py-2'>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

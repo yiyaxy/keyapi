@@ -59,7 +59,7 @@ describe('integration: keys delete rollback', () => {
       </QueryClientProvider>
     );
     await waitFor(() => expect(screen.getByText('victim')).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: /Actions/ }));
+    await user.click(screen.getByRole('button', { name: /Actions|操作/ }));
     await user.click(await screen.findByRole('menuitem', { name: /Delete|删除/ }));
     await user.click(screen.getByRole('button', { name: /^Delete$|^删除$/ }));
     await waitFor(() => expect(screen.getByText('victim')).toBeInTheDocument());

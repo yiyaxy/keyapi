@@ -5,14 +5,30 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/tenant_ctx"
 	"github.com/QuantumNous/new-api/constant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
+
+// resolveAutoTenantId 给 guardrail 自动注入阶段挑一个 tenant_id。
+// 优先级：goroutine-local（TenantResolve 中间件在每个 HTTP 请求上挂的）
+// > 调用方通过 ctx 显式传入。两处都读不到就返 0 —— 调用方把 0 当
+// "fail-closed"处理。
+func resolveAutoTenantId(ctx context.Context) int {
+	if tid := tenant_ctx.Get(); tid > 0 {
+		return tid
+	}
+	if ctx == nil {
+		return 0
+	}
+	return ExplicitTenantIDFromContext(ctx)
+}
 
 // tenantScopedTables 记录需要租户隔离的表名集合。
 var tenantScopedTables sync.Map
@@ -227,6 +243,9 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 	// Phase S3 表 —— 退款
 	RegisterTenantScopedTable("payment_refunds")
 
+	// Shared channels override (tenant disables a specific platform channel)
+	RegisterTenantScopedTable("tenant_channel_overrides")
+
 	// Create：fail-closed（没有 tenant_id 就拒绝入库）
 	db.Callback().Create().Before("gorm:create").Register("tenant:guard_create", tenantGuardCreate)
 	// Query/Update/Delete：fail-closed（WHERE 里没 tenant_id 就拒绝）
@@ -278,6 +297,22 @@ func tenantGuardScope(db *gorm.DB) {
 		}
 	}
 
+	// Check 2.5 (NEW): allow reads scoped to scope='platform' even without tenant_id.
+	// Only applies to tables that have a scope column — channels and abilities today.
+	// See spec §8.1.
+	//
+	// Match the exact GORM-serialised form "scope = ? [platform]" — a single
+	// substring — to prevent split-field injection (two columns whose values
+	// together spell "scope" and "[platform]" but are not the scope column).
+	if db.Statement.BuildClauses[0] == "SELECT" && whereExpr != "" {
+		tableName := db.Statement.Schema.Table
+		if tableName == "channels" || tableName == "abilities" {
+			if strings.Contains(whereExpr, "scope = ? [platform]") {
+				return
+			}
+		}
+	}
+
 	// Check 3：唯一索引查询自动放行。
 	// 如果 WHERE 里对 PK 或单列唯一索引做等值/IN 查询，结果行本身就是跨租户唯一的，
 	// 再加 tenant_id 条件只是冗余；不加也不会发生跨租户数据混淆。
@@ -287,14 +322,13 @@ func tenantGuardScope(db *gorm.DB) {
 		return
 	}
 
-	// Check 4：尝试从 context 里自动注入 —— 但必须是"显式"写入的 tenant_id 才行。
-	// ExplicitTenantIDFromContext 在没 set 时返 0（不是 DefaultTenantId），
-	// 这样 context.Background() 的查询不会被当成"租户 1"处理。
-	if ctx := db.Statement.Context; ctx != nil {
-		if tenantId := ExplicitTenantIDFromContext(ctx); tenantId > 0 {
-			db.Where("tenant_id = ?", tenantId)
-			return
-		}
+	// Check 4：自动注入 tenant_id。
+	// 优先级：goroutine-local（HTTP TenantResolve 中间件挂的）> 显式写入 ctx。
+	// 两者都没读到就 fail-closed。任何 fallback 到 DefaultTenantId 的设计都
+	// 会把"缺失 tenant"变成"写到租户 1"，属于跨租户泄漏。
+	if tenantId := resolveAutoTenantId(db.Statement.Context); tenantId > 0 {
+		db.Where("tenant_id = ?", tenantId)
+		return
 	}
 
 	// 以上都不满足 —— Phase 2 fail-closed：写 ERROR 日志 + 拒绝执行。
@@ -310,9 +344,66 @@ func tenantGuardScope(db *gorm.DB) {
 	msg := fmt.Sprintf("[tenant-guardrail] UNSCOPED %s REJECTED: table=%s accessed without tenant_id in WHERE. "+
 		"Fix: use TenantDB(ctx), add .Where(\"tenant_id = ?\", id), or WithTenantBypass() for admin ops.",
 		op, db.Statement.Schema.Table)
-	common.SysError(msg)
+	common.SysError(msg + formatTenantGuardrailSQLDebug(db, op, whereExpr, sql))
 	_ = db.AddError(fmt.Errorf("tenant guardrail: refusing unscoped %s on %s (use WithTenantBypass to override)",
 		op, db.Statement.Schema.Table))
+}
+
+func formatTenantGuardrailSQLDebug(db *gorm.DB, op string, whereExpr string, rawSQL string) string {
+	if db == nil || db.Statement == nil {
+		return ""
+	}
+	table := ""
+	if db.Statement.Schema != nil {
+		table = db.Statement.Schema.Table
+	}
+	clauseNames := make([]string, 0, len(db.Statement.Clauses))
+	for name := range db.Statement.Clauses {
+		clauseNames = append(clauseNames, name)
+	}
+	sort.Strings(clauseNames)
+	varsStr := formatTenantGuardrailVars(db.Statement.Vars)
+	explainedSQL := ""
+	if strings.TrimSpace(rawSQL) != "" {
+		explainedSQL = db.Dialector.Explain(rawSQL, db.Statement.Vars...)
+	} else {
+		explainedSQL = synthesizeTenantGuardrailSQL(op, table, whereExpr, db.Statement.Vars, db)
+	}
+	return fmt.Sprintf(" | raw_sql=%q | where=%q | vars=%s | explained_sql=%q | clauses=%v",
+		rawSQL, whereExpr, varsStr, explainedSQL, clauseNames)
+}
+
+func formatTenantGuardrailVars(vars []interface{}) string {
+	if len(vars) == 0 {
+		return "[]"
+	}
+	parts := make([]string, 0, len(vars))
+	for i, v := range vars {
+		parts = append(parts, fmt.Sprintf("$%d=%T(%v)", i+1, v, v))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func synthesizeTenantGuardrailSQL(op string, table string, whereExpr string, vars []interface{}, db *gorm.DB) string {
+	if table == "" {
+		table = "<unknown_table>"
+	}
+	base := ""
+	switch op {
+	case "UPDATE":
+		base = fmt.Sprintf("UPDATE %s SET <blocked_by_tenant_guardrail>", table)
+	case "DELETE":
+		base = fmt.Sprintf("DELETE FROM %s", table)
+	default:
+		base = fmt.Sprintf("SELECT * FROM %s", table)
+	}
+	if strings.TrimSpace(whereExpr) != "" {
+		base += " WHERE " + whereExpr
+	}
+	if db != nil {
+		return db.Dialector.Explain(base, vars...)
+	}
+	return base
 }
 
 // tenantGuardCreate 是 Insert 的租户隔离守门员：
@@ -366,10 +457,9 @@ func checkOrFillTenantId(db *gorm.DB, field *schema.Field, rowValue reflect.Valu
 	}
 
 	if isZero || currentTenantId == 0 {
-		// 用 ExplicitTenantIDFromContext（context.Background() 时返 0），
-		// 而不是 TenantIDFromContext（会返回 DefaultTenantId）。
-		// 这样可以防止 DB.Create() 在没挂请求 context 时，把数据悄悄写到租户 1。
-		tenantId := ExplicitTenantIDFromContext(db.Statement.Context)
+		// 优先级：goroutine-local > 显式 ctx。与 Query/Update/Delete 的 Check 4 对齐。
+		// 两者都没有就让 currentTenantId 保持 0，由下方 fail-closed 拒绝入库。
+		tenantId := resolveAutoTenantId(db.Statement.Context)
 		if tenantId > 0 {
 			_ = field.Set(db.Statement.Context, rowValue, tenantId)
 			currentTenantId = tenantId

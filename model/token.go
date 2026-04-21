@@ -314,50 +314,66 @@ func (token *Token) Insert() error {
 	return err
 }
 
+// scopedQuery 返回一个限定到当前 token (id, tenant_id) 的 *gorm.DB。
+// 校验 Id / TenantId 非空，满足 tenant guardrail 的 fail-closed 要求。
+func (token *Token) scopedQuery() (*gorm.DB, error) {
+	if token.Id == 0 || token.TenantId == 0 {
+		return nil, errors.New("token.Id 和 token.TenantId 不能为空")
+	}
+	return DB.Model(&Token{}).Where("id = ? AND tenant_id = ?", token.Id, token.TenantId), nil
+}
+
+// refreshTokenCacheAfterWrite 在成功写库后异步刷新 Redis 缓存。
+// setCache=true 表示把当前 token 写回缓存；false 表示删除缓存。
+func (token *Token) refreshTokenCacheAfterWrite(err error, setCache bool) {
+	if !shouldUpdateRedis(true, err) {
+		return
+	}
+	snapshot := *token
+	gopool.Go(func() {
+		var cacheErr error
+		if setCache {
+			cacheErr = cacheSetToken(snapshot)
+		} else {
+			cacheErr = cacheDeleteToken(snapshot.Key)
+		}
+		if cacheErr != nil {
+			common.SysLog("failed to refresh token cache: " + cacheErr.Error())
+		}
+	})
+}
+
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (token *Token) Update() (err error) {
-	defer func() {
-		if shouldUpdateRedis(true, err) {
-			gopool.Go(func() {
-				err := cacheSetToken(*token)
-				if err != nil {
-					common.SysLog("failed to update token cache: " + err.Error())
-				}
-			})
-		}
-	}()
-	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
+	q, err := token.scopedQuery()
+	if err != nil {
+		return err
+	}
+	defer func() { token.refreshTokenCacheAfterWrite(err, true) }()
+	err = q.Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").
+		Updates(token).Error
 	return err
 }
 
 func (token *Token) SelectUpdate() (err error) {
-	defer func() {
-		if shouldUpdateRedis(true, err) {
-			gopool.Go(func() {
-				err := cacheSetToken(*token)
-				if err != nil {
-					common.SysLog("failed to update token cache: " + err.Error())
-				}
-			})
-		}
-	}()
+	q, err := token.scopedQuery()
+	if err != nil {
+		return err
+	}
+	defer func() { token.refreshTokenCacheAfterWrite(err, true) }()
 	// This can update zero values
-	return DB.Model(token).Select("accessed_time", "status").Updates(token).Error
+	err = q.Select("accessed_time", "status").Updates(token).Error
+	return err
 }
 
 func (token *Token) Delete() (err error) {
-	defer func() {
-		if shouldUpdateRedis(true, err) {
-			gopool.Go(func() {
-				err := cacheDeleteToken(token.Key)
-				if err != nil {
-					common.SysLog("failed to delete token cache: " + err.Error())
-				}
-			})
-		}
-	}()
-	err = DB.Delete(token).Error
+	q, err := token.scopedQuery()
+	if err != nil {
+		return err
+	}
+	defer func() { token.refreshTokenCacheAfterWrite(err, false) }()
+	err = q.Delete(&Token{}).Error
 	return err
 }
 

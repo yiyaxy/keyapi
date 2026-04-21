@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api } from '@/lib/api';
 
+export const TICKET_MAX_ATTACHMENTS = 5;
+
 export type Ticket = {
   id: number;
   tenant_id: number;
@@ -26,12 +28,15 @@ export type TicketReply = {
 
 export type TicketAttachment = {
   id: number;
+  tenant_id: number;
   ticket_id: number;
   reply_id: number;
-  filename: string;
-  size_bytes: number;
-  content_type: string;
+  uploader_id: number;
   object_key: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: number;
 };
 
 export type TicketDetail = {
@@ -52,6 +57,47 @@ const keys = {
   list: (q: TicketsQuery) => ['tickets', 'list', q] as const,
   detail: (id: number) => ['tickets', 'detail', id] as const,
 };
+
+type PresignUploadResp = {
+  object_key: string;
+  upload_url: string;
+  required_headers: Record<string, string> | null;
+  expires_at: number;
+};
+
+async function presignAndUpload(file: File): Promise<string> {
+  const contentType = file.type || 'application/octet-stream';
+  const res = await api.post<PresignUploadResp>('/api/ticket/uploads/presign', {
+    filename: file.name || 'file',
+    content_type: contentType,
+    size_bytes: file.size,
+  });
+  const { object_key, upload_url, required_headers } = res.data;
+
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(required_headers ?? {})) {
+    if (k) headers.set(k, String(v));
+  }
+  const hasCt = [...headers.keys()].some((k) => k.toLowerCase() === 'content-type');
+  if (!hasCt) headers.set('Content-Type', contentType);
+
+  const put = await fetch(upload_url, { method: 'PUT', headers, body: file });
+  if (!put.ok) {
+    const text = await put.text().catch(() => '');
+    throw new Error(`upload failed: ${put.status} ${text}`.trim());
+  }
+  return String(object_key || '').trim();
+}
+
+async function uploadFiles(files: File[] | undefined): Promise<string[]> {
+  if (!files || files.length === 0) return [];
+  const out: string[] = [];
+  for (const f of files) {
+    const key = await presignAndUpload(f);
+    if (key) out.push(key);
+  }
+  return Array.from(new Set(out));
+}
 
 export function useTickets(q: TicketsQuery) {
   return useQuery<TicketsPage>({
@@ -83,10 +129,12 @@ export function useTicketDetail(id: number | null) {
 export function useCreateTicket() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { subject: string; content: string }) => {
+    mutationFn: async (body: { subject: string; content: string; files?: File[] }) => {
+      const object_keys = await uploadFiles(body.files);
       const res = await api.post<{ ticket: Ticket; reply: TicketReply }>('/api/ticket', {
-        ...body,
-        object_keys: [],
+        subject: body.subject,
+        content: body.content,
+        object_keys,
       });
       return res.data;
     },
@@ -97,10 +145,11 @@ export function useCreateTicket() {
 export function useReplyTicket(ticketId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async (body: { content: string; files?: File[] }) => {
+      const object_keys = await uploadFiles(body.files);
       const res = await api.post<TicketReply>(`/api/ticket/${ticketId}/reply`, {
-        content,
-        object_keys: [],
+        content: body.content,
+        object_keys,
       });
       return res.data;
     },
@@ -141,10 +190,11 @@ export function useAdminTicketDetail(id: number | null) {
 export function useAdminReplyTicket(ticketId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async (body: { content: string; files?: File[] }) => {
+      const object_keys = await uploadFiles(body.files);
       const res = await api.post<TicketReply>(`/api/ticket/admin/${ticketId}/reply`, {
-        content,
-        object_keys: [],
+        content: body.content,
+        object_keys,
       });
       return res.data;
     },
@@ -164,4 +214,18 @@ export function useAdminUpdateTicketStatus(ticketId: number) {
       void qc.invalidateQueries({ queryKey: ['tickets-admin'] });
     },
   });
+}
+
+type PresignAttachmentResp = { url: string; expires_at: number };
+
+export async function presignTicketAttachment(
+  attId: number,
+  opts: { admin?: boolean; disposition?: 'inline' | 'attachment' } = {}
+): Promise<PresignAttachmentResp> {
+  const disposition = opts.disposition ?? 'inline';
+  const base = opts.admin ? '/api/ticket/admin/attachments' : '/api/ticket/attachments';
+  const res = await api.get<PresignAttachmentResp>(
+    `${base}/${attId}/presign?disposition=${disposition}`
+  );
+  return res.data;
 }

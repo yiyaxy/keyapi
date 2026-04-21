@@ -18,6 +18,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	ChannelScopePlatform = "platform"
+	ChannelScopeTenant   = "tenant"
+)
+
 type Channel struct {
 	Id                 int     `json:"id"`
 	TenantId           int     `json:"tenant_id" gorm:"index;not null;default:1"`
@@ -52,6 +57,11 @@ type Channel struct {
 	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
+
+	// Scope distinguishes "platform" (shared, tenant_id=0) and "tenant" (owned).
+	// See docs/superpowers/specs/2026-04-20-shared-channels-design.md §3.1.
+	Scope       string   `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
+	MarkupRatio *float64 `json:"markup_ratio" gorm:"type:decimal(10,4);default:null"`
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
@@ -191,8 +201,21 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	}
 }
 
+// scopedQuery 返回限定到当前 channel (id, tenant_id) 的 *gorm.DB。
+// 校验 Id/TenantId 非空，满足 tenant guardrail 的 fail-closed 要求。
+func (channel *Channel) scopedQuery() (*gorm.DB, error) {
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return nil, errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
+	return DB.Model(&Channel{}).Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId), nil
+}
+
 func (channel *Channel) SaveChannelInfo() error {
-	return DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
+	q, err := channel.scopedQuery()
+	if err != nil {
+		return err
+	}
+	return q.Update("channel_info", channel.ChannelInfo).Error
 }
 
 func (channel *Channel) GetModels() []string {
@@ -259,14 +282,23 @@ func (c *Channel) GetMaxRetry() int {
 }
 
 func (channel *Channel) Save() error {
-	return DB.Save(channel).Error
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
+	// GORM Save 在 UPDATE 时只按 PK 建 WHERE，租户 guardrail 不放行。
+	// 显式拼出 WHERE id+tenant_id 后走 Select("*").Updates 等价写回。
+	return DB.Model(&Channel{}).
+		Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).
+		Select("*").Updates(channel).Error
 }
 
 func (channel *Channel) SaveWithoutKey() error {
-	if channel.Id == 0 {
-		return errors.New("channel ID is 0")
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
 	}
-	return DB.Omit("key").Save(channel).Error
+	return DB.Model(&Channel{}).
+		Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).
+		Omit("key").Select("*").Updates(channel).Error
 }
 
 // GetAllChannelsByTenant 取租户内渠道；tenantId<=0 表示平台级全量扫描
@@ -367,13 +399,67 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 	return SearchChannelsByTenant(0, keyword, group, model, idSort)
 }
 
+// SearchChannelsForTenant searches channels visible to the given tenant
+// (own + platform), excluding the `key = ?` predicate that SearchChannelsByTenant
+// supports. This removes the "key existence oracle" — see spec §7.5.
+func SearchChannelsForTenant(tenantId int, keyword, group, modelName string, idSort bool) ([]*Channel, error) {
+	var channels []*Channel
+	if tenantId <= 0 {
+		return channels, nil
+	}
+
+	modelsCol := "`models`"
+	if common.UsingPostgreSQL {
+		modelsCol = `"models"`
+	}
+	baseURLCol := "`base_url`"
+	if common.UsingPostgreSQL {
+		baseURLCol = `"base_url"`
+	}
+
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+
+	baseQuery := DB.Model(&Channel{}).Omit("key").
+		Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
+
+	var whereClause string
+	var args []interface{}
+	// Note: NO `key = ?` predicate here (anti-oracle).
+	if group != "" && group != "null" {
+		var groupCondition string
+		if common.UsingMySQL {
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+		} else {
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+		}
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%", "%,"+group+",%")
+	} else {
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%")
+	}
+
+	if err := baseQuery.Where(whereClause, args...).Order(order).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
+// GetChannelByIdWithTenant reads a channel row.
+//  - tenantId > 0：按 (id, tenant_id) 精确匹配，用于租户 / 平台读取自家行。
+//  - tenantId <= 0：视为平台超管跨租户查询，显式 WithTenantBypass 放行 guardrail。
 func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
-	var err error = nil
-	query := DB.Where("id = ?", id)
+	var query *gorm.DB
 	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+		query = DB.Where("id = ? AND tenant_id = ?", id, tenantId)
+	} else {
+		query = WithTenantBypass(DB).Where("id = ?", id)
 	}
+	var err error
 	if selectAll {
 		err = query.First(channel).Error
 	} else {
@@ -392,16 +478,65 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	return GetChannelByIdWithTenant(id, 0, selectAll)
 }
 
+// GetVisibleChannelForTenant returns a channel that is either owned by the
+// tenant OR is a platform-scoped shared channel. Used by tenant-side reads
+// (list/detail/fetch). See spec §9.1.
+func GetVisibleChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+	channel := &Channel{Id: id}
+	query := DB.Where("id = ? AND (scope = ? OR tenant_id = ?)", id, ChannelScopePlatform, tenantId)
+	var err error
+	if selectAll {
+		err = query.First(channel).Error
+	} else {
+		err = query.Omit("key").First(channel).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
+// GetOwnedChannelForTenant strictly requires tenant_id match. Used by
+// tenant-side writes so that platform channels (tenant_id=0) and other
+// tenants' rows are never editable. See spec §9.1.
+func GetOwnedChannelForTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
+	if tenantId <= 0 {
+		return nil, errors.New("tenantId required for owned channel lookup")
+	}
+	channel := &Channel{Id: id}
+	query := DB.Where("id = ? AND tenant_id = ?", id, tenantId)
+	var err error
+	if selectAll {
+		err = query.First(channel).Error
+	} else {
+		err = query.Omit("key").First(channel).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
 // BatchInsertChannels inserts in one transaction and surfaces panics as
 // errors. Without the named return + deferred recover-to-err dance, a
 // panic inside a gorm callback (e.g. tenantGuardCreate on a slice) would
 // be swallowed silently and the caller would see `nil` — which for this
 // handler means reporting success to the admin with zero rows inserted.
 func BatchInsertChannels(channels []Channel) (retErr error) {
+	return batchInsertChannels(DB, channels)
+}
+
+// BatchInsertChannelsBypass inserts channels with tenant guardrail bypass enabled.
+// Used for root-created platform channels (tenant_id=0).
+func BatchInsertChannelsBypass(channels []Channel) (retErr error) {
+	return batchInsertChannels(WithTenantBypass(DB), channels)
+}
+
+func batchInsertChannels(db *gorm.DB, channels []Channel) (retErr error) {
 	if len(channels) == 0 {
 		return nil
 	}
-	tx := DB.Begin()
+	tx := db.Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -539,18 +674,26 @@ func (channel *Channel) Update() error {
 			}
 		}
 	}
-	var err error
-	err = DB.Model(channel).Updates(channel).Error
+	q, err := channel.scopedQuery()
 	if err != nil {
 		return err
 	}
-	DB.Model(channel).First(channel, "id = ?", channel.Id)
+	err = q.Updates(channel).Error
+	if err != nil {
+		return err
+	}
+	DB.Model(&Channel{}).First(channel, "id = ? AND tenant_id = ?", channel.Id, channel.TenantId)
 	err = channel.UpdateAbilities(nil)
 	return err
 }
 
 func (channel *Channel) UpdateResponseTime(responseTime int64) {
-	err := DB.Model(channel).Select("response_time", "test_time").Updates(Channel{
+	q, err := channel.scopedQuery()
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to update response time: channel_id=%d, error=%v", channel.Id, err))
+		return
+	}
+	err = q.Select("response_time", "test_time").Updates(Channel{
 		TestTime:     common.GetTimestamp(),
 		ResponseTime: int(responseTime),
 	}).Error
@@ -560,7 +703,12 @@ func (channel *Channel) UpdateResponseTime(responseTime int64) {
 }
 
 func (channel *Channel) UpdateBalance(balance float64) {
-	err := DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
+	q, err := channel.scopedQuery()
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to update balance: channel_id=%d, error=%v", channel.Id, err))
+		return
+	}
+	err = q.Select("balance_updated_time", "balance").Updates(Channel{
 		BalanceUpdatedTime: common.GetTimestamp(),
 		Balance:            balance,
 	}).Error
@@ -570,8 +718,10 @@ func (channel *Channel) UpdateBalance(balance float64) {
 }
 
 func (channel *Channel) Delete() error {
-	var err error
-	err = DB.Delete(channel).Error
+	if channel.Id == 0 || channel.TenantId == 0 {
+		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	}
+	err := DB.Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).Delete(&Channel{}).Error
 	if err != nil {
 		return err
 	}
@@ -680,10 +830,11 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 		}
 	}
 
+	var loadedTenantId int
 	shouldUpdateAbilities := false
 	defer func() {
-		if shouldUpdateAbilities {
-			err := UpdateAbilityStatus(channelId, status == common.ChannelStatusEnabled)
+		if shouldUpdateAbilities && loadedTenantId > 0 {
+			err := UpdateAbilityStatus(loadedTenantId, channelId, status == common.ChannelStatusEnabled)
 			if err != nil {
 				common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))
 			}
@@ -693,6 +844,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	if err != nil {
 		return false
 	} else {
+		loadedTenantId = channel.TenantId
 		if channel.Status == status {
 			return false
 		}
@@ -725,32 +877,35 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 }
 
 func EnableChannelByTag(tag string, tenantId int) error {
-	q := DB.Model(&Channel{}).Where("tag = ?", tag)
-	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
 	}
-	err := q.Update("status", common.ChannelStatusEnabled).Error
+	err := DB.Model(&Channel{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Update("status", common.ChannelStatusEnabled).Error
 	if err != nil {
 		return err
 	}
-	err = UpdateAbilityStatusByTag(tag, true, tenantId)
-	return err
+	return UpdateAbilityStatusByTag(tag, true, tenantId)
 }
 
 func DisableChannelByTag(tag string, tenantId int) error {
-	q := DB.Model(&Channel{}).Where("tag = ?", tag)
-	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
 	}
-	err := q.Update("status", common.ChannelStatusManuallyDisabled).Error
+	err := DB.Model(&Channel{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Update("status", common.ChannelStatusManuallyDisabled).Error
 	if err != nil {
 		return err
 	}
-	err = UpdateAbilityStatusByTag(tag, false, tenantId)
-	return err
+	return UpdateAbilityStatusByTag(tag, false, tenantId)
 }
 
 func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string, tenantId int) error {
+	if tenantId <= 0 {
+		return errors.New("tenantId 不能为空")
+	}
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
@@ -783,11 +938,9 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 		updateData.HeaderOverride = headerOverride
 	}
 
-	q := DB.Model(&Channel{}).Where("tag = ?", tag)
-	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
-	}
-	err := q.Updates(updateData).Error
+	err := DB.Model(&Channel{}).
+		Where("tag = ? AND tenant_id = ?", tag, tenantId).
+		Updates(updateData).Error
 	if err != nil {
 		return err
 	}
@@ -802,7 +955,7 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 			}
 		}
 	} else {
-		err := UpdateAbilityByTag(tag, newTag, priority, weight)
+		err := UpdateAbilityByTag(tag, newTag, priority, weight, tenantId)
 		if err != nil {
 			return err
 		}
@@ -810,24 +963,26 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
-func UpdateChannelUsedQuota(id int, quota int, tenantId ...int) {
-	if common.BatchUpdateEnabled {
-		resolvedTenantId := 0
-		if len(tenantId) > 0 {
-			resolvedTenantId = tenantId[0]
-		}
-		addNewRecord(BatchUpdateTypeChannelUsedQuota, resolvedTenantId, id, quota)
+func UpdateChannelUsedQuota(id int, quota int, tenantId int) {
+	if tenantId <= 0 {
+		common.SysLog(fmt.Sprintf("UpdateChannelUsedQuota: missing tenantId (channel_id=%d)", id))
 		return
 	}
-	updateChannelUsedQuota(id, quota, tenantId...)
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeChannelUsedQuota, tenantId, id, quota)
+		return
+	}
+	updateChannelUsedQuota(id, quota, tenantId)
 }
 
-func updateChannelUsedQuota(id int, quota int, tenantId ...int) {
-	query := DB.Model(&Channel{}).Where("id = ?", id)
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
+func updateChannelUsedQuota(id int, quota int, tenantId int) {
+	if tenantId <= 0 {
+		common.SysLog(fmt.Sprintf("updateChannelUsedQuota: missing tenantId (channel_id=%d)", id))
+		return
 	}
-	err := query.Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+	err := DB.Model(&Channel{}).
+		Where("id = ? AND tenant_id = ?", id, tenantId).
+		Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}
@@ -993,9 +1148,11 @@ func GetChannelsByIds(ids []int) ([]*Channel, error) {
 	return channels, err
 }
 
+// BatchSetChannelTag 是平台级跨租户操作（超管路由），显式 bypass tenant guardrail。
+// 租户场景请使用 BatchSetChannelTagForTenant。
 func BatchSetChannelTag(ids []int, tag *string) error {
 	// 开启事务
-	tx := DB.Begin()
+	tx := WithTenantBypass(DB).Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -1023,6 +1180,39 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	}
 
 	// 提交事务
+	return tx.Commit().Error
+}
+
+// BatchSetChannelTagForTenant updates tags only for channels owned by the tenant.
+// Platform channels and other tenants' channels are not touched.
+func BatchSetChannelTagForTenant(ids []int, tag *string, tenantId int) error {
+	if tenantId <= 0 {
+		return fmt.Errorf("invalid tenantId: %d", tenantId)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := tx.Model(&Channel{}).
+		Where("id IN ? AND tenant_id = ? AND scope = ?", ids, tenantId, ChannelScopeTenant).
+		Update("tag", tag).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	var channels []*Channel
+	if err := tx.Where("id IN ? AND tenant_id = ? AND scope = ?", ids, tenantId, ChannelScopeTenant).Find(&channels).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, channel := range channels {
+		if err := channel.UpdateAbilities(tx); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
 	return tx.Commit().Error
 }
 
@@ -1087,4 +1277,76 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 		counts[r.Type] = r.Count
 	}
 	return counts, nil
+}
+
+// GetChannelsByTagForTenant returns channels with the given tag that are
+// visible to the tenant (own + platform). See spec §9.3.
+func GetChannelsByTagForTenant(tag string, tenantId int, idSort bool, selectAll bool) ([]*Channel, error) {
+	var channels []*Channel
+	if tenantId <= 0 {
+		return channels, nil
+	}
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+	query := DB.Where("tag = ? AND (scope = ? OR tenant_id = ?)", tag, ChannelScopePlatform, tenantId).Order(order)
+	if !selectAll {
+		query = query.Omit("key")
+	}
+	err := query.Find(&channels).Error
+	return channels, err
+}
+
+// GetPaginatedTagsForTenant returns distinct non-empty tags visible to
+// the tenant (own + platform).
+func GetPaginatedTagsForTenant(tenantId int, offset, limit int) ([]*string, error) {
+	var tags []*string
+	if tenantId <= 0 {
+		return tags, nil
+	}
+	err := DB.Model(&Channel{}).Select("DISTINCT tag").
+		Where("tag != '' AND (scope = ? OR tenant_id = ?)", ChannelScopePlatform, tenantId).
+		Offset(offset).Limit(limit).Find(&tags).Error
+	return tags, err
+}
+
+// SearchTagsForTenant searches tags visible to the tenant.
+// The `key = ?` predicate is NOT included here (anti-oracle; see §7.5).
+func SearchTagsForTenant(tenantId int, keyword, group, modelName string, idSort bool) ([]*string, error) {
+	var tags []*string
+	if tenantId <= 0 {
+		return tags, nil
+	}
+	modelsCol := "`models`"
+	if common.UsingPostgreSQL {
+		modelsCol = `"models"`
+	}
+	baseURLCol := "`base_url`"
+	if common.UsingPostgreSQL {
+		baseURLCol = `"base_url"`
+	}
+	order := "priority desc"
+	if idSort {
+		order = "id desc"
+	}
+	baseQuery := DB.Model(&Channel{}).
+		Where("scope = ? OR tenant_id = ?", ChannelScopePlatform, tenantId)
+	var whereClause string
+	var args []interface{}
+	if group != "" && group != "null" {
+		var groupCondition string
+		if common.UsingMySQL {
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+		} else {
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+		}
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%", "%,"+group+",%")
+	} else {
+		whereClause = "(id = ? OR name LIKE ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", "%"+keyword+"%", "%"+modelName+"%")
+	}
+	err := baseQuery.Where(whereClause, args...).Order(order).Select("DISTINCT tag").Find(&tags).Error
+	return tags, err
 }

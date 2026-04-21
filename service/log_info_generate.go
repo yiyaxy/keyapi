@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 
@@ -153,6 +154,24 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]inter
 func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
 	if relayInfo == nil || other == nil {
 		return
+	}
+	isPlatformChannel := false
+	if relayInfo.ChannelMeta != nil {
+		isPlatformChannel = relayInfo.ChannelMeta.ChannelId > 0 && relayInfo.PriceMarkupSource != ""
+	}
+	if !isPlatformChannel && relayInfo.ChannelId > 0 {
+		if ch, err := model.CacheGetChannel(relayInfo.ChannelId); err == nil && ch != nil {
+			isPlatformChannel = ch.Scope == model.ChannelScopePlatform
+		}
+	}
+	if relayInfo.PriceMarkupRatio > 0 {
+		other["markup_ratio"] = relayInfo.PriceMarkupRatio
+	}
+	if relayInfo.PriceMarkupSource != "" {
+		other["markup_source"] = relayInfo.PriceMarkupSource
+	}
+	if isPlatformChannel {
+		other["is_platform_channel"] = true
 	}
 	// billing_source: "wallet" or "subscription"
 	if relayInfo.BillingSource != "" {

@@ -18,6 +18,66 @@ var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
 var channelSyncLock sync.RWMutex
 
+var (
+	// In-memory routing preferences per tenant. Rebuilt by ReloadTenantRoutingCache.
+	tenantRoutingMu       sync.RWMutex
+	tenantMode            = map[int]string{}           // tenantId -> mode
+	tenantDisabledChannel = map[int]map[int]struct{}{} // tenantId -> set of channel_id
+)
+
+// ReloadTenantRoutingCache refreshes mode + disabled-set for one tenant
+// from DB. Call whenever tenant_options.platform_channel_mode or
+// tenant_channel_overrides changes. See spec §4.3.
+func ReloadTenantRoutingCache(tenantId int) {
+	if tenantId <= 0 {
+		return
+	}
+	mode, _ := GetTenantPlatformChannelMode(tenantId)
+	dis, _ := GetTenantDisabledPlatformChannels(tenantId)
+
+	tenantRoutingMu.Lock()
+	defer tenantRoutingMu.Unlock()
+	tenantMode[tenantId] = mode
+	tenantDisabledChannel[tenantId] = dis
+}
+
+// InvalidateTenantRoutingCache refreshes the cache for a single tenant.
+// Alias for ReloadTenantRoutingCache — kept for naming clarity at call sites.
+func InvalidateTenantRoutingCache(tenantId int) {
+	ReloadTenantRoutingCache(tenantId)
+}
+
+// GetCachedTenantMode returns the cached mode or the default when unloaded.
+func GetCachedTenantMode(tenantId int) string {
+	tenantRoutingMu.RLock()
+	defer tenantRoutingMu.RUnlock()
+	if m, ok := tenantMode[tenantId]; ok {
+		return m
+	}
+	return PlatformChannelModePrivatePriority
+}
+
+// GetCachedTenantDisabledChannels returns the cached disabled set (non-nil
+// even when unloaded — callers can range safely).
+func GetCachedTenantDisabledChannels(tenantId int) map[int]struct{} {
+	tenantRoutingMu.RLock()
+	defer tenantRoutingMu.RUnlock()
+	if s, ok := tenantDisabledChannel[tenantId]; ok {
+		return s
+	}
+	return map[int]struct{}{}
+}
+
+// reloadAllTenantRoutingCaches warms per-tenant preferences at startup.
+// Called at the end of InitChannelCache.
+func reloadAllTenantRoutingCaches() {
+	var tenants []Tenant
+	WithTenantBypass(DB).Where("status = ?", TenantStatusActive).Find(&tenants)
+	for _, t := range tenants {
+		ReloadTenantRoutingCache(t.Id)
+	}
+}
+
 // tenantGroupKey builds a composite cache key "tenantId:group" for tenant-isolated channel lookup.
 func tenantGroupKey(tenantId int, group string) string {
 	return fmt.Sprintf("%d:%s", tenantId, group)
@@ -91,21 +151,28 @@ func InitChannelCache() {
 	channelsIDM = newChannelId2channel
 	channelSyncLock.Unlock()
 	common.SysLog("channels synced from database")
+
+	// Warm per-tenant routing preferences (mode + disabled overrides).
+	reloadAllTenantRoutingCaches()
 }
 
 // GetChannelGroupsCopy returns a copy of group names that have at least one enabled channel for the given tenant.
+// The result is the union of tenant-specific groups and platform groups (tenant_id=0 / scope=platform).
 func GetChannelGroupsCopy(tenantId int) map[string]bool {
 	if !common.MemoryCacheEnabled {
 		return getChannelGroupsFromDB(tenantId)
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
-	prefix := fmt.Sprintf("%d:", tenantId)
+	tenantPrefix := fmt.Sprintf("%d:", tenantId)
+	platformPrefix := "0:"
 	result := make(map[string]bool)
 	for tgKey := range group2model2channels {
-		if strings.HasPrefix(tgKey, prefix) {
-			group := strings.TrimPrefix(tgKey, prefix)
-			result[group] = true
+		if strings.HasPrefix(tgKey, tenantPrefix) {
+			result[strings.TrimPrefix(tgKey, tenantPrefix)] = true
+		} else if tenantId != 0 && strings.HasPrefix(tgKey, platformPrefix) {
+			// Also include platform groups (scope=platform / tenant_id=0) for non-platform callers.
+			result[strings.TrimPrefix(tgKey, platformPrefix)] = true
 		}
 	}
 	return result
@@ -130,11 +197,13 @@ func GroupHasChannels(group string, tenantId int) bool {
 }
 
 // getChannelGroupsFromDB queries distinct groups from abilities table (non-cache fallback).
+// Returns the union of tenant-specific groups and platform groups (tenant_id=0).
 func getChannelGroupsFromDB(tenantId int) map[string]bool {
 	var groups []string
 	q := DB.Model(&Ability{}).Where("enabled = ?", true)
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+		// Include both tenant-specific and platform (tenant_id=0) groups.
+		q = q.Where("tenant_id = ? OR tenant_id = ?", tenantId, 0)
 	}
 	q.Distinct(commonGroupCol).Pluck(commonGroupCol, &groups)
 	result := make(map[string]bool)
@@ -162,16 +231,61 @@ func GetRandomSatisfiedChannel(tenantId int, group string, model string, retry i
 	defer channelSyncLock.RUnlock()
 
 	tgKey := tenantGroupKey(tenantId, group)
+	platformKey := tenantGroupKey(0, group)
 
-	// First, try to find channels with the exact model name.
-	channels := group2model2channels[tgKey][model]
-
-	// If no channels found, try to find channels with the normalized model name.
+	gather := func(modelName string) []int {
+		var out []int
+		if m, ok := group2model2channels[tgKey]; ok {
+			out = append(out, m[modelName]...)
+		}
+		if m, ok := group2model2channels[platformKey]; ok {
+			out = append(out, m[modelName]...)
+		}
+		return out
+	}
+	channels := gather(model)
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
-		channels = group2model2channels[tgKey][normalizedModel]
+		channels = gather(normalizedModel)
 	}
 
+	// Partition into tenant-owned vs platform candidates, drop disabled platforms,
+	// and apply the tenant's mode preference.
+	mode := GetCachedTenantMode(tenantId)
+	disabled := GetCachedTenantDisabledChannels(tenantId)
+	var tenantOwn, platform []int
+	for _, id := range channels {
+		c := channelsIDM[id]
+		if c == nil {
+			continue
+		}
+		if c.Scope == ChannelScopePlatform {
+			if _, off := disabled[id]; off {
+				continue
+			}
+			platform = append(platform, id)
+		} else {
+			tenantOwn = append(tenantOwn, id)
+		}
+	}
+	switch mode {
+	case PlatformChannelModeOnlyPrivate:
+		channels = tenantOwn
+	case PlatformChannelModeOnlyPlatform:
+		channels = platform
+	case PlatformChannelModePlatformPriority:
+		if len(platform) > 0 {
+			channels = platform
+		} else {
+			channels = tenantOwn
+		}
+	default: // private_priority (also handles "" and invalid)
+		if len(tenantOwn) > 0 {
+			channels = tenantOwn
+		} else {
+			channels = platform
+		}
+	}
 	if len(channels) == 0 {
 		return nil, nil
 	}

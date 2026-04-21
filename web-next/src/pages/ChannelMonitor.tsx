@@ -5,9 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useChannelMonitor, type ChannelMonitorItem } from '@/hooks/useAnalytics';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 function healthVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
@@ -98,6 +97,7 @@ function ChannelMonitorTable({
   channels: ChannelMonitorItem[];
   t: ReturnType<typeof useTranslation>['t'];
 }) {
+  const cfg = usePublicConfig();
   if (channels.length === 0) {
     return <div className='text-13 text-fg-2'>{t('monitor.empty')}</div>;
   }
@@ -140,7 +140,7 @@ function ChannelMonitorTable({
               <td className='px-3 py-2'>{(ch.availability_rate * 100).toFixed(1)}%</td>
               <td className='px-3 py-2'>{ch.balance !== 0 ? ch.balance.toFixed(2) : '—'}</td>
               <td className='px-3 py-2'>
-                {ch.used_quota_1h > 0 ? fmtMoney(ch.used_quota_1h / QUOTA_PER_UNIT) : fmtNum(0)}
+                {ch.used_quota_1h > 0 ? fmtDisplay(ch.used_quota_1h, cfg) : fmtNum(0)}
               </td>
             </tr>
           ))}

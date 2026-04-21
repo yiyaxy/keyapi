@@ -10,18 +10,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageAction } from '@/hooks/usePageAction';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import {
   useDeleteRebateSetting,
   useRebateSettings,
   type UserRebateSetting,
 } from '@/hooks/useRebateSettings';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
 const PAGE_SIZE = 30;
 
 export function RebateSettingsAdminPage() {
   const { t } = useTranslation('rebate');
+  const cfg = usePublicConfig();
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState('');
   const [appliedKeyword, setAppliedKeyword] = useState('');
@@ -97,8 +98,8 @@ export function RebateSettingsAdminPage() {
                       <div className='font-mono'>{r.inviter_username || `#${r.inviter_id}`}</div>
                       <div className='text-12 text-fg-2'>#{r.inviter_id}</div>
                     </td>
-                    <td className='px-3 py-2'>{fmtMoney(r.register_reward / QUOTA_PER_UNIT)}</td>
-                    <td className='px-3 py-2'>{fmtMoney(r.invitee_reward / QUOTA_PER_UNIT)}</td>
+                    <td className='px-3 py-2'>{fmtDisplay(r.register_reward, cfg)}</td>
+                    <td className='px-3 py-2'>{fmtDisplay(r.invitee_reward, cfg)}</td>
                     <td className='px-3 py-2'>{fmtNum(r.top_up_rebate_count)}</td>
                     <td className='px-3 py-2'>{r.top_up_rebate_percent}%</td>
                     <td className='px-3 py-2'>{fmtNum(r.subscription_rebate_count)}</td>

@@ -17,21 +17,21 @@ var LogWriterMu sync.RWMutex
 func SysLog(s string) {
 	t := time.Now()
 	LogWriterMu.RLock()
-	_, _ = fmt.Fprintf(gin.DefaultWriter, "[SYS] %v | %s \n", t.Format("2006/01/02 - 15:04:05"), s)
+	_, _ = fmt.Fprintf(gin.DefaultWriter, "[SYS] %s | %s | %s\n", FmtLogTime(t), FmtTrace(), s)
 	LogWriterMu.RUnlock()
 }
 
 func SysError(s string) {
 	t := time.Now()
 	LogWriterMu.RLock()
-	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[SYS] %v | %s \n", t.Format("2006/01/02 - 15:04:05"), s)
+	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[SYS] %s | %s | %s\n", FmtLogTime(t), FmtTrace(), s)
 	LogWriterMu.RUnlock()
 }
 
 func FatalLog(v ...any) {
 	t := time.Now()
 	LogWriterMu.RLock()
-	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[FATAL] %v | %v \n", t.Format("2006/01/02 - 15:04:05"), v)
+	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[FATAL] %s | %s | %v\n", FmtLogTime(t), FmtTrace(), v)
 	LogWriterMu.RUnlock()
 	os.Exit(1)
 }

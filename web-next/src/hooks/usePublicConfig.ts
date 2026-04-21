@@ -10,6 +10,7 @@ export type PublicConfig = {
   quota_per_unit: number;
   quota_display_type: 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM';
   usd_exchange_rate: number;
+  price?: number;
   custom_currency_symbol?: string;
   custom_currency_exchange_rate?: number;
 };
@@ -20,6 +21,7 @@ const DEFAULT: PublicConfig = {
   quota_per_unit: 500_000,
   quota_display_type: 'USD',
   usd_exchange_rate: 7,
+  price: 7,
   custom_currency_symbol: '¤',
   custom_currency_exchange_rate: 1,
 };

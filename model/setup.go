@@ -4,7 +4,7 @@ package model
 // 格式约定：YYYY-MM-DD 或 YYYY-MM-DD.NN。每当新增/删除表、改列类型或其他
 // 需要 AutoMigrate 才能生效的 schema 改动时，bump 这个值，启动时就会自动
 // 跑一次完整迁移；不 bump 的话日常重启直接跳过 AutoMigrate 省时间。
-const CurrentSchemaVersion = "2026-04-20.01"
+const CurrentSchemaVersion = "2026-04-20.02"
 
 type Setup struct {
 	ID            uint   `json:"id" gorm:"primaryKey"`

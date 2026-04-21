@@ -26,13 +26,17 @@ type TopUp struct {
 	ClientIP      string  `json:"client_ip" gorm:"type:varchar(64);default:''"`
 
 	// Epay callback snapshot fields (populated on success notify)
-	EpayTradeNo      string `json:"epay_trade_no" gorm:"type:varchar(128);default:''"`
-	EpayOrderIdWxAl  string `json:"epay_order_id_wx_al" gorm:"type:varchar(128);default:''"`
-	EpayType         string `json:"epay_type" gorm:"type:varchar(32);default:''"`
-	EpayTdid         string `json:"epay_tdid" gorm:"type:varchar(128);default:''"`
-	EpayPid          string `json:"epay_pid" gorm:"type:varchar(64);default:''"`
-	EpayTradeStatus  string `json:"epay_trade_status" gorm:"type:varchar(64);default:''"`
+	EpayTradeNo       string `json:"epay_trade_no" gorm:"type:varchar(128);default:''"`
+	EpayOrderIdWxAl   string `json:"epay_order_id_wx_al" gorm:"type:varchar(128);default:''"`
+	EpayType          string `json:"epay_type" gorm:"type:varchar(32);default:''"`
+	EpayTdid          string `json:"epay_tdid" gorm:"type:varchar(128);default:''"`
+	EpayPid           string `json:"epay_pid" gorm:"type:varchar(64);default:''"`
+	EpayTradeStatus   string `json:"epay_trade_status" gorm:"type:varchar(64);default:''"`
 	EpayNotifyPayload string `json:"epay_notify_payload" gorm:"type:text;default:''"`
+	// RawQuota is the authoritative raw quota to credit on success for
+	// post-migration WeChat/Epay rows. Legacy rows keep 0 and must fall
+	// back to Amount-based reconstruction when no better source exists.
+	RawQuota int64 `json:"raw_quota" gorm:"not null;default:0"`
 }
 
 // TopUpWithUser is a DTO for admin queries that includes the username.
@@ -48,19 +52,20 @@ func (topUp *TopUp) Insert() error {
 }
 
 func (topUp *TopUp) Update() error {
-	var err error
-	err = DB.Save(topUp).Error
-	return err
+	if topUp.Id == 0 || topUp.TenantId == 0 {
+		return errors.New("topUp.Id 和 topUp.TenantId 不能为空")
+	}
+	return DB.Model(&TopUp{}).
+		Where("id = ? AND tenant_id = ?", topUp.Id, topUp.TenantId).
+		Select("*").Updates(topUp).Error
 }
 
 func GetTopUpById(tenantId int, id int) *TopUp {
-	var topUp *TopUp
-	var err error
-	query := DB.Where("id = ?", id)
-	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 || id <= 0 {
+		return nil
 	}
-	err = query.First(&topUp).Error
+	var topUp *TopUp
+	err := DB.Where("id = ? AND tenant_id = ?", id, tenantId).First(&topUp).Error
 	if err != nil {
 		return nil
 	}
@@ -70,13 +75,11 @@ func GetTopUpById(tenantId int, id int) *TopUp {
 // GetTopUpByTradeNo fetches a topup by trade_no. trade_no is globally unique,
 // so the tenant filter is not strictly required, but we add it for defense-in-depth.
 func GetTopUpByTradeNo(tenantId int, tradeNo string) *TopUp {
-	var topUp *TopUp
-	var err error
-	query := DB.Where("trade_no = ?", tradeNo)
-	if tenantId > 0 {
-		query = query.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 || tradeNo == "" {
+		return nil
 	}
-	err = query.First(&topUp).Error
+	var topUp *TopUp
+	err := DB.Where("trade_no = ? AND tenant_id = ?", tradeNo, tenantId).First(&topUp).Error
 	if err != nil {
 		return nil
 	}
@@ -108,13 +111,16 @@ func Recharge(referenceId string, customerId string) (err error) {
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
-		err = tx.Save(topUp).Error
-		if err != nil {
+		if err := tx.Model(&TopUp{}).
+			Where("id = ? AND tenant_id = ?", topUp.Id, topUp.TenantId).
+			Select("*").Updates(topUp).Error; err != nil {
 			return err
 		}
 
 		quota = topUp.Money * common.QuotaPerUnit
-		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
+		err = tx.Model(&User{}).
+			Where("id = ? AND tenant_id = ?", topUp.UserId, topUp.TenantId).
+			Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
 		if err != nil {
 			return err
 		}
@@ -127,7 +133,7 @@ func Recharge(referenceId string, customerId string) (err error) {
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopUpLogWithTenant(GetUserTenantId(topUp.UserId), topUp.UserId, int(quota), fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
+	RecordTopUpLogWithTenant(topUp.TenantId, topUp.UserId, int(quota), fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
 
 	// 处理充值返利
 	ProcessTopUpRebate(topUp.UserId, int(quota))
@@ -305,6 +311,7 @@ func ManualCompleteTopUp(tradeNo string) error {
 	}
 
 	var userId int
+	var tenantId int
 	var quotaToAdd int
 	var payMoney float64
 
@@ -328,9 +335,14 @@ func ManualCompleteTopUp(tradeNo string) error {
 		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
 		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
 		if topUp.PaymentMethod == "stripe" {
+			// Stripe stores the discounted USD amount in Money. Its quota
+			// semantics are unchanged here and tracked separately.
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
+		} else if topUp.RawQuota > 0 {
+			quotaToAdd = int(topUp.RawQuota)
 		} else {
+			// Pre-migration fallback for rows that do not have RawQuota yet.
 			dAmount := decimal.NewFromInt(topUp.Amount)
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
@@ -342,17 +354,22 @@ func ManualCompleteTopUp(tradeNo string) error {
 		// 标记完成
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
-		if err := tx.Save(topUp).Error; err != nil {
+		if err := tx.Model(&TopUp{}).
+			Where("id = ? AND tenant_id = ?", topUp.Id, topUp.TenantId).
+			Select("*").Updates(topUp).Error; err != nil {
 			return err
 		}
 
 		// 增加用户额度（立即写库，保持一致性）
-		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
+		if err := tx.Model(&User{}).
+			Where("id = ? AND tenant_id = ?", topUp.UserId, topUp.TenantId).
+			Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
 			return err
 		}
 
 		userId = topUp.UserId
 		payMoney = topUp.Money
+		tenantId = topUp.TenantId
 		return nil
 	})
 
@@ -361,7 +378,7 @@ func ManualCompleteTopUp(tradeNo string) error {
 	}
 
 	// 事务外记录日志，避免阻塞
-	RecordTopUpLogWithTenant(GetUserTenantId(userId), userId, quotaToAdd, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
+	RecordTopUpLogWithTenant(tenantId, userId, quotaToAdd, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
 
 	// 处理充值返利
 	ProcessTopUpRebate(userId, quotaToAdd)
@@ -472,8 +489,9 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
-		err = tx.Save(topUp).Error
-		if err != nil {
+		if err := tx.Model(&TopUp{}).
+			Where("id = ? AND tenant_id = ?", topUp.Id, topUp.TenantId).
+			Select("*").Updates(topUp).Error; err != nil {
 			return err
 		}
 
@@ -489,7 +507,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		if customerEmail != "" {
 			// 先检查用户当前邮箱是否为空
 			var user User
-			err = tx.Where("id = ?", topUp.UserId).First(&user).Error
+			err = tx.Where("id = ? AND tenant_id = ?", topUp.UserId, topUp.TenantId).First(&user).Error
 			if err != nil {
 				return err
 			}
@@ -500,7 +518,9 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			}
 		}
 
-		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(updateFields).Error
+		err = tx.Model(&User{}).
+			Where("id = ? AND tenant_id = ?", topUp.UserId, topUp.TenantId).
+			Updates(updateFields).Error
 		if err != nil {
 			return err
 		}
@@ -513,7 +533,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopUpLogWithTenant(GetUserTenantId(topUp.UserId), topUp.UserId, int(quota), fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
+	RecordTopUpLogWithTenant(topUp.TenantId, topUp.UserId, int(quota), fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
 
 	// 处理充值返利
 	ProcessTopUpRebate(topUp.UserId, int(quota))
@@ -557,11 +577,15 @@ func RechargeWaffo(tradeNo string) (err error) {
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
-		if err := tx.Save(topUp).Error; err != nil {
+		if err := tx.Model(&TopUp{}).
+			Where("id = ? AND tenant_id = ?", topUp.Id, topUp.TenantId).
+			Select("*").Updates(topUp).Error; err != nil {
 			return err
 		}
 
-		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
+		if err := tx.Model(&User{}).
+			Where("id = ? AND tenant_id = ?", topUp.UserId, topUp.TenantId).
+			Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
 			return err
 		}
 
@@ -574,7 +598,7 @@ func RechargeWaffo(tradeNo string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordLogWithTenant(GetUserTenantId(topUp.UserId), topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
+		RecordLogWithTenant(topUp.TenantId, topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
 	}
 
 	return nil
@@ -597,7 +621,7 @@ func GetAllTopUpsWithUser(tenantId int, pageInfo *common.PageInfo, keyword strin
 		Joins("LEFT JOIN " + userTable + " ON " + topUpTable + ".user_id = " + userTable + ".id")
 
 	// Exclude subscription orders (trade_no starts with "SUB" or "sub_ref_")
-	query = query.Where(tradeNoCol+" NOT LIKE 'SUB%' AND "+tradeNoCol+" NOT LIKE 'sub_ref_%'")
+	query = query.Where(tradeNoCol + " NOT LIKE 'SUB%' AND " + tradeNoCol + " NOT LIKE 'sub_ref_%'")
 
 	if tenantId > 0 {
 		query = query.Where("top_ups.tenant_id = ?", tenantId)
@@ -644,7 +668,9 @@ func ExpireTopUpOrder(tradeNo string) error {
 		}
 		topUp.Status = common.TopUpStatusExpired
 		topUp.CompleteTime = common.GetTimestamp()
-		return tx.Save(topUp).Error
+		return tx.Model(&TopUp{}).
+			Where("id = ? AND tenant_id = ?", topUp.Id, topUp.TenantId).
+			Select("*").Updates(topUp).Error
 	})
 }
 

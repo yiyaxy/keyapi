@@ -7,10 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { useRequestTrace } from '@/hooks/useRequestTrace';
-import { fmtDateSec, fmtMoney, fmtNum } from '@/lib/format';
-
-const QUOTA_PER_UNIT = 500_000;
+import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 const TYPE_KEY: Record<number, string> = {
   0: 'unknown',
@@ -30,6 +29,7 @@ function typeVariant(type: number): 'default' | 'secondary' | 'destructive' | 'o
 
 export function RequestTracePage() {
   const { t } = useTranslation('ops');
+  const cfg = usePublicConfig();
   const params = useParams<{ requestId?: string }>();
   const initialId = params.requestId ?? '';
   const [input, setInput] = useState(initialId);
@@ -116,7 +116,7 @@ export function RequestTracePage() {
                       : '—'}
                   </td>
                   <td className='px-3 py-2'>
-                    {r.quota > 0 ? fmtMoney(r.quota / QUOTA_PER_UNIT) : '—'}
+                    {r.quota > 0 ? fmtDisplay(r.quota, cfg) : '—'}
                   </td>
                   <td className='px-3 py-2'>{r.use_time > 0 ? `${r.use_time} ms` : '—'}</td>
                   <td className='max-w-[280px] px-3 py-2'>

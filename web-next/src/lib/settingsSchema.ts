@@ -6,7 +6,13 @@ export type FieldKind =
   | 'json'
   | 'secret'
   | 'kvMap' // {key: number | string}
-  | 'stringList'; // ["a", "b"]
+  | 'stringList' // ["a", "b"]
+  | 'select'; // fixed enum — set of value/label options
+
+export type SelectOption = {
+  value: string;
+  label: { zh: string; en: string };
+};
 
 export type FieldDef = {
   key: string;
@@ -20,6 +26,8 @@ export type FieldDef = {
   kvValueLabel?: { zh: string; en: string };
   /** for kvMap: value type */
   kvValueType?: 'number' | 'string';
+  /** for select: enum options */
+  options?: SelectOption[];
 };
 
 export type Group = {
@@ -35,6 +43,15 @@ function f(
   help?: { zh: string; en: string }
 ): FieldDef {
   return { key, kind, label, help };
+}
+
+function sel(
+  key: string,
+  label: { zh: string; en: string },
+  options: SelectOption[],
+  help?: { zh: string; en: string }
+): FieldDef {
+  return { key, kind: 'select', label, help, options };
 }
 
 function kv(
@@ -158,6 +175,47 @@ export const SETTINGS_GROUPS: Group[] = [
     id: 'quota',
     title: { zh: '额度与计费', en: 'Quota & billing' },
     fields: [
+      sel(
+        'general_setting.quota_display_type',
+        { zh: '额度展示类型', en: 'Quota display type' },
+        [
+          { value: 'USD', label: { zh: '美元 ($)', en: 'USD ($)' } },
+          { value: 'CNY', label: { zh: '人民币 (¥)', en: 'CNY (¥)' } },
+          { value: 'TOKENS', label: { zh: 'Tokens（原始）', en: 'TOKENS (raw)' } },
+          { value: 'CUSTOM', label: { zh: '自定义货币', en: 'Custom currency' } },
+        ],
+        {
+          zh: '切到 CNY 时记得把下面的"支付单价 (Price)"改为 1，否则会按汇率重复换算导致实付金额异常。',
+          en: 'When switching to CNY, set Price below to 1 — otherwise payment amounts will be scaled by the exchange rate twice.',
+        }
+      ),
+      f(
+        'general_setting.custom_currency_symbol',
+        'text',
+        { zh: '自定义货币符号', en: 'Custom currency symbol' },
+        {
+          zh: '仅当展示类型为"自定义货币"时生效',
+          en: 'Only used when display type is CUSTOM',
+        }
+      ),
+      f(
+        'general_setting.custom_currency_exchange_rate',
+        'number',
+        { zh: '自定义货币汇率 (1 USD =)', en: 'Custom currency rate (1 USD =)' },
+        {
+          zh: '1 美元等于多少自定义货币；仅 CUSTOM 模式下生效',
+          en: 'How many units per 1 USD; only used when display type is CUSTOM',
+        }
+      ),
+      f(
+        'Price',
+        'number',
+        { zh: '支付单价 (1 USD = X CNY)', en: 'Payment unit price (1 USD = X CNY)' },
+        {
+          zh: '后端扣款时 amount × Price = 实付 CNY。展示类型 = CNY 时应设为 1；USD 时应设为当前汇率（默认 7.3）',
+          en: 'Backend charges amount × Price in CNY. Set to 1 for CNY display mode; keep at the USD/CNY rate (default 7.3) for USD mode.',
+        }
+      ),
       f('QuotaPerUnit', 'number', {
         zh: '每单位美元对应额度',
         en: 'Quota per USD',
@@ -192,10 +250,11 @@ export const SETTINGS_GROUPS: Group[] = [
         en: 'Subscription rebate count',
       }),
       f('MinTopUp', 'number', { zh: '最小充值额', en: 'Min top-up' }),
-      f('DisplayInCurrencyEnabled', 'bool', {
-        zh: '按美元展示额度',
-        en: 'Display in USD',
-      }),
+      // DisplayInCurrencyEnabled intentionally omitted — it's a legacy bool
+      // that only toggles between USD/TOKENS and, when saved, overwrites
+      // general_setting.quota_display_type (see controller/.../option.go).
+      // Admins should use the "额度展示类型" select above instead, which
+      // covers all four modes (USD/CNY/TOKENS/CUSTOM).
       f('DisplayTokenStatEnabled', 'bool', {
         zh: '展示 token 统计',
         en: 'Show token stats',

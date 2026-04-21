@@ -18,4 +18,8 @@ type BillingSettler interface {
 
 	// GetPreConsumedQuota 返回实际预扣的额度值（信任用户可能为 0）。
 	GetPreConsumedQuota() int
+
+	// PreConsumeAdditional tops up pre-consumed quota mid-request when a retry
+	// switches to a more expensive channel.
+	PreConsumeAdditional(c *gin.Context, delta int) error
 }

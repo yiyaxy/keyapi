@@ -17,6 +17,7 @@ import {
   useTokensQuery,
   type Token,
 } from '@/hooks/useTokens';
+import { ApiError } from '@/lib/api';
 
 export function KeysPage() {
   const { t } = useTranslation('keys');
@@ -63,17 +64,26 @@ export function KeysPage() {
       {isEmpty ? (
         <EmptyKeys onCreate={() => setCreateOpen(true)} />
       ) : (
-        <KeysTable
-          items={items}
-          onEdit={(tok) => setEditTarget(tok)}
-          onDelete={(tok) => setDeleteTarget(tok)}
-          onToggleStatus={(tok) =>
-            toggle.mutate({
-              id: tok.id,
-              nextStatus: tok.status === 1 ? 2 : 1,
-            })
-          }
-        />
+          <KeysTable
+            items={items}
+            onEdit={(tok) => setEditTarget(tok)}
+            onDelete={(tok) => setDeleteTarget(tok)}
+            onToggleStatus={(tok) =>
+              toggle.mutate(
+                {
+                  id: tok.id,
+                  nextStatus: tok.status === 1 ? 2 : 1,
+                },
+                {
+                  onError: (err) => {
+                    const message =
+                      err instanceof ApiError ? (err.backendMessage ?? err.message) : String(err);
+                    toast.error(message);
+                  },
+                }
+              )
+            }
+          />
       )}
       <CreateTokenDialog open={createOpen} onOpenChange={setCreateOpen} />
       {editTarget && (

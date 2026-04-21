@@ -9,9 +9,9 @@ import {
   useAnalyticsByUser,
   type AnalyticsResult,
 } from '@/hooks/useAnalyticsAdmin';
-import { fmtMoney, fmtNum } from '@/lib/format';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDisplay, fmtNum } from '@/lib/format';
 
-const QUOTA_PER_UNIT = 500_000;
 const DAY_SECONDS = 86_400;
 type Tab = 'channel' | 'model' | 'user';
 type Range = 7 | 30 | 90;
@@ -27,13 +27,14 @@ function useRange(days: Range): { start: number; end: number } {
 
 function SummaryStrip({ result }: { result: AnalyticsResult }) {
   const { t } = useTranslation('analytics');
+  const cfg = usePublicConfig();
   const { summary } = result;
   return (
     <div className='grid grid-cols-2 gap-3 sm:grid-cols-5'>
       <div className='rounded-md border border-line bg-bg-1 p-3'>
         <div className='text-12 text-fg-2'>{t('summary.quota')}</div>
         <div className='text-16 font-semibold tabular-nums'>
-          {fmtMoney(summary.total_quota / QUOTA_PER_UNIT)}
+          {fmtDisplay(summary.total_quota, cfg)}
         </div>
       </div>
       <div className='rounded-md border border-line bg-bg-1 p-3'>
@@ -66,8 +67,7 @@ function SummaryStrip({ result }: { result: AnalyticsResult }) {
 
 function AnalyticsTable({ result }: { result: AnalyticsResult }) {
   const { t } = useTranslation('analytics');
-  // Backend returns items: null on empty result sets from older builds —
-  // guard so the spread doesn't throw before the Go-side fix has shipped.
+  const cfg = usePublicConfig();
   const items = [...(result.items ?? [])].sort((a, b) => b.quota - a.quota);
   if (items.length === 0) {
     return (
@@ -92,7 +92,7 @@ function AnalyticsTable({ result }: { result: AnalyticsResult }) {
             <tr key={it.name} className='border-b border-line text-13 hover:bg-bg-1'>
               <td className='px-3 py-2 font-mono text-12'>{it.name}</td>
               <td className='px-3 py-2 text-right'>
-                {fmtMoney(it.quota / QUOTA_PER_UNIT)}
+                {fmtDisplay(it.quota, cfg)}
               </td>
               <td className='px-3 py-2 text-right'>{fmtNum(it.count)}</td>
               <td className='px-3 py-2 text-right'>{fmtNum(it.tokens)}</td>
