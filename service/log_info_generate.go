@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/tracing"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
@@ -105,8 +106,8 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	}
 
 	other["admin_info"] = adminInfo
-	if traceEvents, exists := ctx.Get("trace_events"); exists && traceEvents != nil {
-		other["trace_events"] = traceEvents
+	if events := tracing.Get(ctx); len(events) > 0 {
+		other["trace_events"] = events
 	}
 	appendRequestPath(ctx, relayInfo, other)
 	appendRequestConversionChain(relayInfo, other)
