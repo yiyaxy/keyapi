@@ -66,7 +66,14 @@ export default function PlatformTenantsPanel() {
       return;
     }
     try {
-      const res = await API.post('/api/platform/tenants/', { name: v.name, slug: v.slug });
+      const res = await API.post('/api/platform/tenants/', {
+        name: v.name,
+        slug: v.slug,
+        admin_username: v.admin_username,
+        admin_password: v.admin_password,
+        admin_email: v.admin_email || undefined,
+        admin_display_name: v.admin_display_name || undefined,
+      });
       if (res?.data?.success) {
         showSuccess(t('已创建'));
         setCreateOpen(false);
@@ -207,7 +214,7 @@ export default function PlatformTenantsPanel() {
         <Form
           getFormApi={(api) => (createApiRef.current = api)}
           labelPosition='left'
-          labelWidth={100}
+          labelWidth={120}
         >
           <Form.Input field='name' label={t('名称')} rules={[{ required: true }]} />
           <Form.Input
@@ -215,6 +222,32 @@ export default function PlatformTenantsPanel() {
             label='Slug'
             placeholder='a-z, 0-9, - 仅小写'
             rules={[{ required: true }]}
+          />
+          <Form.Input
+            field='admin_username'
+            label={t('管理员用户名')}
+            placeholder='1-20 位: 字母/数字/_/-/.'
+            rules={[
+              { required: true },
+              { pattern: /^[A-Za-z0-9_\-.]{1,20}$/, message: t('格式不正确') },
+            ]}
+          />
+          <Form.Input
+            field='admin_password'
+            label={t('管理员密码')}
+            mode='password'
+            placeholder='8-20 位'
+            rules={[
+              { required: true },
+              { min: 8, message: t('至少 8 位') },
+              { max: 20, message: t('至多 20 位') },
+            ]}
+          />
+          <Form.Input field='admin_email' label={t('管理员邮箱')} placeholder={t('可选')} />
+          <Form.Input
+            field='admin_display_name'
+            label={t('管理员显示名')}
+            placeholder={t('可选，默认与用户名相同')}
           />
         </Form>
       </Modal>

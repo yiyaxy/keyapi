@@ -24,8 +24,8 @@ const UserNameMaxLength = 20
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
 	Id                        int            `json:"id"`
-	TenantId                  int            `json:"tenant_id" gorm:"index;not null;default:1"`
-	Username                  string         `json:"username" gorm:"unique;index" validate:"max=20"`
+	TenantId                  int            `json:"tenant_id" gorm:"uniqueIndex:uk_user_tenant_username,priority:1;index;not null;default:1"`
+	Username                  string         `json:"username" gorm:"uniqueIndex:uk_user_tenant_username,priority:2;index" validate:"max=20"`
 	Password                  string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
 	OriginalPassword          string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
 	DisplayName               string         `json:"display_name" gorm:"index" validate:"max=20"`
@@ -501,8 +501,10 @@ func (user *User) Insert(inviterId int) error {
 
 	// 用户创建成功后，根据角色初始化边栏配置
 	// 需要重新获取用户以确保有正确的ID和Role
+	// username 现在只在 (tenant_id, username) 复合 unique 下唯一，必须同时按 tenant
+	// 过滤，否则跨租户同名用户会互相读到对方的 row，导致边栏配置写错账号。
 	var createdUser User
-	if err := WithTenantBypass(DB).Where("username = ?", user.Username).First(&createdUser).Error; err == nil {
+	if err := WithTenantBypass(DB).Where("username = ? AND tenant_id = ?", user.Username, user.TenantId).First(&createdUser).Error; err == nil {
 		// 生成基于角色的默认边栏配置
 		defaultSidebarConfig := generateDefaultSidebarConfigForRole(createdUser.Role)
 		if defaultSidebarConfig != "" {
@@ -728,17 +730,19 @@ func (user *User) HardDelete() error {
 }
 
 // ValidateAndFill check password & user status
+//
+// 无 tenant 上下文的跨租户登录路径。username 在「1 user : 1 tenant」模型下只在
+// 租户内唯一，所以同 username 在不同租户各有一条的场景，First 返回的是 PG
+// 自然顺序的第一条，可能不是调用方想要的那条。调用方如果知道租户，务必
+// 走 ValidateAndFillWithTenant，而不是这里。
 func (user *User) ValidateAndFill() (err error) {
 	password := user.Password
 	username := strings.TrimSpace(user.Username)
 	if username == "" || password == "" {
 		return errors.New("用户名或密码为空")
 	}
-	// Login identifies a user across tenants — the caller does not yet know
-	// which tenant the user belongs to. Tenant scope is enforced afterwards via
-	// TenantMembershipAllowsAccess (see ValidateAndFillWithTenant). Use
-	// WithTenantBypass to satisfy the fail-closed guardrail on this intentional
-	// cross-tenant lookup.
+	// Use WithTenantBypass to satisfy the fail-closed guardrail on this
+	// intentional cross-tenant lookup.
 	WithTenantBypass(DB).
 		Where("username = ? OR LOWER(email) = ?", username, strings.ToLower(username)).
 		First(user)
@@ -749,14 +753,28 @@ func (user *User) ValidateAndFill() (err error) {
 	return nil
 }
 
+// ValidateAndFillWithTenant 按调用方传入的 tenantId 先做租户内 lookup，再校验
+// 密码。走这条路可以正确处理「tenantA 和 tenantB 各有一个叫 admin 的用户」
+// 的场景——老版本先做跨租户 First，再事后拿 membership 过滤，会把 A 的 admin
+// 读出来挂在 B 的登录请求上，直接报「不属于当前租户」，让 B.admin 永远登不进。
 func (user *User) ValidateAndFillWithTenant(tenantId int) (err error) {
-	err = user.ValidateAndFill()
-	if err != nil {
-		return err
-	}
 	if tenantId <= 0 {
-		return nil
+		// 子域名没解析出租户时 fallback 到旧行为（admin 工具、命令行等场景）
+		return user.ValidateAndFill()
 	}
+	password := user.Password
+	username := strings.TrimSpace(user.Username)
+	if username == "" || password == "" {
+		return errors.New("用户名或密码为空")
+	}
+	WithTenantBypass(DB).
+		Where("tenant_id = ? AND (username = ? OR LOWER(email) = ?)", tenantId, username, strings.ToLower(username)).
+		First(user)
+	okay := common.ValidatePasswordAndHash(password, user.Password)
+	if !okay || user.Status != common.UserStatusEnabled {
+		return errors.New("用户名或密码错误，或用户已被封禁")
+	}
+	// membership 校验保留：status=disabled / soft-removed 的 membership 仍需拒绝。
 	if !TenantMembershipAllowsAccess(user, tenantId) {
 		return errors.New("用户不属于当前租户或成员已被禁用")
 	}
