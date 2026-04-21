@@ -72,7 +72,6 @@ export function CostBreakdown({
   const inputCostUsd = (row.prompt_tokens / 1_000_000) * inputPricePerM;
   const outputCostUsd = (row.completion_tokens / 1_000_000) * outputPricePerM;
   const originalUsd = (inputCostUsd + outputCostUsd) * groupRatio;
-  const billedUsd = originalUsd * (channelRatio > 0 ? channelRatio : 1);
 
   const billedDisplay = toDisplay(row.quota, cfg);
   const billedNum = new Intl.NumberFormat(undefined, {
