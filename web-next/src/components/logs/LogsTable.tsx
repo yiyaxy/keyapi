@@ -7,6 +7,7 @@ import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 import { CostBreakdown, parseOther } from './CostBreakdown';
+import { LatencyCell } from './LatencyCell';
 
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
@@ -19,6 +20,20 @@ const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'o
   7: 'outline',
 };
 
+// Per-type row accent on the left border — subtle color coding so the
+// table scans at a glance (consume: sky, topup: emerald, refund: amber,
+// error: red, everything else: transparent / outline).
+const TYPE_ACCENT: Record<LogType, string> = {
+  0: '',
+  1: 'border-l-2 border-l-emerald-400',
+  2: 'border-l-2 border-l-sky-400',
+  3: '',
+  4: '',
+  5: 'border-l-2 border-l-red-500',
+  6: 'border-l-2 border-l-amber-400',
+  7: 'border-l-2 border-l-violet-400',
+};
+
 const TYPE_KEY: Record<LogType, string> = {
   0: 'filters.type.all',
   1: 'filters.type.topup',
@@ -29,18 +44,6 @@ const TYPE_KEY: Record<LogType, string> = {
   6: 'filters.type.refund',
   7: 'filters.type.channel_test',
 };
-
-function formatLatency(t: ReturnType<typeof useTranslation>['t'], seconds: number): string {
-  // 后端 use_time 存的是秒（service/text_quota.go: time.Now().Unix() - StartTime.Unix()），
-  // 这里按秒做档位：< 60 秒按秒显示；>= 60 秒切成「X 分 Y 秒」。
-  if (!seconds) return '—';
-  if (seconds >= 60) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return t('table.latency.m', { m, s });
-  }
-  return t('table.latency.s', { s: seconds });
-}
 
 export function LogsTable({
   rows,
@@ -68,37 +71,48 @@ export function LogsTable({
         </thead>
         <tbody>
           {rows.map((r) => {
+            const cache = parseOther(r.other).cache_tokens ?? 0;
             return (
-              <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
+              <tr
+                key={r.id}
+                className={`border-b border-line text-13 hover:bg-bg-1 ${TYPE_ACCENT[r.type]}`}
+              >
                 <td className='px-3 py-2 text-fg-1'>{fmtDateSec(r.created_at)}</td>
                 <td className='px-3 py-2'>
                   <Badge variant={TYPE_VARIANT[r.type]}>{t(TYPE_KEY[r.type])}</Badge>
                 </td>
-                <td className='px-3 py-2'>{r.model_name || '—'}</td>
+                <td className='px-3 py-2 font-mono text-12'>{r.model_name || '—'}</td>
                 <td className='px-3 py-2'>{r.token_name || '—'}</td>
-                <td className='px-3 py-2'>
-                  {(() => {
-                    if (r.prompt_tokens + r.completion_tokens <= 0) return '—';
-                    const cache = parseOther(r.other).cache_tokens ?? 0;
-                    if (cache > 0) {
-                      return t('table.tokens.with_cache', {
-                        prompt: fmtNum(r.prompt_tokens),
-                        completion: fmtNum(r.completion_tokens),
-                        cache: fmtNum(cache),
-                      });
-                    }
-                    return t('table.tokens.detail', {
-                      prompt: fmtNum(r.prompt_tokens),
-                      completion: fmtNum(r.completion_tokens),
-                    });
-                  })()}
+                <td className='px-3 py-2 tabular-nums'>
+                  {r.prompt_tokens + r.completion_tokens > 0 ? (
+                    <span className='inline-flex items-baseline gap-1'>
+                      <span className='text-fg-1'>{fmtNum(r.prompt_tokens)}</span>
+                      <span className='text-fg-2'>+</span>
+                      <span className='text-fg-1'>{fmtNum(r.completion_tokens)}</span>
+                      {cache > 0 && (
+                        <span className='ml-1 text-11 text-sky-500 dark:text-sky-400'>
+                          {t('table.tokens.cache_badge', { cache: fmtNum(cache) })}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className='text-fg-2'>—</span>
+                  )}
                 </td>
                 <td className='px-3 py-2'>
                   <CostBreakdown row={r} cfg={cfg}>
-                    {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
+                    {r.quota > 0 ? (
+                      <span className='font-medium text-emerald-600 dark:text-emerald-400'>
+                        {fmtDisplay(r.quota, cfg)}
+                      </span>
+                    ) : (
+                      <span className='text-fg-2'>{t('table.unit.free')}</span>
+                    )}
                   </CostBreakdown>
                 </td>
-                <td className='px-3 py-2'>{formatLatency(t, r.use_time)}</td>
+                <td className='px-3 py-2'>
+                  <LatencyCell useTime={r.use_time} other={r.other} />
+                </td>
                 <td className='px-3 py-2'>
                   <Button type='button' variant='ghost' size='sm' onClick={() => onRowClick(r)}>
                     {t('table.col.detail')}
