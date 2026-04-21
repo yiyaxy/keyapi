@@ -124,7 +124,7 @@ function fmtQuota(q) {
   const v = (q / per).toFixed(2)
   const type = userStore.quotaDisplayType
   if (type === 'CNY') return `¥${(Number(v) * userStore.usdExchangeRate).toFixed(2)}`
-  if (type === 'TOKENS') return `${q.toLocaleString?.() ?? q}`
+  if (type === 'TOKENS') return `${q.toLocaleString ? q.toLocaleString() : q}`
   return `$${v}`
 }
 

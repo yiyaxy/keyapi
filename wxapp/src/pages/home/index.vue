@@ -168,7 +168,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
 import { getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
@@ -241,12 +241,6 @@ onLoad(() => {
   refresh()
 })
 
-onShow(() => {
-  // 从登录页返回后刷新（用户可能刚完成登录）
-  if (!firstLoading.value) {
-    refresh()
-  }
-})
 </script>
 
 <style lang="scss" scoped>
