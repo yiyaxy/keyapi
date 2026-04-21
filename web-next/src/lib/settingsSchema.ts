@@ -146,6 +146,19 @@ export const SETTINGS_GROUPS: Group[] = [
         zh: '公众号二维码 URL',
         en: 'WeChat QR image URL',
       }),
+      sel(
+        'WxMiniEnvVersion',
+        { zh: '微信小程序版本', en: 'Mini-program version' },
+        [
+          { value: 'release', label: { zh: '正式版', en: 'Release' } },
+          { value: 'trial', label: { zh: '体验版', en: 'Trial' } },
+          { value: 'develop', label: { zh: '开发版', en: 'Develop' } },
+        ],
+        {
+          zh: '扫码登录/绑定使用的小程序码环境。未发布时选体验版或开发版；选体验版时扫码者必须是微信后台的体验成员。',
+          en: 'Which mini-program build the scan QR targets. Before publishing, pick Trial or Develop. Trial QRs only open for accounts added as trial members in mp.weixin.qq.com.',
+        },
+      ),
       f('LinuxDOOAuthEnabled', 'bool', {
         zh: '启用 LinuxDO',
         en: 'Enable LinuxDO',

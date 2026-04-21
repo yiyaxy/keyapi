@@ -79,6 +79,7 @@ export function LogsFilters({
             <SelectItem value='4'>{t('filters.type.system')}</SelectItem>
             <SelectItem value='5'>{t('filters.type.error')}</SelectItem>
             <SelectItem value='6'>{t('filters.type.refund')}</SelectItem>
+            <SelectItem value='7'>{t('filters.type.channel_test')}</SelectItem>
           </SelectContent>
         </Select>
       </div>

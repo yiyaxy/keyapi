@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
+import { TraceTimeline, parseTraceEvents } from '@/components/logs/TraceTimeline';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,29 +102,42 @@ export function RequestTracePage() {
               </tr>
             </thead>
             <tbody>
-              {(trace.data ?? []).map((r) => (
-                <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
-                  <td className='px-3 py-2 text-fg-1'>{fmtDateSec(r.created_at)}</td>
-                  <td className='px-3 py-2'>
-                    <Badge variant={typeVariant(r.type)}>{TYPE_KEY[r.type] ?? r.type}</Badge>
-                  </td>
-                  <td className='px-3 py-2 font-mono'>{r.username || '—'}</td>
-                  <td className='px-3 py-2'>{r.channel_name || r.channel || '—'}</td>
-                  <td className='px-3 py-2'>{r.model_name || '—'}</td>
-                  <td className='px-3 py-2'>
-                    {r.prompt_tokens + r.completion_tokens > 0
-                      ? `${fmtNum(r.prompt_tokens)} + ${fmtNum(r.completion_tokens)}`
-                      : '—'}
-                  </td>
-                  <td className='px-3 py-2'>
-                    {r.quota > 0 ? fmtDisplay(r.quota, cfg) : '—'}
-                  </td>
-                  <td className='px-3 py-2'>{r.use_time > 0 ? `${r.use_time} ms` : '—'}</td>
-                  <td className='max-w-[280px] px-3 py-2'>
-                    <div className='truncate text-12 text-fg-2'>{r.content || '—'}</div>
-                  </td>
-                </tr>
-              ))}
+              {(trace.data ?? []).flatMap((r) => {
+                const hasTrace = parseTraceEvents(r.other).length > 0;
+                const rows = [
+                  <tr key={`${r.id}-row`} className='border-b border-line text-13 hover:bg-bg-1'>
+                    <td className='px-3 py-2 text-fg-1'>{fmtDateSec(r.created_at)}</td>
+                    <td className='px-3 py-2'>
+                      <Badge variant={typeVariant(r.type)}>{TYPE_KEY[r.type] ?? r.type}</Badge>
+                    </td>
+                    <td className='px-3 py-2 font-mono'>{r.username || '—'}</td>
+                    <td className='px-3 py-2'>{r.channel_name || r.channel || '—'}</td>
+                    <td className='px-3 py-2'>{r.model_name || '—'}</td>
+                    <td className='px-3 py-2'>
+                      {r.prompt_tokens + r.completion_tokens > 0
+                        ? `${fmtNum(r.prompt_tokens)} + ${fmtNum(r.completion_tokens)}`
+                        : '—'}
+                    </td>
+                    <td className='px-3 py-2'>
+                      {r.quota > 0 ? fmtDisplay(r.quota, cfg) : '—'}
+                    </td>
+                    <td className='px-3 py-2'>{r.use_time > 0 ? `${r.use_time}s` : '—'}</td>
+                    <td className='max-w-[280px] px-3 py-2'>
+                      <div className='truncate text-12 text-fg-2'>{r.content || '—'}</div>
+                    </td>
+                  </tr>,
+                ];
+                if (hasTrace) {
+                  rows.push(
+                    <tr key={`${r.id}-trace`} className='border-b border-line bg-bg-0'>
+                      <td colSpan={9} className='px-3 pb-3'>
+                        <TraceTimeline other={r.other} />
+                      </td>
+                    </tr>,
+                  );
+                }
+                return rows;
+              })}
             </tbody>
           </table>
         </div>

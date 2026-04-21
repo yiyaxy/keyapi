@@ -300,10 +300,12 @@ func GetTokenByKeyWithContext(ctx context.Context, key string, fromDB bool) (tok
 	if ctx != nil {
 		q = DB.WithContext(ctx)
 	}
-	// Multi-tenant: scope by tenant when context carries tenant_id
-	if tenantId := TenantIDFromContext(ctx); tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
-	}
+	// Token.Key 是全局唯一凭证（schema 上挂了 uniqueIndex），按 key 查找属于
+	// 鉴权前置操作，不能被当前 ctx 的 tenant scope 过滤掉 —— 外部 API 请求
+	// 纯靠 sk-key 鉴权时 ctx 里没有 tenant，TenantIDFromContext 会 fallback 到
+	// DefaultTenantId=1，历史上导致非默认租户的 key 永远查不到。
+	// 租户一致性由上层调用方（middleware.TokenAuth 等）负责校验。
+	q = WithTenantBypass(q)
 	err = q.Where(commonKeyCol+" = ?", key).First(&token).Error
 	return token, err
 }

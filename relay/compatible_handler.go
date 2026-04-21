@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/tracing"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
@@ -185,6 +187,14 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		requestBody = bytes.NewBuffer(jsonData)
 	}
 
+	// 记录上游往返的起点；upstream_response 事件在 DoResponse 返回后打出
+	// elapsed_ms。放在 adaptor.DoRequest 前最能反映"客户端感知的上游耗时"。
+	upstreamStart := time.Now()
+	tracing.Add(c, "upstream_request", "发起上游请求", map[string]interface{}{
+		"channel_id": info.ChannelId,
+		"is_stream":  info.IsStream,
+	})
+
 	var httpResp *http.Response
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
@@ -196,6 +206,11 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
+		tracing.Add(c, "upstream_headers", fmt.Sprintf("上游响应头到达 %dms", time.Since(upstreamStart).Milliseconds()), map[string]interface{}{
+			"elapsed_ms":  time.Since(upstreamStart).Milliseconds(),
+			"status_code": httpResp.StatusCode,
+			"is_stream":   info.IsStream,
+		})
 		if httpResp.StatusCode != http.StatusOK {
 			newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 			// reset status code 重置状态码
@@ -210,6 +225,11 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
 		return newApiErr
 	}
+
+	tracing.Add(c, "upstream_response", fmt.Sprintf("上游响应完成 %dms", time.Since(upstreamStart).Milliseconds()), map[string]interface{}{
+		"elapsed_ms": time.Since(upstreamStart).Milliseconds(),
+		"is_stream":  info.IsStream,
+	})
 
 	var containAudioTokens = usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0
 	var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)

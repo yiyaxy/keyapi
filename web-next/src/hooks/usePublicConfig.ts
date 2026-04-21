@@ -42,6 +42,30 @@ export function usePublicConfig() {
   return q.data ?? DEFAULT;
 }
 
+// snapToCents: raw quota 是整数，但充值/退款等场景用户期望看到整分金额
+// （例如 ¥1.00）。后端算 topup 的 quota_delta 时 amount × qpu / rate
+// 会产生截断（1 × 500000 / 7.3 = 68493.15... → 68493），再在前端反算时
+// 浮点误差出来成 0.9999978 → 显示 ¥0.999998，看起来像少充了。
+//
+// 解法：若真实 value 距离最近的两位小数不超过一个 raw quota 单位能
+// 代表的显示步长，就吸附到那个整分值并切到 digits=2。对真实的小额
+// 消费（¥0.199188 这种）不会误吸附，因为距离显著大于步长。
+function snapToCents(
+  value: number,
+  rate: number,
+  quotaPerUnit: number,
+): { value: number; digits: number } {
+  if (!isFinite(value) || !isFinite(rate) || quotaPerUnit <= 0) {
+    return { value, digits: 6 };
+  }
+  const step = Math.abs(rate) / quotaPerUnit;
+  const cents = Math.round(value * 100) / 100;
+  if (Math.abs(value - cents) <= step + 1e-12) {
+    return { value: cents, digits: 2 };
+  }
+  return { value, digits: 6 };
+}
+
 // toDisplay converts a raw quota integer to the tenant-configured display
 // unit. Returns { value, symbol, digits } so callers can render with
 // tabular-nums consistent across all admin views.
@@ -54,16 +78,21 @@ export function toDisplay(
   }
   const usd = raw / cfg.quota_per_unit;
   if (cfg.quota_display_type === 'CNY') {
-    return { value: usd * (cfg.usd_exchange_rate || 1), symbol: '¥', digits: 6 };
+    const rate = cfg.usd_exchange_rate || 1;
+    const snapped = snapToCents(usd * rate, rate, cfg.quota_per_unit);
+    return { value: snapped.value, symbol: '¥', digits: snapped.digits };
   }
   if (cfg.quota_display_type === 'CUSTOM') {
+    const rate = cfg.custom_currency_exchange_rate || 1;
+    const snapped = snapToCents(usd * rate, rate, cfg.quota_per_unit);
     return {
-      value: usd * (cfg.custom_currency_exchange_rate || 1),
+      value: snapped.value,
       symbol: cfg.custom_currency_symbol || '¤',
-      digits: 6,
+      digits: snapped.digits,
     };
   }
-  return { value: usd, symbol: '$', digits: 6 };
+  const snapped = snapToCents(usd, 1, cfg.quota_per_unit);
+  return { value: snapped.value, symbol: '$', digits: snapped.digits };
 }
 
 // fromDisplay inverts toDisplay — admins type in the display unit, we

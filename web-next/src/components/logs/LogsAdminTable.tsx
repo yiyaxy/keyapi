@@ -6,6 +6,8 @@ import type { LogRow, LogType } from '@/hooks/useLogs';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
+import { CostBreakdown, parseOther } from './CostBreakdown';
+
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
   1: 'default',
@@ -14,6 +16,7 @@ const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'o
   4: 'outline',
   5: 'destructive',
   6: 'default',
+  7: 'outline',
 };
 
 const TYPE_KEY: Record<LogType, string> = {
@@ -24,6 +27,7 @@ const TYPE_KEY: Record<LogType, string> = {
   4: 'filters.type.system',
   5: 'filters.type.error',
   6: 'filters.type.refund',
+  7: 'filters.type.channel_test',
 };
 
 export function LogsAdminTable({
@@ -64,15 +68,26 @@ export function LogsAdminTable({
               <td className='px-3 py-2'>{r.token_name || '—'}</td>
               <td className='px-3 py-2'>{r.channel_name || r.channel || '—'}</td>
               <td className='px-3 py-2'>
-                {r.prompt_tokens + r.completion_tokens > 0
-                  ? t('table.tokens.detail', {
+                {(() => {
+                  if (r.prompt_tokens + r.completion_tokens <= 0) return '—';
+                  const cache = parseOther(r.other).cache_tokens ?? 0;
+                  if (cache > 0) {
+                    return t('table.tokens.with_cache', {
                       prompt: fmtNum(r.prompt_tokens),
                       completion: fmtNum(r.completion_tokens),
-                    })
-                  : '—'}
+                      cache: fmtNum(cache),
+                    });
+                  }
+                  return t('table.tokens.detail', {
+                    prompt: fmtNum(r.prompt_tokens),
+                    completion: fmtNum(r.completion_tokens),
+                  });
+                })()}
               </td>
               <td className='px-3 py-2'>
-                {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
+                <CostBreakdown row={r} cfg={cfg}>
+                  {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
+                </CostBreakdown>
               </td>
               <td className='px-3 py-2 font-mono text-12 text-fg-2'>{r.ip || '—'}</td>
               <td className='px-3 py-2'>
