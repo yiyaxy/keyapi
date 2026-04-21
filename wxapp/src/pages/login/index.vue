@@ -2,6 +2,14 @@
   <view class="page">
     <view :style="{ height: statusBarH + 'px' }" />
 
+    <!-- 返回按钮（从其他页面跳过来时显示） -->
+    <view v-if="canGoBack" class="back-bar">
+      <view class="back-btn" @click="goBack">
+        <u-icon name="arrow-left" size="40" color="#1a1a2e" />
+        <text class="back-txt">返回</text>
+      </view>
+    </view>
+
     <!-- Logo 区域 -->
     <view class="logo-area">
       <view class="logo-icon">
@@ -49,13 +57,19 @@ import env from '@/config/env.js'
 
 const statusBarH = ref(0)
 const loading = ref(false)
+const canGoBack = ref(false)
 
 onLoad(() => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
+  canGoBack.value = getCurrentPages().length > 1
   if (userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/home/index' })
   }
 })
+
+function goBack() {
+  uni.navigateBack({ delta: 1 })
+}
 
 function wxGetCode() {
   return new Promise((resolve, reject) => {
@@ -128,6 +142,23 @@ async function doWechatLogin() {
   align-items: center;
   padding: 0 48rpx 80rpx;
   box-sizing: border-box;
+}
+
+/* 返回按钮 */
+.back-bar {
+  width: 100%;
+  padding: 16rpx 24rpx 0;
+  box-sizing: border-box;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 12rpx 20rpx;
+}
+.back-txt {
+  font-size: 28rpx;
+  color: #1a1a2e;
+  margin-left: 8rpx;
 }
 
 /* Logo */

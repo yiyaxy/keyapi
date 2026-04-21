@@ -31,7 +31,7 @@
 		{
 			"path": "pages/redeem/index",
 			"style": {
-				"navigationBarTitleText": "兑换码充值",
+				"navigationBarTitleText": "充值",
 				"navigationStyle": "custom"
 			}
 		},
