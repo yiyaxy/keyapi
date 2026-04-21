@@ -48,5 +48,7 @@
   "trace.col.tokens": "Tokens",
   "trace.col.quota": "Cost",
   "trace.col.latency": "Latency",
-  "trace.col.content": "Content"
+  "trace.col.content": "Content",
+  "trace.timeline.title": "Phase timeline",
+  "trace.timeline.total": "Total {{ms}}"
 }

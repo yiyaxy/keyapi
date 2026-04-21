@@ -48,5 +48,7 @@
   "trace.col.tokens": "Tokens",
   "trace.col.quota": "金额",
   "trace.col.latency": "耗时",
-  "trace.col.content": "内容"
+  "trace.col.content": "内容",
+  "trace.timeline.title": "阶段时间线",
+  "trace.timeline.total": "总计 {{ms}}"
 }
