@@ -496,6 +496,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		IsStream:         info.IsStream,
 		Group:            info.UsingGroup,
 		Other:            other,
+		LogType:          model.LogTypeChannelTest,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
 	return testResult{

@@ -42,13 +42,14 @@ type Log struct {
 
 // don't use iota, avoid change log type value
 const (
-	LogTypeUnknown = 0
-	LogTypeTopup   = 1
-	LogTypeConsume = 2
-	LogTypeManage  = 3
-	LogTypeSystem  = 4
-	LogTypeError   = 5
-	LogTypeRefund  = 6
+	LogTypeUnknown     = 0
+	LogTypeTopup       = 1
+	LogTypeConsume     = 2
+	LogTypeManage      = 3
+	LogTypeSystem      = 4
+	LogTypeError       = 5
+	LogTypeRefund      = 6
+	LogTypeChannelTest = 7 // admin channel test — logged for audit but excluded from spend stats
 )
 
 func formatUserLogs(logs []*Log, startIdx int) {
@@ -190,11 +191,19 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+	// LogType defaults to LogTypeConsume. Set LogTypeChannelTest when the
+	// log represents an admin channel test so downstream spend/RPM/TPM
+	// aggregations (which filter on type = LogTypeConsume) exclude it.
+	LogType int `json:"log_type,omitempty"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
 	if !common.LogConsumeEnabled {
 		return
+	}
+	logType := params.LogType
+	if logType == 0 {
+		logType = LogTypeConsume
 	}
 	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
 	username := c.GetString("username")
@@ -205,7 +214,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		UserId:           userId,
 		Username:         username,
 		CreatedAt:        common.GetTimestamp(),
-		Type:             LogTypeConsume,
+		Type:             logType,
 		Content:          params.Content,
 		PromptTokens:     params.PromptTokens,
 		CompletionTokens: params.CompletionTokens,
@@ -225,7 +234,9 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
-	if common.DataExportEnabled {
+	// Channel-test logs must not contaminate the quota_data aggregate
+	// either — the dashboard UsageTrendCard reads from quota_data.
+	if common.DataExportEnabled && logType == LogTypeConsume {
 		tid := tenantIdFromGinContext(c)
 		gopool.Go(func() {
 			LogQuotaData(tid, userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
