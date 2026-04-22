@@ -13,7 +13,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,9 +54,10 @@ func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c *gin.
 
 	logger.LogDebug(ctx, "[OAuth-GitHub] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
+	tenantId := middleware.GetTenantId(c)
 	values := map[string]string{
-		"client_id":     common.GitHubClientId,
-		"client_secret": common.GitHubClientSecret,
+		"client_id":     service.GetConfig(tenantId, "GitHubClientId", common.GitHubClientId),
+		"client_secret": service.GetConfig(tenantId, "GitHubClientSecret", common.GitHubClientSecret),
 		"code":          code,
 	}
 	jsonData, err := json.Marshal(values)

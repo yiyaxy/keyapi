@@ -53,20 +53,20 @@ func GetStatus(c *gin.Context) {
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
 		"email_verification":          service.GetConfigBool(tenantId, "EmailVerificationEnabled", common.EmailVerificationEnabled),
-		"github_oauth":                common.GitHubOAuthEnabled,
-		"github_client_id":            common.GitHubClientId,
+		"github_oauth":                service.GetConfigBool(tenantId, "GitHubOAuthEnabled", common.GitHubOAuthEnabled),
+		"github_client_id":            service.GetConfig(tenantId, "GitHubClientId", common.GitHubClientId),
 		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
 		"discord_client_id":           system_setting.GetDiscordSettings().ClientId,
-		"linuxdo_oauth":               common.LinuxDOOAuthEnabled,
-		"linuxdo_client_id":           common.LinuxDOClientId,
-		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
-		"telegram_oauth":              common.TelegramOAuthEnabled,
-		"telegram_bot_name":           common.TelegramBotName,
+		"linuxdo_oauth":               service.GetConfigBool(tenantId, "LinuxDOOAuthEnabled", common.LinuxDOOAuthEnabled),
+		"linuxdo_client_id":           service.GetConfig(tenantId, "LinuxDOClientId", common.LinuxDOClientId),
+		"linuxdo_minimum_trust_level": service.GetConfigInt(tenantId, "LinuxDOMinimumTrustLevel", common.LinuxDOMinimumTrustLevel),
+		"telegram_oauth":              service.GetConfigBool(tenantId, "TelegramOAuthEnabled", common.TelegramOAuthEnabled),
+		"telegram_bot_name":           service.GetConfig(tenantId, "TelegramBotName", common.TelegramBotName),
 		"system_name":                 service.GetConfig(tenantId, "SystemName", common.SystemName),
 		"logo":                        service.GetConfig(tenantId, "Logo", common.Logo),
 		"footer_html":                 service.GetConfig(tenantId, "Footer", common.Footer),
-		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
-		"wechat_login":                common.WeChatAuthEnabled,
+		"wechat_qrcode":               service.GetConfig(tenantId, "WeChatAccountQRCodeImageURL", common.WeChatAccountQRCodeImageURL),
+		"wechat_login":                service.GetConfigBool(tenantId, "WeChatAuthEnabled", common.WeChatAuthEnabled),
 		"wx_mini_login":               service.IsWxMiniLoginEnabled(tenantId),
 		"server_address":              system_setting.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
@@ -325,14 +325,15 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
-	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
+	systemName := service.TenantSystemName(tenantId)
+	subject := fmt.Sprintf("%s邮箱验证邮件", systemName)
 	body := fmt.Sprintf(`<p style="margin:0 0 16px">您好，您正在进行 <strong>%s</strong> 邮箱验证。</p>
 <div style="margin:20px 0;padding:20px;background-color:#f0f4ff;border-radius:8px;text-align:center">
 <span style="font-size:32px;font-weight:700;letter-spacing:8px;color:#4f46e5">%s</span>
 </div>
 <p style="margin:16px 0 0;color:#6b7280;font-size:13px">验证码 %d 分钟内有效，如果不是本人操作，请忽略此邮件。</p>`,
-		common.SystemName, code, common.VerificationValidMinutes)
-	err := common.SendEmail(subject, email, common.WrapEmailHTML(body))
+		systemName, code, common.VerificationValidMinutes)
+	err := service.SendTenantEmail(tenantId, subject, email, service.WrapTenantEmailHTML(tenantId, body))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -363,7 +364,9 @@ func SendPasswordResetEmail(c *gin.Context) {
 	code := common.GenerateVerificationCode(0)
 	common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 	link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
-	subject := fmt.Sprintf("%s密码重置", common.SystemName)
+	tenantId := middleware.GetTenantId(c)
+	systemName := service.TenantSystemName(tenantId)
+	subject := fmt.Sprintf("%s密码重置", systemName)
 	body := fmt.Sprintf(`<p style="margin:0 0 16px">您好，您正在进行 <strong>%s</strong> 密码重置。</p>
 <div style="margin:20px 0;text-align:center">
 <a href="%s" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600">重置密码</a>
@@ -371,8 +374,8 @@ func SendPasswordResetEmail(c *gin.Context) {
 <p style="margin:16px 0 8px;color:#6b7280;font-size:13px">如果按钮无法点击，请复制以下链接到浏览器中打开：</p>
 <p style="margin:0 0 16px;word-break:break-all;color:#4f46e5;font-size:13px">%s</p>
 <p style="margin:0;color:#6b7280;font-size:13px">链接 %d 分钟内有效，如果不是本人操作，请忽略此邮件。</p>`,
-		common.SystemName, link, link, common.VerificationValidMinutes)
-	err := common.SendEmail(subject, email, common.WrapEmailHTML(body))
+		systemName, link, link, common.VerificationValidMinutes)
+	err := service.SendTenantEmail(tenantId, subject, email, service.WrapTenantEmailHTML(tenantId, body))
 	if err != nil {
 		common.ApiError(c, err)
 		return

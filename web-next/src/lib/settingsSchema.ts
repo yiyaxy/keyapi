@@ -163,6 +163,14 @@ export const SETTINGS_GROUPS: Group[] = [
         zh: '启用 LinuxDO',
         en: 'Enable LinuxDO',
       }),
+      f('LinuxDOClientId', 'text', {
+        zh: 'LinuxDO client ID',
+        en: 'LinuxDO client ID',
+      }),
+      f('LinuxDOMinimumTrustLevel', 'number', {
+        zh: 'LinuxDO 最低信任等级',
+        en: 'LinuxDO minimum trust level',
+      }),
       f('TelegramOAuthEnabled', 'bool', {
         zh: '启用 Telegram',
         en: 'Enable Telegram',
@@ -728,6 +736,10 @@ export const SECRET_FIELDS: FieldDef[] = [
   f('TurnstileSecretKey', 'secret', {
     zh: 'Turnstile secret',
     en: 'Turnstile secret',
+  }),
+  f('LinuxDOClientSecret', 'secret', {
+    zh: 'LinuxDO client secret',
+    en: 'LinuxDO client secret',
   }),
   f('InvoicePiaoTong3DESKey', 'secret', {
     zh: '票通 3DES 密钥',

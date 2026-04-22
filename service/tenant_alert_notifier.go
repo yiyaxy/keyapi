@@ -25,8 +25,8 @@ func dispatchTenantAlertNotification(record model.TenantAlertRecord) {
 		tenantName = tenant.Name
 	}
 
-	// 1) SMTP 邮件分发（保持原行为）
-	if common.SMTPServer == "" {
+	// 1) SMTP 邮件分发（租户 SMTP 优先，平台默认兜底）
+	if !CanSendTenantEmail(record.TenantId) {
 		common.SysLog(fmt.Sprintf("dispatchTenantAlertNotification SMTP skipped: not configured (tenant=%d type=%s)",
 			record.TenantId, record.AlertType))
 	} else {
@@ -38,7 +38,7 @@ func dispatchTenantAlertNotification(record model.TenantAlertRecord) {
 			subject := fmt.Sprintf("[%s 告警] %s", tenantName, alertSeverityLabel(record.Severity))
 			body := buildAlertEmailBody(tenantName, record)
 			for _, to := range emails {
-				if err := common.SendEmail(subject, to, body); err != nil {
+				if err := SendTenantEmail(record.TenantId, subject, to, body); err != nil {
 					common.SysError(fmt.Sprintf("dispatchTenantAlertNotification SendEmail failed tenant=%d to=%s: %s",
 						record.TenantId, to, err.Error()))
 				}

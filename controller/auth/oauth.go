@@ -22,6 +22,18 @@ func providerParams(name string) map[string]any {
 	return map[string]any{"Provider": name}
 }
 
+func isProviderEnabledForTenant(c *gin.Context, providerName string, provider oauth.Provider) bool {
+	tenantId := middleware.GetTenantId(c)
+	switch providerName {
+	case "github":
+		return service.GetConfigBool(tenantId, "GitHubOAuthEnabled", common.GitHubOAuthEnabled)
+	case "linuxdo":
+		return service.GetConfigBool(tenantId, "LinuxDOOAuthEnabled", common.LinuxDOOAuthEnabled)
+	default:
+		return provider.IsEnabled()
+	}
+}
+
 // GenerateOAuthCode generates a state code for OAuth CSRF protection
 func GenerateOAuthCode(c *gin.Context) {
 	session := sessions.Default(c)
@@ -75,7 +87,7 @@ func HandleOAuth(c *gin.Context) {
 	}
 
 	// 3. Check if provider is enabled
-	if !provider.IsEnabled() {
+	if !isProviderEnabledForTenant(c, providerName, provider) {
 		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams(provider.GetName()))
 		return
 	}
@@ -133,7 +145,7 @@ func HandleOAuth(c *gin.Context) {
 
 // handleOAuthBind handles binding OAuth account to existing user
 func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
-	if !provider.IsEnabled() {
+	if !isProviderEnabledForTenant(c, c.Param("provider"), provider) {
 		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams(provider.GetName()))
 		return
 	}

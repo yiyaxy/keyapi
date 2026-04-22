@@ -1187,10 +1187,11 @@ func AdminUpdateInvoiceApplicationStatus(ctx context.Context, tenantId int, admi
 }
 
 func sendInvoiceIssuedEmail(app *model.InvoiceApplication) {
-	if common.SMTPServer == "" {
+	if !CanSendTenantEmail(app.TenantId) {
 		return
 	}
 	serverAddr := system_setting.ServerAddress
+	systemName := TenantSystemName(app.TenantId)
 	subject := "您的发票已开具"
 	body := fmt.Sprintf(`<p style="margin:0 0 16px">尊敬的用户，您好！</p>
 <p style="margin:0 0 16px">您提交的发票申请已开具完成，详情如下：</p>
@@ -1205,7 +1206,10 @@ func sendInvoiceIssuedEmail(app *model.InvoiceApplication) {
 <p style="margin:0;color:#6b7280;font-size:13px">如有疑问，请联系客服。</p>`,
 		app.Id, app.Title, app.TotalMoney, app.Currency, serverAddr,
 	)
-	if err := common.SendEmail(subject, app.Email, common.WrapEmailHTML(body)); err != nil {
+	if systemName != "" {
+		subject = fmt.Sprintf("[%s] %s", systemName, subject)
+	}
+	if err := SendTenantEmail(app.TenantId, subject, app.Email, WrapTenantEmailHTML(app.TenantId, body)); err != nil {
 		common.SysLog(fmt.Sprintf("failed to send invoice issued email to %s: %v", app.Email, err))
 	}
 }

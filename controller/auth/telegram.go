@@ -12,21 +12,24 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
 func TelegramBind(c *gin.Context) {
-	if !common.TelegramOAuthEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if !service.GetConfigBool(tenantId, "TelegramOAuthEnabled", common.TelegramOAuthEnabled) {
 		c.JSON(200, gin.H{
 			"message": "管理员未开启通过 Telegram 登录以及注册",
 			"success": false,
 		})
 		return
 	}
+	botToken := service.GetConfig(tenantId, "TelegramBotToken", common.TelegramBotToken)
 	params := c.Request.URL.Query()
-	if !checkTelegramAuthorization(params, common.TelegramBotToken) {
+	if !checkTelegramAuthorization(params, botToken) {
 		c.JSON(200, gin.H{
 			"message": "无效的请求",
 			"success": false,
@@ -34,7 +37,7 @@ func TelegramBind(c *gin.Context) {
 		return
 	}
 	telegramId := params["id"][0]
-	if model.IsTelegramIdAlreadyTaken(telegramId, middleware.GetTenantId(c)) {
+	if model.IsTelegramIdAlreadyTaken(telegramId, tenantId) {
 		c.JSON(200, gin.H{
 			"message": "该 Telegram 账户已被绑定",
 			"success": false,
@@ -72,15 +75,17 @@ func TelegramBind(c *gin.Context) {
 }
 
 func TelegramLogin(c *gin.Context) {
-	if !common.TelegramOAuthEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if !service.GetConfigBool(tenantId, "TelegramOAuthEnabled", common.TelegramOAuthEnabled) {
 		c.JSON(200, gin.H{
 			"message": "管理员未开启通过 Telegram 登录以及注册",
 			"success": false,
 		})
 		return
 	}
+	botToken := service.GetConfig(tenantId, "TelegramBotToken", common.TelegramBotToken)
 	params := c.Request.URL.Query()
-	if !checkTelegramAuthorization(params, common.TelegramBotToken) {
+	if !checkTelegramAuthorization(params, botToken) {
 		c.JSON(200, gin.H{
 			"message": "无效的请求",
 			"success": false,
@@ -90,14 +95,14 @@ func TelegramLogin(c *gin.Context) {
 
 	telegramId := params["id"][0]
 	user := model.User{TelegramId: telegramId}
-	if err := user.FillUserByTelegramIdWithTenant(middleware.GetTenantId(c)); err != nil {
+	if err := user.FillUserByTelegramIdWithTenant(tenantId); err != nil {
 		c.JSON(200, gin.H{
 			"message": err.Error(),
 			"success": false,
 		})
 		return
 	}
-	if !model.TenantMembershipAllowsAccess(&user, middleware.GetTenantId(c)) {
+	if !model.TenantMembershipAllowsAccess(&user, tenantId) {
 		c.JSON(200, gin.H{
 			"message": "用户不属于当前租户或成员已被禁用",
 			"success": false,

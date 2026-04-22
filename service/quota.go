@@ -471,7 +471,7 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota)}
 			} else {
 				// 默认内容格式，适用于Email和Webhook（支持HTML）
-				content = common.WrapEmailHTML(fmt.Sprintf(`<p style="margin:0 0 16px">您好，您的账户额度即将用尽。</p>
+				content = WrapTenantEmailHTML(relayInfo.TenantId, fmt.Sprintf(`<p style="margin:0 0 16px">您好，您的账户额度即将用尽。</p>
 <div style="margin:16px 0;padding:16px 20px;background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:0 8px 8px 0">
 <p style="margin:0;font-size:15px">当前剩余额度：<strong style="color:#dc2626">%s</strong></p>
 </div>
@@ -482,7 +482,7 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 				values = nil
 			}
 
-			err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
+			err := NotifyUser(relayInfo.TenantId, relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
 			if err != nil {
 				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 			}
@@ -532,7 +532,7 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 			values = []interface{}{prompt, logger.FormatQuota(int(remaining)), topUpLink, topUpLink}
 		}
 
-		if err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); err != nil {
+		if err := NotifyUser(relayInfo.TenantId, relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); err != nil {
 			common.SysError(fmt.Sprintf("failed to send subscription quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 		}
 	})

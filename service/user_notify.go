@@ -16,7 +16,7 @@ import (
 
 func NotifyRootUser(t string, subject string, content string) {
 	user := model.GetRootUser().ToBaseUser()
-	err := NotifyUser(user.Id, user.Email, user.GetSetting(), dto.NewNotify(t, subject, content, nil))
+	err := NotifyUser(0, user.Id, user.Email, user.GetSetting(), dto.NewNotify(t, subject, content, nil))
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to notify root user: %s", err.Error()))
 	}
@@ -25,7 +25,7 @@ func NotifyRootUser(t string, subject string, content string) {
 func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
 	var users []model.User
 	if err := model.DB.
-		Select("id", "email", "role", "status", "setting").
+		Select("id", "tenant_id", "email", "role", "status", "setting").
 		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
 		Find(&users).Error; err != nil {
 		common.SysLog(fmt.Sprintf("failed to query upstream update notification users: %s", err.Error()))
@@ -39,7 +39,7 @@ func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
 		if !userSetting.UpstreamModelUpdateNotifyEnabled {
 			continue
 		}
-		if err := NotifyUser(user.Id, user.Email, userSetting, notification); err != nil {
+		if err := NotifyUser(user.TenantId, user.Id, user.Email, userSetting, notification); err != nil {
 			common.SysLog(fmt.Sprintf("failed to notify user %d for upstream model update: %s", user.Id, err.Error()))
 			continue
 		}
@@ -48,7 +48,7 @@ func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
 	common.SysLog(fmt.Sprintf("upstream model update notifications sent: %d", sentCount))
 }
 
-func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data dto.Notify) error {
+func NotifyUser(tenantId int, userId int, userEmail string, userSetting dto.UserSetting, data dto.Notify) error {
 	notifyType := userSetting.NotifyType
 	if notifyType == "" {
 		notifyType = dto.NotifyTypeEmail
@@ -75,7 +75,7 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 			common.SysLog(fmt.Sprintf("user %d has no email, skip sending email", userId))
 			return nil
 		}
-		return sendEmailNotify(emailToUse, data)
+		return sendEmailNotify(tenantId, emailToUse, data)
 	case dto.NotifyTypeWebhook:
 		webhookURLStr := userSetting.WebhookUrl
 		if webhookURLStr == "" {
@@ -105,14 +105,14 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 	return nil
 }
 
-func sendEmailNotify(userEmail string, data dto.Notify) error {
+func sendEmailNotify(tenantId int, userEmail string, data dto.Notify) error {
 	// make email content
 	content := data.Content
 	// 处理占位符
 	for _, value := range data.Values {
 		content = strings.Replace(content, dto.ContentValueParam, fmt.Sprintf("%v", value), 1)
 	}
-	return common.SendEmail(data.Title, userEmail, content)
+	return SendTenantEmail(tenantId, data.Title, userEmail, content)
 }
 
 func sendBarkNotify(barkURL string, data dto.Notify) error {

@@ -14,7 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -51,7 +53,10 @@ func (p *LinuxDOProvider) ExchangeToken(ctx context.Context, code string, c *gin
 
 	// Get access token using Basic auth
 	tokenEndpoint := common.GetEnvOrDefaultString("LINUX_DO_TOKEN_ENDPOINT", "https://connect.linux.do/oauth2/token")
-	credentials := common.LinuxDOClientId + ":" + common.LinuxDOClientSecret
+	tenantId := middleware.GetTenantId(c)
+	clientId := service.GetConfig(tenantId, "LinuxDOClientId", common.LinuxDOClientId)
+	clientSecret := service.GetConfig(tenantId, "LinuxDOClientSecret", common.LinuxDOClientSecret)
+	credentials := clientId + ":" + clientSecret
 	basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(credentials))
 
 	// Get redirect URI from request

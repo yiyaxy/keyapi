@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -24,15 +25,17 @@ type wechatLoginResponse struct {
 	Data    string `json:"data"`
 }
 
-func getWeChatIdByCode(code string) (string, error) {
+func getWeChatIdByCode(tenantId int, code string) (string, error) {
 	if code == "" {
 		return "", errors.New("无效的参数")
 	}
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/wechat/user?code=%s", common.WeChatServerAddress, url.QueryEscape(code)), nil)
+	serverAddress := service.GetConfig(tenantId, "WeChatServerAddress", common.WeChatServerAddress)
+	serverToken := service.GetConfig(tenantId, "WeChatServerToken", common.WeChatServerToken)
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/wechat/user?code=%s", serverAddress, url.QueryEscape(code)), nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", common.WeChatServerToken)
+	req.Header.Set("Authorization", serverToken)
 	client := http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -56,7 +59,8 @@ func getWeChatIdByCode(code string) (string, error) {
 }
 
 func WeChatAuth(c *gin.Context) {
-	if !common.WeChatAuthEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if !service.GetConfigBool(tenantId, "WeChatAuthEnabled", common.WeChatAuthEnabled) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "管理员未开启通过微信登录以及注册",
 			"success": false,
@@ -64,7 +68,7 @@ func WeChatAuth(c *gin.Context) {
 		return
 	}
 	code := c.Query("code")
-	wechatId, err := getWeChatIdByCode(code)
+	wechatId, err := getWeChatIdByCode(tenantId, code)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"message": err.Error(),
@@ -73,11 +77,11 @@ func WeChatAuth(c *gin.Context) {
 		return
 	}
 	user := model.User{
-		TenantId: middleware.GetTenantId(c),
+		TenantId: tenantId,
 		WeChatId: wechatId,
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId, middleware.GetTenantId(c)) {
-		err := user.FillUserByWeChatIdWithTenant(middleware.GetTenantId(c))
+	if model.IsWeChatIdAlreadyTaken(wechatId, tenantId) {
+		err := user.FillUserByWeChatIdWithTenant(tenantId)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -92,7 +96,7 @@ func WeChatAuth(c *gin.Context) {
 			})
 			return
 		}
-		if !model.TenantMembershipAllowsAccess(&user, middleware.GetTenantId(c)) {
+		if !model.TenantMembershipAllowsAccess(&user, tenantId) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "用户不属于当前租户或成员已被禁用",
@@ -100,7 +104,7 @@ func WeChatAuth(c *gin.Context) {
 			return
 		}
 	} else {
-		if common.RegisterEnabled {
+		if service.GetConfigBool(tenantId, "RegisterEnabled", common.RegisterEnabled) {
 			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser
@@ -145,7 +149,8 @@ type wechatBindRequest struct {
 }
 
 func WeChatBind(c *gin.Context) {
-	if !common.WeChatAuthEnabled {
+	tenantId := middleware.GetTenantId(c)
+	if !service.GetConfigBool(tenantId, "WeChatAuthEnabled", common.WeChatAuthEnabled) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "管理员未开启通过微信登录以及注册",
 			"success": false,
@@ -161,7 +166,7 @@ func WeChatBind(c *gin.Context) {
 		return
 	}
 	code := req.Code
-	wechatId, err := getWeChatIdByCode(code)
+	wechatId, err := getWeChatIdByCode(tenantId, code)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"message": err.Error(),
@@ -169,7 +174,7 @@ func WeChatBind(c *gin.Context) {
 		})
 		return
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId, middleware.GetTenantId(c)) {
+	if model.IsWeChatIdAlreadyTaken(wechatId, tenantId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该微信账号已被绑定",

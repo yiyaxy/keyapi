@@ -10,17 +10,34 @@ import (
 	"time"
 )
 
-func generateMessageID() (string, error) {
-	split := strings.Split(SMTPFrom, "@")
+type SMTPConfig struct {
+	Server      string
+	Port        int
+	SSLEnabled  bool
+	Account     string
+	From        string
+	Token       string
+	SystemName  string
+}
+
+func generateMessageID(from string) (string, error) {
+	split := strings.Split(from, "@")
 	if len(split) < 2 {
 		return "", fmt.Errorf("invalid SMTP account")
 	}
-	domain := strings.Split(SMTPFrom, "@")[1]
+	domain := strings.Split(from, "@")[1]
 	return fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), GetRandomString(12), domain), nil
 }
 
 // WrapEmailHTML wraps the given body HTML in a styled email template.
 func WrapEmailHTML(body string) string {
+	return WrapEmailHTMLWithSystemName(SystemName, body)
+}
+
+func WrapEmailHTMLWithSystemName(systemName string, body string) string {
+	if strings.TrimSpace(systemName) == "" {
+		systemName = SystemName
+	}
 	return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -36,7 +53,7 @@ func WrapEmailHTML(body string) string {
 ` + body + `
 </td></tr>
 <tr><td style="padding:20px 40px;background-color:#f9fafb;border-top:1px solid #e5e7eb;text-align:center">
-<p style="margin:0;color:#9ca3af;font-size:12px">` + SystemName + ` &mdash; 此邮件由系统自动发送，请勿直接回复</p>
+<p style="margin:0;color:#9ca3af;font-size:12px">` + systemName + ` &mdash; 此邮件由系统自动发送，请勿直接回复</p>
 </td></tr>
 </table>
 </td></tr>
@@ -45,15 +62,18 @@ func WrapEmailHTML(body string) string {
 </html>`
 }
 
-func SendEmail(subject string, receiver string, content string) error {
-	if SMTPFrom == "" { // for compatibility
-		SMTPFrom = SMTPAccount
+func SendEmailWithConfig(cfg SMTPConfig, subject string, receiver string, content string) error {
+	if cfg.From == "" {
+		cfg.From = cfg.Account
 	}
-	id, err2 := generateMessageID()
+	if cfg.SystemName == "" {
+		cfg.SystemName = SystemName
+	}
+	id, err2 := generateMessageID(cfg.From)
 	if err2 != nil {
 		return err2
 	}
-	if SMTPServer == "" && SMTPAccount == "" {
+	if cfg.Server == "" && cfg.Account == "" {
 		return fmt.Errorf("SMTP 服务器未配置")
 	}
 	encodedSubject := fmt.Sprintf("=?UTF-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
@@ -63,21 +83,21 @@ func SendEmail(subject string, receiver string, content string) error {
 		"Date: %s\r\n"+
 		"Message-ID: %s\r\n"+ // 添加 Message-ID 头
 		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
-		receiver, SystemName, SMTPFrom, encodedSubject, time.Now().Format(time.RFC1123Z), id, content))
-	auth := smtp.PlainAuth("", SMTPAccount, SMTPToken, SMTPServer)
-	addr := fmt.Sprintf("%s:%d", SMTPServer, SMTPPort)
+		receiver, cfg.SystemName, cfg.From, encodedSubject, time.Now().Format(time.RFC1123Z), id, content))
+	auth := smtp.PlainAuth("", cfg.Account, cfg.Token, cfg.Server)
+	addr := fmt.Sprintf("%s:%d", cfg.Server, cfg.Port)
 	to := strings.Split(receiver, ";")
 	var err error
-	if SMTPPort == 465 || SMTPSSLEnabled {
+	if cfg.Port == 465 || cfg.SSLEnabled {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: true,
-			ServerName:         SMTPServer,
+			ServerName:         cfg.Server,
 		}
-		conn, err := tls.Dial("tcp", fmt.Sprintf("%s:%d", SMTPServer, SMTPPort), tlsConfig)
+		conn, err := tls.Dial("tcp", fmt.Sprintf("%s:%d", cfg.Server, cfg.Port), tlsConfig)
 		if err != nil {
 			return err
 		}
-		client, err := smtp.NewClient(conn, SMTPServer)
+		client, err := smtp.NewClient(conn, cfg.Server)
 		if err != nil {
 			return err
 		}
@@ -85,7 +105,7 @@ func SendEmail(subject string, receiver string, content string) error {
 		if err = client.Auth(auth); err != nil {
 			return err
 		}
-		if err = client.Mail(SMTPFrom); err != nil {
+		if err = client.Mail(cfg.From); err != nil {
 			return err
 		}
 		receiverEmails := strings.Split(receiver, ";")
@@ -106,14 +126,27 @@ func SendEmail(subject string, receiver string, content string) error {
 		if err != nil {
 			return err
 		}
-	} else if isOutlookServer(SMTPAccount) || slices.Contains(EmailLoginAuthServerList, SMTPServer) {
-		auth = LoginAuth(SMTPAccount, SMTPToken)
-		err = smtp.SendMail(addr, auth, SMTPFrom, to, mail)
+	} else if isOutlookServer(cfg.Account) || slices.Contains(EmailLoginAuthServerList, cfg.Server) {
+		auth = LoginAuth(cfg.Account, cfg.Token)
+		err = smtp.SendMail(addr, auth, cfg.From, to, mail)
 	} else {
-		err = smtp.SendMail(addr, auth, SMTPFrom, to, mail)
+		err = smtp.SendMail(addr, auth, cfg.From, to, mail)
 	}
 	if err != nil {
 		SysError(fmt.Sprintf("failed to send email to %s: %v", receiver, err))
 	}
 	return err
+}
+
+func SendEmail(subject string, receiver string, content string) error {
+	cfg := SMTPConfig{
+		Server:     SMTPServer,
+		Port:       SMTPPort,
+		SSLEnabled: SMTPSSLEnabled,
+		Account:    SMTPAccount,
+		From:       SMTPFrom,
+		Token:      SMTPToken,
+		SystemName: SystemName,
+	}
+	return SendEmailWithConfig(cfg, subject, receiver, content)
 }
