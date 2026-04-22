@@ -371,13 +371,11 @@ func CreateInvoiceApplication(ctx context.Context, tenantId int, p CreateInvoice
 		return nil, nil, types.NewErrorWithStatusCode(fmt.Errorf("missing tax id"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 
-	minInvoiceAmount := getMinInvoiceAmount()
-
-	common.OptionMapRWMutex.RLock()
-	defaultPaymentCode := strings.TrimSpace(common.OptionMap["InvoiceDefaultPaymentCode"])
-	defaultSubMchid := strings.TrimSpace(common.OptionMap["InvoiceDefaultSubMchid"])
-	defaultAccount := strings.TrimSpace(common.OptionMap["InvoiceDefaultAccount"])
-	common.OptionMapRWMutex.RUnlock()
+	cfg := GetInvoiceConfig(tenantId)
+	minInvoiceAmount := cfg.MinAmount
+	defaultPaymentCode := cfg.DefaultPaymentCode
+	defaultSubMchid := cfg.DefaultSubMchid
+	defaultAccount := cfg.DefaultAccount
 
 	seen := make(map[string]struct{}, len(p.Items))
 	uniqueItems := make([]CreateInvoiceApplicationItem, 0, len(p.Items))
@@ -920,20 +918,6 @@ func PresignInvoiceFileForAdmin(ctx context.Context, tenantId int, fileId int, d
 		return "", 0, err
 	}
 	return url, expiresAt, nil
-}
-
-func getMinInvoiceAmount() int {
-	common.OptionMapRWMutex.RLock()
-	value := strings.TrimSpace(common.OptionMap["MinInvoiceAmount"])
-	common.OptionMapRWMutex.RUnlock()
-	if value == "" {
-		return 200
-	}
-	minAmount, err := strconv.Atoi(value)
-	if err != nil || minAmount <= 0 {
-		return 200
-	}
-	return minAmount
 }
 
 func mapEpayTypeToPiaotongPaymentCode(epayType string) string {

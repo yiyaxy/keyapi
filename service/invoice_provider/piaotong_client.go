@@ -69,29 +69,43 @@ type PiaoTongClient struct {
 	httpClient                   *http.Client
 }
 
-func NewPiaoTongClient() *PiaoTongClient {
-	cfg := loadPiaoTongConfig()
+type PiaoTongClientConfig struct {
+	BaseURL                      string
+	PlatformCode                 string
+	PlatformAlias                string
+	TripleDESKey                 string
+	PrivateKey                   string
+	PublicKey                    string
+	SellerTaxpayerNum            string
+	SellerEnterpriseName         string
+	DefaultIssueKindCode         string
+	DefaultTaxClassificationCode string
+	DefaultGoodsName             string
+	DefaultTaxRateValue          string
+}
+
+func NewPiaoTongClient(cfg PiaoTongClientConfig) *PiaoTongClient {
 	return &PiaoTongClient{
-		baseURL:                      cfg["InvoicePiaoTongBaseURL"],
-		platformCode:                 cfg["InvoicePiaoTongPlatformCode"],
-		platformAlias:                cfg["InvoicePiaoTongPlatformAlias"],
-		tripleDESKey:                 cfg["InvoicePiaoTong3DESKey"],
-		privateKey:                   cfg["InvoicePiaoTongPrivateKey"],
-		publicKey:                    cfg["InvoicePiaoTongPublicKey"],
-		sellerTaxpayerNum:            cfg["InvoiceSellerTaxpayerNum"],
-		sellerEnterpriseName:         cfg["InvoiceSellerEnterpriseName"],
-		defaultIssueKindCode:         cfg["InvoiceDefaultIssueKindCode"],
-		defaultTaxClassificationCode: cfg["InvoiceDefaultTaxClassificationCode"],
-		defaultGoodsName:             cfg["InvoiceDefaultGoodsName"],
-		defaultTaxRateValue:          cfg["InvoiceDefaultTaxRateValue"],
+		baseURL:                      cfg.BaseURL,
+		platformCode:                 cfg.PlatformCode,
+		platformAlias:                cfg.PlatformAlias,
+		tripleDESKey:                 cfg.TripleDESKey,
+		privateKey:                   cfg.PrivateKey,
+		publicKey:                    cfg.PublicKey,
+		sellerTaxpayerNum:            cfg.SellerTaxpayerNum,
+		sellerEnterpriseName:         cfg.SellerEnterpriseName,
+		defaultIssueKindCode:         cfg.DefaultIssueKindCode,
+		defaultTaxClassificationCode: cfg.DefaultTaxClassificationCode,
+		defaultGoodsName:             cfg.DefaultGoodsName,
+		defaultTaxRateValue:          cfg.DefaultTaxRateValue,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
-func GenerateSerialNo() string {
-	client := NewPiaoTongClient()
+func GenerateSerialNo(cfg PiaoTongClientConfig) string {
+	client := NewPiaoTongClient(cfg)
 	serialNo, err := client.generateSerialNo()
 	if err != nil {
 		common.SysError("piaotong generate serial no failed: " + err.Error())
@@ -100,44 +114,20 @@ func GenerateSerialNo() string {
 	return serialNo
 }
 
-func IssueBlueInvoice(taxpayerNum, invoiceReqSerialNo, buyerName, buyerTaxpayerNum, remark, invoiceIssueKindCode string, items []BlueInvoiceItem, invIssueChannel string, paymentList []PaymentItem) (*PiaoTongResponse, error) {
-	return NewPiaoTongClient().IssueBlueInvoice(taxpayerNum, invoiceReqSerialNo, buyerName, buyerTaxpayerNum, remark, invoiceIssueKindCode, items, invIssueChannel, paymentList)
+func IssueBlueInvoice(cfg PiaoTongClientConfig, taxpayerNum, invoiceReqSerialNo, buyerName, buyerTaxpayerNum, remark, invoiceIssueKindCode string, items []BlueInvoiceItem, invIssueChannel string, paymentList []PaymentItem) (*PiaoTongResponse, error) {
+	return NewPiaoTongClient(cfg).IssueBlueInvoice(taxpayerNum, invoiceReqSerialNo, buyerName, buyerTaxpayerNum, remark, invoiceIssueKindCode, items, invIssueChannel, paymentList)
 }
 
-func QueryInvoiceMain(taxpayerNum, invoiceReqSerialNo string) (*PiaoTongResponse, error) {
-	return NewPiaoTongClient().QueryInvoiceMain(taxpayerNum, invoiceReqSerialNo)
+func QueryInvoiceMain(cfg PiaoTongClientConfig, taxpayerNum, invoiceReqSerialNo string) (*PiaoTongResponse, error) {
+	return NewPiaoTongClient(cfg).QueryInvoiceMain(taxpayerNum, invoiceReqSerialNo)
 }
 
-func QueryInvoiceFull(taxpayerNum, invoiceReqSerialNo string) (*PiaoTongResponse, error) {
-	return NewPiaoTongClient().QueryInvoiceFull(taxpayerNum, invoiceReqSerialNo)
+func QueryInvoiceFull(cfg PiaoTongClientConfig, taxpayerNum, invoiceReqSerialNo string) (*PiaoTongResponse, error) {
+	return NewPiaoTongClient(cfg).QueryInvoiceFull(taxpayerNum, invoiceReqSerialNo)
 }
 
-func GetInvoiceFile(taxpayerNum, invoiceReqSerialNo, fileType string) (*PiaoTongResponse, error) {
-	return NewPiaoTongClient().GetInvoiceFile(taxpayerNum, invoiceReqSerialNo, fileType)
-}
-
-func loadPiaoTongConfig() map[string]string {
-	keys := []string{
-		"InvoicePiaoTongBaseURL",
-		"InvoicePiaoTongPlatformCode",
-		"InvoicePiaoTongPlatformAlias",
-		"InvoicePiaoTong3DESKey",
-		"InvoicePiaoTongPrivateKey",
-		"InvoicePiaoTongPublicKey",
-		"InvoiceSellerTaxpayerNum",
-		"InvoiceSellerEnterpriseName",
-		"InvoiceDefaultIssueKindCode",
-		"InvoiceDefaultTaxClassificationCode",
-		"InvoiceDefaultGoodsName",
-		"InvoiceDefaultTaxRateValue",
-	}
-	cfg := make(map[string]string, len(keys))
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	for _, key := range keys {
-		cfg[key] = strings.TrimSpace(common.OptionMap[key])
-	}
-	return cfg
+func GetInvoiceFile(cfg PiaoTongClientConfig, taxpayerNum, invoiceReqSerialNo, fileType string) (*PiaoTongResponse, error) {
+	return NewPiaoTongClient(cfg).GetInvoiceFile(taxpayerNum, invoiceReqSerialNo, fileType)
 }
 
 func (c *PiaoTongClient) IssueBlueInvoice(taxpayerNum, invoiceReqSerialNo, buyerName, buyerTaxpayerNum, remark, invoiceIssueKindCode string, items []BlueInvoiceItem, invIssueChannel string, paymentList []PaymentItem) (*PiaoTongResponse, error) {
@@ -411,8 +401,8 @@ func stringValue(v interface{}) string {
 }
 
 // RedInvoice calls PiaoTong API 2.10 invoiceRed.pt to void/red an issued invoice.
-func RedInvoice(taxpayerNum, invoiceReqSerialNo, invoiceCode, invoiceNo, blueAllEleInvNo, amount, redReason string) (*PiaoTongResponse, error) {
-	return NewPiaoTongClient().RedInvoice(taxpayerNum, invoiceReqSerialNo, invoiceCode, invoiceNo, blueAllEleInvNo, amount, redReason)
+func RedInvoice(cfg PiaoTongClientConfig, taxpayerNum, invoiceReqSerialNo, invoiceCode, invoiceNo, blueAllEleInvNo, amount, redReason string) (*PiaoTongResponse, error) {
+	return NewPiaoTongClient(cfg).RedInvoice(taxpayerNum, invoiceReqSerialNo, invoiceCode, invoiceNo, blueAllEleInvNo, amount, redReason)
 }
 
 func (c *PiaoTongClient) RedInvoice(taxpayerNum, invoiceReqSerialNo, invoiceCode, invoiceNo, blueAllEleInvNo, amount, redReason string) (*PiaoTongResponse, error) {

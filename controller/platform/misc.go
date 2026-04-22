@@ -94,11 +94,11 @@ func GetStatus(c *gin.Context) {
 
 		"usd_exchange_rate":               operation_setting.USDExchangeRate,
 		"price":                           operation_setting.Price,
-		"min_invoice_amount":              operation_setting.MinInvoiceAmount,
-		"invoice_provider":                common.InvoiceProvider,
-		"invoice_auto_issue_enabled":      common.InvoiceAutoIssueEnabled,
-		"invoice_default_issue_kind_code": strings.TrimSpace(common.OptionMap["InvoiceDefaultIssueKindCode"]),
-		"invoice_default_goods_name":      strings.TrimSpace(common.OptionMap["InvoiceDefaultGoodsName"]),
+		"min_invoice_amount":              service.GetConfigInt(tenantId, "MinInvoiceAmount", operation_setting.MinInvoiceAmount),
+		"invoice_provider":                service.GetConfig(tenantId, "InvoiceProvider", common.InvoiceProvider),
+		"invoice_auto_issue_enabled":      service.GetConfigBool(tenantId, "InvoiceAutoIssueEnabled", common.InvoiceAutoIssueEnabled),
+		"invoice_default_issue_kind_code": strings.TrimSpace(service.GetConfig(tenantId, "InvoiceDefaultIssueKindCode", common.OptionMap["InvoiceDefaultIssueKindCode"])),
+		"invoice_default_goods_name":      strings.TrimSpace(service.GetConfig(tenantId, "InvoiceDefaultGoodsName", common.OptionMap["InvoiceDefaultGoodsName"])),
 		"stripe_unit_price":               setting.StripeUnitPrice,
 
 		// 面板启用开关

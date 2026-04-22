@@ -23,10 +23,17 @@ import (
 // TryAutoIssueInvoice is called asynchronously after admin approves an invoice application.
 // It checks if auto-issue is enabled and triggers PiaoTong blue invoice issuance.
 func TryAutoIssueInvoice(appId int) {
-	if common.InvoiceProvider != common.InvoiceProviderPiaoTong {
+	var app model.InvoiceApplication
+	if err := model.DB.Select("id, tenant_id").Where("id = ?", appId).First(&app).Error; err != nil {
+		common.SysError(fmt.Sprintf("auto issue invoice: app not found %d: %v", appId, err))
 		return
 	}
-	if !common.InvoiceAutoIssueEnabled {
+
+	cfg := GetInvoiceConfig(app.TenantId)
+	if cfg.Provider != common.InvoiceProviderPiaoTong {
+		return
+	}
+	if !cfg.AutoIssueEnabled {
 		return
 	}
 	go func() {
@@ -73,7 +80,7 @@ func IssueInvoiceByPiaoTong(ctx context.Context, appId int) error {
 		now := common.GetTimestamp()
 		app.IssueStatus = model.InvoiceIssueStatusIssuing
 		app.Provider = common.InvoiceProviderPiaoTong
-		app.IssueMode = getIssueMode()
+		app.IssueMode = getIssueMode(app.TenantId)
 		app.IssueAttempts++
 		app.LastIssueAttemptAt = now
 		app.IssueErrorCode = ""
@@ -83,28 +90,17 @@ func IssueInvoiceByPiaoTong(ctx context.Context, appId int) error {
 		return err
 	}
 
-	// Read config
-	common.OptionMapRWMutex.RLock()
-	sellerTaxpayerNum := strings.TrimSpace(common.OptionMap["InvoiceSellerTaxpayerNum"])
-	issueKindCode := strings.TrimSpace(common.OptionMap["InvoiceDefaultIssueKindCode"])
-	defaultTaxCode := strings.TrimSpace(common.OptionMap["InvoiceDefaultTaxClassificationCode"])
-	defaultGoodsName := strings.TrimSpace(common.OptionMap["InvoiceDefaultGoodsName"])
-	defaultTaxRate := strings.TrimSpace(common.OptionMap["InvoiceDefaultTaxRateValue"])
-	queryInterval := strings.TrimSpace(common.OptionMap["InvoiceQueryRetryIntervalSeconds"])
-	common.OptionMapRWMutex.RUnlock()
-
-	if issueKindCode == "" {
-		issueKindCode = "82"
-	}
-	if defaultGoodsName == "" {
-		defaultGoodsName = "技术服务费"
-	}
-	if defaultTaxRate == "" {
-		defaultTaxRate = "0.01"
-	}
+	cfg := GetInvoiceConfig(app.TenantId)
+	providerCfg := cfg.ToPiaoTongClientConfig()
+	sellerTaxpayerNum := cfg.SellerTaxpayerNum
+	issueKindCode := cfg.DefaultIssueKindCode
+	defaultTaxCode := cfg.DefaultTaxClassificationCode
+	defaultGoodsName := cfg.DefaultGoodsName
+	defaultTaxRate := cfg.DefaultTaxRateValue
+	intervalSec := cfg.QueryRetryIntervalSeconds
 
 	// Build invoice items (use per-application category if set, else defaults)
-	invoiceReq, validationErr := buildValidatedPiaoTongInvoiceRequest(app, items, sellerTaxpayerNum, issueKindCode, defaultGoodsName, defaultTaxCode, defaultTaxRate)
+	invoiceReq, validationErr := buildValidatedPiaoTongInvoiceRequest(providerCfg, app, items, sellerTaxpayerNum, issueKindCode, defaultGoodsName, defaultTaxCode, defaultTaxRate)
 	if validationErr != nil {
 		now := common.GetTimestamp()
 		_ = model.DB.Model(&model.InvoiceApplication{}).Where("id = ?", appId).Updates(map[string]interface{}{
@@ -126,6 +122,7 @@ func IssueInvoiceByPiaoTong(ctx context.Context, appId int) error {
 
 	// Call PiaoTong
 	resp, err := invoice_provider.IssueBlueInvoice(
+		providerCfg,
 		invoiceReq.TaxpayerNum,
 		invoiceReqSerialNo,
 		invoiceReq.BuyerName,
@@ -138,10 +135,6 @@ func IssueInvoiceByPiaoTong(ctx context.Context, appId int) error {
 	)
 
 	now := common.GetTimestamp()
-	intervalSec, _ := strconv.Atoi(queryInterval)
-	if intervalSec <= 0 {
-		intervalSec = 60
-	}
 
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		var latest model.InvoiceApplication
@@ -224,23 +217,15 @@ func QueryInvoiceStatus(ctx context.Context, appId int) (*model.InvoiceApplicati
 		return nil, fmt.Errorf("no piaotong invoice req serial no")
 	}
 
-	common.OptionMapRWMutex.RLock()
-	sellerTaxpayerNum := strings.TrimSpace(common.OptionMap["InvoiceSellerTaxpayerNum"])
-	queryInterval := strings.TrimSpace(common.OptionMap["InvoiceQueryRetryIntervalSeconds"])
-	maxAttempts := strings.TrimSpace(common.OptionMap["InvoiceQueryMaxAttempts"])
-	common.OptionMapRWMutex.RUnlock()
+	cfg := GetInvoiceConfig(app.TenantId)
+	providerCfg := cfg.ToPiaoTongClientConfig()
+	sellerTaxpayerNum := cfg.SellerTaxpayerNum
+	intervalSec := cfg.QueryRetryIntervalSeconds
+	maxAtt := cfg.QueryMaxAttempts
 
-	resp, err := invoice_provider.QueryInvoiceMain(sellerTaxpayerNum, app.PiaoTongInvoiceReqSerialNo)
+	resp, err := invoice_provider.QueryInvoiceMain(providerCfg, sellerTaxpayerNum, app.PiaoTongInvoiceReqSerialNo)
 
 	now := common.GetTimestamp()
-	intervalSec, _ := strconv.Atoi(queryInterval)
-	if intervalSec <= 0 {
-		intervalSec = 60
-	}
-	maxAtt, _ := strconv.Atoi(maxAttempts)
-	if maxAtt <= 0 {
-		maxAtt = 60
-	}
 
 	var out *model.InvoiceApplication
 	shouldFetchFiles := false
@@ -368,13 +353,13 @@ func fetchAndStorePiaoTongInvoiceFiles(ctx context.Context, appId int) error {
 		return model.DB.Model(&model.InvoiceApplication{}).Where("id = ?", appId).Updates(updates).Error
 	}
 
-	common.OptionMapRWMutex.RLock()
-	sellerTaxpayerNum := strings.TrimSpace(common.OptionMap["InvoiceSellerTaxpayerNum"])
-	common.OptionMapRWMutex.RUnlock()
+	cfg := GetInvoiceConfig(app.TenantId)
+	providerCfg := cfg.ToPiaoTongClientConfig()
+	sellerTaxpayerNum := cfg.SellerTaxpayerNum
 
 	// Primary: use API 2.15 (getInvoiceFile.pt / getAllEleInvFile.pt) for PDF retrieval.
 	// This is the dedicated file download endpoint and returns clean base64 fileContent.
-	files, fetchErr := fetchPiaoTongInvoiceFilesVia215(sellerTaxpayerNum, app.PiaoTongInvoiceReqSerialNo)
+	files, fetchErr := fetchPiaoTongInvoiceFilesVia215(providerCfg, sellerTaxpayerNum, app.PiaoTongInvoiceReqSerialNo)
 
 	// Fallback: if 2.15 fails, try QueryInvoiceFull (2.12 queryInvoiceInfo.pt) which
 	// includes invoicePdf/invoiceXml/downloadUrl in its response content.
@@ -382,7 +367,7 @@ func fetchAndStorePiaoTongInvoiceFiles(ctx context.Context, appId int) error {
 		common.SysLog(fmt.Sprintf("invoice file fetch via 2.15 failed for app %d (err=%v, files=%d), trying 2.12 fallback",
 			appId, fetchErr, len(files)))
 		var fallbackErr error
-		files, fallbackErr = fetchPiaoTongInvoiceFilesVia212(ctx, sellerTaxpayerNum, app.PiaoTongInvoiceReqSerialNo)
+		files, fallbackErr = fetchPiaoTongInvoiceFilesVia212(ctx, providerCfg, sellerTaxpayerNum, app.PiaoTongInvoiceReqSerialNo)
 		if fallbackErr != nil {
 			markInvoiceFileFetchFailed(appId, fallbackErr.Error())
 			return fallbackErr
@@ -448,11 +433,11 @@ func fetchAndStorePiaoTongInvoiceFiles(ctx context.Context, appId int) error {
 // fetchPiaoTongInvoiceFilesVia215 uses PiaoTong API 2.15 (getAllEleInvFile.pt) to fetch
 // invoice files. This is the dedicated file download endpoint that returns clean base64
 // fileContent for each requested file type.
-func fetchPiaoTongInvoiceFilesVia215(sellerTaxpayerNum, invoiceReqSerialNo string) ([]piaotongFetchedInvoiceFile, error) {
+func fetchPiaoTongInvoiceFilesVia215(cfg invoice_provider.PiaoTongClientConfig, sellerTaxpayerNum, invoiceReqSerialNo string) ([]piaotongFetchedInvoiceFile, error) {
 	files := make([]piaotongFetchedInvoiceFile, 0, 3)
 
 	for _, fileType := range []string{"PDF", "OFD", "XML"} {
-		resp, err := invoice_provider.GetInvoiceFile(sellerTaxpayerNum, invoiceReqSerialNo, fileType)
+		resp, err := invoice_provider.GetInvoiceFile(cfg, sellerTaxpayerNum, invoiceReqSerialNo, fileType)
 		if err != nil {
 			// PDF is required; OFD/XML are optional
 			if fileType == "PDF" {
@@ -517,8 +502,8 @@ func fetchPiaoTongInvoiceFilesVia215(sellerTaxpayerNum, invoiceReqSerialNo strin
 // fetchPiaoTongInvoiceFilesVia212 uses PiaoTong API 2.12 (queryInvoiceInfo.pt) as a fallback
 // to extract invoice files from the response content fields: invoicePdf, invoiceXml, downloadUrl.
 // All these fields are base64-encoded strings (NOT URLs despite the name "downloadUrl").
-func fetchPiaoTongInvoiceFilesVia212(ctx context.Context, sellerTaxpayerNum, invoiceReqSerialNo string) ([]piaotongFetchedInvoiceFile, error) {
-	resp, err := invoice_provider.QueryInvoiceFull(sellerTaxpayerNum, invoiceReqSerialNo)
+func fetchPiaoTongInvoiceFilesVia212(ctx context.Context, cfg invoice_provider.PiaoTongClientConfig, sellerTaxpayerNum, invoiceReqSerialNo string) ([]piaotongFetchedInvoiceFile, error) {
+	resp, err := invoice_provider.QueryInvoiceFull(cfg, sellerTaxpayerNum, invoiceReqSerialNo)
 	if err != nil {
 		return nil, err
 	}
@@ -908,7 +893,7 @@ type piaoTongBlueInvoiceRequest struct {
 	PaymentList          []invoice_provider.PaymentItem     `json:"paymentList,omitempty"`
 }
 
-func buildValidatedPiaoTongInvoiceRequest(app model.InvoiceApplication, items []model.InvoiceItem, sellerTaxpayerNum, issueKindCode, defaultGoodsName, defaultTaxCode, defaultTaxRate string) (*piaoTongBlueInvoiceRequest, error) {
+func buildValidatedPiaoTongInvoiceRequest(providerCfg invoice_provider.PiaoTongClientConfig, app model.InvoiceApplication, items []model.InvoiceItem, sellerTaxpayerNum, issueKindCode, defaultGoodsName, defaultTaxCode, defaultTaxRate string) (*piaoTongBlueInvoiceRequest, error) {
 	sellerTaxpayerNum = strings.TrimSpace(sellerTaxpayerNum)
 	buyerName := strings.TrimSpace(app.Title)
 	issueKindCode = strings.TrimSpace(issueKindCode)
@@ -919,7 +904,7 @@ func buildValidatedPiaoTongInvoiceRequest(app model.InvoiceApplication, items []
 	goodsName := firstNonEmptyString(app.GoodsName, defaultGoodsName)
 	taxClassificationCode := firstNonEmptyString(app.TaxClassificationCode, defaultTaxCode)
 	taxRateValue := firstNonEmptyString(app.TaxRateValue, defaultTaxRate)
-	invoiceReqSerialNo := strings.TrimSpace(invoice_provider.GenerateSerialNo())
+	invoiceReqSerialNo := strings.TrimSpace(invoice_provider.GenerateSerialNo(providerCfg))
 
 	switch {
 	case sellerTaxpayerNum == "":
@@ -1053,8 +1038,8 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func getIssueMode() string {
-	if common.InvoiceAutoIssueEnabled {
+func getIssueMode(tenantId int) string {
+	if GetInvoiceConfig(tenantId).AutoIssueEnabled {
 		return common.InvoiceIssueModeAuto
 	}
 	return common.InvoiceIssueModeManual
@@ -1064,10 +1049,6 @@ func getIssueMode() string {
 func InvoiceQueryWorker() {
 	for {
 		time.Sleep(15 * time.Second)
-
-		if common.InvoiceProvider != common.InvoiceProviderPiaoTong {
-			continue
-		}
 
 		now := common.GetTimestamp()
 		var apps []model.InvoiceApplication
@@ -1083,6 +1064,9 @@ func InvoiceQueryWorker() {
 		}
 
 		for _, app := range apps {
+			if GetInvoiceConfig(app.TenantId).Provider != common.InvoiceProviderPiaoTong {
+				continue
+			}
 			_, err := QueryInvoiceStatus(context.Background(), app.Id)
 			if err != nil {
 				common.SysError(fmt.Sprintf("invoice query worker error for app %d: %v", app.Id, err))
@@ -1120,22 +1104,23 @@ func RedInvoiceApplication(ctx context.Context, appId int, redReason string) err
 		return fmt.Errorf("missing invoice identification: need (invoiceCode + invoiceNo) or blueAllEleInvNo")
 	}
 
-	common.OptionMapRWMutex.RLock()
-	sellerTaxpayerNum := strings.TrimSpace(common.OptionMap["InvoiceSellerTaxpayerNum"])
-	common.OptionMapRWMutex.RUnlock()
+	cfg := GetInvoiceConfig(app.TenantId)
+	providerCfg := cfg.ToPiaoTongClientConfig()
+	sellerTaxpayerNum := cfg.SellerTaxpayerNum
 
 	if sellerTaxpayerNum == "" {
 		return fmt.Errorf("seller taxpayer number not configured")
 	}
 
 	// Generate a unique red invoice request serial number (must differ from blue invoice serial)
-	redReqSerialNo := invoice_provider.GenerateSerialNo()
+	redReqSerialNo := invoice_provider.GenerateSerialNo(providerCfg)
 	if redReqSerialNo == "" {
 		return fmt.Errorf("failed to generate red invoice serial number")
 	}
 
 	redAmount := fmt.Sprintf("-%.2f", app.TotalMoney)
 	resp, err := invoice_provider.RedInvoice(
+		providerCfg,
 		sellerTaxpayerNum,
 		redReqSerialNo,
 		app.PiaoTongInvoiceCode,
