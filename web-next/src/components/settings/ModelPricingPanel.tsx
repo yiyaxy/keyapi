@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUpdateOption } from '@/hooks/useOptions';
+import { usePublicConfig, type PublicConfig } from '@/hooks/usePublicConfig';
 
 import { MODEL_PRICING_KEYS } from './modelPricingKeys';
 
@@ -51,12 +52,30 @@ function parseNum(raw: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function fmtUSD(v: number): string {
-  if (v === 0) return '$0';
-  const abs = Math.abs(v);
-  if (abs < 0.01) return `$${v.toFixed(6)}`;
-  if (abs < 1) return `$${v.toFixed(4)}`;
-  return `$${v.toFixed(2)}`;
+type PreviewCurrency = 'USD' | 'CNY' | 'CUSTOM';
+
+// 把 USD 原值按当前币种换算并格式化。精度随数值量级自适应：
+//   < 0.01 → 6 位，< 1 → 4 位，其它 → 2 位。
+// 对非 USD 币种，直接用 cfg 里配置的汇率与符号。
+function fmtAmount(
+  usd: number,
+  currency: PreviewCurrency,
+  cfg: PublicConfig
+): string {
+  let value = usd;
+  let symbol = '$';
+  if (currency === 'CNY') {
+    value = usd * (cfg.usd_exchange_rate || 1);
+    symbol = '¥';
+  } else if (currency === 'CUSTOM') {
+    value = usd * (cfg.custom_currency_exchange_rate || 1);
+    symbol = cfg.custom_currency_symbol || '¤';
+  }
+  if (value === 0) return `${symbol}0`;
+  const abs = Math.abs(value);
+  if (abs < 0.01) return `${symbol}${value.toFixed(6)}`;
+  if (abs < 1) return `${symbol}${value.toFixed(4)}`;
+  return `${symbol}${value.toFixed(2)}`;
 }
 
 function PricingPreview({
@@ -68,6 +87,79 @@ function PricingPreview({
 }) {
   const zh = lang.startsWith('zh');
   const tt = (z: string, e: string) => (zh ? z : e);
+  const cfg = usePublicConfig();
+
+  // 币种切换：默认跟随系统 quota_display_type；TOKENS 回落到 USD（显示
+  // quota 整数在预览场景没直观意义）。cfg 中未配汇率时隐藏对应按钮。
+  const [currency, setCurrency] = useState<PreviewCurrency>(() => {
+    if (cfg.quota_display_type === 'CNY') return 'CNY';
+    if (cfg.quota_display_type === 'CUSTOM') return 'CUSTOM';
+    return 'USD';
+  });
+  const availableCurrencies = useMemo<PreviewCurrency[]>(() => {
+    const out: PreviewCurrency[] = ['USD'];
+    if (cfg.usd_exchange_rate > 0) out.push('CNY');
+    if (
+      cfg.custom_currency_symbol &&
+      cfg.custom_currency_symbol !== '¤' &&
+      (cfg.custom_currency_exchange_rate ?? 0) > 0
+    )
+      out.push('CUSTOM');
+    return out;
+  }, [
+    cfg.usd_exchange_rate,
+    cfg.custom_currency_symbol,
+    cfg.custom_currency_exchange_rate,
+  ]);
+  if (!availableCurrencies.includes(currency)) {
+    setCurrency('USD');
+  }
+
+  const currencyLabel = (c: PreviewCurrency): string => {
+    if (c === 'USD') return 'USD $';
+    if (c === 'CNY') return 'CNY ¥';
+    return cfg.custom_currency_symbol || 'CUSTOM';
+  };
+
+  const currencySwitcher =
+    availableCurrencies.length > 1 ? (
+      <div className='flex items-center gap-1 rounded-md border border-line bg-bg-0 p-0.5'>
+        {availableCurrencies.map((c) => (
+          <button
+            key={c}
+            type='button'
+            onClick={() => setCurrency(c)}
+            className={`rounded px-2 py-0.5 font-mono text-11 tabular-nums transition-colors ${
+              c === currency
+                ? 'bg-accent text-bg-0'
+                : 'text-fg-2 hover:bg-bg-1 hover:text-fg-0'
+            }`}
+          >
+            {currencyLabel(c)}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  const conversionNote =
+    currency === 'USD' ? null : (
+      <span className='ml-1'>
+        {tt(
+          `（按 1 USD = ${
+            currency === 'CNY'
+              ? cfg.usd_exchange_rate
+              : cfg.custom_currency_exchange_rate
+          } ${
+            currency === 'CNY' ? '¥' : cfg.custom_currency_symbol ?? ''
+          } 换算）`,
+          `(converted at 1 USD = ${
+            currency === 'CNY'
+              ? cfg.usd_exchange_rate
+              : cfg.custom_currency_exchange_rate
+          } ${currency === 'CNY' ? '¥' : cfg.custom_currency_symbol ?? ''})`
+        )}
+      </span>
+    );
 
   const price = parseNum(draft.ModelPrice);
   const ratio = parseNum(draft.ModelRatio);
@@ -79,14 +171,17 @@ function PricingPreview({
   if (price !== null && price > 0) {
     return (
       <div className='space-y-1.5 rounded-md border border-line bg-bg-1 p-3'>
-        <div className='flex items-center gap-2 text-12 font-medium text-fg-0'>
-          <span className='rounded bg-accent px-1.5 py-0.5 text-11 text-bg-0'>
-            {tt('按次计费', 'Per-call')}
-          </span>
-          {tt('费用预览（GroupRatio = 1）', 'Cost preview (GroupRatio = 1)')}
+        <div className='flex items-center justify-between gap-2'>
+          <div className='flex items-center gap-2 text-12 font-medium text-fg-0'>
+            <span className='rounded bg-accent px-1.5 py-0.5 text-11 text-bg-0'>
+              {tt('按次计费', 'Per-call')}
+            </span>
+            {tt('费用预览（GroupRatio = 1）', 'Cost preview (GroupRatio = 1)')}
+          </div>
+          {currencySwitcher}
         </div>
         <div className='font-mono text-14 tabular-nums text-fg-0'>
-          {fmtUSD(price)}{' '}
+          {fmtAmount(price, currency, cfg)}{' '}
           <span className='text-11 text-fg-2'>
             / {tt('每次调用', 'per call')}
           </span>
@@ -96,6 +191,7 @@ function PricingPreview({
             '按次模式下 token 倍率不生效；实际计费会再乘分组倍率。',
             'In per-call mode, token ratios are ignored; actual cost also multiplies by group ratio.'
           )}
+          {conversionNote}
         </div>
       </div>
     );
@@ -139,21 +235,24 @@ function PricingPreview({
           value === null ? 'text-fg-2' : 'text-fg-0'
         }`}
       >
-        {value === null ? '—' : fmtUSD(value)}
+        {value === null ? '—' : fmtAmount(value, currency, cfg)}
       </span>
     </div>
   );
 
   return (
     <div className='space-y-2 rounded-md border border-line bg-bg-1 p-3'>
-      <div className='flex items-center gap-2 text-12 font-medium text-fg-0'>
-        <span className='rounded bg-accent px-1.5 py-0.5 text-11 text-bg-0'>
-          {tt('按 token 计费', 'Per-token')}
-        </span>
-        {tt(
-          '费用预览（每 1M tokens，GroupRatio = 1）',
-          'Cost preview (per 1M tokens, GroupRatio = 1)'
-        )}
+      <div className='flex items-center justify-between gap-2'>
+        <div className='flex items-center gap-2 text-12 font-medium text-fg-0'>
+          <span className='rounded bg-accent px-1.5 py-0.5 text-11 text-bg-0'>
+            {tt('按 token 计费', 'Per-token')}
+          </span>
+          {tt(
+            '费用预览（每 1M tokens，GroupRatio = 1）',
+            'Cost preview (per 1M tokens, GroupRatio = 1)'
+          )}
+        </div>
+        {currencySwitcher}
       </div>
       <div className='grid grid-cols-2 gap-x-4 gap-y-1.5'>
         <Row label={tt('输入', 'Input')} value={inputUSD} />
@@ -166,6 +265,7 @@ function PricingPreview({
           '实际计费 = 预览值 × 分组倍率。此处假设分组倍率 = 1。',
           'Actual cost = preview × group ratio; this assumes group ratio = 1.'
         )}
+        {conversionNote}
       </div>
     </div>
   );
