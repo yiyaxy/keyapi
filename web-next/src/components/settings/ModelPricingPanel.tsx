@@ -90,10 +90,33 @@ export function ModelPricingPanel({
   const [selected, setSelected] = useState<string | null>(models[0] ?? null);
   const [filter, setFilter] = useState('');
   const [newName, setNewName] = useState('');
+  // 本地已添加、但还没 Save 的模型名。addModel() 会往里塞，Save 后该名字
+  // 进入 models（来自 props），下一次 render 里被清理。列表和重置守卫都要
+  // 把它当"已存在"看待，避免刚加的新模型被守卫误伤掉。
+  const [justAdded, setJustAdded] = useState<Set<string>>(() => new Set());
 
-  // When the list changes and the selected model disappears, reset.
-  if (selected && !models.includes(selected) && newName !== selected) {
-    setSelected(models[0] ?? null);
+  // Render-time 清理：已经进入 saved models 的条目从 justAdded 移除。
+  const staleJustAdded = useMemo(
+    () => [...justAdded].filter((n) => models.includes(n)),
+    [justAdded, models]
+  );
+  if (staleJustAdded.length > 0) {
+    const next = new Set(justAdded);
+    for (const n of staleJustAdded) next.delete(n);
+    setJustAdded(next);
+  }
+
+  // 左侧列表 + 重置守卫看的是 models ∪ justAdded。
+  const displayModels = useMemo(() => {
+    if (justAdded.size === 0) return models;
+    const extras = [...justAdded].filter((n) => !models.includes(n));
+    return extras.length > 0 ? [...extras, ...models] : models;
+  }, [models, justAdded]);
+
+  // 当前选中的模型如果既不在 saved models 里、也不在 justAdded 里（真正消失
+  // 了，比如刚被删除），才 fallback 到第一项。
+  if (selected && !displayModels.includes(selected)) {
+    setSelected(displayModels[0] ?? null);
   }
 
   const baseline = selected ? fieldsOf(maps, selected) : null;
@@ -110,10 +133,10 @@ export function ModelPricingPanel({
   }
 
   const filteredModels = useMemo(() => {
-    if (!filter) return models;
+    if (!filter) return displayModels;
     const q = filter.toLowerCase();
-    return models.filter((m) => m.toLowerCase().includes(q));
-  }, [models, filter]);
+    return displayModels.filter((m) => m.toLowerCase().includes(q));
+  }, [displayModels, filter]);
 
   const dirtyKeys = useMemo(() => {
     if (!selected || !baseline) return [] as string[];
@@ -126,6 +149,14 @@ export function ModelPricingPanel({
     const name = newName.trim();
     if (!name) return;
     if (!models.includes(name)) {
+      // 加入 justAdded 后，渲染期重置守卫会放行这个 selected，
+      // Save 之后才从 maps 派生出来合并回 models。
+      setJustAdded((prev) => {
+        if (prev.has(name)) return prev;
+        const next = new Set(prev);
+        next.add(name);
+        return next;
+      });
       setSelected(name);
       setDraft({
         ModelPrice: '',
@@ -247,7 +278,7 @@ export function ModelPricingPanel({
               </Button>
             </div>
             <div className='text-11 text-fg-2'>
-              {models.length} {t('model_pricing.total')}
+              {displayModels.length} {t('model_pricing.total')}
             </div>
           </div>
           <div className='flex-1 overflow-y-auto py-1'>
