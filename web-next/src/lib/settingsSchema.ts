@@ -729,6 +729,18 @@ export const SECRET_FIELDS: FieldDef[] = [
     zh: 'Turnstile secret',
     en: 'Turnstile secret',
   }),
+  f('InvoicePiaoTong3DESKey', 'secret', {
+    zh: '票通 3DES 密钥',
+    en: 'PiaoTong 3DES key',
+  }),
+  f('InvoicePiaoTongPrivateKey', 'secret', {
+    zh: '票通私钥',
+    en: 'PiaoTong private key',
+  }),
+  f('InvoicePiaoTongPublicKey', 'secret', {
+    zh: '票通公钥',
+    en: 'PiaoTong public key',
+  }),
   f('EpayKey', 'secret', { zh: '易支付 key', en: 'Epay key' }),
   f('StripeApiSecret', 'secret', {
     zh: 'Stripe API secret',

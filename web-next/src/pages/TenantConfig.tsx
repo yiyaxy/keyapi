@@ -22,7 +22,7 @@ import {
   useSetTenantConfig,
   useTenantConfig,
 } from '@/hooks/useTenantConfig';
-import { SETTINGS_GROUPS, type FieldDef, type Group } from '@/lib/settingsSchema';
+import { SECRET_FIELDS, SETTINGS_GROUPS, type FieldDef, type Group } from '@/lib/settingsSchema';
 
 type TabId = string;
 
@@ -52,7 +52,26 @@ const TENANT_EXTRA_GROUP: Group = {
   ],
 };
 
-const ALL_GROUPS: Group[] = [...SETTINGS_GROUPS, TENANT_EXTRA_GROUP];
+const SECRET_FIELD_BY_KEY = new Map(SECRET_FIELDS.map((field) => [field.key, field]));
+
+const TENANT_SECRET_FIELDS_BY_GROUP: Record<string, string[]> = {
+  login: ['TurnstileSecretKey'],
+  oauth: ['GitHubClientSecret', 'WeChatServerToken', 'TelegramBotToken'],
+  smtp: ['SMTPToken'],
+  invoice: ['InvoicePiaoTong3DESKey', 'InvoicePiaoTongPrivateKey', 'InvoicePiaoTongPublicKey'],
+};
+
+const TENANT_GROUPS: Group[] = SETTINGS_GROUPS.map((group) => {
+  const extraFields = (TENANT_SECRET_FIELDS_BY_GROUP[group.id] ?? [])
+    .map((key) => SECRET_FIELD_BY_KEY.get(key))
+    .filter((field): field is FieldDef => Boolean(field));
+  return {
+    ...group,
+    fields: [...group.fields, ...extraFields],
+  };
+});
+
+const ALL_GROUPS: Group[] = [...TENANT_GROUPS, TENANT_EXTRA_GROUP];
 
 function TabLink({
   active,
