@@ -335,6 +335,7 @@ func migrateDB() error {
 	}
 	backfillTenantId()
 	backfillTenantMemberships()
+	normalizePlatformScopeTenantId()
 
 	// 记录新版本，下次启动即可快进
 	if err := SaveSchemaVersion(CurrentSchemaVersion); err != nil {
@@ -342,6 +343,25 @@ func migrateDB() error {
 	}
 
 	return nil
+}
+
+// normalizePlatformScopeTenantId 清洗历史脏数据：早期 backfillTenantId 的无差别
+// UPDATE，以及创建平台渠道时遗漏 TenantId 归零的代码路径，都可能留下
+// scope='platform' 但 tenant_id != 0 的行。缓存按 tenant_id 列分桶，这种行
+// 其他租户看不见。此处一次性归零，让平台共享语义真正生效。
+func normalizePlatformScopeTenantId() {
+	if DB == nil {
+		return
+	}
+	tables := []string{"channels", "abilities"}
+	for _, table := range tables {
+		result := DB.Exec(fmt.Sprintf("UPDATE %s SET tenant_id = 0 WHERE scope = 'platform' AND tenant_id != 0", table))
+		if result.Error != nil {
+			log.Printf("Warning: normalize %s platform rows: %v", table, result.Error)
+		} else if result.RowsAffected > 0 {
+			log.Printf("Normalized %d platform rows (tenant_id→0) in %s", result.RowsAffected, table)
+		}
+	}
 }
 
 // backfillTenantId sets tenant_id = DefaultTenantId for any existing rows that have tenant_id = 0.
@@ -367,8 +387,17 @@ func backfillTenantId() {
 		// Phase 5 — billing
 		"tenant_plans",
 	}
+	// channels / abilities 里 tenant_id=0 是"平台级共享"的正常语义，不是漏写，
+	// backfill 若一刀切会把平台行炸成 DefaultTenantId，导致平台渠道彻底失效。
+	platformAware := map[string]bool{"channels": true, "abilities": true}
 	for _, table := range tables {
-		result := DB.Exec(fmt.Sprintf("UPDATE %s SET tenant_id = ? WHERE tenant_id = 0", table), DefaultTenantId)
+		var sql string
+		if platformAware[table] {
+			sql = fmt.Sprintf("UPDATE %s SET tenant_id = ? WHERE tenant_id = 0 AND (scope IS NULL OR scope != 'platform')", table)
+		} else {
+			sql = fmt.Sprintf("UPDATE %s SET tenant_id = ? WHERE tenant_id = 0", table)
+		}
+		result := DB.Exec(sql, DefaultTenantId)
 		if result.Error != nil {
 			log.Printf("Warning: tenant_id backfill for %s: %v", table, result.Error)
 		} else if result.RowsAffected > 0 {

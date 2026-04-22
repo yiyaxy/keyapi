@@ -281,24 +281,42 @@ func (c *Channel) GetMaxRetry() int {
 	return *c.MaxRetry
 }
 
+// BeforeSave 是 ORM 层护栏：平台渠道强制 tenant_id=0，
+// 避免历史脏数据 / 非 AddChannel 路径漏掉归零导致缓存分桶错位。
+func (channel *Channel) BeforeSave(tx *gorm.DB) error {
+	if channel.Scope == ChannelScopePlatform {
+		channel.TenantId = 0
+	}
+	return nil
+}
+
 func (channel *Channel) Save() error {
-	if channel.Id == 0 || channel.TenantId == 0 {
-		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	if channel.Id == 0 {
+		return errors.New("channel.Id 不能为空")
 	}
 	// GORM Save 在 UPDATE 时只按 PK 建 WHERE，租户 guardrail 不放行。
 	// 显式拼出 WHERE id+tenant_id 后走 Select("*").Updates 等价写回。
-	return DB.Model(&Channel{}).
-		Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).
-		Select("*").Updates(channel).Error
+	// 平台渠道 tenant_id=0，走 bypass 分支，按 channel_id 定位即可。
+	db := DB.Model(&Channel{})
+	if channel.Scope == ChannelScopePlatform || channel.TenantId == 0 {
+		db = WithTenantBypass(db).Where("id = ?", channel.Id)
+	} else {
+		db = db.Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId)
+	}
+	return db.Select("*").Updates(channel).Error
 }
 
 func (channel *Channel) SaveWithoutKey() error {
-	if channel.Id == 0 || channel.TenantId == 0 {
-		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	if channel.Id == 0 {
+		return errors.New("channel.Id 不能为空")
 	}
-	return DB.Model(&Channel{}).
-		Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).
-		Omit("key").Select("*").Updates(channel).Error
+	db := DB.Model(&Channel{})
+	if channel.Scope == ChannelScopePlatform || channel.TenantId == 0 {
+		db = WithTenantBypass(db).Where("id = ?", channel.Id)
+	} else {
+		db = db.Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId)
+	}
+	return db.Omit("key").Select("*").Updates(channel).Error
 }
 
 // GetAllChannelsByTenant 取租户内渠道；tenantId<=0 表示平台级全量扫描
@@ -833,7 +851,9 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	var loadedTenantId int
 	shouldUpdateAbilities := false
 	defer func() {
-		if shouldUpdateAbilities && loadedTenantId > 0 {
+		// loadedTenantId > 0 → 租户渠道；== 0 → 平台渠道（UpdateAbilityStatus
+		// 内部走 bypass 分支）。两种都要联动 abilities.enabled。
+		if shouldUpdateAbilities {
 			err := UpdateAbilityStatus(loadedTenantId, channelId, status == common.ChannelStatusEnabled)
 			if err != nil {
 				common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))

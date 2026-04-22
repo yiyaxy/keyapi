@@ -105,8 +105,8 @@ func getPriority(group string, model string, retry int, tenantId int) (int, erro
 	if tenantId > 0 {
 		q = q.Where("tenant_id = ?", tenantId)
 	}
-	err := q.Order("priority DESC").              // 按优先级降序排序
-		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
+	err := q.Order("priority DESC"). // 按优先级降序排序
+						Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
 
 	if err != nil {
 		// 处理错误
@@ -218,6 +218,7 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 				Priority:  channel.Priority,
 				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
+				Scope:     channel.Scope,
 			}
 			abilities = append(abilities, ability)
 		}
@@ -230,8 +231,36 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 	if tx != nil {
 		useDB = tx
 	}
-	for _, chunk := range lo.Chunk(abilities, 50) {
-		err := useDB.Clauses(clause.OnConflict{DoNothing: true}).Create(&chunk).Error
+	if channel.Scope == ChannelScopePlatform || channel.TenantId == 0 {
+		useDB = WithTenantBypass(useDB)
+	}
+	return createAbilityRows(useDB, abilities)
+}
+
+func createAbilityRows(db *gorm.DB, abilities []Ability) error {
+	rows := make([]map[string]interface{}, 0, len(abilities))
+	for _, ability := range abilities {
+		// 平台渠道的 ability 必须 tenant_id=0，避免被缓存按 tenant 前缀分桶 /
+		// 被守门员按租户列过滤。调用方即便传进来一个继承自 channel 的非 0 值
+		// （历史脏数据、未走 AddChannel 归零路径），这里统一收口。
+		tenantId := ability.TenantId
+		if ability.Scope == ChannelScopePlatform {
+			tenantId = 0
+		}
+		rows = append(rows, map[string]interface{}{
+			"group":      ability.Group,
+			"model":      ability.Model,
+			"channel_id": ability.ChannelId,
+			"tenant_id":  tenantId,
+			"enabled":    ability.Enabled,
+			"priority":   ability.Priority,
+			"weight":     ability.Weight,
+			"tag":        ability.Tag,
+			"scope":      ability.Scope,
+		})
+	}
+	for _, chunk := range lo.Chunk(rows, 50) {
+		err := db.Model(&Ability{}).Clauses(clause.OnConflict{DoNothing: true}).Create(&chunk).Error
 		if err != nil {
 			return err
 		}
@@ -240,17 +269,17 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 }
 
 func (channel *Channel) DeleteAbilities() error {
-	if channel.Id == 0 || channel.TenantId == 0 {
-		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	if channel.Id == 0 {
+		return errors.New("channel.Id 不能为空")
 	}
-	return DB.Where("channel_id = ? AND tenant_id = ?", channel.Id, channel.TenantId).Delete(&Ability{}).Error
+	return WithTenantBypass(DB).Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
 }
 
 // UpdateAbilities updates abilities of this channel.
 // Make sure the channel is completed before calling this function.
 func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
-	if channel.Id == 0 || channel.TenantId == 0 {
-		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	if channel.Id == 0 {
+		return errors.New("channel.Id 不能为空")
 	}
 	isNewTx := false
 	// 如果没有传入事务，创建新的事务
@@ -266,9 +295,10 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 			}
 		}()
 	}
+	tx = WithTenantBypass(tx)
 
 	// First delete all abilities of this channel
-	err := tx.Where("channel_id = ? AND tenant_id = ?", channel.Id, channel.TenantId).Delete(&Ability{}).Error
+	err := tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
 	if err != nil {
 		if isNewTx {
 			tx.Rollback()
@@ -297,20 +327,19 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				Priority:  channel.Priority,
 				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
+				Scope:     channel.Scope,
 			}
 			abilities = append(abilities, ability)
 		}
 	}
 
 	if len(abilities) > 0 {
-		for _, chunk := range lo.Chunk(abilities, 50) {
-			err = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&chunk).Error
-			if err != nil {
-				if isNewTx {
-					tx.Rollback()
-				}
-				return err
+		err = createAbilityRows(tx, abilities)
+		if err != nil {
+			if isNewTx {
+				tx.Rollback()
 			}
+			return err
 		}
 	}
 
@@ -322,13 +351,20 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	return nil
 }
 
+// UpdateAbilityStatus 更新某个渠道的 abilities.enabled。
+// tenantId > 0 → 走租户路径，只改该租户自有的 abilities 行。
+// tenantId == 0 → 平台渠道：按 channel_id 全量改（跨 0），绕过守门员。
 func UpdateAbilityStatus(tenantId int, channelId int, status bool) error {
-	if tenantId <= 0 || channelId <= 0 {
-		return errors.New("tenantId 和 channelId 不能为空")
+	if channelId <= 0 {
+		return errors.New("channelId 不能为空")
 	}
-	return DB.Model(&Ability{}).
-		Where("channel_id = ? AND tenant_id = ?", channelId, tenantId).
-		Select("enabled").Update("enabled", status).Error
+	q := DB.Model(&Ability{})
+	if tenantId <= 0 {
+		q = WithTenantBypass(q).Where("channel_id = ?", channelId)
+	} else {
+		q = q.Where("channel_id = ? AND tenant_id = ?", channelId, tenantId)
+	}
+	return q.Select("enabled").Update("enabled", status).Error
 }
 
 func UpdateAbilityStatusByTag(tag string, status bool, tenantId int) error {
