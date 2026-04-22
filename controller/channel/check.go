@@ -143,7 +143,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Header: make(http.Header),
 	}
 
-	cache, err := model.GetUserCache(1)
+	cache, err := model.GetUserCacheGlobal(1)
 	if err != nil {
 		return testResult{
 			localErr:    err,

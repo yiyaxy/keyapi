@@ -111,6 +111,7 @@ func newAuthenticatedContext(t *testing.T, method string, target string, body an
 		ctx.Request.Header.Set("Content-Type", "application/json")
 	}
 	ctx.Set("id", userID)
+	ctx.Set("tenant_id", model.DefaultTenantId)
 	return ctx, recorder
 }
 

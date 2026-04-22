@@ -198,18 +198,25 @@ func CheckUserExistOrDeleted(username string, email string, tenantId ...int) (bo
 	return true, nil
 }
 
-func fillUserByField(user *User, field string, value string, tenantId ...int) error {
+func queryUserByField(user *User, field string, value string, query *gorm.DB) error {
 	if value == "" {
 		return errors.New(field + " is empty")
-	}
-	query := DB
-	if len(tenantId) > 0 && tenantId[0] > 0 {
-		query = query.Where("tenant_id = ?", tenantId[0])
 	}
 	if field == "email" {
 		return query.Where("LOWER(email) = ?", strings.ToLower(value)).First(user).Error
 	}
 	return query.Where(field+" = ?", value).First(user).Error
+}
+
+func fillUserByFieldWithTenant(user *User, field string, value string, tenantId int) error {
+	if tenantId <= 0 {
+		return fmt.Errorf("%w: tenant-scoped user lookup requires an explicit tenant", ErrTenantRequired)
+	}
+	return queryUserByField(user, field, value, DB.Where("tenant_id = ?", tenantId))
+}
+
+func fillUserByFieldGlobal(user *User, field string, value string) error {
+	return queryUserByField(user, field, value, WithTenantBypass(DB))
 }
 
 func GetMaxUserId() int {
@@ -347,22 +354,34 @@ func SearchUsers(keyword string, group string, ip string, startIdx int, num int)
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {
-	return GetUserByIdWithContext(context.Background(), id, selectAll)
+	return nil, fmt.Errorf("%w: use GetUserByIdWithContext for tenant-scoped reads or GetUserByIdGlobal for explicit global reads", ErrTenantRequired)
 }
 
 func GetUserByIdWithContext(ctx context.Context, id int, selectAll bool) (*User, error) {
 	if id == 0 {
 		return nil, errors.New("id 为空！")
 	}
+	tenantId := TenantIDFromContext(ctx)
+	if tenantId <= 0 {
+		return nil, fmt.Errorf("%w: GetUserByIdWithContext requires an explicit tenant", ErrTenantRequired)
+	}
 	user := User{Id: id}
-	q := DB
-	if ctx != nil {
-		q = DB.WithContext(ctx)
+	q := DB.WithContext(ctx).Where("tenant_id = ?", tenantId)
+	var err error
+	if selectAll {
+		err = q.First(&user, "id = ?", id).Error
+	} else {
+		err = q.Omit("password").First(&user, "id = ?", id).Error
 	}
-	// Multi-tenant: scope by tenant when context carries tenant_id
-	if tenantId := TenantIDFromContext(ctx); tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+	return &user, err
+}
+
+func GetUserByIdGlobal(id int, selectAll bool) (*User, error) {
+	if id == 0 {
+		return nil, errors.New("invalid user id")
 	}
+	user := User{Id: id}
+	q := WithTenantBypass(DB)
 	var err error
 	if selectAll {
 		err = q.First(&user, "id = ?", id).Error
@@ -413,7 +432,7 @@ func HardDeleteUserByIdWithTenant(id int, tenantId int) error {
 }
 
 func inviteUser(inviterId int, registerReward int) (err error) {
-	user, err := GetUserById(inviterId, true)
+	user, err := GetUserByIdGlobal(inviterId, true)
 	if err != nil {
 		return err
 	}
@@ -736,6 +755,10 @@ func (user *User) HardDelete() error {
 // 自然顺序的第一条，可能不是调用方想要的那条。调用方如果知道租户，务必
 // 走 ValidateAndFillWithTenant，而不是这里。
 func (user *User) ValidateAndFill() (err error) {
+	return fmt.Errorf("%w: use ValidateAndFillWithTenant or ValidateAndFillGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) ValidateAndFillGlobal() (err error) {
 	password := user.Password
 	username := strings.TrimSpace(user.Username)
 	if username == "" || password == "" {
@@ -760,7 +783,7 @@ func (user *User) ValidateAndFill() (err error) {
 func (user *User) ValidateAndFillWithTenant(tenantId int) (err error) {
 	if tenantId <= 0 {
 		// 子域名没解析出租户时 fallback 到旧行为（admin 工具、命令行等场景）
-		return user.ValidateAndFill()
+		return fmt.Errorf("%w: ValidateAndFillWithTenant requires an explicit tenant", ErrTenantRequired)
 	}
 	password := user.Password
 	username := strings.TrimSpace(user.Username)
@@ -790,25 +813,39 @@ func (user *User) FillUserById() error {
 }
 
 func (user *User) FillUserByEmail() error {
-	return user.FillUserByEmailWithTenant(0)
+	return fmt.Errorf("%w: use FillUserByEmailWithTenant or FillUserByEmailGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) FillUserByEmailGlobal() error {
+	if user.Email == "" {
+		return errors.New("email is empty")
+	}
+	return fillUserByFieldGlobal(user, "email", user.Email)
 }
 
 func (user *User) FillUserByEmailWithTenant(tenantId int) error {
 	if user.Email == "" {
 		return errors.New("email 为空！")
 	}
-	return fillUserByField(user, "email", user.Email, tenantId)
+	return fillUserByFieldWithTenant(user, "email", user.Email, tenantId)
 }
 
 func (user *User) FillUserByGitHubId() error {
-	return user.FillUserByGitHubIdWithTenant(0)
+	return fmt.Errorf("%w: use FillUserByGitHubIdWithTenant or FillUserByGitHubIdGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) FillUserByGitHubIdGlobal() error {
+	if user.GitHubId == "" {
+		return errors.New("github id is empty")
+	}
+	return fillUserByFieldGlobal(user, "github_id", user.GitHubId)
 }
 
 func (user *User) FillUserByGitHubIdWithTenant(tenantId int) error {
 	if user.GitHubId == "" {
 		return errors.New("GitHub id 为空！")
 	}
-	return fillUserByField(user, "github_id", user.GitHubId, tenantId)
+	return fillUserByFieldWithTenant(user, "github_id", user.GitHubId, tenantId)
 }
 
 // UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
@@ -822,47 +859,79 @@ func (user *User) UpdateGitHubId(newGitHubId string) error {
 }
 
 func (user *User) FillUserByDiscordId() error {
-	return user.FillUserByDiscordIdWithTenant(0)
+	return fmt.Errorf("%w: use FillUserByDiscordIdWithTenant or FillUserByDiscordIdGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) FillUserByDiscordIdGlobal() error {
+	if user.DiscordId == "" {
+		return errors.New("discord id is empty")
+	}
+	return fillUserByFieldGlobal(user, "discord_id", user.DiscordId)
 }
 
 func (user *User) FillUserByDiscordIdWithTenant(tenantId int) error {
 	if user.DiscordId == "" {
 		return errors.New("discord id 为空！")
 	}
-	return fillUserByField(user, "discord_id", user.DiscordId, tenantId)
+	return fillUserByFieldWithTenant(user, "discord_id", user.DiscordId, tenantId)
 }
 
 func (user *User) FillUserByOidcId() error {
-	return user.FillUserByOidcIdWithTenant(0)
+	return fmt.Errorf("%w: use FillUserByOidcIdWithTenant or FillUserByOidcIdGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) FillUserByOidcIdGlobal() error {
+	if user.OidcId == "" {
+		return errors.New("oidc id is empty")
+	}
+	return fillUserByFieldGlobal(user, "oidc_id", user.OidcId)
 }
 
 func (user *User) FillUserByOidcIdWithTenant(tenantId int) error {
 	if user.OidcId == "" {
 		return errors.New("oidc id 为空！")
 	}
-	return fillUserByField(user, "oidc_id", user.OidcId, tenantId)
+	return fillUserByFieldWithTenant(user, "oidc_id", user.OidcId, tenantId)
 }
 
 func (user *User) FillUserByWeChatId() error {
-	return user.FillUserByWeChatIdWithTenant(0)
+	return fmt.Errorf("%w: use FillUserByWeChatIdWithTenant or FillUserByWeChatIdGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) FillUserByWeChatIdGlobal() error {
+	if user.WeChatId == "" {
+		return errors.New("wechat id is empty")
+	}
+	return fillUserByFieldGlobal(user, "wechat_id", user.WeChatId)
 }
 
 func (user *User) FillUserByWeChatIdWithTenant(tenantId int) error {
 	if user.WeChatId == "" {
 		return errors.New("WeChat id 为空！")
 	}
-	return fillUserByField(user, "wechat_id", user.WeChatId, tenantId)
+	return fillUserByFieldWithTenant(user, "wechat_id", user.WeChatId, tenantId)
 }
 
 func (user *User) FillUserByTelegramId() error {
-	return user.FillUserByTelegramIdWithTenant(0)
+	return fmt.Errorf("%w: use FillUserByTelegramIdWithTenant or FillUserByTelegramIdGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) FillUserByTelegramIdGlobal() error {
+	if user.TelegramId == "" {
+		return errors.New("telegram id is empty")
+	}
+	err := fillUserByFieldGlobal(user, "telegram_id", user.TelegramId)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errors.New("telegram account is not bound")
+	}
+	return nil
 }
 
 func (user *User) FillUserByTelegramIdWithTenant(tenantId int) error {
 	if user.TelegramId == "" {
 		return errors.New("Telegram id 为空！")
 	}
-	err := fillUserByField(user, "telegram_id", user.TelegramId, tenantId)
+	err := fillUserByFieldWithTenant(user, "telegram_id", user.TelegramId, tenantId)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errors.New("该 Telegram 账户未绑定")
 	}
@@ -1317,14 +1386,21 @@ func IsWeChatIdAlreadyTaken(wechatId string, tenantId ...int) bool {
 }
 
 func (user *User) FillUserByLinuxDOId() error {
-	return user.FillUserByLinuxDOIdWithTenant(0)
+	return fmt.Errorf("%w: use FillUserByLinuxDOIdWithTenant or FillUserByLinuxDOIdGlobal explicitly", ErrTenantRequired)
+}
+
+func (user *User) FillUserByLinuxDOIdGlobal() error {
+	if user.LinuxDOId == "" {
+		return errors.New("linux do id is empty")
+	}
+	return fillUserByFieldGlobal(user, "linux_do_id", user.LinuxDOId)
 }
 
 func (user *User) FillUserByLinuxDOIdWithTenant(tenantId int) error {
 	if user.LinuxDOId == "" {
 		return errors.New("linux do id is empty")
 	}
-	err := fillUserByField(user, "linux_do_id", user.LinuxDOId, tenantId)
+	err := fillUserByFieldWithTenant(user, "linux_do_id", user.LinuxDOId, tenantId)
 	return err
 }
 

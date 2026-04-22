@@ -21,7 +21,7 @@ func tenantIdFromContext(c *gin.Context) int {
 			return id
 		}
 	}
-	return model.DefaultTenantId
+	return 0
 }
 
 // 敏感 key 匹配（用于 detail 脱敏）

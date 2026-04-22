@@ -75,7 +75,7 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 			userIds.Add(task.UserId)
 		}
 		for _, userId := range userIds.Items() {
-			cacheUser, err := model.GetUserCache(userId)
+			cacheUser, err := model.GetUserCacheGlobal(userId)
 			if err == nil {
 				userIdMap[userId] = cacheUser
 			}

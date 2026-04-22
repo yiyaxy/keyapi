@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -35,8 +37,8 @@ type TenantPlan struct {
 	// Falls back value when channel.markup_ratio is unset.
 	// Defaults to 1.0 (no markup).
 	PlatformMarkup float64 `json:"platform_markup" gorm:"type:decimal(10,4);not null;default:1.0"`
-	CreatedAt        int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
-	UpdatedAt        int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
+	CreatedAt      int64   `json:"created_at" gorm:"bigint;autoCreateTime"`
+	UpdatedAt      int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
 const (
@@ -65,7 +67,7 @@ func ClearTenantPlanCache() {
 // GetTenantPlan returns the plan for a tenant, creating a default free plan if none exists.
 func GetTenantPlan(tenantId int) (*TenantPlan, error) {
 	if tenantId <= 0 {
-		tenantId = DefaultTenantId
+		return nil, fmt.Errorf("%w: GetTenantPlan requires an explicit tenant", ErrTenantRequired)
 	}
 
 	// Check cache first
@@ -116,10 +118,10 @@ func GetTenantPlan(tenantId int) (*TenantPlan, error) {
 // UpsertTenantPlan creates or updates a tenant plan.
 func UpsertTenantPlan(plan *TenantPlan) error {
 	if plan == nil {
-		return nil
+		return errors.New("tenant plan is nil")
 	}
 	if plan.TenantId <= 0 {
-		plan.TenantId = DefaultTenantId
+		return fmt.Errorf("%w: UpsertTenantPlan requires an explicit tenant", ErrTenantRequired)
 	}
 	plan.UpdatedAt = common.GetTimestamp()
 

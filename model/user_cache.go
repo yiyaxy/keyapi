@@ -73,7 +73,7 @@ func updateUserCache(user User) error {
 
 // GetUserCache gets complete user cache from hash
 func GetUserCache(userId int) (userCache *UserBase, err error) {
-	return GetUserCacheWithContext(context.Background(), userId)
+	return nil, fmt.Errorf("%w: use GetUserCacheWithContext for tenant-scoped reads or GetUserCacheGlobal for explicit global reads", ErrTenantRequired)
 }
 
 func GetUserCacheWithContext(ctx context.Context, userId int) (userCache *UserBase, err error) {
@@ -104,6 +104,43 @@ func GetUserCacheWithContext(ctx context.Context, userId int) (userCache *UserBa
 	}
 
 	// Create cache object from user data
+	userCache = &UserBase{
+		Id:       user.Id,
+		Group:    user.Group,
+		Quota:    user.Quota,
+		Status:   user.Status,
+		Username: user.Username,
+		Setting:  user.Setting,
+		Email:    user.Email,
+	}
+
+	return userCache, nil
+}
+
+func GetUserCacheGlobal(userId int) (userCache *UserBase, err error) {
+	var user *User
+	var fromDB bool
+	defer func() {
+		if shouldUpdateRedis(fromDB, err) && user != nil {
+			gopool.Go(func() {
+				if err := updateUserCache(*user); err != nil {
+					common.SysLog("failed to update user status cache: " + err.Error())
+				}
+			})
+		}
+	}()
+
+	userCache, err = cacheGetUserBase(userId)
+	if err == nil {
+		return userCache, nil
+	}
+
+	fromDB = true
+	user, err = GetUserByIdGlobal(userId, false)
+	if err != nil {
+		return nil, err
+	}
+
 	userCache = &UserBase{
 		Id:       user.Id,
 		Group:    user.Group,
@@ -153,7 +190,7 @@ func cacheDecrUserQuota(userId int, delta int64) error {
 
 // Helper functions to get individual fields if needed
 func getUserGroupCache(userId int) (string, error) {
-	cache, err := GetUserCache(userId)
+	cache, err := GetUserCacheGlobal(userId)
 	if err != nil {
 		return "", err
 	}
@@ -161,7 +198,7 @@ func getUserGroupCache(userId int) (string, error) {
 }
 
 func getUserQuotaCache(userId int) (int, error) {
-	cache, err := GetUserCache(userId)
+	cache, err := GetUserCacheGlobal(userId)
 	if err != nil {
 		return 0, err
 	}
@@ -169,7 +206,7 @@ func getUserQuotaCache(userId int) (int, error) {
 }
 
 func getUserStatusCache(userId int) (int, error) {
-	cache, err := GetUserCache(userId)
+	cache, err := GetUserCacheGlobal(userId)
 	if err != nil {
 		return 0, err
 	}
@@ -177,7 +214,7 @@ func getUserStatusCache(userId int) (int, error) {
 }
 
 func getUserNameCache(userId int) (string, error) {
-	cache, err := GetUserCache(userId)
+	cache, err := GetUserCacheGlobal(userId)
 	if err != nil {
 		return "", err
 	}
@@ -185,7 +222,7 @@ func getUserNameCache(userId int) (string, error) {
 }
 
 func getUserSettingCache(userId int) (dto.UserSetting, error) {
-	cache, err := GetUserCache(userId)
+	cache, err := GetUserCacheGlobal(userId)
 	if err != nil {
 		return dto.UserSetting{}, err
 	}
@@ -239,7 +276,7 @@ func updateUserSettingCache(userId int, setting string) error {
 // GetUserLanguage returns the user's language preference from cache
 // Uses the existing GetUserCache mechanism for efficiency
 func GetUserLanguage(userId int) string {
-	userCache, err := GetUserCache(userId)
+	userCache, err := GetUserCacheGlobal(userId)
 	if err != nil {
 		return ""
 	}

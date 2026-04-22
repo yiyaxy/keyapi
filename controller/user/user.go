@@ -93,7 +93,12 @@ func Login(c *gin.Context) {
 // finalize login after their own verification step without importing each
 // other.
 func SetupLogin(user *model.User, c *gin.Context) {
-	info, err := model.GetTenantMembershipAuthInfo(middleware.GetTenantId(c), user)
+	tenantId := middleware.GetTenantId(c)
+	if tenantId <= 0 {
+		common.ApiError(c, model.ErrTenantRequired)
+		return
+	}
+	info, err := model.GetTenantMembershipAuthInfo(tenantId, user)
 	if err != nil {
 		common.ApiErrorMsg(c, "当前用户不属于该租户")
 		return
@@ -113,12 +118,7 @@ func SetupLogin(user *model.User, c *gin.Context) {
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
 	session.Set("session_version", common.SessionVersion)
-	// Multi-tenant: persist tenant in session (read from TenantResolve middleware)
-	if tid, exists := c.Get(string(constant.ContextKeyTenantId)); exists {
-		session.Set("tenant_id", tid)
-	} else {
-		session.Set("tenant_id", model.DefaultTenantId)
-	}
+	session.Set("tenant_id", tenantId)
 	err = session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
@@ -131,7 +131,6 @@ func SetupLogin(user *model.User, c *gin.Context) {
 	loginType := c.GetString("login_type")
 	userId := user.Id
 	username := user.Username
-	tenantId := middleware.GetTenantId(c)
 	gopool.Go(func() {
 		model.RecordLoginIp(tenantId, userId, username, ip, loginType, userAgent)
 		service.LookupIPAsync(ip)
@@ -330,7 +329,7 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	user, err := model.GetUserById(id, false)
+	user, err := model.GetUserByIdWithContext(c, id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -354,7 +353,7 @@ func GetUser(c *gin.Context) {
 
 func GenerateAccessToken(c *gin.Context) {
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, true)
+	user, err := model.GetUserByIdWithContext(c, id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -393,7 +392,7 @@ type TransferAffQuotaRequest struct {
 
 func TransferAffQuota(c *gin.Context) {
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, true)
+	user, err := model.GetUserByIdWithContext(c, id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -427,7 +426,7 @@ func TransferAffQuota(c *gin.Context) {
 
 func GetAffCode(c *gin.Context) {
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, true)
+	user, err := model.GetUserByIdWithContext(c, id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -615,7 +614,7 @@ func GetUserModels(c *gin.Context) {
 	if err != nil {
 		id = c.GetInt("id")
 	}
-	user, err := model.GetUserCache(id)
+	user, err := model.GetUserCacheWithContext(c, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -656,7 +655,7 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	originUser, err := model.GetUserById(updatedUser.Id, false)
+	originUser, err := model.GetUserByIdWithContext(c, updatedUser.Id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -708,7 +707,7 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
-	user, err := model.GetUserById(id, false)
+	user, err := model.GetUserByIdWithContext(c, id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -750,7 +749,7 @@ func UpdateSelf(c *gin.Context) {
 	// 检查是否是用户设置更新请求 (sidebar_modules 或 language)
 	if sidebarModules, sidebarExists := requestData["sidebar_modules"]; sidebarExists {
 		userId := c.GetInt("id")
-		user, err := model.GetUserById(userId, false)
+		user, err := model.GetUserByIdWithContext(c, userId, false)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -778,7 +777,7 @@ func UpdateSelf(c *gin.Context) {
 	// 检查是否是语言偏好更新请求
 	if language, langExists := requestData["language"]; langExists {
 		userId := c.GetInt("id")
-		user, err := model.GetUserById(userId, false)
+		user, err := model.GetUserByIdWithContext(c, userId, false)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -834,7 +833,7 @@ func UpdateSelf(c *gin.Context) {
 		user.Password = "" // rollback to what it should be
 		cleanUser.Password = ""
 	}
-	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, cleanUser.Id)
+	updatePassword, err := checkUpdatePassword(c, user.OriginalPassword, user.Password, cleanUser.Id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -851,14 +850,14 @@ func UpdateSelf(c *gin.Context) {
 	return
 }
 
-func checkUpdatePassword(originalPassword string, newPassword string, userId int) (updatePassword bool, err error) {
+func checkUpdatePassword(c *gin.Context, originalPassword string, newPassword string, userId int) (updatePassword bool, err error) {
 	// 没有新密码，不需要验证原密码，直接跳过
 	if newPassword == "" {
 		return
 	}
 
 	var currentUser *model.User
-	currentUser, err = model.GetUserById(userId, true)
+	currentUser, err = model.GetUserByIdWithContext(c, userId, true)
 	if err != nil {
 		return
 	}
@@ -884,7 +883,7 @@ func DeleteUser(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	originUser, err := model.GetUserById(id, false)
+	originUser, err := model.GetUserByIdWithContext(c, id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -923,7 +922,7 @@ func DeleteUser(c *gin.Context) {
 
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, _ := model.GetUserByIdWithContext(c, id, false)
 
 	if user.Role == common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotDeleteRootUser)
@@ -1371,7 +1370,7 @@ func UpdateUserSetting(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, true)
+	user, err := model.GetUserByIdWithContext(c, userId, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return

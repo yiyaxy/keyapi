@@ -359,7 +359,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscription(model.GetUserTenantId(relayInfo.UserId), relayInfo.UserId)
+		tenantId, tenantErr := model.GetUserTenantId(relayInfo.UserId)
+		if tenantErr != nil {
+			return nil, types.NewError(tenantErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		hasSub, subCheckErr := model.HasActiveUserSubscription(tenantId, relayInfo.UserId)
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}

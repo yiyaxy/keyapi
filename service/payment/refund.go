@@ -137,8 +137,8 @@ func CreateRefund(ctx context.Context, in CreateRefundInput) (*model.PaymentRefu
 // postCommitDeduct captures what a successful refund needs to do to the
 // user's in-memory cache after the DB tx lands.
 type postCommitDeduct struct {
-	userId    int
-	delta     int64 // negative for deduction; 0 = skip
+	userId int
+	delta  int64 // negative for deduction; 0 = skip
 }
 
 // ApplyRefundSuccess is the single entry-point for the refund-success
@@ -177,7 +177,11 @@ func ApplyRefundSuccess(ctx context.Context, outRefundNo string, refundId string
 		order, oerr := model.GetPaymentOrderByOutTradeNo(refund.OutTradeNo)
 		if oerr == nil && order != nil && order.OrderType == model.PaymentOrderTypeTopup {
 			payerUserId = order.UserId
-			payerHomeTenant = model.GetUserTenantId(payerUserId)
+			if tenantId, terr := model.GetUserTenantId(payerUserId); terr == nil {
+				payerHomeTenant = tenantId
+			} else {
+				common.SysLog(fmt.Sprintf("refund: failed to resolve payer home tenant for user %d: %v", payerUserId, terr))
+			}
 		}
 	}
 
@@ -241,15 +245,15 @@ func ApplyRefundSuccess(ctx context.Context, outRefundNo string, refundId string
 			Target:      "payment_refunds",
 			TargetId:    refund.Id,
 			Detail: mustJSON(map[string]any{
-				"out_trade_no":         refund.OutTradeNo,
-				"out_refund_no":        refund.OutRefundNo,
-				"refund_id":            refundId,
-				"amount_cents":         refund.Amount,
-				"order_refunded_now":   newTotal,
+				"out_trade_no":          refund.OutTradeNo,
+				"out_refund_no":         refund.OutRefundNo,
+				"refund_id":             refundId,
+				"amount_cents":          refund.Amount,
+				"order_refunded_now":    newTotal,
 				"quota_delta_requested": refund.UserQuotaDelta,
-				"quota_delta_applied":  actualDelta,
-				"payer_user_id":        payerUserId,
-				"payer_home_tenant":    payerHomeTenant,
+				"quota_delta_applied":   actualDelta,
+				"payer_user_id":         payerUserId,
+				"payer_home_tenant":     payerHomeTenant,
 			}),
 		}); err != nil {
 			common.SysLog(fmt.Sprintf("refund audit tx-write failed: %v", err))

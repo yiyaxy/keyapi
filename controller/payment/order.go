@@ -103,7 +103,7 @@ func GetPaymentOrderByOutTradeNoHandler(c *gin.Context) {
 	payerQuota := int64(0)
 	payerUsername := ""
 	if order.UserId > 0 {
-		if u, err := model.GetUserByIdWithContext(nil, order.UserId, false); err == nil && u != nil {
+		if u, err := model.GetUserByIdGlobal(order.UserId, false); err == nil && u != nil {
 			payerQuota = int64(u.Quota)
 			payerUsername = u.Username
 		}

@@ -501,7 +501,7 @@ func GetUserOAuthBindingsByAdmin(c *gin.Context) {
 		return
 	}
 
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := model.GetUserByIdWithContext(c, userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -566,7 +566,7 @@ func UnbindCustomOAuthByAdmin(c *gin.Context) {
 		return
 	}
 
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := model.GetUserByIdWithContext(c, userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -134,9 +134,9 @@ func Redeem(key string, userId int) (quota int, err error) {
 	if userId == 0 {
 		return 0, errors.New("无效的 user id")
 	}
-	tenantId := GetUserTenantId(userId)
-	if tenantId <= 0 {
-		return 0, errors.New("无效的租户")
+	tenantId, err := GetUserTenantId(userId)
+	if err != nil {
+		return 0, err
 	}
 	redemption := &Redemption{}
 

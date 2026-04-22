@@ -110,7 +110,7 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
 
-	user, err := model.GetUserById(userId, true)
+	user, err := model.GetUserByIdWithContext(c, userId, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -321,9 +321,9 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 	// Add quota to the user's HOME tenant row (users.tenant_id), NOT
 	// order.TenantId (which is the session/collection tenant). See spec §6.3
 	// and controller/topup.go:374 for the precedent.
-	homeTenant := model.GetUserTenantId(order.UserId)
-	if homeTenant <= 0 {
-		return fmt.Errorf("cannot resolve home tenant for user %d", order.UserId)
+	homeTenant, err := model.GetUserTenantId(order.UserId)
+	if err != nil {
+		return fmt.Errorf("cannot resolve home tenant for user %d: %w", order.UserId, err)
 	}
 	// Tx-local quota credit. Do NOT call model.IncreaseUserQuota here —
 	// that helper writes via the global DB (model/user.go:1072) and

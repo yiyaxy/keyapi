@@ -395,7 +395,7 @@ func ProcessTopUpRebate(userId int, quotaAdded int) {
 	}
 
 	// 获取用户信息
-	user, err := GetUserById(userId, true)
+	user, err := GetUserByIdGlobal(userId, true)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("ProcessTopUpRebate: 获取用户信息失败 userId=%d, err=%v", userId, err))
 		return

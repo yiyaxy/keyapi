@@ -53,7 +53,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, false)
+	user, err := model.GetUserByIdWithContext(c, userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return

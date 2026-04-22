@@ -85,7 +85,7 @@ func CreateUserOAuthBinding(binding *UserOAuthBinding) error {
 	}
 
 	// Check if this provider user ID is already taken
-	user, err := GetUserById(binding.UserId, true)
+	user, err := GetUserByIdGlobal(binding.UserId, true)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func CreateUserOAuthBindingWithTx(tx *gorm.DB, binding *UserOAuthBinding) error 
 func UpdateUserOAuthBinding(userId, providerId int, newProviderUserId string) error {
 	// Check if the new provider user ID is already taken by another user
 	var existingBinding UserOAuthBinding
-	user, err := GetUserById(userId, true)
+	user, err := GetUserByIdGlobal(userId, true)
 	if err != nil {
 		return err
 	}

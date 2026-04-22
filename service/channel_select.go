@@ -31,6 +31,17 @@ func (p *RetryParam) SetRetry(retry int) {
 	p.Retry = &retry
 }
 
+func tenantIDFromRetryParam(param *RetryParam) (int, error) {
+	if param == nil || param.Ctx == nil {
+		return 0, model.ErrTenantRequired
+	}
+	tenantId := model.ExplicitTenantIDFromContext(param.Ctx)
+	if tenantId <= 0 {
+		return 0, model.ErrTenantRequired
+	}
+	return tenantId, nil
+}
+
 func (p *RetryParam) IncreaseRetry() {
 	if p.resetNextTry {
 		p.resetNextTry = false
@@ -86,12 +97,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
-	// Multi-tenant: extract tenant_id from request context
-	tenantId := model.DefaultTenantId
-	if tid, exists := common.GetContextKey(param.Ctx, constant.ContextKeyTenantId); exists {
-		if id, ok := tid.(int); ok && id > 0 {
-			tenantId = id
-		}
+	tenantId, err := tenantIDFromRetryParam(param)
+	if err != nil {
+		return nil, selectGroup, err
 	}
 
 	if param.TokenGroup == "auto" {
@@ -99,14 +107,14 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}
 		autoGroups := GetUserAutoGroup(userGroup)
-		channel, selectGroup = selectFromGroupChain(param, autoGroups)
+		channel, selectGroup = selectFromGroupChain(param, autoGroups, tenantId)
 	} else if strings.Contains(param.TokenGroup, ",") {
 		// Custom group chain: parse and filter against user's usable groups
 		chainGroups := ParseGroupChain(param.TokenGroup, userGroup)
 		if len(chainGroups) == 0 {
 			return nil, selectGroup, errors.New("分组链中无可用分组")
 		}
-		channel, selectGroup = selectFromGroupChain(param, chainGroups)
+		channel, selectGroup = selectFromGroupChain(param, chainGroups, tenantId)
 	} else {
 		channel, err = model.GetRandomSatisfiedChannel(tenantId, param.TokenGroup, param.ModelName, param.GetRetry())
 		if err != nil {
@@ -134,14 +142,7 @@ func ParseGroupChain(groupChain string, userGroup string) []string {
 }
 
 // selectFromGroupChain iterates through a group chain (auto or custom) to find an available channel.
-func selectFromGroupChain(param *RetryParam, groups []string) (*model.Channel, string) {
-	// Multi-tenant: extract tenant_id from request context
-	tenantId := model.DefaultTenantId
-	if tid, exists := common.GetContextKey(param.Ctx, constant.ContextKeyTenantId); exists {
-		if id, ok := tid.(int); ok && id > 0 {
-			tenantId = id
-		}
-	}
+func selectFromGroupChain(param *RetryParam, groups []string, tenantId int) (*model.Channel, string) {
 	startGroupIndex := 0
 	crossGroupRetry := common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
 

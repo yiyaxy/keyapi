@@ -144,11 +144,11 @@ type wxQrBindFinalizeResponse struct {
 }
 
 // FinalizeWxQrBind handles POST /api/oauth/wx_qr/bind/finalize.
-// - status=confirmed: writes wechat_id on the current user, consumes ticket.
-// - status=merge_required + confirm_merge=true: runs MergeUserInto and writes
-//   wechat_id (already handled by MergeUserInto). Consumes ticket.
-// - status=merge_required + confirm_merge=false: returns candidate info again
-//   without consuming, so the frontend can render the confirmation dialog.
+//   - status=confirmed: writes wechat_id on the current user, consumes ticket.
+//   - status=merge_required + confirm_merge=true: runs MergeUserInto and writes
+//     wechat_id (already handled by MergeUserInto). Consumes ticket.
+//   - status=merge_required + confirm_merge=false: returns candidate info again
+//     without consuming, so the frontend can render the confirmation dialog.
 func FinalizeWxQrBind(c *gin.Context) {
 	var req wxQrBindFinalizeRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
@@ -265,7 +265,7 @@ func bindWeChatIdToUser(userId, tenantId int, wechatId string) error {
 
 // buildMergeCandidate 拉取 B 账户的脱敏摘要，供 PC 弹窗展示。
 func buildMergeCandidate(userId, tenantId int) (*wxQrBindPollCandidate, error) {
-	user, err := model.GetUserById(userId, true)
+	user, err := model.GetUserByIdGlobal(userId, true)
 	if err != nil {
 		return nil, err
 	}

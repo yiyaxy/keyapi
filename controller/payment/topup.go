@@ -424,7 +424,12 @@ func EpayNotify(c *gin.Context) {
 				log.Printf("易支付回调 quota 计算异常: %v", topUp)
 				return
 			}
-			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true, model.GetUserTenantId(topUp.UserId))
+			tenantId, tenantErr := model.GetUserTenantId(topUp.UserId)
+			if tenantErr != nil {
+				log.Printf("易支付回调解析用户租户失败: %v", tenantErr)
+				return
+			}
+			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true, tenantId)
 			if err != nil {
 				log.Printf("易支付回调更新用户失败: %v", topUp)
 				return

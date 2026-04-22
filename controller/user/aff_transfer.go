@@ -34,7 +34,7 @@ func UserCreateAffTransfer(c *gin.Context) {
 		return
 	}
 
-	user, err := model.GetUserById(userId, true)
+	user, err := model.GetUserByIdWithContext(c, userId, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return

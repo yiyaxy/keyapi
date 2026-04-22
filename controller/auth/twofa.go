@@ -59,7 +59,7 @@ func Setup2FA(c *gin.Context) {
 	}
 
 	// 获取用户信息
-	user, err := model.GetUserById(userId, false)
+	user, err := model.GetUserByIdWithContext(c, userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -426,7 +426,7 @@ func Verify2FALogin(c *gin.Context) {
 		return
 	}
 	// 获取用户信息
-	user, err := model.GetUserById(userId, false)
+	user, err := model.GetUserByIdWithContext(c, userId, false)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -516,7 +516,7 @@ func AdminDisable2FA(c *gin.Context) {
 	}
 
 	// 检查目标用户权限
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := model.GetUserByIdWithContext(c, userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return

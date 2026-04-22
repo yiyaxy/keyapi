@@ -119,7 +119,7 @@ func RequestWaffoPay(c *gin.Context) {
 	}
 
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, false)
+	user, err := model.GetUserByIdWithContext(c, id, false)
 	if err != nil || user == nil {
 		c.JSON(200, gin.H{"message": "error", "data": "用户不存在"})
 		return

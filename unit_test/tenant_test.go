@@ -2,6 +2,7 @@ package unit_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,15 +34,14 @@ func setupGinContext(header string, host string) (*gin.Context, *httptest.Respon
 
 func TestTenantResolve_HeaderOverride(t *testing.T) {
 	// Without DB, GetTenantById returns nil, so header "1" won't resolve.
-	// But the middleware falls back to DefaultTenantId.
-	// This test verifies the middleware doesn't panic and the fallback works.
+	// The middleware must stay fail-closed and leave tenant unset.
 	c, _ := setupGinContext("1", "")
 	middleware.TenantResolve()(c)
 
 	tid := middleware.GetTenantId(c)
 	// Without DB initialized, tenant lookup returns nil → fallback to default
-	if tid != model.DefaultTenantId {
-		t.Errorf("expected fallback to DefaultTenantId=%d (DB not initialized), got %d", model.DefaultTenantId, tid)
+	if tid != 0 {
+		t.Errorf("expected unresolved tenant header to stay unset, got %d", tid)
 	}
 }
 
@@ -50,20 +50,20 @@ func TestTenantResolve_FallbackDefault(t *testing.T) {
 	middleware.TenantResolve()(c)
 
 	tid := middleware.GetTenantId(c)
-	if tid != model.DefaultTenantId {
-		t.Errorf("expected fallback to DefaultTenantId=%d, got %d", model.DefaultTenantId, tid)
+	if tid != 0 {
+		t.Errorf("expected unresolved tenant request to stay unset, got %d", tid)
 	}
 }
 
 func TestTenantResolve_SubdomainParsing(t *testing.T) {
-	// Without a real DB, subdomain lookup returns nil and falls back to default
+	// Without a real DB, subdomain lookup returns nil and tenant stays unset.
 	c, _ := setupGinContext("", "acme.example.com:3000")
 	middleware.TenantResolve()(c)
 
 	tid := middleware.GetTenantId(c)
-	// No "acme" tenant in DB, should fallback to default
-	if tid != model.DefaultTenantId {
-		t.Errorf("expected fallback for unknown subdomain, got %d", tid)
+	// No "acme" tenant in DB, tenant should remain unset.
+	if tid != 0 {
+		t.Errorf("expected unknown subdomain to stay unset, got %d", tid)
 	}
 }
 
@@ -74,8 +74,8 @@ func TestGetTenantId_Unset(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/test", nil)
 
 	tid := middleware.GetTenantId(c)
-	if tid != model.DefaultTenantId {
-		t.Errorf("expected DefaultTenantId when unset, got %d", tid)
+	if tid != 0 {
+		t.Errorf("expected 0 when tenant is unset, got %d", tid)
 	}
 }
 
@@ -100,8 +100,8 @@ func TestTenantStatusConstants(t *testing.T) {
 
 func TestTenantIDFromContext_NilContext(t *testing.T) {
 	tid := model.TenantIDFromContext(nil)
-	if tid != model.DefaultTenantId {
-		t.Errorf("nil context should return DefaultTenantId, got %d", tid)
+	if tid != 0 {
+		t.Errorf("nil context should return 0, got %d", tid)
 	}
 }
 
@@ -128,8 +128,8 @@ func TestTenantResolve_InjectsIntoRequestContext(t *testing.T) {
 
 	// After TenantResolve, c.Request.Context() should carry tenant_id
 	tid := model.TenantIDFromContext(c.Request.Context())
-	if tid != model.DefaultTenantId {
-		t.Errorf("expected tenant_id=%d from c.Request.Context(), got %d", model.DefaultTenantId, tid)
+	if tid != 0 {
+		t.Errorf("expected unresolved request context to stay tenantless, got %d", tid)
 	}
 }
 
@@ -190,12 +190,12 @@ func TestLogHasTenantId(t *testing.T) {
 }
 
 // ---------- explicitTenantIDFromContext tests ----------
-// These test the guardrail-safe extraction that returns 0 (not DefaultTenantId)
+// These test the guardrail-safe extraction that returns 0 when tenant is absent.
 // when no tenant key is set in context.
 
 func TestExplicitTenantID_BackgroundContext_ReturnsZero(t *testing.T) {
 	// context.Background() has no tenant key set.
-	// explicitTenantIDFromContext must return 0 (not DefaultTenantId=1).
+	// explicitTenantIDFromContext must return 0 when tenant is absent.
 	// This prevents the guardrail callback from silently injecting tenant_id=1
 	// on queries that use DB directly (no request context).
 	tid := model.ExplicitTenantIDFromContext(context.Background())
@@ -249,19 +249,41 @@ func TestExplicitTenantID_GinContext_WithoutTenant_ReturnsZero(t *testing.T) {
 
 func TestFallbackDifference_Background(t *testing.T) {
 	ctx := context.Background()
-	// TenantIDFromContext returns DefaultTenantId (safe for business logic)
 	withFallback := model.TenantIDFromContext(ctx)
-	// ExplicitTenantIDFromContext returns 0 (safe for guardrails)
 	withoutFallback := model.ExplicitTenantIDFromContext(ctx)
 
-	if withFallback != model.DefaultTenantId {
-		t.Errorf("TenantIDFromContext(Background) should return DefaultTenantId=%d, got %d", model.DefaultTenantId, withFallback)
+	if withFallback != 0 {
+		t.Errorf("TenantIDFromContext(Background) should return 0, got %d", withFallback)
 	}
 	if withoutFallback != 0 {
 		t.Errorf("ExplicitTenantIDFromContext(Background) should return 0, got %d", withoutFallback)
 	}
-	if withFallback == withoutFallback {
+	if withFallback != withoutFallback {
 		t.Error("the two functions should return different values for context.Background() — that's the whole point")
+	}
+}
+
+func TestStrictTenantHelpersRequireExplicitTenant(t *testing.T) {
+	user := &model.User{
+		Username: "alice",
+		Password: "password-123",
+		Email:    "alice@example.com",
+	}
+
+	if err := user.ValidateAndFill(); !errors.Is(err, model.ErrTenantRequired) {
+		t.Fatalf("ValidateAndFill should require an explicit tenant/global choice, got %v", err)
+	}
+	if err := user.ValidateAndFillWithTenant(0); !errors.Is(err, model.ErrTenantRequired) {
+		t.Fatalf("ValidateAndFillWithTenant(0) should fail closed, got %v", err)
+	}
+	if err := user.FillUserByEmail(); !errors.Is(err, model.ErrTenantRequired) {
+		t.Fatalf("FillUserByEmail should require an explicit tenant/global choice, got %v", err)
+	}
+	if err := user.FillUserByEmailWithTenant(0); !errors.Is(err, model.ErrTenantRequired) {
+		t.Fatalf("FillUserByEmailWithTenant(0) should fail closed, got %v", err)
+	}
+	if _, err := model.GetTenantPlan(0); !errors.Is(err, model.ErrTenantRequired) {
+		t.Fatalf("GetTenantPlan(0) should fail closed, got %v", err)
 	}
 }
 

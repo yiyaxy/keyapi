@@ -84,12 +84,24 @@ func taskIsSubscription(task *model.Task) bool {
 	return task.PrivateData.BillingSource == BillingSourceSubscription && task.PrivateData.SubscriptionId > 0
 }
 
+func resolveTaskUserTenantID(ctx context.Context, task *model.Task) (int, error) {
+	tenantId, err := model.GetUserTenantId(task.UserId)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("failed to resolve task tenant (task=%s, user_id=%d): %s", task.TaskID, task.UserId, err.Error()))
+		return 0, err
+	}
+	return tenantId, nil
+}
+
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
 func taskAdjustFunding(task *model.Task, delta int) error {
 	if taskIsSubscription(task) {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
-	tenantId := model.GetUserTenantId(task.UserId)
+	tenantId, err := resolveTaskUserTenantID(context.Background(), task)
+	if err != nil {
+		return err
+	}
 	if delta > 0 {
 		return model.DecreaseUserQuota(task.UserId, delta, tenantId)
 	}
@@ -106,8 +118,10 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	if tokenKey == "" {
 		return
 	}
-	tenantId := model.GetUserTenantId(task.UserId)
-	var err error
+	tenantId, err := resolveTaskUserTenantID(ctx, task)
+	if err != nil {
+		return
+	}
 	if delta > 0 {
 		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta, tenantId)
 	} else {
@@ -170,8 +184,12 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
+	tenantId, err := resolveTaskUserTenantID(ctx, task)
+	if err != nil {
+		return
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		TenantId:  model.GetUserTenantId(task.UserId),
+		TenantId:  tenantId,
 		UserId:    task.UserId,
 		LogType:   model.LogTypeRefund,
 		Content:   "",
@@ -224,7 +242,10 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if quotaDelta > 0 {
 		logType = model.LogTypeConsume
 		logQuota = quotaDelta
-		tenantId := model.GetUserTenantId(task.UserId)
+		tenantId, err := resolveTaskUserTenantID(ctx, task)
+		if err != nil {
+			return
+		}
 		model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta, tenantId)
 		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta, tenantId)
 	} else {
@@ -235,8 +256,12 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	tenantId, err := resolveTaskUserTenantID(ctx, task)
+	if err != nil {
+		return
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		TenantId:  model.GetUserTenantId(task.UserId),
+		TenantId:  tenantId,
 		UserId:    task.UserId,
 		LogType:   logType,
 		Content:   reason,
@@ -269,7 +294,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	// 获取用户和组的倍率信息
 	group := task.Group
 	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
+		user, err := model.GetUserByIdGlobal(task.UserId, false)
 		if err == nil {
 			group = user.Group
 		}

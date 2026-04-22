@@ -188,6 +188,10 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 }
 
 func ValidateUserToken(key string) (token *Token, err error) {
+	return nil, fmt.Errorf("%w: use ValidateUserTokenWithContext or ValidateUserTokenGlobal explicitly", ErrTenantRequired)
+}
+
+func ValidateUserTokenGlobal(key string) (token *Token, err error) {
 	return ValidateUserTokenWithContext(context.Background(), key)
 }
 
@@ -268,6 +272,10 @@ func GetTokenById(id int) (*Token, error) {
 }
 
 func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
+	return nil, fmt.Errorf("%w: use GetTokenByKeyWithContext or GetTokenByKeyGlobal explicitly", ErrTenantRequired)
+}
+
+func GetTokenByKeyGlobal(key string, fromDB bool) (token *Token, err error) {
 	return GetTokenByKeyWithContext(context.Background(), key, fromDB)
 }
 
@@ -305,6 +313,8 @@ func GetTokenByKeyWithContext(ctx context.Context, key string, fromDB bool) (tok
 	// 纯靠 sk-key 鉴权时 ctx 里没有 tenant，TenantIDFromContext 会 fallback 到
 	// DefaultTenantId=1，历史上导致非默认租户的 key 永远查不到。
 	// 租户一致性由上层调用方（middleware.TokenAuth 等）负责校验。
+	// Token keys are global identifiers. Resolve them explicitly without tenant
+	// scoping, then let higher-level auth enforce tenant ownership.
 	q = WithTenantBypass(q)
 	err = q.Where(commonKeyCol+" = ?", key).First(&token).Error
 	return token, err

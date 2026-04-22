@@ -46,7 +46,7 @@ func SwitchTenant(c *gin.Context) {
 		common.ApiErrorMsg(c, "目标租户不存在或已停用")
 		return
 	}
-	user, err := model.GetUserById(userId, false)
+	user, err := model.GetUserByIdWithContext(c, userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return

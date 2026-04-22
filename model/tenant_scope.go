@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -33,6 +34,11 @@ func resolveAutoTenantId(ctx context.Context) int {
 // tenantScopedTables 记录需要租户隔离的表名集合。
 var tenantScopedTables sync.Map
 
+var (
+	ErrTenantRequired  = errors.New("tenant context required")
+	ErrUserTenantUnset = errors.New("user tenant is missing")
+)
+
 // RegisterTenantScopedTable 把一张表标记为"租户隔离"，之后 guardrail 会对它生效。
 func RegisterTenantScopedTable(tableName string) {
 	tenantScopedTables.Store(tableName, true)
@@ -45,7 +51,7 @@ func IsTenantScoped(tableName string) bool {
 }
 
 // TenantIDFromContext 从 context 中读取 tenant_id。
-// 读不到时返回 DefaultTenantId（默认租户兜底，给"非 guardrail"路径用的宽松版）。
+// 读不到时返回 0，调用方必须显式决定是 fail-closed 还是走显式 global/bypass 路径。
 //
 // 查找顺序：
 //  1. gin.Context.Get（当 ctx 作为 interface 传入、底层是 *gin.Context 时）
@@ -54,7 +60,7 @@ func IsTenantScoped(tableName string) bool {
 //  3. context.Value 使用 string key（兜底）
 func TenantIDFromContext(ctx context.Context) int {
 	if ctx == nil {
-		return DefaultTenantId
+		return 0
 	}
 	// Path 1：直接传进来的 gin.Context
 	if ginCtx, ok := ctx.(interface {
@@ -78,20 +84,36 @@ func TenantIDFromContext(ctx context.Context) int {
 			return id
 		}
 	}
-	return DefaultTenantId
+	return 0
 }
 
 // TenantDB 根据 context 里的租户返回一个已作用域化的 *gorm.DB。
 // 用法：TenantDB(c).Find(&users)
 func TenantDB(ctx context.Context) *gorm.DB {
+	q := DB
+	if ctx != nil {
+		q = DB.WithContext(ctx)
+	}
 	tenantId := TenantIDFromContext(ctx)
-	return DB.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		_ = q.AddError(fmt.Errorf("%w: TenantDB requires an explicit tenant", ErrTenantRequired))
+		return q
+	}
+	return q.Where("tenant_id = ?", tenantId)
 }
 
 // TenantLOGDB 针对日志库（LOG_DB）返回一个已按租户作用域化的 *gorm.DB。
 func TenantLOGDB(ctx context.Context) *gorm.DB {
+	q := LOG_DB
+	if ctx != nil {
+		q = LOG_DB.WithContext(ctx)
+	}
 	tenantId := TenantIDFromContext(ctx)
-	return LOG_DB.Where("tenant_id = ?", tenantId)
+	if tenantId <= 0 {
+		_ = q.AddError(fmt.Errorf("%w: TenantLOGDB requires an explicit tenant", ErrTenantRequired))
+		return q
+	}
+	return q.Where("tenant_id = ?", tenantId)
 }
 
 // ApplyTenantScope 给已有的查询链追加 tenant_id = ? 条件。
@@ -109,17 +131,21 @@ func BypassTenant(db *gorm.DB) *gorm.DB {
 }
 
 // GetUserTenantId 根据 userId 反查其归属的 tenant_id。
-// 主要给 model 层代码使用（那里通常拿不到 gin.Context），出错时兜底到 DefaultTenantId。
-func GetUserTenantId(userId int) int {
+// 这是显式 global 反查入口：调用方已经知道自己要跨过“当前请求 tenant”
+// 这层抽象，改为从用户主键反查用户的归属租户。
+func GetUserTenantId(userId int) (int, error) {
 	if userId <= 0 {
-		return DefaultTenantId
+		return 0, errors.New("invalid user id")
 	}
 	var tenantId int
 	err := WithTenantBypass(DB).Model(&User{}).Where("id = ?", userId).Select("tenant_id").Scan(&tenantId).Error
-	if err != nil || tenantId <= 0 {
-		return DefaultTenantId
+	if err != nil {
+		return 0, fmt.Errorf("lookup user tenant: %w", err)
 	}
-	return tenantId
+	if tenantId <= 0 {
+		return 0, fmt.Errorf("%w: user_id=%d", ErrUserTenantUnset, userId)
+	}
+	return tenantId, nil
 }
 
 // ExplicitTenantIDFromContext 严格版：只从 context 里读"显式"写入的 tenant_id，
@@ -491,8 +517,9 @@ var uniqueColRegexCache sync.Map // map[string]*regexp.Regexp
 // buildUniqueColRegex 构造一个匹配 `colname =` / `colname IN (...)` 的正则。
 //
 // 识别场景：
-//   - `id = ?`、`"id" = ?`、`` `id` = ? ``、`users.id = ?`、`(id = ?)`
+//   - `id = ?`、`"id" = ?`、“ `id` = ? “、`users.id = ?`、`(id = ?)`
 //   - `id IN (?, ?, ?)`
+//
 // 带词界约束，防止 `user_id = ?` / `channel_id = ?` 误命中 `id`。
 func buildUniqueColRegex(col string) *regexp.Regexp {
 	// 前界：开头、空白、逗号、左括号、点、反引号、双引号、单引号

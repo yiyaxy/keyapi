@@ -81,29 +81,38 @@ func GetLogByTokenId(tokenId int, tenantId int) (logs []*Log, err error) {
 // tenantIdFromGinContext extracts tenant_id from gin.Context without importing middleware.
 func tenantIdFromGinContext(c *gin.Context) int {
 	if c == nil {
-		return DefaultTenantId
+		return 0
 	}
 	if tid, exists := c.Get("tenant_id"); exists {
 		if id, ok := tid.(int); ok && id > 0 {
 			return id
 		}
 	}
-	return DefaultTenantId
+	return 0
 }
 
 func RecordLog(userId int, logType int, content string) {
-	RecordLogWithTenant(DefaultTenantId, userId, logType, content)
+	common.SysError("RecordLog requires an explicit tenant; use RecordLogCtx or RecordLogWithTenant")
 }
 
 // RecordLogCtx records a log entry with tenant_id extracted from gin.Context.
 // Use this instead of RecordLog in all controller/handler code.
 func RecordLogCtx(c *gin.Context, userId int, logType int, content string) {
-	RecordLogWithTenant(tenantIdFromGinContext(c), userId, logType, content)
+	tenantId := tenantIdFromGinContext(c)
+	if tenantId <= 0 {
+		common.SysError("RecordLogCtx requires tenant context")
+		return
+	}
+	RecordLogWithTenant(tenantId, userId, logType, content)
 }
 
 // RecordLogWithTenant records a log entry with explicit tenant_id.
 func RecordLogWithTenant(tenantId int, userId int, logType int, content string) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
+		return
+	}
+	if tenantId <= 0 {
+		common.SysError("RecordLogWithTenant requires an explicit tenant")
 		return
 	}
 	username, _ := GetUsernameById(userId, false)
@@ -121,14 +130,17 @@ func RecordLogWithTenant(tenantId int, userId int, logType int, content string) 
 	}
 }
 
-// Deprecated: Use RecordTopUpLogWithTenant instead. This function silently writes
-// to DefaultTenantId and breaks tenant isolation. Will be removed after Phase 2 cleanup.
+// Deprecated: Use RecordTopUpLogWithTenant instead.
 func RecordTopUpLog(userId int, quota int, content string) {
-	RecordTopUpLogWithTenant(DefaultTenantId, userId, quota, content)
+	common.SysError("RecordTopUpLog requires an explicit tenant; use RecordTopUpLogWithTenant")
 }
 
 // RecordTopUpLogWithTenant records a topup log entry with explicit tenant_id.
 func RecordTopUpLogWithTenant(tenantId int, userId int, quota int, content string) {
+	if tenantId <= 0 {
+		common.SysError("RecordTopUpLogWithTenant requires an explicit tenant")
+		return
+	}
 	username, _ := GetUsernameById(userId, false)
 	log := &Log{
 		TenantId:  tenantId,
@@ -148,11 +160,16 @@ func RecordTopUpLogWithTenant(tenantId int, userId int, quota int, content strin
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, content))
+	tenantId := tenantIdFromGinContext(c)
+	if tenantId <= 0 {
+		common.SysError("RecordErrorLog requires tenant context")
+		return
+	}
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(other)
 	log := &Log{
-		TenantId:         tenantIdFromGinContext(c),
+		TenantId:         tenantId,
 		UserId:           userId,
 		Username:         username,
 		CreatedAt:        common.GetTimestamp(),
@@ -206,11 +223,16 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logType = LogTypeConsume
 	}
 	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	tenantId := tenantIdFromGinContext(c)
+	if tenantId <= 0 {
+		common.SysError("RecordConsumeLog requires tenant context")
+		return
+	}
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(params.Other)
 	log := &Log{
-		TenantId:         tenantIdFromGinContext(c),
+		TenantId:         tenantId,
 		UserId:           userId,
 		Username:         username,
 		CreatedAt:        common.GetTimestamp(),
@@ -237,9 +259,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	// Channel-test logs must not contaminate the quota_data aggregate
 	// either — the dashboard UsageTrendCard reads from quota_data.
 	if common.DataExportEnabled && logType == LogTypeConsume {
-		tid := tenantIdFromGinContext(c)
 		gopool.Go(func() {
-			LogQuotaData(tid, userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
+			LogQuotaData(tenantId, userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
 		})
 	}
 }
@@ -270,7 +291,8 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 	tenantId := params.TenantId
 	if tenantId <= 0 {
-		tenantId = DefaultTenantId
+		common.SysError("RecordTaskBillingLog requires an explicit tenant")
+		return
 	}
 	log := &Log{
 		TenantId:  tenantId,

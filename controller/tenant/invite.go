@@ -62,7 +62,7 @@ func InviteMember(c *gin.Context) {
 
 	// Try to find existing user by email
 	user := &model.User{Email: req.Email}
-	err = user.FillUserByEmail()
+	err = user.FillUserByEmailGlobal()
 	if err == nil && user.Id > 0 {
 		// User exists, directly add membership
 		if err := model.EnsureTenantMembership(user.Id, tenantId, role, operatorId); err != nil {

@@ -172,7 +172,7 @@ func confirmWxQrBindTicket(c *gin.Context, t *service.WxQrTicket, code string) {
 
 	// Initiator (A): the PC-logged-in user who created the ticket. The
 	// ticket only makes sense while that user is still active on the web.
-	initiator, err := model.GetUserById(t.UserId, true)
+	initiator, err := model.GetUserByIdGlobal(t.UserId, true)
 	if err != nil {
 		common.ApiErrorMsg(c, "发起绑定的账户已失效，请刷新")
 		return

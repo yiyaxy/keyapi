@@ -603,7 +603,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, tenantId int, userId int, pla
 		}
 	}
 	sub := &UserSubscription{
-		TenantId: tenantId,
+		TenantId:      tenantId,
 		UserId:        userId,
 		PlanId:        plan.Id,
 		AmountTotal:   plan.TotalAmount,
@@ -687,7 +687,11 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	// Group upgrade is deferred to activation
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s（待激活）", logPlanTitle, logMoney, logPaymentMethod)
-		RecordTopUpLogWithTenant(GetUserTenantId(logUserId), logUserId, 0, msg)
+		if tenantId, terr := GetUserTenantId(logUserId); terr == nil {
+			RecordTopUpLogWithTenant(tenantId, logUserId, 0, msg)
+		} else {
+			common.SysLog(fmt.Sprintf("failed to resolve subscription log tenant for user %d: %v", logUserId, terr))
+		}
 	}
 	if logRewardAmount > 0 && logUserId > 0 {
 		go ProcessSubscriptionRebate(logUserId, logRewardAmount, logPlanTitle)
@@ -782,7 +786,11 @@ func CompleteSubscriptionOrderWithEpay(tradeNo string, providerPayload string, s
 	// Group upgrade is deferred to activation
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s（待激活）", logPlanTitle, logMoney, logPaymentMethod)
-		RecordTopUpLogWithTenant(GetUserTenantId(logUserId), logUserId, 0, msg)
+		if tenantId, terr := GetUserTenantId(logUserId); terr == nil {
+			RecordTopUpLogWithTenant(tenantId, logUserId, 0, msg)
+		} else {
+			common.SysLog(fmt.Sprintf("failed to resolve subscription log tenant for user %d: %v", logUserId, terr))
+		}
 	}
 	if logRewardAmount > 0 && logUserId > 0 {
 		go ProcessSubscriptionRebate(logUserId, logRewardAmount, logPlanTitle)
@@ -798,7 +806,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	}
 
 	// 获取用户信息
-	user, err := GetUserById(userId, true)
+	user, err := GetUserByIdGlobal(userId, true)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("ProcessSubscriptionRebate: 获取用户信息失败 userId=%d, err=%v", userId, err))
 		return
