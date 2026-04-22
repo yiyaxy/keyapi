@@ -15,6 +15,16 @@ type configItem struct {
 	Overridden bool   `json:"overridden"`
 }
 
+func redactedConfigValue(key, value string) string {
+	if value == "" {
+		return ""
+	}
+	if service.IsSensitiveConfigKey(key) {
+		return "***"
+	}
+	return value
+}
+
 // GetTenantConfig returns all overridable keys with their resolved values for the current tenant.
 // For each key in TenantOverridableKeys, indicates whether it's a tenant override or platform default.
 func GetTenantConfig(c *gin.Context) {
@@ -33,7 +43,7 @@ func GetTenantConfig(c *gin.Context) {
 		_, isOverridden := overrides[key]
 		items = append(items, configItem{
 			Key:        key,
-			Value:      resolved,
+			Value:      redactedConfigValue(key, resolved),
 			Overridden: isOverridden,
 		})
 	}
