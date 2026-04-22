@@ -32,6 +32,7 @@ import { LogsAdminPage } from '@/pages/LogsAdmin';
 import { LogsPage } from '@/pages/Logs';
 import { MessageAdminPage } from '@/pages/MessageAdmin';
 import { ModelsAdminPage } from '@/pages/ModelsAdmin';
+import { OrdersPage } from '@/pages/Orders';
 import { PlanPage } from '@/pages/PlanPage';
 import { PlatformChannelsAdminPage } from '@/pages/PlatformChannelsAdmin';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
@@ -98,6 +99,7 @@ export const router = createBrowserRouter([
               { path: '/playground', element: <ComingSoon feature='Playground' /> },
               { path: '/logs', element: <LogsPage /> },
               { path: '/topup', element: <TopupPage /> },
+              { path: '/orders', element: <OrdersPage /> },
               { path: '/plan', element: <PlanPage /> },
               { path: '/account', element: <AccountPage /> },
               { path: '/inbox', element: <InboxPage /> },

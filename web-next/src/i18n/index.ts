@@ -19,6 +19,7 @@ import enLogs from './locales/en/logs.json';
 import enMessage from './locales/en/message.json';
 import enModels from './locales/en/models.json';
 import enOps from './locales/en/ops.json';
+import enOrders from './locales/en/orders.json';
 import enPlan from './locales/en/plan.json';
 import enPlatform from './locales/en/platform.json';
 import enPrompt from './locales/en/prompt.json';
@@ -50,6 +51,7 @@ import zhLogs from './locales/zh/logs.json';
 import zhMessage from './locales/zh/message.json';
 import zhModels from './locales/zh/models.json';
 import zhOps from './locales/zh/ops.json';
+import zhOrders from './locales/zh/orders.json';
 import zhPlan from './locales/zh/plan.json';
 import zhPlatform from './locales/zh/platform.json';
 import zhPrompt from './locales/zh/prompt.json';
@@ -93,6 +95,7 @@ void i18n
         plan: zhPlan,
         ops: zhOps,
         models: zhModels,
+        orders: zhOrders,
         aff: zhAff,
         rebate: zhRebate,
         prompt: zhPrompt,
@@ -126,6 +129,7 @@ void i18n
         plan: enPlan,
         ops: enOps,
         models: enModels,
+        orders: enOrders,
         aff: enAff,
         rebate: enRebate,
         prompt: enPrompt,
@@ -162,6 +166,7 @@ void i18n
       'plan',
       'ops',
       'models',
+      'orders',
       'aff',
       'rebate',
       'prompt',
