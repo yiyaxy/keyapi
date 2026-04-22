@@ -71,14 +71,14 @@ export function ChannelsAdminPage() {
       {tenantView ? (
         <Card className='border-line bg-bg-1 shadow-none'>
           <CardHeader className='pb-3'>
-            <CardTitle className='text-16 font-semibold tracking-tight'>Routing mode</CardTitle>
+            <CardTitle className='text-16 font-semibold tracking-tight'>{t('routing.title')}</CardTitle>
           </CardHeader>
           <CardContent className='grid gap-3 pt-0 md:grid-cols-2 xl:grid-cols-4'>
             {[
-              ['private_priority', 'Private priority'],
-              ['platform_priority', 'Platform priority'],
-              ['only_private', 'Only private'],
-              ['only_platform', 'Only platform'],
+              ['private_priority', t('routing.mode.private_priority')],
+              ['platform_priority', t('routing.mode.platform_priority')],
+              ['only_private', t('routing.mode.only_private')],
+              ['only_platform', t('routing.mode.only_platform')],
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -134,7 +134,7 @@ export function ChannelsAdminPage() {
               <Card className='border-line bg-bg-1 shadow-none'>
                 <CardHeader className='pb-3'>
                   <CardTitle className='text-16 font-semibold tracking-tight'>
-                    My channels
+                    {t('section.my_channels')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0'>
@@ -158,7 +158,7 @@ export function ChannelsAdminPage() {
               <Card className='border-line bg-bg-1 shadow-none'>
                 <CardHeader className='pb-3'>
                   <CardTitle className='text-16 font-semibold tracking-tight'>
-                    Platform channels
+                    {t('section.platform_channels')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='space-y-3 pt-0'>
@@ -179,13 +179,15 @@ export function ChannelsAdminPage() {
                         <div className='mt-1 text-12 text-fg-2'>
                           {channel.group} ·{' '}
                           {channel.markup_ratio
-                            ? `${channel.markup_ratio.toFixed(2)}x markup`
-                            : 'plan markup'}
+                            ? t('platform_row.markup_x', { n: channel.markup_ratio.toFixed(2) })
+                            : t('platform_row.plan_markup')}
                         </div>
                       </div>
                       <div className='flex items-center gap-3'>
                         <span className='text-12 text-fg-2'>
-                          {channel.tenant_disabled ? 'disabled for this tenant' : 'enabled'}
+                          {channel.tenant_disabled
+                            ? t('platform_row.disabled_for_tenant')
+                            : t('platform_row.enabled')}
                         </span>
                         <Switch
                           checked={!channel.tenant_disabled}
