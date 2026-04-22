@@ -455,7 +455,7 @@ func GetSelf(c *gin.Context) {
 	userRole := c.GetInt("role")
 	platformRole := c.GetInt("platform_role")
 	tenantRole := c.GetInt("tenant_role")
-	user, err := model.GetUserById(id, false)
+	user, err := model.GetUserByIdWithContext(c, id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return

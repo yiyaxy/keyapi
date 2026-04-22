@@ -48,9 +48,9 @@ export function ChannelsTable({
             <th className='px-3 py-2 font-medium'>{t('table.col.name')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.type')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.group')}</th>
-            {showScope ? <th className='px-3 py-2 font-medium'>Scope</th> : null}
+            {showScope ? <th className='px-3 py-2 font-medium'>{t('table.col.scope')}</th> : null}
             <th className='px-3 py-2 font-medium'>{t('table.col.priority')}</th>
-            {showMarkup ? <th className='px-3 py-2 font-medium'>Markup</th> : null}
+            {showMarkup ? <th className='px-3 py-2 font-medium'>{t('table.col.markup')}</th> : null}
             <th className='px-3 py-2 font-medium'>{t('table.col.status')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.response')}</th>
             {!readOnly ? <th className='px-3 py-2' /> : null}

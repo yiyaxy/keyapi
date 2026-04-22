@@ -158,8 +158,9 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self/groups", catalog.GetUserGroups)
 				selfRoute.GET("/self/channel-groups", catalog.GetChannelGroups)
 				selfRoute.GET("/self", user.GetSelf)
-				selfRoute.GET("/tenants", user.ListCurrentUserTenants)
-				selfRoute.POST("/tenant/switch", user.SwitchTenant)
+				// 「1 user : 1 tenant」模型下，普通用户永远只在自己的租户里；
+				// 租户切换 / 跨租户列表不再暴露为用户 API。超管跨租户管理
+				// 走 /api/platform/* 的平台级接口，不依赖 session 切换。
 				selfRoute.GET("/models", user.GetUserModels)
 				selfRoute.PUT("/self", user.UpdateSelf)
 				selfRoute.DELETE("/self", user.DeleteSelf)
@@ -668,7 +669,8 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.PUT("/", tenant.UpdateTenant)
 			tenantRoute.GET("/members", tenant.ListTenantMembers)
 			tenantRoute.PUT("/members", tenant.UpdateTenantMember)
-			tenantRoute.POST("/invite", tenant.InviteMember)
+			// 跨租户邀请在「1 user : 1 tenant」模型下不适用（邀请语义 = 拉同一账号进另一租户）。
+			// 下线 POST /tenant/invite 与 GET /tenant/invite/accept 两条路由。
 			tenantRoute.DELETE("/members", tenant.RemoveMember)
 			tenantRoute.GET("/config", tenant.GetTenantConfig)
 			tenantRoute.PUT("/config", tenant.UpdateTenantConfig)
@@ -707,12 +709,6 @@ func SetApiRouter(router *gin.Engine) {
 			platformTenantRoute.DELETE("/:id", tenant.DeleteTenant)
 			platformTenantRoute.GET("/plans", tenant.ListTenantPlans)
 			platformTenantRoute.PUT("/:id/plan", tenant.UpdateTenantPlanHandler)
-		}
-
-		tenantInviteRoute := apiRouter.Group("/tenant/invite")
-		tenantInviteRoute.Use(middleware.UserAuth())
-		{
-			tenantInviteRoute.GET("/accept", tenant.AcceptInvite)
 		}
 
 		// WeChat Pay S2 user-facing ordering

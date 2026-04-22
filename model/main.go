@@ -307,9 +307,22 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	// Drop legacy single-column UNIQUE on users.username before AutoMigrate
+	// installs the new composite UNIQUE (tenant_id, username). 对齐「一个租户
+	// 一个独立平台」模型：用户名只在租户内唯一，不同租户允许重名。
+	if err := migrateUsersUsernameUnique(); err != nil {
+		return err
+	}
 
 	// 并行 AutoMigrate 所有表（表清单维护在 migrateDBFast 内部）
 	if err := migrateDBFast(); err != nil {
+		return err
+	}
+
+	// AutoMigrate 跑完后再补第三方登录 ID 的租户内 unique —— 单独拎出来是
+	// 因为我们用的是 partial unique（WHERE col <> ''），GORM 的 uniqueIndex
+	// tag 不支持 WHERE 子句，只能绕过 AutoMigrate 直接写原生 DDL。
+	if err := migrateUsersExternalIdUnique(); err != nil {
 		return err
 	}
 
@@ -643,6 +656,107 @@ func migrateTokenModelLimitsToText() error {
 			return fmt.Errorf("failed to migrate %s.%s to text: %w", tableName, columnName, err)
 		}
 		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to text", tableName, columnName))
+	}
+	return nil
+}
+
+// migrateUsersUsernameUnique drops the legacy single-column UNIQUE on
+// users(username) so AutoMigrate can install the new composite UNIQUE
+// (tenant_id, username). 对齐「1 user : 1 tenant」模型：同名用户允许分散
+// 在不同租户里，同一租户内仍然唯一。
+//
+// 幂等：DROP IF EXISTS / 先查 information_schema 再 DROP。
+func migrateUsersUsernameUnique() error {
+	if DB == nil || !DB.Migrator().HasTable("users") {
+		return nil
+	}
+
+	// Candidate names we may have produced historically:
+	//   - "uni_users_username"  ← GORM v2 auto-name for `gorm:"unique"`
+	//   - "users_username_key"  ← PostgreSQL's default for inline UNIQUE
+	candidates := []string{"uni_users_username", "users_username_key"}
+
+	if common.UsingPostgreSQL {
+		for _, name := range candidates {
+			if err := DB.Exec(fmt.Sprintf(`ALTER TABLE users DROP CONSTRAINT IF EXISTS "%s"`, name)).Error; err != nil {
+				common.SysLog(fmt.Sprintf("Warning: drop legacy users unique %q: %v", name, err))
+			}
+			if err := DB.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, name)).Error; err != nil {
+				common.SysLog(fmt.Sprintf("Warning: drop legacy users index %q: %v", name, err))
+			}
+		}
+		return nil
+	}
+
+	if common.UsingMySQL {
+		for _, name := range candidates {
+			var count int64
+			if err := DB.Raw(`SELECT COUNT(1) FROM information_schema.statistics
+				WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = ?`, name).Scan(&count).Error; err != nil {
+				common.SysLog(fmt.Sprintf("Warning: check legacy users index %q: %v", name, err))
+				continue
+			}
+			if count == 0 {
+				continue
+			}
+			if err := DB.Exec(fmt.Sprintf("ALTER TABLE users DROP INDEX `%s`", name)).Error; err != nil {
+				common.SysLog(fmt.Sprintf("Warning: drop legacy users index %q: %v", name, err))
+			}
+		}
+		return nil
+	}
+
+	// SQLite: 无法原位 DROP UNIQUE 约束（需要 table rebuild）。dev 场景，
+	// 撞到 cross-tenant 同名冲突时重建 DB 即可——这里只留日志不抛错。
+	if common.UsingSQLite {
+		common.SysLog("NOTE: SQLite cannot drop legacy UNIQUE(username); re-create the DB if cross-tenant username collisions arise.")
+	}
+	return nil
+}
+
+// migrateUsersExternalIdUnique installs tenant-scoped UNIQUE indexes on the
+// third-party login ID columns — github_id / discord_id / oidc_id /
+// wechat_id / telegram_id / linux_do_id —— so concurrent OAuth
+// registrations within one tenant can't produce duplicate rows.
+//
+// Partial `WHERE col <> ''` keeps empty strings out of the index (most
+// users never bind any given provider), so the composite still permits
+// many rows with empty github_id in the same tenant.
+//
+// 幂等：CREATE UNIQUE INDEX IF NOT EXISTS 多次 apply 安全。
+func migrateUsersExternalIdUnique() error {
+	if DB == nil || !DB.Migrator().HasTable("users") {
+		return nil
+	}
+	columns := []string{
+		"github_id", "discord_id", "oidc_id",
+		"wechat_id", "telegram_id", "linux_do_id",
+	}
+
+	if common.UsingPostgreSQL || common.UsingSQLite {
+		// Both PG 9.5+ and SQLite 3.8+ support partial unique indexes.
+		for _, col := range columns {
+			indexName := fmt.Sprintf("uk_user_tenant_%s", col)
+			sql := fmt.Sprintf(
+				`CREATE UNIQUE INDEX IF NOT EXISTS %s ON users (tenant_id, %s) WHERE %s <> ''`,
+				indexName, col, col,
+			)
+			if err := DB.Exec(sql).Error; err != nil {
+				common.SysLog(fmt.Sprintf("Warning: create %s: %v", indexName, err))
+			}
+		}
+		return nil
+	}
+
+	if common.UsingMySQL {
+		// MySQL (incl. 8.x) doesn't support partial indexes. A plain
+		// UNIQUE(tenant_id, col) would reject a second user with empty
+		// col, which is wrong for the "user has no github" case. Until
+		// a NULL-column migration lands, lean on app-level dedup and
+		// log a loud notice so operators know the gap exists.
+		common.SysLog("NOTE: MySQL has no partial unique index; third-party ID dedup stays app-level. " +
+			"Run a NULL-column migration later to enable (tenant_id, <provider>_id) UNIQUE.")
+		return nil
 	}
 	return nil
 }

@@ -59,10 +59,19 @@ export function usePlatformTenants() {
   });
 }
 
+export type CreateTenantPayload = {
+  name: string;
+  slug: string;
+  admin_username: string;
+  admin_password: string;
+  admin_email?: string;
+  admin_display_name?: string;
+};
+
 export function useCreateTenant() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { name: string; slug: string }) => {
+    mutationFn: async (body: CreateTenantPayload) => {
       const res = await api.post<Tenant>('/api/platform/tenants/', body);
       return res.data;
     },
