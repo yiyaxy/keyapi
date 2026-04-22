@@ -2,6 +2,40 @@ package model
 
 import "testing"
 
+// TestBatchInsertChannelsBypass_PreservesZeroTenantId 覆盖 /admin/platform/channels
+// 新建按钮的真实路径：超管 → AddChannel → BatchInsertChannelsBypass。
+// Channel 结构体带 `tenant_id default:1` GORM tag，struct-based Create 会把
+// 零值 TenantId 改写成 1；必须用 Select("*") 把零值强制写进 INSERT。
+func TestBatchInsertChannelsBypass_PreservesZeroTenantId(t *testing.T) {
+	if DB == nil {
+		t.Skip("no DB")
+	}
+
+	ch := Channel{
+		Name: "plat-batch-insert-test", Type: 1,
+		Scope: ChannelScopePlatform, TenantId: 0,
+		Key: "k", Status: 1, Models: "batch-model-xyz",
+		Group: "default", CreatedTime: 1,
+	}
+	if err := BatchInsertChannelsBypass([]Channel{ch}); err != nil {
+		t.Fatalf("BatchInsertChannelsBypass: %v", err)
+	}
+
+	var got Channel
+	if err := WithTenantBypass(DB).Where("name = ?", ch.Name).First(&got).Error; err != nil {
+		t.Fatalf("reload channel: %v", err)
+	}
+	defer WithTenantBypass(DB).Delete(&Channel{}, got.Id)
+	defer DB.Exec("DELETE FROM abilities WHERE channel_id = ?", got.Id)
+
+	if got.TenantId != 0 {
+		t.Fatalf("channels.tenant_id = %d, want 0 (default:1 tag leaked via zero-value override)", got.TenantId)
+	}
+	if got.Scope != ChannelScopePlatform {
+		t.Fatalf("channels.scope = %q, want %q", got.Scope, ChannelScopePlatform)
+	}
+}
+
 // TestPlatformChannelDelete 覆盖超管删平台渠道的路径：Channel.Delete 必须
 // 对 tenant_id=0 放行（WithTenantBypass + WHERE id），并级联把 abilities 清掉。
 // 原先要求 channel.TenantId != 0，导致报 "channel.Id 和 channel.TenantId 不能为空"。

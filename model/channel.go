@@ -576,6 +576,20 @@ func batchInsertChannels(db *gorm.DB, channels []Channel) (retErr error) {
 			tx.Rollback()
 			return err
 		}
+		// 平台渠道 TenantId=0 是合法语义，但 Channel 结构体上带了
+		// `default:1` GORM tag：GORM 的零值替换逻辑优先级高于 Select，
+		// INSERT 会把 0 改写成 1。Create 完成后对平台行做一次补偿
+		// UPDATE，把 tenant_id 拉回 0；用 tx（外层已 bypass）避开守门员。
+		for i, ch := range chunk {
+			if ch.Scope != ChannelScopePlatform {
+				continue
+			}
+			if err := tx.Model(&Channel{}).Where("id = ?", ch.Id).Update("tenant_id", 0).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
+			chunk[i].TenantId = 0 // 同步结构体，后续 AddAbilities 依赖此值
+		}
 		for _, channel_ := range chunk {
 			if err := channel_.AddAbilities(tx); err != nil {
 				tx.Rollback()
