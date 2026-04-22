@@ -5,287 +5,20 @@ import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { BoolRow, labelFor, SecretRow, SelectRow, TextRow } from '@/components/settings/FieldRows';
 import { KvMapEditor } from '@/components/settings/KvMapEditor';
 import { ModelPricingPanel } from '@/components/settings/ModelPricingPanel';
 import { MODEL_PRICING_KEYS } from '@/components/settings/modelPricingKeys';
 import { StringListEditor } from '@/components/settings/StringListEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  useForceLogoutAll,
-  useOptions,
-  useUpdateOption,
-} from '@/hooks/useOptions';
-import {
-  allKnownKeys,
-  SECRET_FIELDS,
-  SETTINGS_GROUPS,
-  type FieldDef,
-} from '@/lib/settingsSchema';
+import { useForceLogoutAll, useOptions } from '@/hooks/useOptions';
+import { allKnownKeys, SECRET_FIELDS, SETTINGS_GROUPS, type FieldDef } from '@/lib/settingsSchema';
 
 type TabId = string;
 const SECRETS_TAB = '__secrets';
 const ADVANCED_TAB = '__advanced';
-
-function labelFor(label: { zh: string; en: string }, lang: string): string {
-  return lang.startsWith('zh') ? label.zh : label.en;
-}
-
-function coerceBool(v: string): boolean {
-  return v === 'true' || v === '1';
-}
-
-function isPrettyJson(value: string): string {
-  try {
-    const parsed = JSON.parse(value);
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return value;
-  }
-}
-
-function BoolRow({
-  field,
-  value,
-  onSaved,
-}: {
-  field: FieldDef;
-  value: string;
-  onSaved: (next: string) => void;
-}) {
-  const { t, i18n } = useTranslation('settings');
-  const update = useUpdateOption();
-  const checked = coerceBool(value);
-  return (
-    <div className='flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0'>
-      <div className='min-w-0'>
-        <div className='text-13'>{labelFor(field.label, i18n.language)}</div>
-        <div className='font-mono text-11 text-fg-2'>{field.key}</div>
-      </div>
-      <Switch
-        checked={checked}
-        disabled={update.isPending}
-        onCheckedChange={(next) => {
-          update.mutate(
-            { key: field.key, value: next },
-            {
-              onSuccess: () => {
-                onSaved(String(next));
-                toast.success(t('toast.save.success'));
-              },
-              onError: (e) => toast.error((e as Error).message),
-            }
-          );
-        }}
-      />
-    </div>
-  );
-}
-
-function SelectRow({
-  field,
-  value,
-  onSaved,
-}: {
-  field: FieldDef;
-  value: string;
-  onSaved: (next: string) => void;
-}) {
-  const { t, i18n } = useTranslation('settings');
-  const update = useUpdateOption();
-  const options = field.options ?? [];
-  return (
-    <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
-      <div className='flex items-center justify-between gap-4'>
-        <div className='min-w-0'>
-          <Label className='text-13'>{labelFor(field.label, i18n.language)}</Label>
-          <div className='font-mono text-11 text-fg-2'>{field.key}</div>
-        </div>
-        <Select
-          value={value}
-          disabled={update.isPending}
-          onValueChange={(next) => {
-            update.mutate(
-              { key: field.key, value: next },
-              {
-                onSuccess: () => {
-                  onSaved(next);
-                  toast.success(t('toast.save.success'));
-                },
-                onError: (e) => toast.error((e as Error).message),
-              }
-            );
-          }}
-        >
-          <SelectTrigger className='w-48'>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {labelFor(o.label, i18n.language)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {field.help && (
-        <p className='text-12 text-fg-2'>{labelFor(field.help, i18n.language)}</p>
-      )}
-    </div>
-  );
-}
-
-function TextRow({
-  field,
-  value,
-  onSaved,
-}: {
-  field: FieldDef;
-  value: string;
-  onSaved: (next: string) => void;
-}) {
-  const { t, i18n } = useTranslation('settings');
-  const update = useUpdateOption();
-  const initial = field.kind === 'json' ? isPrettyJson(value) : value;
-  const [draft, setDraft] = useState(initial);
-  const dirty = draft !== initial;
-  const long = field.kind === 'longText' || field.kind === 'json';
-
-  function save() {
-    let payload = draft;
-    if (field.kind === 'json') {
-      try {
-        payload = JSON.stringify(JSON.parse(draft));
-      } catch {
-        /* send as-is */
-      }
-    } else if (field.kind === 'number') {
-      const n = Number(draft);
-      if (!Number.isNaN(n)) payload = String(n);
-    }
-    update.mutate(
-      { key: field.key, value: payload },
-      {
-        onSuccess: () => {
-          onSaved(payload);
-          toast.success(t('toast.save.success'));
-        },
-        onError: (e) => toast.error((e as Error).message),
-      }
-    );
-  }
-
-  return (
-    <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
-      <div className='flex items-center justify-between gap-4'>
-        <div className='min-w-0'>
-          <Label className='text-13'>
-            {labelFor(field.label, i18n.language)}
-          </Label>
-          <div className='font-mono text-11 text-fg-2'>{field.key}</div>
-        </div>
-        <div className='flex shrink-0 gap-1'>
-          {dirty && (
-            <Button
-              type='button'
-              variant='ghost'
-              size='sm'
-              onClick={() => setDraft(initial)}
-            >
-              {t('action.revert')}
-            </Button>
-          )}
-          <Button
-            type='button'
-            size='sm'
-            disabled={!dirty || update.isPending}
-            onClick={save}
-          >
-            {update.isPending
-              ? t('action.saving')
-              : dirty
-                ? t('action.save')
-                : t('action.saved')}
-          </Button>
-        </div>
-      </div>
-      {long ? (
-        <Textarea
-          rows={field.kind === 'json' ? 8 : 4}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          className={field.kind === 'json' ? 'font-mono text-12' : undefined}
-        />
-      ) : (
-        <Input
-          type={field.kind === 'number' ? 'number' : 'text'}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-      )}
-      {field.help && (
-        <p className='text-12 text-fg-2'>{labelFor(field.help, i18n.language)}</p>
-      )}
-    </div>
-  );
-}
-
-function SecretRow({ field }: { field: FieldDef }) {
-  const { t, i18n } = useTranslation('settings');
-  const update = useUpdateOption();
-  const [draft, setDraft] = useState('');
-
-  function save() {
-    if (!draft) return;
-    update.mutate(
-      { key: field.key, value: draft },
-      {
-        onSuccess: () => {
-          setDraft('');
-          toast.success(t('toast.save.success'));
-        },
-        onError: (e) => toast.error((e as Error).message),
-      }
-    );
-  }
-
-  return (
-    <div className='flex items-end justify-between gap-4 border-b border-line py-3 last:border-b-0'>
-      <div className='min-w-0 flex-1 space-y-1'>
-        <Label className='text-13'>
-          {labelFor(field.label, i18n.language)}
-        </Label>
-        <div className='font-mono text-11 text-fg-2'>{field.key}</div>
-        <Input
-          type='password'
-          placeholder={t('secrets.placeholder')}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-      </div>
-      <Button
-        type='button'
-        size='sm'
-        disabled={!draft || update.isPending}
-        onClick={save}
-      >
-        {update.isPending ? t('action.saving') : t('action.save')}
-      </Button>
-    </div>
-  );
-}
 
 function FieldList({
   fields,
@@ -305,8 +38,7 @@ function FieldList({
   const filtered = useMemo(() => {
     const present = fields.filter((f) => {
       // In the ratios tab, per-model fields are owned by ModelPricingPanel
-      if (isRatios && MODEL_PRICING_KEYS.includes(f.key as never))
-        return false;
+      if (isRatios && MODEL_PRICING_KEYS.includes(f.key as never)) return false;
       return Object.prototype.hasOwnProperty.call(values, f.key);
     });
     if (!searchTerm) return present;
@@ -322,9 +54,7 @@ function FieldList({
   const showModelPanel =
     isRatios &&
     !searchTerm &&
-    MODEL_PRICING_KEYS.some((k) =>
-      Object.prototype.hasOwnProperty.call(values, k)
-    );
+    MODEL_PRICING_KEYS.some((k) => Object.prototype.hasOwnProperty.call(values, k));
 
   if (filtered.length === 0 && !showModelPanel) {
     return (
@@ -343,56 +73,56 @@ function FieldList({
       )}
       {filtered.length > 0 && (
         <div className='rounded-md border border-line bg-bg-1 px-4'>
-      {filtered.map((f) => {
-        if (f.kind === 'bool') {
-          return (
-            <BoolRow
-              key={f.key}
-              field={f}
-              value={values[f.key]!}
-              onSaved={(next) => onSaved(f.key, next)}
-            />
-          );
-        }
-        if (f.kind === 'select') {
-          return (
-            <SelectRow
-              key={f.key}
-              field={f}
-              value={values[f.key]!}
-              onSaved={(next) => onSaved(f.key, next)}
-            />
-          );
-        }
-        if (f.kind === 'kvMap') {
-          return (
-            <KvMapEditor
-              key={f.key}
-              field={f}
-              value={values[f.key]!}
-              onSaved={(next) => onSaved(f.key, next)}
-            />
-          );
-        }
-        if (f.kind === 'stringList') {
-          return (
-            <StringListEditor
-              key={f.key}
-              field={f}
-              value={values[f.key]!}
-              onSaved={(next) => onSaved(f.key, next)}
-            />
-          );
-        }
-        return (
-          <TextRow
-            key={f.key}
-            field={f}
-            value={values[f.key]!}
-            onSaved={(next) => onSaved(f.key, next)}
-          />
-        );
-      })}
+          {filtered.map((f) => {
+            if (f.kind === 'bool') {
+              return (
+                <BoolRow
+                  key={f.key}
+                  field={f}
+                  value={values[f.key]!}
+                  onSaved={(next) => onSaved(f.key, next)}
+                />
+              );
+            }
+            if (f.kind === 'select') {
+              return (
+                <SelectRow
+                  key={f.key}
+                  field={f}
+                  value={values[f.key]!}
+                  onSaved={(next) => onSaved(f.key, next)}
+                />
+              );
+            }
+            if (f.kind === 'kvMap') {
+              return (
+                <KvMapEditor
+                  key={f.key}
+                  field={f}
+                  value={values[f.key]!}
+                  onSaved={(next) => onSaved(f.key, next)}
+                />
+              );
+            }
+            if (f.kind === 'stringList') {
+              return (
+                <StringListEditor
+                  key={f.key}
+                  field={f}
+                  value={values[f.key]!}
+                  onSaved={(next) => onSaved(f.key, next)}
+                />
+              );
+            }
+            return (
+              <TextRow
+                key={f.key}
+                field={f}
+                value={values[f.key]!}
+                onSaved={(next) => onSaved(f.key, next)}
+              />
+            );
+          })}
         </div>
       )}
     </div>
@@ -413,8 +143,7 @@ function AdvancedList({
     if (!searchTerm) return unknown;
     const q = searchTerm.toLowerCase();
     return unknown.filter(
-      (o) =>
-        o.key.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+      (o) => o.key.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
     );
   }, [unknown, searchTerm]);
 
@@ -475,9 +204,7 @@ function TabLink({
       type='button'
       onClick={onClick}
       className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-13 ${
-        active
-          ? 'bg-bg-1 text-fg-0'
-          : 'text-fg-1 hover:bg-bg-1'
+        active ? 'bg-bg-1 text-fg-0' : 'text-fg-1 hover:bg-bg-1'
       }`}
     >
       <span className='truncate'>{children}</span>
@@ -518,9 +245,7 @@ export function SettingsAdminPage() {
   const groupCounts = useMemo(() => {
     const m: Record<string, number> = {};
     for (const g of SETTINGS_GROUPS) {
-      m[g.id] = g.fields.filter((f) =>
-        Object.prototype.hasOwnProperty.call(values, f.key)
-      ).length;
+      m[g.id] = g.fields.filter((f) => Object.prototype.hasOwnProperty.call(values, f.key)).length;
     }
     return m;
   }, [values]);
@@ -619,11 +344,7 @@ export function SettingsAdminPage() {
                 ))}
               </div>
             ) : activeTab === ADVANCED_TAB ? (
-              <AdvancedList
-                unknown={unknown}
-                onSaved={onSaved}
-                searchTerm={keyword}
-              />
+              <AdvancedList unknown={unknown} onSaved={onSaved} searchTerm={keyword} />
             ) : activeGroup ? (
               <FieldList
                 groupId={activeGroup.id}

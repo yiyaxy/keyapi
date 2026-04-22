@@ -1,66 +1,293 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
+  BoolRow,
+  type FieldMutation,
+  labelFor,
+  type OverrideMeta,
+  SecretRow,
+  SelectRow,
+  TextRow,
+} from '@/components/settings/FieldRows';
+import { KvMapEditor } from '@/components/settings/KvMapEditor';
+import { StringListEditor } from '@/components/settings/StringListEditor';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import {
   useDeleteTenantConfig,
   useSetTenantConfig,
   useTenantConfig,
-  type TenantConfigItem,
 } from '@/hooks/useTenantConfig';
+import { SETTINGS_GROUPS, type FieldDef, type Group } from '@/lib/settingsSchema';
 
-export function TenantConfigPage() {
-  const { t } = useTranslation('tenant');
-  const config = useTenantConfig();
-  const setOverride = useSetTenantConfig();
-  const deleteOverride = useDeleteTenantConfig();
-  const [editing, setEditing] = useState<TenantConfigItem | null>(null);
-  const [draft, setDraft] = useState('');
+type TabId = string;
 
-  const items = config.data ?? [];
+// 租户专属字段：白名单里存在但平台 SETTINGS_GROUPS 没收录的，单独成组
+const TENANT_EXTRA_GROUP: Group = {
+  id: 'tenant_notify',
+  title: { zh: '通知与告警', en: 'Notifications' },
+  fields: [
+    {
+      key: 'WebhookURL',
+      kind: 'text',
+      label: { zh: '告警 Webhook URL', en: 'Alert webhook URL' },
+      help: {
+        zh: '租户级告警将向此 URL 发送 POST 通知',
+        en: 'Tenant-level alerts POST to this URL',
+      },
+    },
+    {
+      key: 'WebhookSecret',
+      kind: 'secret',
+      label: { zh: 'Webhook 签名密钥', en: 'Webhook signing secret' },
+      help: {
+        zh: '用于 HMAC 签名 webhook payload',
+        en: 'HMAC secret for signing webhook payloads',
+      },
+    },
+  ],
+};
 
-  function openEdit(item: TenantConfigItem) {
-    setEditing(item);
-    setDraft(item.value);
-  }
+const ALL_GROUPS: Group[] = [...SETTINGS_GROUPS, TENANT_EXTRA_GROUP];
 
-  async function save() {
-    if (!editing) return;
-    try {
-      await setOverride.mutateAsync({ key: editing.key, value: draft });
-      toast.success(t('config.edit.success'));
-      setEditing(null);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
+function TabLink({
+  active,
+  onClick,
+  children,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  count: number;
+}) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-13 ${
+        active ? 'bg-bg-1 text-fg-0' : 'text-fg-1 hover:bg-bg-1'
+      }`}
+    >
+      <span className='truncate'>{children}</span>
+      <span className='shrink-0 text-11 text-fg-2'>{count}</span>
+    </button>
+  );
+}
 
-  function reset(item: TenantConfigItem) {
-    deleteOverride.mutate(item.key, {
-      onSuccess: () => toast.success(t('config.reset.success')),
-      onError: (e) => toast.error((e as Error).message),
-    });
+function FieldList({
+  fields,
+  values,
+  overridden,
+  searchTerm,
+  mutation,
+  onResetKey,
+  resetPendingKey,
+  onSavedLocal,
+}: {
+  fields: FieldDef[];
+  values: Record<string, string>;
+  overridden: Set<string>;
+  searchTerm: string;
+  mutation: FieldMutation;
+  onResetKey: (key: string) => void;
+  resetPendingKey: string | null;
+  onSavedLocal: (key: string, next: string) => void;
+}) {
+  const { t } = useTranslation('settings');
+  const filtered = useMemo(() => {
+    if (!searchTerm) return fields;
+    const q = searchTerm.toLowerCase();
+    return fields.filter(
+      (f) =>
+        f.key.toLowerCase().includes(q) ||
+        f.label.zh.toLowerCase().includes(q) ||
+        f.label.en.toLowerCase().includes(q)
+    );
+  }, [fields, searchTerm]);
+
+  if (filtered.length === 0) {
+    return (
+      <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
+        {searchTerm ? t('empty.search') : t('empty.group')}
+      </div>
+    );
   }
 
   return (
-    <div className='max-w-5xl space-y-4'>
+    <div className='rounded-md border border-line bg-bg-1 px-4'>
+      {filtered.map((f) => {
+        const meta: OverrideMeta = {
+          isOverridden: overridden.has(f.key),
+          onReset: () => onResetKey(f.key),
+          resetPending: resetPendingKey === f.key,
+        };
+        const value = values[f.key] ?? '';
+        const onSaved = (next: string) => onSavedLocal(f.key, next);
+        if (f.kind === 'bool') {
+          return (
+            <BoolRow
+              key={f.key}
+              field={f}
+              value={value}
+              onSaved={onSaved}
+              mutation={mutation}
+              overrideMeta={meta}
+            />
+          );
+        }
+        if (f.kind === 'select') {
+          return (
+            <SelectRow
+              key={f.key}
+              field={f}
+              value={value}
+              onSaved={onSaved}
+              mutation={mutation}
+              overrideMeta={meta}
+            />
+          );
+        }
+        if (f.kind === 'kvMap') {
+          return (
+            <KvMapEditor
+              key={f.key}
+              field={f}
+              value={value}
+              onSaved={onSaved}
+              mutation={mutation}
+              overrideMeta={meta}
+            />
+          );
+        }
+        if (f.kind === 'stringList') {
+          return (
+            <StringListEditor
+              key={f.key}
+              field={f}
+              value={value}
+              onSaved={onSaved}
+              mutation={mutation}
+              overrideMeta={meta}
+            />
+          );
+        }
+        if (f.kind === 'secret') {
+          return <SecretRow key={f.key} field={f} mutation={mutation} overrideMeta={meta} />;
+        }
+        return (
+          <TextRow
+            key={f.key}
+            field={f}
+            value={value}
+            onSaved={onSaved}
+            mutation={mutation}
+            overrideMeta={meta}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+export function TenantConfigPage() {
+  const { t, i18n } = useTranslation('tenant');
+  const tSettings = useTranslation('settings').t;
+  const config = useTenantConfig();
+  const setOverride = useSetTenantConfig();
+  const deleteOverride = useDeleteTenantConfig();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [keyword, setKeyword] = useState('');
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [pendingResetKey, setPendingResetKey] = useState<string | null>(null);
+
+  const items = config.data ?? [];
+
+  // 后端按白名单返回 items；这就是当前租户能见的全部 key
+  const allowed = useMemo(() => new Set(items.map((i) => i.key)), [items]);
+
+  const values: Record<string, string> = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const it of items) m[it.key] = it.value;
+    return { ...m, ...overrides };
+  }, [items, overrides]);
+
+  const overriddenSet = useMemo(
+    () => new Set(items.filter((i) => i.overridden).map((i) => i.key)),
+    [items]
+  );
+
+  // 按 group 过滤：只保留白名单内的字段
+  const visibleGroups = useMemo(() => {
+    return ALL_GROUPS.map((g) => ({
+      group: g,
+      fields: g.fields.filter((f) => allowed.has(f.key)),
+    })).filter((g) => g.fields.length > 0);
+  }, [allowed]);
+
+  const firstGroupId = visibleGroups[0]?.group.id ?? '';
+  const activeTab: TabId = searchParams.get('tab') ?? firstGroupId;
+
+  function setActiveTab(id: TabId) {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', id);
+    setSearchParams(next, { replace: true });
+  }
+
+  const activeGroup = visibleGroups.find((g) => g.group.id === activeTab);
+  const activeTitle = activeGroup ? labelFor(activeGroup.group.title, i18n.language) : '';
+
+  // 适配 FieldMutation：useSetTenantConfig 接口已匹配（mutate {key,value}, isPending）
+  const mutation: FieldMutation = useMemo(
+    () => ({
+      mutate: (vars, opts) =>
+        setOverride.mutate(
+          { key: vars.key, value: String(vars.value) },
+          {
+            onSuccess: () => opts?.onSuccess?.(),
+            onError: (e) => opts?.onError?.(e),
+          }
+        ),
+      isPending: setOverride.isPending,
+    }),
+    [setOverride]
+  );
+
+  function onResetKey(key: string) {
+    setPendingResetKey(key);
+    deleteOverride.mutate(key, {
+      onSuccess: () => {
+        setPendingResetKey(null);
+        // 清掉本地 override 缓存以便从服务端重读
+        setOverrides((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        toast.success(t('config.reset.success'));
+      },
+      onError: (e) => {
+        setPendingResetKey(null);
+        toast.error((e as Error).message);
+      },
+    });
+  }
+
+  function onSavedLocal(key: string, next: string) {
+    setOverrides((prev) => ({ ...prev, [key]: next }));
+  }
+
+  return (
+    <div className='space-y-4'>
       <header>
         <h1 className='text-20 font-semibold'>{t('config.title')}</h1>
         <p className='mt-1 text-13 text-fg-2'>{t('config.sub')}</p>
       </header>
+
       {config.isError && (
         <InlineBanner
           level='danger'
@@ -68,107 +295,60 @@ export function TenantConfigPage() {
           onClose={() => void config.refetch()}
         />
       )}
+
       {config.isPending ? (
-        <div className='space-y-2'>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className='h-10 w-full' />
+        <div className='space-y-3'>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className='h-20 w-full' />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : visibleGroups.length === 0 ? (
         <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
           {t('config.empty')}
         </div>
       ) : (
-        <div className='overflow-x-auto rounded-md border border-line'>
-          <table className='w-full border-collapse'>
-            <thead>
-              <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
-                <th className='px-3 py-2 font-medium'>{t('config.col.key')}</th>
-                <th className='px-3 py-2 font-medium'>{t('config.col.value')}</th>
-                <th className='px-3 py-2 font-medium'>{t('config.col.source')}</th>
-                <th className='px-3 py-2' />
-              </tr>
-            </thead>
-            <tbody>
-              {items
-                .slice()
-                .sort((a, b) => a.key.localeCompare(b.key))
-                .map((item) => (
-                  <tr key={item.key} className='border-b border-line text-13 hover:bg-bg-1'>
-                    <td className='px-3 py-2 font-mono text-12'>{item.key}</td>
-                    <td className='max-w-[400px] px-3 py-2 font-mono text-12'>
-                      <div className='truncate'>
-                        {item.value || <span className='text-fg-2'>—</span>}
-                      </div>
-                    </td>
-                    <td className='px-3 py-2'>
-                      <Badge variant={item.overridden ? 'default' : 'outline'}>
-                        {t(item.overridden ? 'config.source.override' : 'config.source.platform')}
-                      </Badge>
-                    </td>
-                    <td className='px-3 py-2'>
-                      <div className='flex gap-1'>
-                        <Button
-                          type='button'
-                          variant='ghost'
-                          size='sm'
-                          onClick={() => openEdit(item)}
-                        >
-                          {t('config.action.edit')}
-                        </Button>
-                        {item.overridden && (
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='sm'
-                            className='text-danger'
-                            onClick={() => reset(item)}
-                            disabled={deleteOverride.isPending}
-                          >
-                            {t('config.action.reset')}
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className='max-w-[520px]'>
-          {editing && (
-            <>
-              <DialogHeader>
-                <DialogTitle className='font-mono text-15'>
-                  {t('config.edit.title', { key: editing.key })}
-                </DialogTitle>
-              </DialogHeader>
-              <div className='space-y-3'>
-                <div className='space-y-2'>
-                  <Label htmlFor='cfg-value'>{t('config.edit.value')}</Label>
-                  <Textarea
-                    id='cfg-value'
-                    rows={6}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    className='font-mono text-12'
-                  />
-                </div>
+        <>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Input
+              className='max-w-xs'
+              placeholder={tSettings('search.placeholder')}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+          </div>
+          <div className='grid gap-4 md:grid-cols-[220px_1fr]'>
+            <aside className='space-y-1 rounded-md border border-line bg-bg-0 p-2'>
+              {visibleGroups.map((g) => (
+                <TabLink
+                  key={g.group.id}
+                  active={activeTab === g.group.id}
+                  onClick={() => setActiveTab(g.group.id)}
+                  count={g.fields.length}
+                >
+                  {labelFor(g.group.title, i18n.language)}
+                </TabLink>
+              ))}
+            </aside>
+            <div className='min-w-0 space-y-3'>
+              <div>
+                <h2 className='text-16 font-semibold'>{activeTitle}</h2>
               </div>
-              <DialogFooter>
-                <Button type='button' variant='secondary' onClick={() => setEditing(null)}>
-                  {t('config.edit.cancel')}
-                </Button>
-                <Button type='button' onClick={() => void save()} disabled={setOverride.isPending}>
-                  {t('config.edit.save')}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+              {activeGroup ? (
+                <FieldList
+                  fields={activeGroup.fields}
+                  values={values}
+                  overridden={overriddenSet}
+                  searchTerm={keyword}
+                  mutation={mutation}
+                  onResetKey={onResetKey}
+                  resetPendingKey={pendingResetKey}
+                  onSavedLocal={onSavedLocal}
+                />
+              ) : null}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

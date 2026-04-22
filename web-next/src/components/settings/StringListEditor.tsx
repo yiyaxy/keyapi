@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { FieldMutation, OverrideMeta } from '@/components/settings/FieldRows';
 import { useUpdateOption } from '@/hooks/useOptions';
 import type { FieldDef } from '@/lib/settingsSchema';
 
@@ -25,24 +27,25 @@ export function StringListEditor({
   field,
   value,
   onSaved,
+  mutation,
+  overrideMeta,
 }: {
   field: FieldDef;
   value: string;
   onSaved: (next: string) => void;
+  mutation?: FieldMutation;
+  overrideMeta?: OverrideMeta;
 }) {
   const { t, i18n } = useTranslation('settings');
-  const update = useUpdateOption();
+  const fallback = useUpdateOption();
+  const update = mutation ?? fallback;
   const initial = useMemo(() => parseList(value), [value]);
   const [items, setItems] = useState<string[]>(initial);
   const [input, setInput] = useState('');
 
   const lang = i18n.language;
   const label = lang.startsWith('zh') ? field.label.zh : field.label.en;
-  const help = field.help
-    ? lang.startsWith('zh')
-      ? field.help.zh
-      : field.help.en
-    : '';
+  const help = field.help ? (lang.startsWith('zh') ? field.help.zh : field.help.en) : '';
 
   const dirty = useMemo(() => {
     if (items.length !== initial.length) return true;
@@ -88,33 +91,41 @@ export function StringListEditor({
   return (
     <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
       <div className='flex items-center justify-between gap-4'>
-        <div className='min-w-0'>
-          <Label className='text-13'>{label}</Label>
+        <div className='min-w-0 flex-1'>
+          <div className='flex items-center gap-2'>
+            <Label className='text-13'>{label}</Label>
+            {overrideMeta && (
+              <Badge
+                variant={overrideMeta.isOverridden ? 'default' : 'outline'}
+                className='text-10'
+              >
+                {t(overrideMeta.isOverridden ? 'override.tenant' : 'override.platform')}
+              </Badge>
+            )}
+          </div>
           <div className='font-mono text-11 text-fg-2'>{field.key}</div>
           {help && <div className='mt-1 text-12 text-fg-2'>{help}</div>}
         </div>
         <div className='flex shrink-0 gap-1'>
           {dirty && (
+            <Button type='button' variant='ghost' size='sm' onClick={() => setItems(initial)}>
+              {t('action.revert')}
+            </Button>
+          )}
+          {overrideMeta?.isOverridden && (
             <Button
               type='button'
               variant='ghost'
               size='sm'
-              onClick={() => setItems(initial)}
+              className='text-danger'
+              disabled={overrideMeta.resetPending}
+              onClick={overrideMeta.onReset}
             >
-              {t('action.revert')}
+              {t('action.reset')}
             </Button>
           )}
-          <Button
-            type='button'
-            size='sm'
-            disabled={!dirty || update.isPending}
-            onClick={save}
-          >
-            {update.isPending
-              ? t('action.saving')
-              : dirty
-                ? t('action.save')
-                : t('action.saved')}
+          <Button type='button' size='sm' disabled={!dirty || update.isPending} onClick={save}>
+            {update.isPending ? t('action.saving') : dirty ? t('action.save') : t('action.saved')}
           </Button>
         </div>
       </div>

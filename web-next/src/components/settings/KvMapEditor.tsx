@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { FieldMutation, OverrideMeta } from '@/components/settings/FieldRows';
 import { useUpdateOption } from '@/hooks/useOptions';
 import type { FieldDef } from '@/lib/settingsSchema';
 
@@ -57,13 +59,18 @@ export function KvMapEditor({
   field,
   value,
   onSaved,
+  mutation,
+  overrideMeta,
 }: {
   field: FieldDef;
   value: string;
   onSaved: (next: string) => void;
+  mutation?: FieldMutation;
+  overrideMeta?: OverrideMeta;
 }) {
   const { t, i18n } = useTranslation('settings');
-  const update = useUpdateOption();
+  const fallback = useUpdateOption();
+  const update = mutation ?? fallback;
   const [filter, setFilter] = useState('');
 
   const initialRows = useMemo(() => toRows(parseMap(value)), [value]);
@@ -94,10 +101,7 @@ export function KvMapEditor({
   const filteredRows = useMemo(() => {
     if (!filter) return rows;
     const q = filter.toLowerCase();
-    return rows.filter(
-      (r) =>
-        r.k.toLowerCase().includes(q) || r.v.toLowerCase().includes(q)
-    );
+    return rows.filter((r) => r.k.toLowerCase().includes(q) || r.v.toLowerCase().includes(q));
   }, [rows, filter]);
 
   function updateRow(id: string, patch: Partial<Row>) {
@@ -130,19 +134,25 @@ export function KvMapEditor({
     setRows(initialRows);
   }
 
-  const help = field.help
-    ? lang.startsWith('zh')
-      ? field.help.zh
-      : field.help.en
-    : '';
+  const help = field.help ? (lang.startsWith('zh') ? field.help.zh : field.help.en) : '';
 
   return (
     <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
       <div className='flex items-center justify-between gap-4'>
-        <div className='min-w-0'>
-          <Label className='text-13'>
-            {lang.startsWith('zh') ? field.label.zh : field.label.en}
-          </Label>
+        <div className='min-w-0 flex-1'>
+          <div className='flex items-center gap-2'>
+            <Label className='text-13'>
+              {lang.startsWith('zh') ? field.label.zh : field.label.en}
+            </Label>
+            {overrideMeta && (
+              <Badge
+                variant={overrideMeta.isOverridden ? 'default' : 'outline'}
+                className='text-10'
+              >
+                {t(overrideMeta.isOverridden ? 'override.tenant' : 'override.platform')}
+              </Badge>
+            )}
+          </div>
           <div className='font-mono text-11 text-fg-2'>{field.key}</div>
           {help && <div className='mt-1 text-12 text-fg-2'>{help}</div>}
         </div>
@@ -152,17 +162,20 @@ export function KvMapEditor({
               {t('action.revert')}
             </Button>
           )}
-          <Button
-            type='button'
-            size='sm'
-            disabled={!dirty || update.isPending}
-            onClick={save}
-          >
-            {update.isPending
-              ? t('action.saving')
-              : dirty
-                ? t('action.save')
-                : t('action.saved')}
+          {overrideMeta?.isOverridden && (
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              className='text-danger'
+              disabled={overrideMeta.resetPending}
+              onClick={overrideMeta.onReset}
+            >
+              {t('action.reset')}
+            </Button>
+          )}
+          <Button type='button' size='sm' disabled={!dirty || update.isPending} onClick={save}>
+            {update.isPending ? t('action.saving') : dirty ? t('action.save') : t('action.saved')}
           </Button>
         </div>
       </div>
