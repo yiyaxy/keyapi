@@ -285,10 +285,15 @@ export function ChannelFormDialog({
   open,
   channel,
   onOpenChange,
+  forceScope,
 }: {
   open: boolean;
   channel: Channel | null;
   onOpenChange: (o: boolean) => void;
+  // When set, overrides the auto role-based tenantView decision and pins
+  // the dialog to a single scope. Used by PlatformChannelsAdmin to route
+  // through /api/channel/ and inject scope="platform" on create.
+  forceScope?: 'platform' | 'tenant';
 }) {
   const { t } = useTranslation('channels');
   const { user } = useAuth();
@@ -297,7 +302,14 @@ export function ChannelFormDialog({
   const adminGroups = useAdminGroups();
   const channelTypeModels = useChannelTypeModels();
   const isEdit = Boolean(channel);
-  const tenantView = !(user && Math.max(user.role, user.platform_role) >= 100);
+  const effectiveScope: 'platform' | 'tenant' =
+    forceScope ?? (channel?.scope === 'platform' ? 'platform' : 'tenant');
+  // Platform-scoped writes must go through /api/channel/ (RootAuth).
+  // Tenant-scoped writes fall back to the original role-based decision.
+  const tenantView =
+    effectiveScope === 'platform'
+      ? false
+      : !(user && Math.max(user.role, user.platform_role) >= 100);
   const [modelSearch, setModelSearch] = useState('');
 
   const form = useForm<Values>({
@@ -349,7 +361,11 @@ export function ChannelFormDialog({
         await update.mutateAsync(updatePayload);
       } else {
         await create.mutateAsync({
-          input: { ...payload, key: values.key },
+          input: {
+            ...payload,
+            key: values.key,
+            ...(effectiveScope === 'platform' ? { scope: 'platform' as const } : {}),
+          },
           opts: {
             mode: values.mode,
             multi_key_mode: values.multi_key_mode,
