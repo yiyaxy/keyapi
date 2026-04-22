@@ -17,7 +17,10 @@ type Ability struct {
 	Group     string  `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
 	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
 	ChannelId int     `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
-	TenantId  int     `json:"tenant_id" gorm:"index;not null;default:1"`
+	// 对称 Channel.TenantId：tenant_id=0 是平台 ability 合法业务值。
+	// 当前写入走 createAbilityRows 的 map-based 路径（tag 不生效），
+	// default:0 主要是保证 AutoMigrate 生成的 DDL 默认值语义一致。
+	TenantId  int     `json:"tenant_id" gorm:"index;not null;default:0"`
 	Enabled   bool    `json:"enabled"`
 	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
 	Weight    uint    `json:"weight" gorm:"default:0;index"`

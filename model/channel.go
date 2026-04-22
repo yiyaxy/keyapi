@@ -25,7 +25,11 @@ const (
 
 type Channel struct {
 	Id                 int     `json:"id"`
-	TenantId           int     `json:"tenant_id" gorm:"index;not null;default:1"`
+	// tenant_id=0 是"平台渠道"的合法业务值。default 故意写 0 而不是
+	// DefaultTenantId：GORM 的零值替换会用 DefaultValueInterface 覆盖零值
+	// 字段，若 default:1，TenantId=0 会被悄悄改写成 1（破坏平台渠道语义）。
+	// 租户渠道路径由 tenantGuardCreate 从 context 自动回填，不依赖此 default。
+	TenantId           int     `json:"tenant_id" gorm:"index;not null;default:0"`
 	Type               int     `json:"type" gorm:"default:0"`
 	Key                string  `json:"key" gorm:"not null"`
 	OpenAIOrganization *string `json:"openai_organization"`
@@ -575,20 +579,6 @@ func batchInsertChannels(db *gorm.DB, channels []Channel) (retErr error) {
 		if err := tx.Create(&chunk).Error; err != nil {
 			tx.Rollback()
 			return err
-		}
-		// 平台渠道 TenantId=0 是合法语义，但 Channel 结构体上带了
-		// `default:1` GORM tag：GORM 的零值替换逻辑优先级高于 Select，
-		// INSERT 会把 0 改写成 1。Create 完成后对平台行做一次补偿
-		// UPDATE，把 tenant_id 拉回 0；用 tx（外层已 bypass）避开守门员。
-		for i, ch := range chunk {
-			if ch.Scope != ChannelScopePlatform {
-				continue
-			}
-			if err := tx.Model(&Channel{}).Where("id = ?", ch.Id).Update("tenant_id", 0).Error; err != nil {
-				tx.Rollback()
-				return err
-			}
-			chunk[i].TenantId = 0 // 同步结构体，后续 AddAbilities 依赖此值
 		}
 		for _, channel_ := range chunk {
 			if err := channel_.AddAbilities(tx); err != nil {
