@@ -29,6 +29,148 @@ const MODEL_FIELDS = [
 
 type MapOfMaps = Record<string, Record<string, number>>;
 
+// 计费公式（来自 service/quota.go）：
+//   QuotaPerUnit = 500_000（1 USD = 50 万 quota）
+//
+//   模式 A（ModelPrice > 0，按次）：
+//     quota = ModelPrice × QuotaPerUnit × GroupRatio
+//     => 每次调用花费 = ModelPrice × GroupRatio (USD)
+//
+//   模式 B（ModelPrice = 0，按 token）：
+//     quota = (inputTokens + outputTokens × CompletionRatio + ...) × ModelRatio × GroupRatio
+//     每 1M tokens USD = 1_000_000 / 500_000 × <倍率链> = 2 × <倍率链>
+//
+// 预览里 GroupRatio 统一按 1 算，管理员调整倍率时能快速看到"每 1M 多少钱"。
+const QUOTA_PER_UNIT = 500_000;
+const TOKENS_PER_MILLION = 1_000_000;
+const USD_PER_MILLION_FACTOR = TOKENS_PER_MILLION / QUOTA_PER_UNIT; // = 2
+
+function parseNum(raw: string | undefined): number | null {
+  if (raw === undefined || raw === '') return null;
+  const n = Number(String(raw).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function fmtUSD(v: number): string {
+  if (v === 0) return '$0';
+  const abs = Math.abs(v);
+  if (abs < 0.01) return `$${v.toFixed(6)}`;
+  if (abs < 1) return `$${v.toFixed(4)}`;
+  return `$${v.toFixed(2)}`;
+}
+
+function PricingPreview({
+  draft,
+  lang,
+}: {
+  draft: Record<string, string>;
+  lang: string;
+}) {
+  const zh = lang.startsWith('zh');
+  const tt = (z: string, e: string) => (zh ? z : e);
+
+  const price = parseNum(draft.ModelPrice);
+  const ratio = parseNum(draft.ModelRatio);
+  const completion = parseNum(draft.CompletionRatio);
+  const cache = parseNum(draft.CacheRatio);
+  const createCache = parseNum(draft.CreateCacheRatio);
+
+  // 模式 A：ModelPrice > 0 → 按次计费
+  if (price !== null && price > 0) {
+    return (
+      <div className='space-y-1.5 rounded-md border border-line bg-bg-1 p-3'>
+        <div className='flex items-center gap-2 text-12 font-medium text-fg-0'>
+          <span className='rounded bg-accent px-1.5 py-0.5 text-11 text-bg-0'>
+            {tt('按次计费', 'Per-call')}
+          </span>
+          {tt('费用预览（GroupRatio = 1）', 'Cost preview (GroupRatio = 1)')}
+        </div>
+        <div className='font-mono text-14 tabular-nums text-fg-0'>
+          {fmtUSD(price)}{' '}
+          <span className='text-11 text-fg-2'>
+            / {tt('每次调用', 'per call')}
+          </span>
+        </div>
+        <div className='text-11 text-fg-2'>
+          {tt(
+            '按次模式下 token 倍率不生效；实际计费会再乘分组倍率。',
+            'In per-call mode, token ratios are ignored; actual cost also multiplies by group ratio.'
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 模式 B：需要至少填了 ModelRatio
+  if (ratio === null) {
+    return (
+      <div className='rounded-md border border-dashed border-line bg-bg-1 p-3'>
+        <div className='text-12 text-fg-2'>
+          {tt(
+            '填写"模型倍率"后显示每 1M tokens 的费用预览',
+            'Set "Ratio" to see per-1M-tokens cost preview'
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const inputUSD = USD_PER_MILLION_FACTOR * ratio;
+  const outputUSD =
+    completion !== null ? USD_PER_MILLION_FACTOR * ratio * completion : null;
+  const cacheReadUSD =
+    cache !== null ? USD_PER_MILLION_FACTOR * ratio * cache : null;
+  const cacheWriteUSD =
+    createCache !== null
+      ? USD_PER_MILLION_FACTOR * ratio * createCache
+      : null;
+
+  const Row = ({
+    label,
+    value,
+  }: {
+    label: string;
+    value: number | null;
+  }) => (
+    <div className='flex items-baseline justify-between gap-2'>
+      <span className='text-11 text-fg-2'>{label}</span>
+      <span
+        className={`font-mono text-13 tabular-nums ${
+          value === null ? 'text-fg-2' : 'text-fg-0'
+        }`}
+      >
+        {value === null ? '—' : fmtUSD(value)}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className='space-y-2 rounded-md border border-line bg-bg-1 p-3'>
+      <div className='flex items-center gap-2 text-12 font-medium text-fg-0'>
+        <span className='rounded bg-accent px-1.5 py-0.5 text-11 text-bg-0'>
+          {tt('按 token 计费', 'Per-token')}
+        </span>
+        {tt(
+          '费用预览（每 1M tokens，GroupRatio = 1）',
+          'Cost preview (per 1M tokens, GroupRatio = 1)'
+        )}
+      </div>
+      <div className='grid grid-cols-2 gap-x-4 gap-y-1.5'>
+        <Row label={tt('输入', 'Input')} value={inputUSD} />
+        <Row label={tt('输出', 'Output')} value={outputUSD} />
+        <Row label={tt('缓存读取', 'Cache hit')} value={cacheReadUSD} />
+        <Row label={tt('缓存写入', 'Cache write')} value={cacheWriteUSD} />
+      </div>
+      <div className='text-11 text-fg-2'>
+        {tt(
+          '实际计费 = 预览值 × 分组倍率。此处假设分组倍率 = 1。',
+          'Actual cost = preview × group ratio; this assumes group ratio = 1.'
+        )}
+      </div>
+    </div>
+  );
+}
+
 function parseMap(raw: string | undefined): Record<string, number> {
   if (!raw) return {};
   try {
@@ -352,6 +494,7 @@ export function ModelPricingPanel({
                   </Button>
                 </div>
               </div>
+              <PricingPreview draft={draft} lang={lang} />
               <div className='grid gap-3 sm:grid-cols-2'>
                 {MODEL_FIELDS.map((f) => {
                   const label = lang.startsWith('zh')
