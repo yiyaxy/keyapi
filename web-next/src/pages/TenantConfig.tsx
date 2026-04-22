@@ -56,7 +56,7 @@ const SECRET_FIELD_BY_KEY = new Map(SECRET_FIELDS.map((field) => [field.key, fie
 
 const TENANT_SECRET_FIELDS_BY_GROUP: Record<string, string[]> = {
   login: ['TurnstileSecretKey'],
-  oauth: ['GitHubClientSecret', 'WeChatServerToken', 'TelegramBotToken'],
+  oauth: ['GitHubClientSecret', 'LinuxDOClientSecret', 'WeChatServerToken', 'TelegramBotToken'],
   smtp: ['SMTPToken'],
   invoice: ['InvoicePiaoTong3DESKey', 'InvoicePiaoTongPrivateKey', 'InvoicePiaoTongPublicKey'],
 };
