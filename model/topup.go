@@ -389,11 +389,6 @@ func ManualCompleteTopUp(tradeNo string) error {
 // ProcessTopUpRebate 处理充值返利逻辑
 // 当被邀请者充值成功时，检查是否满足返利条件，给邀请者发放返利
 func ProcessTopUpRebate(userId int, quotaAdded int) {
-	// 检查全局配置是否启用（作为默认值的快速检查）
-	if common.TopUpRebateCount == 0 || common.TopUpRebatePercent <= 0 {
-		// 全局未启用，但可能有个性化设置，继续检查
-	}
-
 	// 获取用户信息
 	user, err := GetUserByIdGlobal(userId, true)
 	if err != nil {
@@ -407,7 +402,7 @@ func ProcessTopUpRebate(userId int, quotaAdded int) {
 	}
 
 	// 获取有效的返利设置（个性化 > 全局）
-	rebateSetting := GetEffectiveRebateSetting(user.InviterId)
+	rebateSetting := GetEffectiveRebateSetting(user.InviterId, user.TenantId)
 
 	// 检查返利是否启用
 	if rebateSetting.TopUpRebateCount == 0 || rebateSetting.TopUpRebatePercent <= 0 {

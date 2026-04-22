@@ -44,8 +44,9 @@ type wechatTopupRequest struct {
 //     req.Amount / QuotaPerUnit.
 //   - quotaDelta = authoritative raw quota to credit on success.
 func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountUnits int64, quotaDelta int64, err error) {
-	if amount < getMinTopup() {
-		return 0, 0, 0, fmt.Errorf("充值数量不能小于 %d", getMinTopup())
+	minTopup := getMinTopup(middleware.GetTenantId(c))
+	if amount < minTopup {
+		return 0, 0, 0, fmt.Errorf("充值数量不能小于 %d", minTopup)
 	}
 	userId := c.GetInt("id")
 	if userId <= 0 {

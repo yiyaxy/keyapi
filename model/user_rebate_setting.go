@@ -9,6 +9,31 @@ import (
 	"gorm.io/gorm"
 )
 
+func getTenantOptionIntDefault(tenantId int, key string, codeDefault int) int {
+	if tenantId > 0 {
+		if value, found := GetTenantOption(tenantId, key); found {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+				return parsed
+			}
+		}
+	}
+
+	common.OptionMapRWMutex.RLock()
+	value, ok := common.OptionMap[key]
+	common.OptionMapRWMutex.RUnlock()
+	if ok {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+			return parsed
+		}
+	}
+
+	return codeDefault
+}
+
+func getNewUserQuotaForTenant(tenantId int) int {
+	return getTenantOptionIntDefault(tenantId, "QuotaForNewUser", common.QuotaForNewUser)
+}
+
 type UserRebateSetting struct {
 	Id                      int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	InviterId               int    `json:"inviter_id" gorm:"uniqueIndex;not null"`
@@ -22,19 +47,19 @@ type UserRebateSetting struct {
 	UpdatedAt               int64  `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
-func GetDefaultRebateSetting(inviterId int) *UserRebateSetting {
+func GetDefaultRebateSetting(inviterId int, tenantId int) *UserRebateSetting {
 	return &UserRebateSetting{
 		InviterId:               inviterId,
-		RegisterReward:          common.QuotaForInviter,
-		InviteeReward:           common.QuotaForInvitee,
-		TopUpRebateCount:        common.TopUpRebateCount,
-		TopUpRebatePercent:      common.TopUpRebatePercent,
-		SubscriptionRebateCount: common.SubscriptionRebateCount,
+		RegisterReward:          getTenantOptionIntDefault(tenantId, "QuotaForInviter", common.QuotaForInviter),
+		InviteeReward:           getTenantOptionIntDefault(tenantId, "QuotaForInvitee", common.QuotaForInvitee),
+		TopUpRebateCount:        getTenantOptionIntDefault(tenantId, "TopUpRebateCount", common.TopUpRebateCount),
+		TopUpRebatePercent:      getTenantOptionIntDefault(tenantId, "TopUpRebatePercent", common.TopUpRebatePercent),
+		SubscriptionRebateCount: getTenantOptionIntDefault(tenantId, "SubscriptionRebateCount", common.SubscriptionRebateCount),
 	}
 }
 
-func GetEffectiveRebateSetting(inviterId int) *UserRebateSetting {
-	setting := GetDefaultRebateSetting(inviterId)
+func GetEffectiveRebateSetting(inviterId int, tenantId int) *UserRebateSetting {
+	setting := GetDefaultRebateSetting(inviterId, tenantId)
 	if inviterId <= 0 {
 		return setting
 	}

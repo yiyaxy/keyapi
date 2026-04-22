@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -62,7 +63,7 @@ func GetUserRebateSetting(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid id")
 		return
 	}
-	setting := model.GetEffectiveRebateSetting(id)
+	setting := model.GetEffectiveRebateSetting(id, middleware.GetTenantId(c))
 	common.ApiSuccess(c, setting)
 }
 

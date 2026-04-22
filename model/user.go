@@ -502,7 +502,8 @@ func (user *User) Insert(inviterId int) error {
 			return err
 		}
 	}
-	user.Quota = common.QuotaForNewUser
+	newUserQuota := getNewUserQuotaForTenant(user.TenantId)
+	user.Quota = newUserQuota
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
 
@@ -535,11 +536,11 @@ func (user *User) Insert(inviterId int) error {
 		}
 	}
 
-	if common.QuotaForNewUser > 0 {
-		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+	if newUserQuota > 0 {
+		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(newUserQuota)))
 	}
 	if inviterId != 0 {
-		rebateSetting := GetEffectiveRebateSetting(inviterId)
+		rebateSetting := GetEffectiveRebateSetting(inviterId, user.TenantId)
 		if rebateSetting.InviteeReward > 0 {
 			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
 			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
@@ -571,7 +572,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 	}
-	user.Quota = common.QuotaForNewUser
+	user.Quota = getNewUserQuotaForTenant(user.TenantId)
 	user.AffCode = common.GetRandomString(4)
 
 	// 初始化用户设置
@@ -591,6 +592,8 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
 // This should be called after the transaction commits successfully.
 func (user *User) FinalizeOAuthUserCreation(inviterId int) {
+	newUserQuota := getNewUserQuotaForTenant(user.TenantId)
+
 	// 用户创建成功后，根据角色初始化边栏配置
 	var createdUser User
 	if err := WithTenantBypass(DB).Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
@@ -604,17 +607,26 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 		}
 	}
 
-	if common.QuotaForNewUser > 0 {
-		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+	if newUserQuota > 0 {
+		RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(newUserQuota)))
 	}
 	if inviterId != 0 {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true, user.TenantId)
-			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+		rebateSetting := GetEffectiveRebateSetting(inviterId, user.TenantId)
+		if rebateSetting.InviteeReward > 0 {
+			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
+			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
-		if common.QuotaForInviter > 0 {
-			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId, common.QuotaForInviter)
+		if rebateSetting.RegisterReward > 0 {
+			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
+			_ = inviteUser(inviterId, rebateSetting.RegisterReward)
+			CreateAffRebateLog(&AffRebateLog{
+				UserId:      inviterId,
+				InviteeId:   user.Id,
+				InviteeName: user.Username,
+				Type:        AffRebateTypeRegister,
+				Quota:       rebateSetting.RegisterReward,
+				Remark:      fmt.Sprintf("邀请注册奖励 %s", logger.LogQuota(rebateSetting.RegisterReward)),
+			})
 		}
 	}
 }

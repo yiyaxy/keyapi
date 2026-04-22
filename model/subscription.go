@@ -818,7 +818,7 @@ func ProcessSubscriptionRebate(userId int, rewardAmountUSD float64, planTitle st
 	}
 
 	// 获取有效的返利设置（个性化 > 全局）
-	rebateSetting := GetEffectiveRebateSetting(user.InviterId)
+	rebateSetting := GetEffectiveRebateSetting(user.InviterId, user.TenantId)
 
 	// 检查订阅返利是否启用（0=关闭）
 	if rebateSetting.SubscriptionRebateCount == 0 {

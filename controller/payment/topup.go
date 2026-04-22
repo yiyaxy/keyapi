@@ -100,7 +100,7 @@ func GetTopUpInfo(c *gin.Context) {
 					"name":      "微信支付",
 					"type":      "wechat",
 					"color":     "rgba(var(--semi-green-5), 1)",
-					"min_topup": strconv.Itoa(int(operation_setting.MinTopUp)),
+					"min_topup": strconv.Itoa(service.GetConfigInt(tid, "MinTopUp", operation_setting.MinTopUp)),
 				})
 			}
 		}
@@ -120,7 +120,7 @@ func GetTopUpInfo(c *gin.Context) {
 		}(),
 		"creem_products":   setting.CreemProducts,
 		"pay_methods":      payMethods,
-		"min_topup":        operation_setting.MinTopUp,
+		"min_topup":        service.GetConfigInt(tid, "MinTopUp", operation_setting.MinTopUp),
 		"stripe_min_topup": setting.StripeMinTopUp,
 		"waffo_min_topup":  setting.WaffoMinTopUp,
 		"amount_options":   operation_setting.GetPaymentSetting().AmountOptions,
@@ -191,8 +191,15 @@ func getPayMoney(amount int64, group string) float64 {
 	return payMoney.InexactFloat64()
 }
 
-func getMinTopup() int64 {
-	minTopup := operation_setting.MinTopUp
+// getMinTopup returns the per-tenant minimum top-up amount.
+// Falls back to platform default operation_setting.MinTopUp when tenant has no override.
+// In Tokens display mode the value is scaled by QuotaPerUnit so the unit matches
+// what the user types in the UI (raw quota tokens, not USD/CNY).
+func getMinTopup(tenantId int) int64 {
+	minTopup := service.GetConfigInt(tenantId, "MinTopUp", operation_setting.MinTopUp)
+	if minTopup <= 0 {
+		minTopup = operation_setting.MinTopUp
+	}
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
@@ -208,8 +215,9 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	if req.Amount < getMinTopup() {
-		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+	minTopup := getMinTopup(middleware.GetTenantId(c))
+	if req.Amount < minTopup {
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minTopup)})
 		return
 	}
 
@@ -464,8 +472,9 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 
-	if req.Amount < getMinTopup() {
-		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+	minTopup := getMinTopup(middleware.GetTenantId(c))
+	if req.Amount < minTopup {
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minTopup)})
 		return
 	}
 	id := c.GetInt("id")

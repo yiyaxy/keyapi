@@ -505,7 +505,7 @@ func GetSelf(c *gin.Context) {
 	}
 
 	// Expose effective rebate settings for the current user (as inviter)
-	rebateSetting := model.GetEffectiveRebateSetting(user.Id)
+	rebateSetting := model.GetEffectiveRebateSetting(user.Id, user.TenantId)
 	responseData["effective_register_reward"] = rebateSetting.RegisterReward
 	responseData["effective_invitee_reward"] = rebateSetting.InviteeReward
 	responseData["effective_top_up_rebate_count"] = rebateSetting.TopUpRebateCount
