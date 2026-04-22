@@ -24,8 +24,8 @@ func tenantIdFromContext(c *gin.Context) int {
 	return 0
 }
 
-// 敏感 key 匹配（用于 detail 脱敏）
-var sensitiveKeyPattern = regexp.MustCompile(`(?i)password|secret|token|api[_-]?key`)
+// 敏感 key 匹配（用于 detail 脱敏和 GET /api/tenant/config 脱敏）
+var sensitiveKeyPattern = regexp.MustCompile(`(?i)password|secret|token|api[_-]?key|private[_-]?key|public[_-]?key|3?des[_-]?key`)
 
 // roleLabel 把数值 role 转换为可读字符串。
 func roleLabel(r int) string {

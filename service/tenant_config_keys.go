@@ -1,39 +1,139 @@
 package service
 
 // TenantOverridableKeys lists config keys that tenants can customize.
-// Anything NOT in this map is platform-only (secrets, payment config, SMTP, etc.)
+// Anything NOT in this map is platform-only.
+//
+// Design notes:
+//   - This whitelist only means "tenant can edit + backend can store".
+//     A tenant override becomes effective only after the business-side read
+//     path switches to GetConfig/GetConfigBool/GetConfigInt with tenantId.
+//   - WeChat payment credentials live in TenantPaymentConfig and do not belong
+//     in this option-based whitelist.
+//   - Model ratio / pricing maps are intentionally kept out for now; they are a
+//     better fit for channel-level override rather than tenant-wide override.
+//   - Clamp/union sensitive fields need dedicated guardrails before exposure.
 var TenantOverridableKeys = map[string]bool{
-	// Display & branding
+	// general - branding / content / entry links
 	"SystemName":      true,
 	"Logo":            true,
 	"Footer":          true,
 	"Notice":          true,
 	"About":           true,
 	"HomePageContent": true,
+	"TopUpLink":       true,
+	"ChatLink":        true,
+	"Chats":           true,
 
-	// Feature toggles
-	"DrawingEnabled":           true,
-	"TaskEnabled":              true,
-	"DataExportEnabled":        true,
-	"DisplayInCurrencyEnabled": true,
-	"DisplayTokenStatEnabled":  true,
-
-	// Registration & auth (tenant can restrict further)
+	// login - registration & auth
 	"PasswordLoginEnabled":          true,
 	"PasswordRegisterEnabled":       true,
 	"RegisterEnabled":               true,
 	"EmailVerificationEnabled":      true,
 	"EmailDomainRestrictionEnabled": true,
 	"EmailDomainWhitelist":          true,
+	"EmailAliasRestrictionEnabled":  true,
+	"TurnstileCheckEnabled":         true,
+	"TurnstileSiteKey":              true,
+	"TurnstileSecretKey":            true,
 
-	// Quota & pricing
-	// QuotaPerUnit 故意不开放：这是 1 USD = ?额度 的换算系数，所有计费数学的根基。
-	// 租户改了会让平台维度的成本统计错位、审计/对账无法统一换算。
-	"TopUpLink": true,
+	// oauth - tenant-managed OAuth apps / bots
+	"GitHubOAuthEnabled":          true,
+	"GitHubClientId":              true,
+	"GitHubClientSecret":          true,
+	"WeChatAuthEnabled":           true,
+	"WeChatServerAddress":         true,
+	"WeChatServerToken":           true,
+	"WeChatAccountQRCodeImageURL": true,
+	"WxMiniEnvVersion":            true,
+	"LinuxDOOAuthEnabled":         true,
+	"TelegramOAuthEnabled":        true,
+	"TelegramBotName":             true,
+	"TelegramBotToken":            true,
 
-	// Notification
-	"WebhookURL":    true, // tenant alert webhook endpoint
-	"WebhookSecret": true, // HMAC signing secret
+	// smtp - tenant-managed outbound email
+	"SMTPServer":     true,
+	"SMTPPort":       true,
+	"SMTPAccount":    true,
+	"SMTPFrom":       true,
+	"SMTPSSLEnabled": true,
+	"SMTPToken":      true,
+
+	// quota - currency / marketing
+	"general_setting.quota_display_type":            true,
+	"general_setting.custom_currency_symbol":        true,
+	"general_setting.custom_currency_exchange_rate": true,
+	"USDExchangeRate":                               true,
+	"Price":                                         true,
+	"QuotaForNewUser":                               true,
+	"QuotaForInviter":                               true,
+	"QuotaForInvitee":                               true,
+	"TopUpRebateCount":                              true,
+	"TopUpRebatePercent":                            true,
+	"SubscriptionRebateCount":                       true,
+	"MinTopUp":                                      true,
+	// QuotaPerUnit is intentionally platform-only. Changing it per tenant would
+	// break platform-wide accounting and quota math.
+
+	// ratios - group / marketing
+	"GroupRatio":          true,
+	"UserUsableGroups":    true,
+	"TopupGroupRatio":     true,
+	"AutoGroups":          true,
+	"DefaultUseAutoGroup": true,
+	"GroupGroupRatio":     true,
+
+	// monitor - without clamp-dependent fields
+	"AutomaticDisableChannelEnabled": true,
+	"AutomaticEnableChannelEnabled":  true,
+	"AutomaticDisableKeywords":       true,
+	"AutomaticDisableStatusCodes":    true,
+	"ChannelDisableThreshold":        true,
+
+	// permissions
+	"ExposeRatioEnabled":     true,
+	"DefaultCollapseSidebar": true,
+
+	// log
+	"DataExportDefaultTime": true,
+	"DataExportEnabled":     true,
+
+	// sensitive switches
+	"CheckSensitiveEnabled":         true,
+	"CheckSensitiveOnPromptEnabled": true,
+	"StopOnSensitiveEnabled":        true,
+
+	// integrations
+	"TranslationChannelId":    true,
+	"TranslationModel":        true,
+	"DrawingEnabled":          true,
+	"TaskEnabled":             true,
+	"DisplayTokenStatEnabled": true,
+
+	// invoice
+	"InvoiceProvider":                     true,
+	"InvoiceAutoIssueEnabled":             true,
+	"MinInvoiceAmount":                    true,
+	"InvoiceSellerEnterpriseName":         true,
+	"InvoiceSellerTaxpayerNum":            true,
+	"InvoiceDefaultAccount":               true,
+	"InvoiceDefaultGoodsName":             true,
+	"InvoiceDefaultTaxRateValue":          true,
+	"InvoiceDefaultIssueKindCode":         true,
+	"InvoiceDefaultPaymentCode":           true,
+	"InvoiceDefaultSubMchid":              true,
+	"InvoiceDefaultTaxClassificationCode": true,
+	"InvoicePiaoTongBaseURL":              true,
+	"InvoicePiaoTongPlatformAlias":        true,
+	"InvoicePiaoTongPlatformCode":         true,
+	"InvoicePiaoTong3DESKey":              true,
+	"InvoicePiaoTongPrivateKey":           true,
+	"InvoicePiaoTongPublicKey":            true,
+	"InvoiceQueryMaxAttempts":             true,
+	"InvoiceQueryRetryIntervalSeconds":    true,
+
+	// tenant-only notification hooks (rendered via tenant extra group)
+	"WebhookURL":    true,
+	"WebhookSecret": true,
 }
 
 // IsTenantOverridableKey returns whether a given key can be overridden per-tenant.

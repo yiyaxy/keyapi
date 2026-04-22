@@ -28,21 +28,24 @@ func cacheKey(tenantId int, key string) string {
 //  3. Code default (fallback)
 func GetConfig(tenantId int, key string, codeDefault string) string {
 	// Layer 1: tenant override (with cache)
-	ck := cacheKey(tenantId, key)
-	if cached, ok := tenantOptionCache.Load(ck); ok {
-		cv := cached.(*cachedValue)
-		if cv.found {
-			return cv.value
+	// tenantId <= 0 means "no tenant context", so skip tenant_options entirely.
+	if tenantId > 0 {
+		ck := cacheKey(tenantId, key)
+		if cached, ok := tenantOptionCache.Load(ck); ok {
+			cv := cached.(*cachedValue)
+			if cv.found {
+				return cv.value
+			}
+			// cached miss — fall through to platform default
+		} else {
+			// Not in cache — query DB
+			if val, found := model.GetTenantOption(tenantId, key); found {
+				tenantOptionCache.Store(ck, &cachedValue{value: val, found: true})
+				return val
+			}
+			// Cache the miss so we don't hit DB every time
+			tenantOptionCache.Store(ck, &cachedValue{found: false})
 		}
-		// cached miss — fall through to platform default
-	} else {
-		// Not in cache — query DB
-		if val, found := model.GetTenantOption(tenantId, key); found {
-			tenantOptionCache.Store(ck, &cachedValue{value: val, found: true})
-			return val
-		}
-		// Cache the miss so we don't hit DB every time
-		tenantOptionCache.Store(ck, &cachedValue{found: false})
 	}
 
 	// Layer 2: platform default (global OptionMap)
