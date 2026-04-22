@@ -131,6 +131,52 @@ func GetPaymentOrderByOutTradeNoHandler(c *gin.Context) {
 	})
 }
 
+// ListSelfPaymentOrders returns paginated payment orders for the current user.
+func ListSelfPaymentOrders(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "未登录")
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	orderType := c.Query("order_type")
+
+	q := model.WithTenantBypass(model.DB).Model(&model.PaymentOrder{}).
+		Where("user_id = ?", userId)
+	if orderType != "" {
+		q = q.Where("order_type = ?", orderType)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var rows []model.PaymentOrder
+	if err := q.Order("id DESC").
+		Offset((page - 1) * pageSize).Limit(pageSize).
+		Find(&rows).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	views := make([]paymentOrderView, len(rows))
+	for i := range rows {
+		views[i] = toOrderView(&rows[i])
+	}
+	common.ApiSuccess(c, gin.H{
+		"items":     views,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
 // ListTenantPaymentOrders returns a paginated list for the current tenant.
 // Tenant admin only (route layer enforces).
 func ListTenantPaymentOrders(c *gin.Context) {

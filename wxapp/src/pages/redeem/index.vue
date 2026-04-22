@@ -1,6 +1,12 @@
 <template>
   <view class="page">
-    <u-navbar title="充值" :auto-back="false" bgColor="#fff" :placeholder="true" @clickLeft="handleBack" />
+    <view :style="{ height: statusBarH + 'px' }" />
+    <view class="header">
+      <view class="back-btn" @click="handleBack">
+        <u-icon name="arrow-left" size="40" color="#1a1a2e" />
+      </view>
+      <text class="header-title">充值</text>
+    </view>
 
     <!-- Tab 切换 -->
     <view class="tab-bar">
@@ -137,12 +143,22 @@ import { renderQuota } from '@/utils/quota.js'
 
 // ─── 导航 ────────────────────────────────────────────────────────────────────
 function handleBack() {
-  if (getCurrentPages().length > 1) {
-    uni.navigateBack()
+  const pages = getCurrentPages()
+  if (pages.length > 1) {
+    const prevRoute = pages[pages.length - 2]?.route || ''
+    // 若上一页是首页则直接返回，否则 switchTab 到首页
+    if (prevRoute === 'pages/home/index') {
+      uni.navigateBack()
+    } else {
+      uni.switchTab({ url: '/pages/home/index' })
+    }
   } else {
-    uni.reLaunch({ url: '/pages/home/index' })
+    uni.switchTab({ url: '/pages/home/index' })
   }
 }
+
+// ─── 状态栏高度 ──────────────────────────────────────────────────────────────
+const statusBarH = ref(0)
 
 // ─── Tab ────────────────────────────────────────────────────────────────────
 const activeTab = ref('wechat')
@@ -299,11 +315,38 @@ async function doRedeem() {
   }
 }
 
-onLoad(() => {})
+onLoad(() => {
+  statusBarH.value = uni.getSystemInfoSync().statusBarHeight
+})
 </script>
 
 <style lang="scss" scoped>
 .page { min-height: 100vh; background: #f5f5f7; }
+.header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  background: #fff;
+  position: relative;
+  box-shadow: 0 1rpx 0 #f0f0f0;
+}
+.back-btn {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.header-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1a1a2e;
+  pointer-events: none;
+}
 .content { padding: 24rpx; }
 
 /* Tab 切换 */

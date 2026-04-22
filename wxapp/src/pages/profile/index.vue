@@ -53,6 +53,17 @@
         </view>
         <view class="menu-div" />
 
+        <view class="menu-item" @click="nav('/pages/orders/index')">
+          <view class="menu-left">
+            <view class="menu-icon" style="background:#e8faf0;">
+              <u-icon name="order" size="40" color="#18A058" />
+            </view>
+            <text class="menu-label">订单中心</text>
+          </view>
+          <u-icon name="arrow-right" size="30" color="#9ca3af" />
+        </view>
+        <view class="menu-div" />
+
         <view class="menu-item" @click="nav('/pages/usage-records/index')">
           <view class="menu-left">
             <view class="menu-icon" style="background:#fff7e8;">

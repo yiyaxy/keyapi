@@ -62,6 +62,13 @@
 				"navigationBarTitleText": "充值",
 				"navigationStyle": "custom"
 			}
+		},
+		{
+			"path": "pages/orders/index",
+			"style": {
+				"navigationBarTitleText": "订单中心",
+				"navigationStyle": "custom"
+			}
 		}
 	],
 	"easycom": {
