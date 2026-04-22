@@ -959,7 +959,12 @@ func DeleteChannelBatch(c *gin.Context) {
 		})
 		return
 	}
-	err = model.BatchDeleteChannels(middleware.GetTenantId(c), channelBatch.Ids)
+	// 超管跨租户删（含平台渠道 tenant_id=0）走 bypass；普通租户只清自己名下。
+	if c.GetInt("platform_role") >= common.RoleRootUser {
+		err = model.BatchDeleteChannelsBypass(channelBatch.Ids)
+	} else {
+		err = model.BatchDeleteChannels(middleware.GetTenantId(c), channelBatch.Ids)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return

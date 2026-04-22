@@ -201,11 +201,15 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	}
 }
 
-// scopedQuery 返回限定到当前 channel (id, tenant_id) 的 *gorm.DB。
-// 校验 Id/TenantId 非空，满足 tenant guardrail 的 fail-closed 要求。
+// scopedQuery 返回限定到当前 channel 的 *gorm.DB。
+// 租户渠道：按 (id, tenant_id) 定位，满足 tenant guardrail 的 fail-closed 要求。
+// 平台渠道：tenant_id=0 是合法语义，走 bypass 按 id 定位。
 func (channel *Channel) scopedQuery() (*gorm.DB, error) {
-	if channel.Id == 0 || channel.TenantId == 0 {
-		return nil, errors.New("channel.Id 和 channel.TenantId 不能为空")
+	if channel.Id == 0 {
+		return nil, errors.New("channel.Id 不能为空")
+	}
+	if channel.Scope == ChannelScopePlatform || channel.TenantId == 0 {
+		return WithTenantBypass(DB).Model(&Channel{}).Where("id = ?", channel.Id), nil
 	}
 	return DB.Model(&Channel{}).Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId), nil
 }
@@ -604,6 +608,29 @@ func BatchDeleteChannels(tenantId int, ids []int) error {
 	return tx.Commit().Error
 }
 
+// BatchDeleteChannelsBypass 超管级跨租户批量删除，授权由 controller 的 role
+// 校验兜底。平台渠道 (tenant_id=0) 只能走这条路，否则守门员拦截导致静默失败。
+func BatchDeleteChannelsBypass(ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx := WithTenantBypass(DB).Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	for _, chunk := range lo.Chunk(ids, 200) {
+		if err := tx.Where("id in (?)", chunk).Delete(&Channel{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("channel_id in (?)", chunk).Delete(&Ability{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit().Error
+}
+
 func (channel *Channel) GetPriority() int64 {
 	if channel.Priority == nil {
 		return 0
@@ -736,15 +763,22 @@ func (channel *Channel) UpdateBalance(balance float64) {
 }
 
 func (channel *Channel) Delete() error {
-	if channel.Id == 0 || channel.TenantId == 0 {
-		return errors.New("channel.Id 和 channel.TenantId 不能为空")
+	if channel.Id == 0 {
+		return errors.New("channel.Id 不能为空")
 	}
-	err := DB.Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId).Delete(&Channel{}).Error
-	if err != nil {
+	// 授权由 controller 侧完成（DeleteChannel：root 走 GetChannelById，租户走
+	// GetOwnedChannelForTenant）。到这一层已经是"允许删"，平台渠道 tenant_id=0
+	// 必须走 bypass，否则守门员会拦下。
+	var db *gorm.DB
+	if channel.Scope == ChannelScopePlatform || channel.TenantId == 0 {
+		db = WithTenantBypass(DB).Where("id = ?", channel.Id)
+	} else {
+		db = DB.Where("id = ? AND tenant_id = ?", channel.Id, channel.TenantId)
+	}
+	if err := db.Delete(&Channel{}).Error; err != nil {
 		return err
 	}
-	err = channel.DeleteAbilities()
-	return err
+	return channel.DeleteAbilities()
 }
 
 var channelStatusLock sync.Mutex

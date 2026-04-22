@@ -2,6 +2,47 @@ package model
 
 import "testing"
 
+// TestPlatformChannelDelete 覆盖超管删平台渠道的路径：Channel.Delete 必须
+// 对 tenant_id=0 放行（WithTenantBypass + WHERE id），并级联把 abilities 清掉。
+// 原先要求 channel.TenantId != 0，导致报 "channel.Id 和 channel.TenantId 不能为空"。
+func TestPlatformChannelDelete(t *testing.T) {
+	if DB == nil {
+		t.Skip("no DB")
+	}
+
+	ch := Channel{
+		Name: "plat-delete-test", Type: 1,
+		Scope: ChannelScopePlatform, TenantId: 0,
+		Key: "k", Status: 1, Models: "del-model-xyz",
+		Group: "default", CreatedTime: 1,
+	}
+	createPlatformChannelForTest(t, &ch)
+	if err := ch.AddAbilities(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	var before int64
+	WithTenantBypass(DB).Model(&Ability{}).Where("channel_id = ?", ch.Id).Count(&before)
+	if before == 0 {
+		t.Fatalf("precondition: expected abilities for channel %d, got none", ch.Id)
+	}
+
+	if err := ch.Delete(); err != nil {
+		t.Fatalf("delete platform channel: %v", err)
+	}
+
+	var chanAfter int64
+	WithTenantBypass(DB).Model(&Channel{}).Where("id = ?", ch.Id).Count(&chanAfter)
+	if chanAfter != 0 {
+		t.Fatalf("channel row not deleted, count=%d", chanAfter)
+	}
+	var abilAfter int64
+	WithTenantBypass(DB).Model(&Ability{}).Where("channel_id = ?", ch.Id).Count(&abilAfter)
+	if abilAfter != 0 {
+		t.Fatalf("ability rows not cascaded, count=%d", abilAfter)
+	}
+}
+
 // TestPlatformAbilityTenantIdNormalization 保护 createAbilityRows 的归零逻辑：
 // 即便调用方传入一个 scope=platform 但 TenantId 非 0 的脏 Channel（历史数据 /
 // 绕过 BeforeSave 的写入路径 / 代码误用），abilities 行最终也必须 tenant_id=0。
