@@ -718,6 +718,7 @@ func SetApiRouter(router *gin.Engine) {
 			paymentRoute.POST("/wechat/topup/native", payment.CreateWechatTopupNative)
 			paymentRoute.POST("/wechat/topup/h5", payment.CreateWechatTopupH5)
 			paymentRoute.POST("/wechat/topup/jsapi", payment.CreateWechatTopupJsapi)
+			paymentRoute.GET("/orders", payment.ListSelfPaymentOrders)
 			paymentRoute.GET("/orders/:out_trade_no", payment.GetPaymentOrderByOutTradeNoHandler)
 		}
 	}

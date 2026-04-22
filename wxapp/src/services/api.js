@@ -158,3 +158,18 @@ export const createWechatTopupJsapi = (amount) =>
  */
 export const getPaymentOrder = (outTradeNo) =>
   request.get(`/api/payment/orders/${outTradeNo}`)
+
+/**
+ * 获取当前用户的支付订单列表（订单中心）
+ * @param {number} page      页码（从 1 开始）
+ * @param {number} pageSize  每页条数
+ * @param {string} [orderType] 可选过滤：topup | sub
+ * 返回字段：items[], total, page, page_size
+ * items 字段：id, out_trade_no, provider, order_type, product_form,
+ *             amount(分), currency, status, paid_at, expires_at, created_at
+ */
+export const getMyOrders = (page = 1, pageSize = 20, orderType = '') => {
+  const params = { page, page_size: pageSize }
+  if (orderType) params.order_type = orderType
+  return request.get('/api/payment/orders', params)
+}

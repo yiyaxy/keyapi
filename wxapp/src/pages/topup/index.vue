@@ -111,10 +111,17 @@ function onCustomInput() {
 }
 
 function goBack() {
-  uni.navigateBack({
-    delta: 1,
-    fail: () => uni.reLaunch({ url: '/pages/home/index' }),
-  })
+  const pages = getCurrentPages()
+  if (pages.length > 1) {
+    const prevRoute = pages[pages.length - 2]?.route || ''
+    if (prevRoute === 'pages/home/index') {
+      uni.navigateBack()
+    } else {
+      uni.switchTab({ url: '/pages/home/index' })
+    }
+  } else {
+    uni.switchTab({ url: '/pages/home/index' })
+  }
 }
 
 /** 格式化额度显示（和 PC 一致，走 quotaPerUnit） */
