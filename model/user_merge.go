@@ -280,16 +280,16 @@ func MergeUserInto(sourceId, targetId, operatorId int, reason string) (*MergeRes
 }
 
 // deleteConflictingCheckins 删除 source 在 target 已有签到日期的行，避免
-// reassign 时撞 (user_id, date) 唯一约束。然后把剩下的 source 签到改到 target。
+// reassign 时撞 (user_id, checkin_date) 唯一约束。然后把剩下的 source 签到改到 target。
 func deleteConflictingCheckins(tx *gorm.DB, tenantId, sourceId, targetId int) error {
 	// SQLite / MySQL / Postgres 语法差异：用一个 subquery 的 DELETE 兜底
-	// (user_id=source AND date IN (select date from checkins where user_id=target))
+	// (user_id=source AND checkin_date IN (select checkin_date from checkins where user_id=target))
 	// 各家都支持这种写法。
 	if err := WithTenantBypass(tx).Exec(`
 		DELETE FROM checkins
 		WHERE user_id = ?
-		  AND date IN (SELECT date FROM (
-		      SELECT date FROM checkins WHERE user_id = ?
+		  AND checkin_date IN (SELECT checkin_date FROM (
+		      SELECT checkin_date FROM checkins WHERE user_id = ?
 		  ) AS t)
 	`, sourceId, targetId).Error; err != nil {
 		return fmt.Errorf("清理冲突签到失败: %w", err)
