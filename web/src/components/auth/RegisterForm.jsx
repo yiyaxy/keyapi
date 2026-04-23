@@ -129,26 +129,29 @@ const RegisterForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const registerEnabled = status.register_enabled !== false;
+  const passwordRegisterEnabled = status.password_register_enabled !== false;
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
-  const hasOAuthRegisterOptions = Boolean(
+  const hasRawOAuthRegisterOptions = Boolean(
     status.github_oauth ||
-      status.discord_oauth ||
-      status.oidc_enabled ||
-      status.wechat_login ||
-      status.linuxdo_oauth ||
-      status.telegram_oauth ||
-      hasCustomOAuthProviders,
+    status.discord_oauth ||
+    status.oidc_enabled ||
+    status.wechat_login ||
+    status.linuxdo_oauth ||
+    status.telegram_oauth ||
+    hasCustomOAuthProviders,
   );
+  const hasOAuthRegisterOptions = registerEnabled && hasRawOAuthRegisterOptions;
+  const hasAnyRegisterOption =
+    registerEnabled && (passwordRegisterEnabled || hasRawOAuthRegisterOptions);
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
 
   useEffect(() => {
     setShowEmailVerification(!!status?.email_verification);
-    if (status?.turnstile_check) {
-      setTurnstileEnabled(true);
-      setTurnstileSiteKey(status.turnstile_site_key);
-    }
+    setTurnstileEnabled(!!status?.turnstile_check);
+    setTurnstileSiteKey(status?.turnstile_site_key || '');
 
     // 从 status 获取用户协议和隐私政策的启用状态
     setHasUserAgreement(status?.user_agreement_enabled || false);
@@ -520,20 +523,24 @@ const RegisterForm = () => {
                   </div>
                 )}
 
-                <Divider margin='12px' align='center'>
-                  {t('或')}
-                </Divider>
+                {passwordRegisterEnabled && (
+                  <>
+                    <Divider margin='12px' align='center'>
+                      {t('或')}
+                    </Divider>
 
-                <Button
-                  theme='solid'
-                  type='primary'
-                  className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
-                  icon={<IconMail size='large' />}
-                  onClick={handleEmailRegisterClick}
-                  loading={emailRegisterLoading}
-                >
-                  <span className='ml-3'>{t('使用 用户名 注册')}</span>
-                </Button>
+                    <Button
+                      theme='solid'
+                      type='primary'
+                      className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
+                      icon={<IconMail size='large' />}
+                      onClick={handleEmailRegisterClick}
+                      loading={emailRegisterLoading}
+                    >
+                      <span className='ml-3'>{t('使用 用户名 注册')}</span>
+                    </Button>
+                  </>
+                )}
               </div>
 
               <div className='mt-6 text-center text-sm'>
@@ -730,6 +737,38 @@ const RegisterForm = () => {
     );
   };
 
+  const renderRegisterUnavailable = (message) => {
+    return (
+      <div className='flex flex-col items-center'>
+        <div className='w-full max-w-md'>
+          <div className='flex items-center justify-center mb-6 gap-2'>
+            <img src={logo} alt='Logo' className='h-10 rounded-full' />
+            <Title heading={3} className='!text-gray-800'>
+              {systemName}
+            </Title>
+          </div>
+
+          <Card className='border-0 !rounded-2xl overflow-hidden'>
+            <div className='flex justify-center pt-6 pb-2'>
+              <Title heading={3} className='text-gray-800 dark:text-gray-200'>
+                {t('注册')}
+              </Title>
+            </div>
+            <div className='px-6 py-8 text-center space-y-4'>
+              <Text>{message}</Text>
+              <Link
+                to='/login'
+                className='text-blue-600 hover:text-blue-800 font-medium'
+              >
+                {t('返回登录')}
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  };
+
   const renderWeChatLoginModal = () => {
     return (
       <Modal
@@ -781,13 +820,18 @@ const RegisterForm = () => {
         style={{ top: '50%', left: '-120px' }}
       />
       <div className='w-full max-w-sm mt-[60px]'>
-        {showEmailRegister ||
-        !hasOAuthRegisterOptions
-          ? renderEmailRegisterForm()
-          : renderOAuthOptions()}
+        {!registerEnabled
+          ? renderRegisterUnavailable(t('当前租户已关闭注册'))
+          : !hasAnyRegisterOption
+            ? renderRegisterUnavailable(t('当前租户未开放可用的注册方式'))
+            : !passwordRegisterEnabled
+              ? renderOAuthOptions()
+              : showEmailRegister || !hasOAuthRegisterOptions
+                ? renderEmailRegisterForm()
+                : renderOAuthOptions()}
         {renderWeChatLoginModal()}
 
-        {turnstileEnabled && (
+        {turnstileEnabled && hasAnyRegisterOption && (
           <div className='flex justify-center mt-6'>
             <Turnstile
               sitekey={turnstileSiteKey}

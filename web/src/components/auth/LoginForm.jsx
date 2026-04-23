@@ -131,23 +131,25 @@ const LoginForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const registerEnabled = status.register_enabled !== false;
+  const passwordLoginEnabled = status.password_login_enabled !== false;
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthLoginOptions = Boolean(
     status.github_oauth ||
-      status.discord_oauth ||
-      status.oidc_enabled ||
-      status.wechat_login ||
-      status.linuxdo_oauth ||
-      status.telegram_oauth ||
-      hasCustomOAuthProviders,
+    status.discord_oauth ||
+    status.oidc_enabled ||
+    status.wechat_login ||
+    status.linuxdo_oauth ||
+    status.telegram_oauth ||
+    hasCustomOAuthProviders,
   );
+  const hasPasskeyLogin = Boolean(status.passkey_login && passkeySupported);
+  const hasAlternativeLoginOptions = hasOAuthLoginOptions || hasPasskeyLogin;
 
   useEffect(() => {
-    if (status?.turnstile_check) {
-      setTurnstileEnabled(true);
-      setTurnstileSiteKey(status.turnstile_site_key);
-    }
+    setTurnstileEnabled(!!status?.turnstile_check);
+    setTurnstileSiteKey(status?.turnstile_site_key || '');
 
     // 从 status 获取用户协议和隐私政策的启用状态
     setHasUserAgreement(status?.user_agreement_enabled || false);
@@ -642,20 +644,26 @@ const LoginForm = () => {
                   </Button>
                 )}
 
-                <Divider margin='12px' align='center'>
-                  {t('或')}
-                </Divider>
+                {passwordLoginEnabled && (
+                  <>
+                    <Divider margin='12px' align='center'>
+                      {t('或')}
+                    </Divider>
 
-                <Button
-                  theme='solid'
-                  type='primary'
-                  className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
-                  icon={<IconMail size='large' />}
-                  onClick={handleEmailLoginClick}
-                  loading={emailLoginLoading}
-                >
-                  <span className='ml-3'>{t('使用 邮箱或用户名 登录')}</span>
-                </Button>
+                    <Button
+                      theme='solid'
+                      type='primary'
+                      className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
+                      icon={<IconMail size='large' />}
+                      onClick={handleEmailLoginClick}
+                      loading={emailLoginLoading}
+                    >
+                      <span className='ml-3'>
+                        {t('使用 邮箱或用户名 登录')}
+                      </span>
+                    </Button>
+                  </>
+                )}
               </div>
 
               {(hasUserAgreement || hasPrivacyPolicy) && (
@@ -696,7 +704,7 @@ const LoginForm = () => {
                 </div>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {!status.self_use_mode_enabled && registerEnabled && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
@@ -829,7 +837,7 @@ const LoginForm = () => {
                 </div>
               </Form>
 
-              {hasOAuthLoginOptions && (
+              {hasAlternativeLoginOptions && (
                 <>
                   <Divider margin='12px' align='center'>
                     {t('或')}
@@ -849,7 +857,7 @@ const LoginForm = () => {
                 </>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {!status.self_use_mode_enabled && registerEnabled && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
@@ -870,6 +878,38 @@ const LoginForm = () => {
   };
 
   // 微信登录模态框
+  const renderLoginUnavailable = (message) => {
+    return (
+      <div className='flex flex-col items-center'>
+        <div className='w-full max-w-md'>
+          <div className='flex items-center justify-center mb-6 gap-2'>
+            <img src={logo} alt='Logo' className='h-10 rounded-full' />
+            <Title heading={3}>{systemName}</Title>
+          </div>
+
+          <Card className='border-0 !rounded-2xl overflow-hidden'>
+            <div className='flex justify-center pt-6 pb-2'>
+              <Title heading={3} className='text-gray-800 dark:text-gray-200'>
+                {t('登录')}
+              </Title>
+            </div>
+            <div className='px-6 py-8 text-center space-y-4'>
+              <Text>{message}</Text>
+              {!status.self_use_mode_enabled && registerEnabled && (
+                <Link
+                  to='/register'
+                  className='text-blue-600 hover:text-blue-800 font-medium'
+                >
+                  {t('去注册')}
+                </Link>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  };
+
   const renderWeChatLoginModal = () => {
     return (
       <Modal
@@ -958,14 +998,17 @@ const LoginForm = () => {
         style={{ top: '50%', left: '-120px' }}
       />
       <div className='w-full max-w-sm mt-[60px]'>
-        {showEmailLogin ||
-        !hasOAuthLoginOptions
-          ? renderEmailLoginForm()
-          : renderOAuthOptions()}
+        {!passwordLoginEnabled && !hasAlternativeLoginOptions
+          ? renderLoginUnavailable(t('当前租户未开放可用的登录方式'))
+          : !passwordLoginEnabled
+            ? renderOAuthOptions()
+            : showEmailLogin || !hasAlternativeLoginOptions
+              ? renderEmailLoginForm()
+              : renderOAuthOptions()}
         {renderWeChatLoginModal()}
         {render2FAModal()}
 
-        {turnstileEnabled && (
+        {turnstileEnabled && (passwordLoginEnabled || registerEnabled) && (
           <div className='flex justify-center mt-6'>
             <Turnstile
               sitekey={turnstileSiteKey}

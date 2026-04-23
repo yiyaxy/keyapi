@@ -52,6 +52,9 @@ func GetStatus(c *gin.Context) {
 	data := gin.H{
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
+		"register_enabled":            service.GetConfigBool(tenantId, "RegisterEnabled", common.RegisterEnabled),
+		"password_register_enabled":   service.GetConfigBool(tenantId, "PasswordRegisterEnabled", common.PasswordRegisterEnabled),
+		"password_login_enabled":      service.GetConfigBool(tenantId, "PasswordLoginEnabled", common.PasswordLoginEnabled),
 		"email_verification":          service.GetConfigBool(tenantId, "EmailVerificationEnabled", common.EmailVerificationEnabled),
 		"github_oauth":                service.GetConfigBool(tenantId, "GitHubOAuthEnabled", common.GitHubOAuthEnabled),
 		"github_client_id":            service.GetConfig(tenantId, "GitHubClientId", common.GitHubClientId),
@@ -69,8 +72,8 @@ func GetStatus(c *gin.Context) {
 		"wechat_login":                service.GetConfigBool(tenantId, "WeChatAuthEnabled", common.WeChatAuthEnabled),
 		"wx_mini_login":               service.IsWxMiniLoginEnabled(tenantId),
 		"server_address":              system_setting.ServerAddress,
-		"turnstile_check":             common.TurnstileCheckEnabled,
-		"turnstile_site_key":          common.TurnstileSiteKey,
+		"turnstile_check":             service.GetConfigBool(tenantId, "TurnstileCheckEnabled", common.TurnstileCheckEnabled),
+		"turnstile_site_key":          service.GetConfig(tenantId, "TurnstileSiteKey", common.TurnstileSiteKey),
 		"top_up_link":                 service.GetConfig(tenantId, "TopUpLink", common.TopUpLink),
 		"topup_subscription_notice":   strings.TrimSpace(common.OptionMap["TopupSubscriptionNotice"]),
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
@@ -305,7 +308,7 @@ func SendEmailVerification(c *gin.Context) {
 			return
 		}
 	}
-	if common.EmailAliasRestrictionEnabled {
+	if service.GetConfigBool(tenantId, "EmailAliasRestrictionEnabled", common.EmailAliasRestrictionEnabled) {
 		containsSpecialSymbols := strings.Contains(localPart, "+") || strings.Contains(localPart, ".")
 		if containsSpecialSymbols {
 			c.JSON(http.StatusOK, gin.H{
