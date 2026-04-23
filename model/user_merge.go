@@ -207,6 +207,13 @@ func MergeUserInto(sourceId, targetId, operatorId int, reason string) (*MergeRes
 			updates["stripe_customer"] = source.StripeCustomer
 		}
 
+		// PostgreSQL checks the partial unique indexes on github_id/...
+		// immediately. Clear source's identities before target inherits them,
+		// otherwise the target update collides with the still-live source row.
+		if err := clearSourceExternalIdentitiesForMerge(tx, sourceId); err != nil {
+			return fmt.Errorf("清空源账户第三方身份失败: %w", err)
+		}
+
 		if err := WithTenantBypass(tx).Unscoped().Model(&User{}).
 			Where("id = ?", targetId).
 			Updates(updates).Error; err != nil {
@@ -354,6 +361,20 @@ func moveOAuthBindings(tx *gorm.DB, sourceId, targetId int) error {
 		"UPDATE user_oauth_bindings SET user_id = ? WHERE user_id = ?",
 		targetId, sourceId,
 	).Error
+}
+
+func clearSourceExternalIdentitiesForMerge(tx *gorm.DB, sourceId int) error {
+	return WithTenantBypass(tx).Unscoped().Model(&User{}).
+		Where("id = ?", sourceId).
+		Updates(map[string]interface{}{
+			"wechat_id":       "",
+			"github_id":       "",
+			"discord_id":      "",
+			"oidc_id":         "",
+			"telegram_id":     "",
+			"linux_do_id":     "",
+			"stripe_customer": "",
+		}).Error
 }
 
 // reassignUserId moves user ownership for business tables. Some tables use

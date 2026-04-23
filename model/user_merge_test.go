@@ -148,3 +148,77 @@ func TestReassignUserIdUsesActualOwnerColumns(t *testing.T) {
 		t.Fatalf("target rebate settings = %d, want 1", count)
 	}
 }
+
+func TestMergeUserIntoClearsSourceWechatBeforeTargetInherits(t *testing.T) {
+	restore := setupUserMergeTestDB(t)
+	defer restore()
+
+	if err := DB.AutoMigrate(&User{}, &TenantMembership{}, &Checkin{}, &UserOAuthBinding{}, &UserMergeLog{}); err != nil {
+		t.Fatalf("migrate tables: %v", err)
+	}
+	if err := DB.Exec("CREATE UNIQUE INDEX uk_user_tenant_wechat_id ON users (tenant_id, wechat_id) WHERE wechat_id <> ''").Error; err != nil {
+		t.Fatalf("create wechat unique index: %v", err)
+	}
+
+	target := User{
+		TenantId:  1,
+		Username:  "target_merge",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		AffCode:   "target-merge-aff",
+		Quota:     10,
+		UsedQuota: 3,
+	}
+	source := User{
+		TenantId:  1,
+		Username:  "source_merge",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		WeChatId:  "wxmini:merge-openid",
+		AffCode:   "source-merge-aff",
+		Quota:     7,
+		UsedQuota: 2,
+	}
+	if err := DB.Create(&target).Error; err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	if err := DB.Create(&source).Error; err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if err := DB.Create(&TenantMembership{TenantId: 1, UserId: target.Id, Role: TenantRoleMember, Status: TenantMembershipStatusActive}).Error; err != nil {
+		t.Fatalf("create target membership: %v", err)
+	}
+	if err := DB.Create(&TenantMembership{TenantId: 1, UserId: source.Id, Role: TenantRoleMember, Status: TenantMembershipStatusActive}).Error; err != nil {
+		t.Fatalf("create source membership: %v", err)
+	}
+
+	result, err := MergeUserInto(source.Id, target.Id, target.Id, "test")
+	if err != nil {
+		t.Fatalf("merge users: %v", err)
+	}
+	if result.WeChatId != "wxmini:merge-openid" {
+		t.Fatalf("result wechat id = %q", result.WeChatId)
+	}
+
+	var freshTarget User
+	if err := WithTenantBypass(DB).Unscoped().First(&freshTarget, target.Id).Error; err != nil {
+		t.Fatalf("load target: %v", err)
+	}
+	if freshTarget.WeChatId != "wxmini:merge-openid" {
+		t.Fatalf("target wechat id = %q", freshTarget.WeChatId)
+	}
+	if freshTarget.Quota != 17 || freshTarget.UsedQuota != 5 {
+		t.Fatalf("target quota=(%d,%d), want (17,5)", freshTarget.Quota, freshTarget.UsedQuota)
+	}
+
+	var freshSource User
+	if err := WithTenantBypass(DB).Unscoped().First(&freshSource, source.Id).Error; err != nil {
+		t.Fatalf("load source: %v", err)
+	}
+	if freshSource.WeChatId != "" {
+		t.Fatalf("source wechat id = %q, want empty", freshSource.WeChatId)
+	}
+	if freshSource.MergedInto != target.Id || !freshSource.DeletedAt.Valid {
+		t.Fatalf("source merged_into=%d deleted=%v", freshSource.MergedInto, freshSource.DeletedAt.Valid)
+	}
+}
