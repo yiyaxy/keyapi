@@ -67,7 +67,15 @@ export function CostBreakdown({
 
   const modelRatio = other.model_ratio ?? 0;
   const completionRatio = other.completion_ratio ?? 1;
-  const groupRatio = other.user_group_ratio ?? other.group_ratio ?? 1;
+  // user_group_ratio 在无特殊分组倍率时后端会落库为哨兵值 -1，不能直接当
+  // 倍率使用；只在 > 0 时才采用。group_ratio 同样做正值守卫。
+  const specialRatio = other.user_group_ratio;
+  const fallbackGroupRatio =
+    other.group_ratio && other.group_ratio > 0 ? other.group_ratio : 1;
+  const groupRatio =
+    specialRatio !== undefined && specialRatio > 0
+      ? specialRatio
+      : fallbackGroupRatio;
   const channelRatio = other.channel_ratio ?? 1;
   const cacheRatio = other.cache_ratio ?? 1;
   const cacheTokens = Math.min(other.cache_tokens ?? 0, row.prompt_tokens);
@@ -75,6 +83,7 @@ export function CostBreakdown({
 
   const inputPricePerM = modelRatio * 2.0;
   const outputPricePerM = modelRatio * 2.0 * completionRatio;
+  const cachePricePerM = inputPricePerM * cacheRatio;
 
   // 缓存命中的 prompt tokens 按 cache_ratio 折扣计价，其余按正常输入价。
   const normalInputTokens = row.prompt_tokens - (hasCache ? cacheTokens : 0);
@@ -82,9 +91,9 @@ export function CostBreakdown({
   const cachedInputCostUsd = hasCache
     ? (cacheTokens / 1_000_000) * inputPricePerM * cacheRatio
     : 0;
-  const inputCostUsd = normalInputCostUsd + cachedInputCostUsd;
   const outputCostUsd = (row.completion_tokens / 1_000_000) * outputPricePerM;
-  const originalUsd = (inputCostUsd + outputCostUsd) * groupRatio;
+  const originalUsd =
+    (normalInputCostUsd + cachedInputCostUsd + outputCostUsd) * groupRatio;
 
   const billedDisplay = toDisplay(row.quota, cfg);
   const billedNum = new Intl.NumberFormat(undefined, {
@@ -106,10 +115,26 @@ export function CostBreakdown({
       >
         <p className='mb-2 font-semibold'>{t('cost.title')}</p>
         <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
-          <dt className='text-fg-2'>{t('cost.input_cost')}</dt>
-          <dd className='text-right font-medium'>
-            {fmtUnit(inputCostUsd * groupRatio, cfg)}
-          </dd>
+          {hasCache ? (
+            <>
+              <dt className='text-fg-2'>{t('cost.input_cost_normal')}</dt>
+              <dd className='text-right font-medium'>
+                {fmtUnit(normalInputCostUsd * groupRatio, cfg)}
+              </dd>
+
+              <dt className='text-fg-2'>{t('cost.input_cost_cached')}</dt>
+              <dd className='text-right font-medium'>
+                {fmtUnit(cachedInputCostUsd * groupRatio, cfg)}
+              </dd>
+            </>
+          ) : (
+            <>
+              <dt className='text-fg-2'>{t('cost.input_cost')}</dt>
+              <dd className='text-right font-medium'>
+                {fmtUnit(normalInputCostUsd * groupRatio, cfg)}
+              </dd>
+            </>
+          )}
 
           <dt className='text-fg-2'>{t('cost.output_cost')}</dt>
           <dd className='text-right font-medium'>
@@ -124,11 +149,6 @@ export function CostBreakdown({
                 {' · '}
                 {cacheRatio}x
               </dd>
-
-              <dt className='text-fg-2'>{t('cost.cache_cost')}</dt>
-              <dd className='text-right font-medium'>
-                {fmtUnit(cachedInputCostUsd * groupRatio, cfg)}
-              </dd>
             </>
           )}
 
@@ -141,6 +161,15 @@ export function CostBreakdown({
           <dd className='text-right font-medium text-[var(--semi-color-link)]'>
             {fmtPrice(outputPricePerM, cfg)}
           </dd>
+
+          {hasCache && (
+            <>
+              <dt className='text-fg-2'>{t('cost.cache_price')}</dt>
+              <dd className='text-right font-medium text-[var(--semi-color-link)]'>
+                {fmtPrice(cachePricePerM, cfg)}
+              </dd>
+            </>
+          )}
 
           {channelRatio > 0 && channelRatio !== 1 && (
             <>
