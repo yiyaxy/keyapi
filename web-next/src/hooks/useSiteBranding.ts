@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
 import { api } from '@/lib/api';
 
@@ -22,10 +23,12 @@ export function useSiteBranding(): SiteBranding {
     queryFn: async () => (await api.get<StatusBrandFields>('/api/status')).data,
     staleTime: Infinity,
   });
-  if (!q.data) return EMPTY;
-  return {
-    systemName: q.data.system_name ?? '',
-    logo: q.data.logo ?? '',
-    footerHtml: q.data.footer_html ?? '',
-  };
+  return useMemo(() => {
+    if (!q.data) return EMPTY;
+    return {
+      systemName: q.data.system_name ?? '',
+      logo: q.data.logo ?? '',
+      footerHtml: q.data.footer_html ?? '',
+    };
+  }, [q.data]);
 }

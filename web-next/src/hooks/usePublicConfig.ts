@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
 import { api } from '@/lib/api';
 
@@ -47,10 +48,12 @@ export function usePublicConfig() {
     // /api/status is cheap but rarely changes; cache for the whole session.
     staleTime: Infinity,
   });
-  // Merge with defaults at read time so that sharing the ['site-status']
-  // cache with other hooks (e.g. useSiteBranding) stays safe regardless
-  // of which hook's queryFn won the initial fetch race.
-  return q.data ? { ...DEFAULT, ...q.data } : DEFAULT;
+  // Merge at read time (not in queryFn) so ['site-status'] cache can be
+  // shared with useSiteBranding regardless of fetch race. useMemo keeps
+  // the returned reference stable across renders — consumers pass this
+  // object into useEffect deps (EditUserDialog etc.), a new ref each
+  // render causes infinite update loops (React #185).
+  return useMemo(() => (q.data ? { ...DEFAULT, ...q.data } : DEFAULT), [q.data]);
 }
 
 // snapToCents: raw quota 是整数，但充值/退款等场景用户期望看到整分金额
