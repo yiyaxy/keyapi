@@ -298,7 +298,7 @@ function CreateReportModal({ visible, onCancel, onSuccess, t }) {
           </div>
           <div>
             <Text type='secondary'>{t('agentReport.agentName')}</Text>
-            <Input value={agentName} onChange={setAgentName} placeholder='CaMeL Manager' />
+            <Input value={agentName} onChange={setAgentName} placeholder='AllModels Manager' />
           </div>
         </div>
         <div>

@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ const multiLangContent = `## 中文版
 
 **生效日期：2025年1月1日**
 
-CaMeL API（以下简称"我们"）非常重视您的隐私保护。本隐私政策旨在向您说明我们如何收集、使用、存储和保护您的个人信息。请您在使用我们的服务前仔细阅读本政策。
+AllModels（以下简称"我们"）非常重视您的隐私保护。本隐私政策旨在向您说明我们如何收集、使用、存储和保护您的个人信息。请您在使用我们的服务前仔细阅读本政策。
 
 ### 1. 信息收集
 
@@ -116,7 +116,7 @@ CaMeL API（以下简称"我们"）非常重视您的隐私保护。本隐私政
 
 ---
 
-*本隐私政策的最终解释权归 CaMeL API 所有。*
+*本隐私政策的最终解释权归 AllModels 所有。*
 
 ---
 
@@ -128,7 +128,7 @@ CaMeL API（以下简称"我们"）非常重视您的隐私保护。本隐私政
 
 **Effective Date: January 1, 2025**
 
-CaMeL API (hereinafter referred to as "we" or "us") takes your privacy very seriously. This Privacy Policy explains how we collect, use, store, and protect your personal information. Please read this policy carefully before using our services.
+AllModels (hereinafter referred to as "we" or "us") takes your privacy very seriously. This Privacy Policy explains how we collect, use, store, and protect your personal information. Please read this policy carefully before using our services.
 
 ### 1. Information Collection
 
@@ -215,7 +215,7 @@ If you have any questions or suggestions about this Privacy Policy, please conta
 
 ---
 
-*CaMeL API reserves the right of final interpretation of this Privacy Policy.*
+*AllModels reserves the right of final interpretation of this Privacy Policy.*
 
 ---
 
@@ -227,7 +227,7 @@ If you have any questions or suggestions about this Privacy Policy, please conta
 
 **発効日：2025年1月1日**
 
-CaMeL API（以下「当社」）は、お客様のプライバシー保護を非常に重視しています。本プライバシーポリシーは、当社がお客様の個人情報をどのように収集、使用、保存、保護するかについて説明するものです。サービスをご利用になる前に、本ポリシーをよくお読みください。
+AllModels（以下「当社」）は、お客様のプライバシー保護を非常に重視しています。本プライバシーポリシーは、当社がお客様の個人情報をどのように収集、使用、保存、保護するかについて説明するものです。サービスをご利用になる前に、本ポリシーをよくお読みください。
 
 ### 1. 情報の収集
 
@@ -314,7 +314,7 @@ CaMeL API（以下「当社」）は、お客様のプライバシー保護を�
 
 ---
 
-*本プライバシーポリシーの最終解釈権はCaMeL APIに帰属します。*
+*本プライバシーポリシーの最終解釈権はAllModelsに帰属します。*
 
 ---
 
@@ -326,7 +326,7 @@ CaMeL API（以下「当社」）は、お客様のプライバシー保護を�
 
 **Date d'entrée en vigueur : 1er janvier 2025**
 
-CaMeL API (ci-après « nous ») accorde une grande importance à la protection de votre vie privée. Cette Politique de Confidentialité vise à vous expliquer comment nous collectons, utilisons, stockons et protégeons vos informations personnelles. Veuillez lire attentivement cette politique avant d'utiliser nos services.
+AllModels (ci-après « nous ») accorde une grande importance à la protection de votre vie privée. Cette Politique de Confidentialité vise à vous expliquer comment nous collectons, utilisons, stockons et protégeons vos informations personnelles. Veuillez lire attentivement cette politique avant d'utiliser nos services.
 
 ### 1. Collecte d'informations
 
@@ -413,7 +413,7 @@ Si vous avez des questions ou des suggestions concernant cette Politique de Conf
 
 ---
 
-*CaMeL API se réserve le droit d'interprétation finale de cette Politique de Confidentialité.*`;
+*AllModels se réserve le droit d'interprétation finale de cette Politique de Confidentialité.*`;
 
 const PrivacyPolicy = () => {
   const { t } = useTranslation();

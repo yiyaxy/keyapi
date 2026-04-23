@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -249,7 +249,7 @@ const OtherSetting = () => {
             Accept: 'application/json',
             'Content-Type': 'application/json',
             // Adding User-Agent which is often required by GitHub API
-            'User-Agent': 'camel-api-update-checker',
+            'User-Agent': 'allmodels-update-checker',
           },
         },
       ).then((response) => response.json());
@@ -478,7 +478,7 @@ const OtherSetting = () => {
                 fullMode={false}
                 type='info'
                 description={t(
-                  '移除 CaMeL API 的版权标识必须首先获得授权，项目维护需要花费大量精力，如果本项目对你有意义，请主动支持本项目',
+                  '移除 AllModels 的版权标识必须首先获得授权，项目维护需要花费大量精力，如果本项目对你有意义，请主动支持本项目',
                 )}
                 closeIcon={null}
                 style={{ marginTop: 15 }}
