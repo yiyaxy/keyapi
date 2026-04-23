@@ -3,6 +3,7 @@ package helper
 import (
 	"fmt"
 	"math"
+	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -283,6 +284,43 @@ func applyPlatformMarkup(c *gin.Context, info *relaycommon.RelayInfo, priceData 
 	}
 	info.PriceMarkupRatio = mk
 	info.PriceMarkupSource = src
+}
+
+// EnforcePlatformChannelQuota rejects a request when the bound channel is
+// platform-scoped and the tenant's projected usage would exceed their cap.
+// Callers must invoke it only after the handler's PriceData has been filled.
+func EnforcePlatformChannelQuota(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if info == nil || info.TenantId <= 0 {
+		return nil
+	}
+
+	projected := info.PriceData.QuotaToPreConsume
+	if projected <= 0 {
+		projected = info.PriceData.Quota
+	}
+	if projected <= 0 {
+		return nil
+	}
+
+	var channelID int
+	if info.ChannelMeta != nil {
+		channelID = info.ChannelId
+	}
+	if channelID <= 0 && c != nil {
+		channelID = common.GetContextKeyInt(c, constant.ContextKeyChannelId)
+	}
+	if channelID <= 0 {
+		return nil
+	}
+
+	ch, err := model.CacheGetChannel(channelID)
+	if err != nil || ch == nil || ch.Scope != model.ChannelScopePlatform {
+		return nil
+	}
+	if err := service.CheckTenantPlatformChannelQuota(info.TenantId, projected); err != nil {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeTenantQuotaExceeded, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+	}
+	return nil
 }
 
 func ContainPriceOrRatio(modelName string) bool {

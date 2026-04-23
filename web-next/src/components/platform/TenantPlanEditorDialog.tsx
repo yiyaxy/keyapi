@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -76,6 +83,8 @@ type FormState = {
   renew_period_days: string;
   renew_price_yuan: string;
   renew_currency: string;
+  platform_quota_cap: string;
+  platform_quota_period: 'none' | 'daily' | 'monthly';
 };
 
 function fromPlan(plan: TenantPlan): FormState {
@@ -94,6 +103,8 @@ function fromPlan(plan: TenantPlan): FormState {
     renew_period_days: String(plan.renew_period_days),
     renew_price_yuan: (plan.renew_price_amount / 100).toFixed(2),
     renew_currency: plan.renew_currency || 'CNY',
+    platform_quota_cap: String(plan.platform_quota_cap),
+    platform_quota_period: plan.platform_quota_period,
   };
 }
 
@@ -142,6 +153,8 @@ export function TenantPlanEditorDialog({
       renew_period_days: Number(form.renew_period_days),
       renew_price_amount: renewCents,
       renew_currency: form.renew_currency || 'CNY',
+      platform_quota_cap: Number(form.platform_quota_cap),
+      platform_quota_period: form.platform_quota_period,
     };
     // NaN guard — any bad numeric drops to defaults server-side if we omit
     // the field, but here we'd rather surface "fix your input" than
@@ -278,6 +291,46 @@ export function TenantPlanEditorDialog({
                   className='tabular-nums'
                 />
                 <p className='text-12 text-fg-2'>{t('plan.hint.grace')}</p>
+              </div>
+            </div>
+          </Section>
+
+          <Section title={t('plan.section.platform_quota')}>
+            <p className='text-12 text-fg-2'>
+              {t('plan.hint.platform_quota_used', {
+                used: plan.platform_quota_used,
+                cap: plan.platform_quota_cap < 0 ? '∞' : String(plan.platform_quota_cap),
+              })}
+            </p>
+            <div className='grid grid-cols-2 gap-3'>
+              <div className='space-y-2'>
+                <Label>{t('plan.field.platform_quota_cap')}</Label>
+                <Input
+                  type='number'
+                  value={form.platform_quota_cap}
+                  onChange={(e) => patch('platform_quota_cap', e.target.value)}
+                  className='tabular-nums'
+                />
+                <p className='text-12 text-fg-2'>{t('plan.hint.platform_quota_cap')}</p>
+              </div>
+              <div className='space-y-2'>
+                <Label>{t('plan.field.platform_quota_period')}</Label>
+                <Select
+                  value={form.platform_quota_period}
+                  onValueChange={(value) =>
+                    patch('platform_quota_period', value as FormState['platform_quota_period'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='none'>{t('plan.option.period_none')}</SelectItem>
+                    <SelectItem value='daily'>{t('plan.option.period_daily')}</SelectItem>
+                    <SelectItem value='monthly'>{t('plan.option.period_monthly')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className='text-12 text-fg-2'>{t('plan.hint.platform_quota_period')}</p>
               </div>
             </div>
           </Section>

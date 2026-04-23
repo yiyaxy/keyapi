@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -66,13 +67,34 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 				checkAndSendQuotaNotify(relayInfo, actualQuota-preConsumed, preConsumed)
 			}
 		}
+		TrackPlatformChannelUsageIfApplicable(relayInfo, actualQuota)
 		return nil
 	}
 
 	// 回退：无 BillingSession 时使用旧路径
 	quotaDelta := actualQuota - relayInfo.FinalPreConsumedQuota
 	if quotaDelta != 0 {
-		return PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true)
+		if err := PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true); err != nil {
+			return err
+		}
 	}
+	TrackPlatformChannelUsageIfApplicable(relayInfo, actualQuota)
 	return nil
+}
+
+// TrackPlatformChannelUsageIfApplicable records actual settled usage against
+// the tenant's platform-channel quota accumulator. Best-effort only.
+func TrackPlatformChannelUsageIfApplicable(relayInfo *relaycommon.RelayInfo, actualQuota int) {
+	if relayInfo == nil || relayInfo.TenantId <= 0 || actualQuota <= 0 {
+		return
+	}
+	channelID := relayInfo.ChannelId
+	if channelID <= 0 {
+		return
+	}
+	ch, err := model.CacheGetChannel(channelID)
+	if err != nil || ch == nil || ch.Scope != model.ChannelScopePlatform {
+		return
+	}
+	IncrementTenantPlatformChannelUsed(relayInfo.TenantId, actualQuota)
 }

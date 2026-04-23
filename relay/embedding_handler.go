@@ -19,6 +19,9 @@ import (
 func EmbeddingHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 	helper.ApplyChannelBillingOverrides(info)
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return apiErr
+	}
 
 	embeddingReq, ok := info.Request.(*dto.EmbeddingRequest)
 	if !ok {

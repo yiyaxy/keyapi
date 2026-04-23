@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/go-redis/redis/v8"
+	"gorm.io/gorm"
 )
 
 // ---------- in-memory RPM counter (fallback when Redis is unavailable) ----------
@@ -45,6 +46,8 @@ type tpmEntry struct {
 var (
 	tpmCounters sync.Map // tenantId -> *tpmEntry
 )
+
+const platformQuotaIncrementMaxRetries = 3
 
 func getTPMEntry(tenantId int) *tpmEntry {
 	val, _ := tpmCounters.LoadOrStore(tenantId, &tpmEntry{})
@@ -247,6 +250,101 @@ func CheckTenantModelAccess(tenantId int, modelName string) error {
 	}
 
 	return nil
+}
+
+// CheckTenantPlatformChannelQuota verifies that a projected platform-channel
+// charge still fits within the tenant's configured cap for the current period.
+// The check is read-only: if the period has rolled over we treat used as zero
+// for this request, but leave the durable reset to the next increment write.
+func CheckTenantPlatformChannelQuota(tenantId int, projectedQuota int) error {
+	if tenantId <= 0 || projectedQuota <= 0 {
+		return nil
+	}
+
+	plan, err := model.GetTenantPlan(tenantId)
+	if err != nil {
+		return fmt.Errorf("获取租户计划失败: %w", err)
+	}
+	if plan.PlatformQuotaCap < 0 {
+		return nil
+	}
+
+	effectiveUsed := plan.PlatformQuotaUsed
+	if needReset, _ := model.ComputePlatformQuotaPeriodReset(plan.PlatformQuotaPeriod, plan.PlatformQuotaPeriodStart, time.Now()); needReset {
+		effectiveUsed = 0
+	}
+	return evaluateProjectedQuota(plan.PlatformQuotaCap, effectiveUsed, projectedQuota)
+}
+
+func evaluateProjectedQuota(cap int64, effectiveUsed int64, projected int) error {
+	if cap < 0 || projected <= 0 {
+		return nil
+	}
+	if effectiveUsed+int64(projected) > cap {
+		return fmt.Errorf("租户平台渠道额度不足 (上限 %d，已用 %d，本次需要 %d)",
+			cap, effectiveUsed, projected)
+	}
+	return nil
+}
+
+// IncrementTenantPlatformChannelUsed accumulates actual settled usage for
+// platform-scope channels. It uses optimistic concurrency keyed on
+// platform_quota_period_start so rollover races do not lose writes.
+func IncrementTenantPlatformChannelUsed(tenantId int, quotaDelta int) {
+	if tenantId <= 0 || quotaDelta <= 0 {
+		return
+	}
+	if model.DB == nil {
+		return
+	}
+
+	now := time.Now()
+	for attempt := 0; attempt < platformQuotaIncrementMaxRetries; attempt++ {
+		var row struct {
+			PlatformQuotaCap         int64
+			PlatformQuotaPeriod      string
+			PlatformQuotaPeriodStart int64
+		}
+		err := model.WithTenantBypass(model.DB).Table("tenant_plans").
+			Select("platform_quota_cap, platform_quota_period, platform_quota_period_start").
+			Where("tenant_id = ?", tenantId).
+			Take(&row).Error
+		if err != nil {
+			common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed SELECT failed tenant=%d: %s", tenantId, err.Error()))
+			return
+		}
+		if row.PlatformQuotaCap < 0 {
+			return
+		}
+
+		needReset, newStart := model.ComputePlatformQuotaPeriodReset(row.PlatformQuotaPeriod, row.PlatformQuotaPeriodStart, now)
+
+		var updates map[string]interface{}
+		if needReset {
+			updates = map[string]interface{}{
+				"platform_quota_used":         int64(quotaDelta),
+				"platform_quota_period_start": newStart,
+			}
+		} else {
+			updates = map[string]interface{}{
+				"platform_quota_used": gorm.Expr("platform_quota_used + ?", quotaDelta),
+			}
+		}
+
+		res := model.WithTenantBypass(model.DB).Table("tenant_plans").
+			Where("tenant_id = ? AND platform_quota_period_start = ?", tenantId, row.PlatformQuotaPeriodStart).
+			Updates(updates)
+		if res.Error != nil {
+			common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed UPDATE failed tenant=%d delta=%d: %s", tenantId, quotaDelta, res.Error.Error()))
+			return
+		}
+		if res.RowsAffected > 0 {
+			model.InvalidateTenantPlanCache(tenantId)
+			return
+		}
+	}
+
+	common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed exhausted retries tenant=%d delta=%d", tenantId, quotaDelta))
 }
 
 // IncrementTenantRPM increments the RPM counter for a tenant.

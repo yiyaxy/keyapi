@@ -18,6 +18,9 @@ import (
 func AudioHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 	helper.ApplyChannelBillingOverrides(info)
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return apiErr
+	}
 
 	audioReq, ok := info.Request.(*dto.AudioRequest)
 	if !ok {

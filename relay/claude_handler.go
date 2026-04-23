@@ -25,6 +25,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	info.InitChannelMeta(c)
 	helper.ApplyChannelBillingOverrides(info)
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return apiErr
+	}
 
 	claudeReq, ok := info.Request.(*dto.ClaudeRequest)
 

@@ -104,19 +104,23 @@ func CreateTenant(c *gin.Context) {
 		// 绕过当前 tx 导致部分提交。
 		now := common.GetTimestamp()
 		plan := &model.TenantPlan{
-			TenantId:       tenant.Id,
-			PlanName:       model.TenantPlanDefaultName,
-			QuotaLimit:     -1,
-			RPMLimit:       -1,
-			TPMLimit:       -1,
-			MaxMembers:     -1,
-			MaxTokens:      -1,
-			MaxChannels:    -1,
-			Status:         model.TenantPlanStatusActive,
-			ExpiresAt:      0,
-			PlatformMarkup: 1.0,
-			CreatedAt:      now,
-			UpdatedAt:      now,
+			TenantId:                 tenant.Id,
+			PlanName:                 model.TenantPlanDefaultName,
+			QuotaLimit:               -1,
+			RPMLimit:                 -1,
+			TPMLimit:                 -1,
+			MaxMembers:               -1,
+			MaxTokens:                -1,
+			MaxChannels:              -1,
+			Status:                   model.TenantPlanStatusActive,
+			ExpiresAt:                0,
+			PlatformMarkup:           1.0,
+			PlatformQuotaCap:         -1,
+			PlatformQuotaPeriod:      model.PlatformQuotaPeriodNone,
+			PlatformQuotaUsed:        0,
+			PlatformQuotaPeriodStart: 0,
+			CreatedAt:                now,
+			UpdatedAt:                now,
 		}
 		if err := model.WithTenantBypass(tx).Create(plan).Error; err != nil {
 			return err

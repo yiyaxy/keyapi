@@ -4,7 +4,7 @@
 
 **Goal:** Cap each tenant's spend on platform channels with a configurable quota ceiling (e.g. 80,000 quota units), with optional periodic reset (none / daily / monthly). Pre-consume hard-rejects when the cap would be exceeded; usage is incremented after settlement; period resets are lazy on read.
 
-**Architecture:** Storage lives on the existing `TenantPlan` row (4 new columns) — no new tables, no Redis dependency. The check helper (`CheckTenantPlatformChannelQuota`) and increment helper (`IncrementTenantPlatformChannelUsed`) live in `service/tenant_quota.go` next to existing `CheckTenantQuota` / `IncrementTenantTPM` so the call patterns stay symmetric. The check fires only when the chosen channel is `scope='platform'`. The increment fires after `SettleBilling` succeeds, sized by the actual settled quota (not the pre-consumed estimate). Period rollover is detected by comparing `time.Now()` against `platform_quota_period_start` whenever the helpers run, and an atomic `UPDATE ... SET used=0, period_start=...` resets it. No background job.
+**Architecture:** Storage lives on the existing `TenantPlan` row (4 new columns) — no new tables, no Redis dependency. The check helper (`CheckTenantPlatformChannelQuota`) and increment helper (`IncrementTenantPlatformChannelUsed`) live in `service/tenant_quota.go` next to existing `CheckTenantQuota` / `IncrementTenantTPM` so the call patterns stay symmetric. The pre-consume gate is exposed as `helper.EnforcePlatformChannelQuota(c, info)` and called explicitly by each handler at the point where its `info.PriceData` is filled — after `ApplyChannelBillingOverrides` for the main relay handlers (`compatible/claude/audio/embedding/gemini/image/rerank/responses/websocket`) and after `ModelPriceHelperPerCall` for the task/MJ handlers (the two families fill PriceData in different orders, so a single hook point does not work for both). Each `controller/relay.go` retry loop re-enters the handler on a new channel, so the gate fires per attempt. The increment fires from inside `service.SettleBilling` (the single funnel through which all three settle paths — text, audio, task — flow). Period rollover and increment are atomic via optimistic concurrency: a conditional UPDATE keyed on `platform_quota_period_start` (with bounded retry on lost races) — works on SQLite, MySQL, and Postgres without any `FOR UPDATE` row-lock dependency. The reset detector is a pure function (`ComputePlatformQuotaPeriodReset`) that returns the new period_start without ever mutating a cached `*TenantPlan`, so a failed persist cannot poison the in-memory cache. No background job.
 
 **Tech Stack:** Go (Gin + GORM), React + TanStack Query (web-next), shadcn-ui dialogs, Tailwind. Database: same as existing tenant_plan table (MySQL/Postgres/SQLite via GORM).
 
@@ -19,13 +19,18 @@
 ## File Structure
 
 **Backend (new code or edits):**
-- `model/tenant_plan.go` — add 4 columns, helper consts, `MaybeResetPlatformQuotaPeriod` method, cache invalidation untouched (existing `InvalidateTenantPlanCache` already used).
-- `service/tenant_quota.go` — add `CheckTenantPlatformChannelQuota` + `IncrementTenantPlatformChannelUsed`, both honor lazy reset.
-- `service/tenant_quota_test.go` — extend with table-driven tests for the new helpers.
-- `controller/relay.go` — call check after channel selection (see Task 6 for exact position); call increment after `SettleBilling` succeeds.
-- `controller/tenant/plan.go` — extend `UpdateTenantPlanRequest` with the 3 admin-editable fields; `platform_quota_used` is read-only from API.
+- `model/tenant_plan.go` — add 4 columns + period constants + pure helper `ComputePlatformQuotaPeriodReset(period, periodStart, now) (needReset bool, newPeriodStart int64)`. Does NOT mutate plan.
+- `service/tenant_quota.go` — add `CheckTenantPlatformChannelQuota` + `IncrementTenantPlatformChannelUsed`. `CheckTenantPlatformChannelQuota` stays read-only; `IncrementTenantPlatformChannelUsed` uses optimistic concurrency keyed on `platform_quota_period_start` with bounded retry (no `FOR UPDATE`, no row-lock dependency).
+- `service/tenant_quota_test.go` — extend with unit tests for the pure-data path; integration test (covered manually in Task 10) exercises the optimistic rollover path.
+- `relay/helper/price.go` — add exported `EnforcePlatformChannelQuota(c, info) *types.NewAPIError`. The function reuses `applyPlatformMarkup`'s channel-resolution logic (CacheGetChannel + Scope check). `ApplyChannelBillingOverrides` is **not** modified — handlers call enforce explicitly.
+- Main relay handlers (`audio_handler.go`, `claude_handler.go`, `compatible_handler.go`, `embedding_handler.go`, `gemini_handler.go`, `image_handler.go`, `rerank_handler.go`, `responses_handler.go`, `websocket.go`) — call `helper.EnforcePlatformChannelQuota(c, info)` immediately after `helper.ApplyChannelBillingOverrides(info)`.
+- Task/MJ handlers (`relay/relay_task.go`, `relay/mjproxy_handler.go`) — call `helper.EnforcePlatformChannelQuota(c, info)` immediately after `helper.ModelPriceHelperPerCall(c, info)` (NOT after `ApplyChannelBillingOverrides`, because PriceData isn't filled yet at that point in this family).
+- `service/billing.go` — at the tail of `SettleBilling`, after a successful settle, call a new `incrementPlatformChannelUsedIfApplicable(relayInfo, actualQuota)` helper. This single insertion point covers all three SettleBilling call sites (text_quota, quota.go, controller/relay.go).
+- `controller/tenant/plan.go` — extend `UpdateTenantPlanRequest` with the 2 admin-editable fields (`platform_quota_cap`, `platform_quota_period`); `platform_quota_used` and `platform_quota_period_start` are read-only from API.
 - `controller/tenant/platform_channel_usage.go` — **new file**. Two endpoints: list per-tenant usage (for "platform channels page → tenants tab") and reset-counter (admin override).
 - `router/api-router.go` — wire the new endpoints.
+
+**No edits to `controller/relay.go`** — channel selection still happens in the retry loop and feeds context, but the gate now lives in handlers, not in the controller and not inside `ModelPriceHelper`. That keeps `tenant_quota_exceeded` as a typed `*types.NewAPIError`, avoids the controller's generic `model_price_error` wrapping path, and lets each handler call enforce only after its own `PriceData` is actually ready.
 
 **Frontend (new code or edits):**
 - `web-next/src/hooks/usePlatformTenants.ts` — extend `TenantPlan` type + `UpdateTenantPlanPayload`.
@@ -56,13 +61,15 @@ All comparisons use `time.Now()` server-local — explicit UTC handling is out o
 
 ---
 
-## Task 1: Schema fields + lazy-reset helper on TenantPlan
+## Task 1: Schema fields + pure period-reset detector on TenantPlan
 
 **Files:**
 - Modify: `model/tenant_plan.go`
 - Test: `model/tenant_plan_test.go` (create if missing)
 
-- [ ] **Step 1: Write failing test for default values + reset logic**
+**Critical design constraint:** `ComputePlatformQuotaPeriodReset` is a **pure function** — it takes `(period, periodStart, now)` and returns `(needReset, newPeriodStart)`. It does NOT take `*TenantPlan` and does NOT mutate anything. This ensures that when callers go through `GetTenantPlan` (which returns the cached pointer), a failed downstream persist cannot leave the in-memory cache in a fake "already reset" state. (Addresses review item P2.)
+
+- [ ] **Step 1: Write failing test for the pure detector**
 
 ```go
 // model/tenant_plan_test.go
@@ -73,81 +80,73 @@ import (
 	"time"
 )
 
-func TestPlatformQuotaPeriodNone_NeverResets(t *testing.T) {
-	p := &TenantPlan{
-		PlatformQuotaPeriod: PlatformQuotaPeriodNone,
-		PlatformQuotaUsed:   12345,
-		PlatformQuotaPeriodStart: time.Now().Add(-365 * 24 * time.Hour).Unix(),
-	}
-	reset := MaybeResetPlatformQuotaPeriod(p, time.Now())
-	if reset {
+func TestComputePlatformQuotaPeriodReset_None_NeverResets(t *testing.T) {
+	yearAgo := time.Now().Add(-365 * 24 * time.Hour).Unix()
+	need, _ := ComputePlatformQuotaPeriodReset(PlatformQuotaPeriodNone, yearAgo, time.Now())
+	if need {
 		t.Fatal("period=none must never reset")
 	}
-	if p.PlatformQuotaUsed != 12345 {
-		t.Fatalf("used should be untouched, got %d", p.PlatformQuotaUsed)
-	}
 }
 
-func TestPlatformQuotaPeriodDaily_ResetsAcrossDayBoundary(t *testing.T) {
-	yesterday := time.Now().Add(-25 * time.Hour)
-	p := &TenantPlan{
-		PlatformQuotaPeriod:      PlatformQuotaPeriodDaily,
-		PlatformQuotaUsed:        500,
-		PlatformQuotaPeriodStart: yesterday.Unix(),
-	}
-	reset := MaybeResetPlatformQuotaPeriod(p, time.Now())
-	if !reset {
+func TestComputePlatformQuotaPeriodReset_Daily_AcrossBoundary(t *testing.T) {
+	now := time.Now()
+	yesterday := now.Add(-25 * time.Hour).Unix()
+	need, newStart := ComputePlatformQuotaPeriodReset(PlatformQuotaPeriodDaily, yesterday, now)
+	if !need {
 		t.Fatal("daily period crossing midnight must reset")
 	}
-	if p.PlatformQuotaUsed != 0 {
-		t.Fatalf("used should be zeroed, got %d", p.PlatformQuotaUsed)
-	}
-	startOfToday := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Local).Unix()
-	if p.PlatformQuotaPeriodStart != startOfToday {
-		t.Fatalf("period_start should be today 00:00, got %d (want %d)", p.PlatformQuotaPeriodStart, startOfToday)
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	if newStart != startOfToday {
+		t.Fatalf("expected newStart=%d (today 00:00), got %d", startOfToday, newStart)
 	}
 }
 
-func TestPlatformQuotaPeriodDaily_NoResetWithinSameDay(t *testing.T) {
-	noon := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 12, 0, 0, 0, time.Local)
-	p := &TenantPlan{
-		PlatformQuotaPeriod:      PlatformQuotaPeriodDaily,
-		PlatformQuotaUsed:        500,
-		PlatformQuotaPeriodStart: noon.Unix(),
-	}
-	reset := MaybeResetPlatformQuotaPeriod(p, noon.Add(2*time.Hour))
-	if reset {
+func TestComputePlatformQuotaPeriodReset_Daily_SameDay(t *testing.T) {
+	now := time.Now()
+	noon := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
+	need, _ := ComputePlatformQuotaPeriodReset(PlatformQuotaPeriodDaily, noon.Unix(), noon.Add(2*time.Hour))
+	if need {
 		t.Fatal("same day must not reset")
 	}
 }
 
-func TestPlatformQuotaPeriodMonthly_ResetsAcrossMonthBoundary(t *testing.T) {
+func TestComputePlatformQuotaPeriodReset_Monthly_AcrossBoundary(t *testing.T) {
 	now := time.Now()
-	lastMonth := time.Date(now.Year(), now.Month()-1, 15, 12, 0, 0, 0, time.Local)
-	p := &TenantPlan{
-		PlatformQuotaPeriod:      PlatformQuotaPeriodMonthly,
-		PlatformQuotaUsed:        9000,
-		PlatformQuotaPeriodStart: lastMonth.Unix(),
+	lastMonth := time.Date(now.Year(), now.Month()-1, 15, 12, 0, 0, 0, now.Location()).Unix()
+	need, newStart := ComputePlatformQuotaPeriodReset(PlatformQuotaPeriodMonthly, lastMonth, now)
+	if !need {
+		t.Fatal("monthly period crossing must reset")
 	}
-	reset := MaybeResetPlatformQuotaPeriod(p, now)
-	if !reset {
-		t.Fatal("monthly period crossing month must reset")
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
+	if newStart != startOfMonth {
+		t.Fatalf("expected newStart=%d (month-start), got %d", startOfMonth, newStart)
 	}
-	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local).Unix()
-	if p.PlatformQuotaPeriodStart != startOfMonth {
-		t.Fatalf("period_start should be month-start, got %d (want %d)", p.PlatformQuotaPeriodStart, startOfMonth)
+}
+
+func TestComputePlatformQuotaPeriodReset_ZeroStart_TriggersResetForActivePeriod(t *testing.T) {
+	// Tenant just got a cap configured; period_start is 0 (never used).
+	// First request under daily/monthly should set the period_start to the
+	// current period anchor without touching used (this is a "first ever"
+	// initialization, not a real reset of accumulated usage).
+	now := time.Now()
+	need, newStart := ComputePlatformQuotaPeriodReset(PlatformQuotaPeriodDaily, 0, now)
+	if !need {
+		t.Fatal("zero period_start must trigger initialization for daily")
+	}
+	if newStart == 0 {
+		t.Fatal("newStart must be set to today 00:00")
 	}
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `go test ./model/ -run TestPlatformQuota -v`
-Expected: FAIL — `undefined: PlatformQuotaPeriodNone` and `MaybeResetPlatformQuotaPeriod`.
+Run: `go test ./model/ -run TestComputePlatformQuota -v`
+Expected: FAIL — `undefined: PlatformQuotaPeriodNone` and `ComputePlatformQuotaPeriodReset`.
 
-- [ ] **Step 3: Add the columns + constants + helper to `model/tenant_plan.go`**
+- [ ] **Step 3: Add columns + constants + pure helper**
 
-Insert these constants under the existing `TenantPlanStatusActive` block (around line 47):
+Insert constants under the existing `TenantPlanStatusActive` block (around line 47):
 
 ```go
 const (
@@ -172,40 +171,36 @@ Add 4 fields to the `TenantPlan` struct (after `PlatformMarkup`, before `Created
 	PlatformQuotaPeriodStart int64  `json:"platform_quota_period_start" gorm:"bigint;default:0"`
 ```
 
-Add the helper at the bottom of the file:
+Add the pure helper at the bottom of the file:
 
 ```go
-// MaybeResetPlatformQuotaPeriod inspects the plan's period and, if the
-// current time falls outside the active period, mutates the plan in place:
-//   - Sets PlatformQuotaUsed = 0
-//   - Updates PlatformQuotaPeriodStart to the new period's start (local TZ)
-// Returns true when a reset was applied. Caller is responsible for
-// persisting the change (typically via an atomic UPDATE).
-func MaybeResetPlatformQuotaPeriod(p *TenantPlan, now time.Time) bool {
-	if p == nil {
-		return false
-	}
-	switch p.PlatformQuotaPeriod {
+// ComputePlatformQuotaPeriodReset is a PURE function (no side effects, no
+// mutation, no DB) that decides whether the period boundary has been
+// crossed. Returns (needReset, newPeriodStart). If needReset is false,
+// newPeriodStart is meaningless and should be ignored.
+//
+// Callers must use the returned newPeriodStart with a CONDITIONAL UPDATE
+// (WHERE platform_quota_period_start = oldStart) to avoid double-resets
+// in concurrent paths. Do NOT mutate a cached *TenantPlan with this
+// result — invalidate the cache after a successful UPDATE instead.
+func ComputePlatformQuotaPeriodReset(period string, periodStart int64, now time.Time) (bool, int64) {
+	switch period {
 	case PlatformQuotaPeriodDaily:
 		startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
-		if p.PlatformQuotaPeriodStart < startOfToday {
-			p.PlatformQuotaUsed = 0
-			p.PlatformQuotaPeriodStart = startOfToday
-			return true
+		if periodStart < startOfToday {
+			return true, startOfToday
 		}
 	case PlatformQuotaPeriodMonthly:
 		startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
-		if p.PlatformQuotaPeriodStart < startOfMonth {
-			p.PlatformQuotaUsed = 0
-			p.PlatformQuotaPeriodStart = startOfMonth
-			return true
+		if periodStart < startOfMonth {
+			return true, startOfMonth
 		}
 	}
-	return false
+	return false, 0
 }
 ```
 
-Also extend the default-plan creation block in `GetTenantPlan` (around line 90) to set the defaults explicitly:
+Extend the default-plan block in `GetTenantPlan` (around line 90):
 
 ```go
 		PlatformQuotaCap:         -1,
@@ -214,20 +209,20 @@ Also extend the default-plan creation block in `GetTenantPlan` (around line 90) 
 		PlatformQuotaPeriodStart: 0,
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `go test ./model/ -run TestPlatformQuota -v`
-Expected: 4 PASS.
+Run: `go test ./model/ -run TestComputePlatformQuota -v`
+Expected: 5 PASS.
 
-- [ ] **Step 5: Verify AutoMigrate already covers TenantPlan**
+- [ ] **Step 5: Verify AutoMigrate covers TenantPlan**
 
-Read `model/main.go` line 524 — confirm `{&TenantPlan{}, "TenantPlan"}` is in the migration list. (No code change needed.) GORM AutoMigrate adds new columns automatically.
+Read `model/main.go:524` — confirm `{&TenantPlan{}, "TenantPlan"}` is present. No code change needed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add model/tenant_plan.go model/tenant_plan_test.go
-git commit -m "feat(tenant-plan): add platform-channel quota cap fields + lazy period reset"
+git commit -m "feat(tenant-plan): add platform-channel quota cap fields + pure reset detector"
 ```
 
 ---
@@ -239,42 +234,31 @@ git commit -m "feat(tenant-plan): add platform-channel quota cap fields + lazy p
 - Test: `service/tenant_quota_test.go`
 
 **Behavior:**
-- `CheckTenantPlatformChannelQuota(tenantId int, projectedQuota int) error` returns `nil` when the request fits, or an error message naming the cap when it would exceed.
-- Reads `TenantPlan` via `GetTenantPlan` (cached). Calls `MaybeResetPlatformQuotaPeriod` and persists if reset (atomic UPDATE on the row, then invalidates the plan cache).
-- `tenantId <= 0` → returns nil (skip enforcement; matches existing helpers).
-- `PlatformQuotaCap < 0` → returns nil (unlimited).
+- `CheckTenantPlatformChannelQuota(tenantId int, projectedQuota int) error` returns `nil` when the request fits, error otherwise.
+- `tenantId <= 0` → nil (matches existing helpers' guard pattern).
+- `PlatformQuotaCap < 0` → nil (unlimited).
+- For period rollover, this helper does NOT do the actual reset write — the reset is folded into the next `IncrementTenantPlatformChannelUsed` transaction (see Task 3). Here we only **read** the plan and, if `ComputePlatformQuotaPeriodReset` says we've crossed a boundary, treat `PlatformQuotaUsed` as 0 for the purpose of THIS request's check. This avoids the cache-poisoning hazard (P2) and keeps the "definitely correct" reset write inside one transaction with the increment.
+- The pure-data inner function `evaluateProjectedQuota(cap, effectiveUsed, projected) error` is exposed for unit tests (no DB).
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Write failing tests**
 
 Append to `service/tenant_quota_test.go`:
 
 ```go
-func TestCheckTenantPlatformChannelQuota_Unlimited(t *testing.T) {
-	plan := &model.TenantPlan{TenantId: 100, PlatformQuotaCap: -1}
-	err := checkPlatformChannelQuotaForPlan(plan, 99999)
-	if err != nil {
+func TestEvaluateProjectedQuota_Unlimited(t *testing.T) {
+	if err := evaluateProjectedQuota(-1, 99999, 99999); err != nil {
 		t.Fatalf("expected nil for unlimited cap, got %v", err)
 	}
 }
 
-func TestCheckTenantPlatformChannelQuota_FitsUnderCap(t *testing.T) {
-	plan := &model.TenantPlan{
-		TenantId:          100,
-		PlatformQuotaCap:  10000,
-		PlatformQuotaUsed: 5000,
-	}
-	if err := checkPlatformChannelQuotaForPlan(plan, 1000); err != nil {
+func TestEvaluateProjectedQuota_FitsUnderCap(t *testing.T) {
+	if err := evaluateProjectedQuota(10000, 5000, 1000); err != nil {
 		t.Fatalf("expected nil when used+projected < cap, got %v", err)
 	}
 }
 
-func TestCheckTenantPlatformChannelQuota_ExceedsCap(t *testing.T) {
-	plan := &model.TenantPlan{
-		TenantId:          100,
-		PlatformQuotaCap:  10000,
-		PlatformQuotaUsed: 9500,
-	}
-	err := checkPlatformChannelQuotaForPlan(plan, 1000)
+func TestEvaluateProjectedQuota_ExceedsCap(t *testing.T) {
+	err := evaluateProjectedQuota(10000, 9500, 1000)
 	if err == nil {
 		t.Fatal("expected error when used+projected > cap")
 	}
@@ -283,39 +267,46 @@ func TestCheckTenantPlatformChannelQuota_ExceedsCap(t *testing.T) {
 	}
 }
 
-func TestCheckTenantPlatformChannelQuota_AtCapBoundary(t *testing.T) {
-	plan := &model.TenantPlan{
-		TenantId:          100,
-		PlatformQuotaCap:  10000,
-		PlatformQuotaUsed: 10000,
-	}
-	if err := checkPlatformChannelQuotaForPlan(plan, 1); err == nil {
+func TestEvaluateProjectedQuota_AtCapBoundary(t *testing.T) {
+	if err := evaluateProjectedQuota(10000, 10000, 1); err == nil {
 		t.Fatal("expected error when already at cap")
+	}
+}
+
+func TestEvaluateProjectedQuota_ZeroProjected(t *testing.T) {
+	// Free models / 0-quota requests must always pass (don't block on cap math when nothing's being charged).
+	if err := evaluateProjectedQuota(10000, 10000, 0); err != nil {
+		t.Fatalf("expected nil for zero projected, got %v", err)
 	}
 }
 ```
 
-Add the import `"github.com/QuantumNous/new-api/model"` to the test file if not present.
+Add the import `"github.com/QuantumNous/new-api/model"` to the test file if not already there. (`evaluateProjectedQuota` itself doesn't need it, but later tests might.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `go test ./service/ -run TestCheckTenantPlatformChannelQuota -v`
-Expected: FAIL — `undefined: checkPlatformChannelQuotaForPlan`.
+Run: `go test ./service/ -run TestEvaluateProjectedQuota -v`
+Expected: FAIL — `undefined: evaluateProjectedQuota`.
 
-- [ ] **Step 3: Implement the helper pair in `service/tenant_quota.go`**
+- [ ] **Step 3: Implement helpers in `service/tenant_quota.go`**
 
-Append at the bottom of the file:
+Append:
 
 ```go
 // CheckTenantPlatformChannelQuota verifies that the tenant has enough
-// remaining platform-channel quota to cover `projectedQuota` for a single
-// request. Lazily resets the period counter when crossing a boundary.
+// remaining platform-channel quota to cover `projectedQuota` for ONE
+// upcoming request.
 //
 // Returns nil if:
 //   - tenantId <= 0 (enforcement disabled for non-tenant contexts), or
-//   - PlatformQuotaCap < 0 (unlimited).
+//   - PlatformQuotaCap < 0 (unlimited), or
+//   - effective_used + projected <= cap
 //
-// Otherwise returns a descriptive error when used + projected > cap.
+// "effective_used" = plan.PlatformQuotaUsed, OR 0 when ComputePlatformQuotaPeriodReset
+// indicates the period has rolled over (the actual zeroing of the row is deferred
+// to the increment transaction in Task 3 to keep "reset + accumulate" atomic).
+//
+// This function NEVER mutates the cached plan and NEVER writes to the DB.
 func CheckTenantPlatformChannelQuota(tenantId int, projectedQuota int) error {
 	if tenantId <= 0 {
 		return nil
@@ -324,249 +315,483 @@ func CheckTenantPlatformChannelQuota(tenantId int, projectedQuota int) error {
 	if err != nil {
 		return fmt.Errorf("获取租户计划失败: %w", err)
 	}
-	// Lazy period reset; persist if it changed.
-	if model.MaybeResetPlatformQuotaPeriod(plan, time.Now()) {
-		if err := persistPlatformQuotaReset(plan); err != nil {
-			common.SysError(fmt.Sprintf("persistPlatformQuotaReset failed tenant=%d: %s", tenantId, err.Error()))
-			// fail-open on persist failure — better to charge twice than to block traffic
-		}
-	}
-	return checkPlatformChannelQuotaForPlan(plan, projectedQuota)
-}
-
-// checkPlatformChannelQuotaForPlan is the pure-data inner check, exposed
-// for tests so they don't need a DB.
-func checkPlatformChannelQuotaForPlan(plan *model.TenantPlan, projectedQuota int) error {
-	if plan == nil || plan.PlatformQuotaCap < 0 {
+	if plan.PlatformQuotaCap < 0 {
 		return nil
 	}
-	if plan.PlatformQuotaUsed+int64(projectedQuota) > plan.PlatformQuotaCap {
-		return fmt.Errorf("租户平台渠道额度不足 (上限 %d，已用 %d，本次需要 %d)",
-			plan.PlatformQuotaCap, plan.PlatformQuotaUsed, projectedQuota)
+	effectiveUsed := plan.PlatformQuotaUsed
+	if needReset, _ := model.ComputePlatformQuotaPeriodReset(plan.PlatformQuotaPeriod, plan.PlatformQuotaPeriodStart, time.Now()); needReset {
+		effectiveUsed = 0
 	}
-	return nil
+	return evaluateProjectedQuota(plan.PlatformQuotaCap, effectiveUsed, projectedQuota)
 }
 
-// persistPlatformQuotaReset writes the zeroed counter + new period_start
-// back to the DB and invalidates the plan cache. Atomic single-row UPDATE.
-func persistPlatformQuotaReset(plan *model.TenantPlan) error {
-	res := model.WithTenantBypass(model.DB).Model(&model.TenantPlan{}).
-		Where("tenant_id = ?", plan.TenantId).
-		Updates(map[string]interface{}{
-			"platform_quota_used":         plan.PlatformQuotaUsed,
-			"platform_quota_period_start": plan.PlatformQuotaPeriodStart,
-		})
-	if res.Error != nil {
-		return res.Error
+// evaluateProjectedQuota is the pure-data inner check (DB-free, mutation-free).
+// cap < 0 means unlimited. projected <= 0 always passes.
+func evaluateProjectedQuota(cap int64, effectiveUsed int64, projected int) error {
+	if cap < 0 || projected <= 0 {
+		return nil
 	}
-	model.InvalidateTenantPlanCache(plan.TenantId)
+	if effectiveUsed+int64(projected) > cap {
+		return fmt.Errorf("租户平台渠道额度不足 (上限 %d，已用 %d，本次需要 %d)",
+			cap, effectiveUsed, projected)
+	}
 	return nil
 }
 ```
 
+Make sure `time` is in the imports (already there).
+
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `go test ./service/ -run TestCheckTenantPlatformChannelQuota -v`
-Expected: 4 PASS.
+Run: `go test ./service/ -run TestEvaluateProjectedQuota -v`
+Expected: 5 PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add service/tenant_quota.go service/tenant_quota_test.go
-git commit -m "feat(tenant-quota): add CheckTenantPlatformChannelQuota with lazy period reset"
+git commit -m "feat(tenant-quota): add CheckTenantPlatformChannelQuota (read-only pre-consume gate)"
 ```
 
 ---
 
-## Task 3: Service-layer increment helper
+## Task 3: Service-layer increment helper (optimistic-concurrency reset + accumulate)
 
 **Files:**
 - Modify: `service/tenant_quota.go`
 - Test: `service/tenant_quota_test.go`
 
-**Behavior:**
-- `IncrementTenantPlatformChannelUsed(tenantId int, quotaDelta int)` atomically `UPDATE tenant_plans SET platform_quota_used = platform_quota_used + ? WHERE tenant_id = ?` and invalidates the plan cache.
-- Skips when `tenantId <= 0`, `quotaDelta <= 0`, or the plan's cap is unlimited (no point tracking what we won't enforce).
-- Lazy-resets the period before incrementing (to avoid leaking yesterday's tail into today's bucket).
+**Why optimistic concurrency, not `FOR UPDATE`:** SQLite is a first-class supported backend in this repo (used by tests and small deployments), and SQLite does not have row-level locks — `FOR UPDATE` either errors or is silently dropped depending on driver/version. Pessimistic locking would also require dialect-specific GORM constructs. Optimistic concurrency works on every supported backend with one consistent code path.
 
-- [ ] **Step 1: Write failing test (DB-required, use the existing test sqlite setup)**
+**Algorithm:**
 
-Locate how other tests bootstrap `model.DB` (look in `service/quota_test.go` or `model/main_test.go`). If a test fixture exists, follow it. Otherwise, add a thin in-memory check that exercises `IncrementTenantPlatformChannelUsed(0, 100)` is a no-op:
+```
+for attempt in 0..maxRetries:
+    SELECT platform_quota_cap, platform_quota_period,
+           platform_quota_period_start
+      FROM tenant_plans WHERE tenant_id = ?
+
+    if cap < 0:
+        return                     // unlimited — nothing to track
+
+    (needReset, newStart) = ComputePlatformQuotaPeriodReset(...)
+
+    if needReset:
+        UPDATE tenant_plans
+           SET platform_quota_used = ?delta,
+               platform_quota_period_start = ?newStart
+         WHERE tenant_id = ?
+           AND platform_quota_period_start = ?old_period_start
+    else:
+        UPDATE tenant_plans
+           SET platform_quota_used = platform_quota_used + ?delta
+         WHERE tenant_id = ?
+           AND platform_quota_period_start = ?old_period_start
+
+    if RowsAffected > 0:
+        InvalidateTenantPlanCache(tenantId)
+        return                     // success
+    // Lost the race — another writer changed period_start between
+    // our SELECT and UPDATE. Re-read and retry.
+
+log "gave up after maxRetries"      // best-effort, swallow
+```
+
+The `WHERE platform_quota_period_start = ?old_period_start` predicate is the optimistic guard. In a daily-rollover race, two concurrent settlements both see the old period_start; whichever UPDATE lands first wins (RowsAffected=1) and the other sees its UPDATE match 0 rows, re-reads (now sees the new period_start), and accumulates correctly under the new period. No lost writes.
+
+**Behavior summary:**
+- `tenantId <= 0`, `quotaDelta <= 0`, or `model.DB == nil` → no-op, no DB call.
+- Cap unlimited (read inside loop) → return without writing. Avoids growing `used` for tenants that won't be enforced.
+- All errors logged via `common.SysError` and SWALLOWED — usage tracking is best-effort and must NEVER fail SettleBilling.
+
+- [ ] **Step 1: Write failing test for input guards**
+
+Append to `service/tenant_quota_test.go`:
 
 ```go
-func TestIncrementTenantPlatformChannelUsed_ZeroIgnored(t *testing.T) {
-	// Negative tenant id and zero delta should be no-ops (no DB call attempted).
+func TestIncrementTenantPlatformChannelUsed_GuardsAreNoOps(t *testing.T) {
+	// Each guard must return BEFORE any DB access. The test pkg leaves
+	// model.DB unset, so a missed guard would nil-deref and panic.
 	IncrementTenantPlatformChannelUsed(0, 100)
 	IncrementTenantPlatformChannelUsed(-1, 100)
 	IncrementTenantPlatformChannelUsed(42, 0)
 	IncrementTenantPlatformChannelUsed(42, -5)
-	// If we got here without panicking, the guards work.
 }
 ```
 
-For the DB-touching path, defer to the integration test in Task 6. (It's not worth wiring a sqlite harness for this one helper.)
+A real DB-touching test is covered manually in Task 10 (smoke test, including a forced-rollover step). Adding sqlite test wiring for one helper is YAGNI given the existing pattern in `tenant_quota_test.go`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `go test ./service/ -run TestIncrementTenantPlatformChannelUsed -v`
-Expected: FAIL — function not defined.
+Expected: FAIL — `undefined: IncrementTenantPlatformChannelUsed`.
 
-- [ ] **Step 3: Implement in `service/tenant_quota.go`**
+- [ ] **Step 3: Implement optimistic-concurrency helper in `service/tenant_quota.go`**
 
 Append:
 
 ```go
-// IncrementTenantPlatformChannelUsed atomically adds `quotaDelta` to the
-// tenant's platform-channel period counter. Called after SettleBilling
-// completes successfully for a request that ran on a platform-scope channel.
-// No-op when tenantId <= 0, delta <= 0, or the tenant has no cap configured.
+// platformQuotaIncrementMaxRetries bounds the optimistic-concurrency loop
+// for IncrementTenantPlatformChannelUsed. 3 attempts comfortably absorbs
+// realistic contention (a tenant rollover at midnight with simultaneous
+// in-flight settles); higher numbers don't add safety, only latency.
+const platformQuotaIncrementMaxRetries = 3
+
+// IncrementTenantPlatformChannelUsed accumulates `quotaDelta` into the
+// tenant's platform-channel period counter, lazily rolling the period
+// over when the boundary has been crossed. Uses optimistic concurrency
+// keyed on platform_quota_period_start so concurrent writers at the
+// boundary cannot lose each other's contributions, without depending on
+// row locks (works on SQLite, MySQL, and Postgres equally).
+//
+// Errors are logged and swallowed: usage tracking is best-effort and must
+// never bubble out and fail the billing path.
 func IncrementTenantPlatformChannelUsed(tenantId int, quotaDelta int) {
 	if tenantId <= 0 || quotaDelta <= 0 {
 		return
 	}
-	plan, err := model.GetTenantPlan(tenantId)
-	if err != nil {
-		common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed: GetTenantPlan failed tenant=%d: %s", tenantId, err.Error()))
-		return
+	if model.DB == nil {
+		return // test environments without DB init
 	}
-	if plan.PlatformQuotaCap < 0 {
-		return // unlimited — don't bother tracking
-	}
-	// Lazy reset before increment.
-	if model.MaybeResetPlatformQuotaPeriod(plan, time.Now()) {
-		if err := persistPlatformQuotaReset(plan); err != nil {
-			common.SysError(fmt.Sprintf("persistPlatformQuotaReset (pre-increment) tenant=%d: %s", tenantId, err.Error()))
+
+	now := time.Now()
+	for attempt := 0; attempt < platformQuotaIncrementMaxRetries; attempt++ {
+		var row struct {
+			PlatformQuotaCap         int64
+			PlatformQuotaPeriod      string
+			PlatformQuotaPeriodStart int64
 		}
+		err := model.WithTenantBypass(model.DB).Table("tenant_plans").
+			Select("platform_quota_cap, platform_quota_period, platform_quota_period_start").
+			Where("tenant_id = ?", tenantId).
+			Take(&row).Error
+		if err != nil {
+			common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed SELECT failed tenant=%d: %s", tenantId, err.Error()))
+			return
+		}
+		if row.PlatformQuotaCap < 0 {
+			return // unlimited — nothing to track
+		}
+
+		needReset, newStart := model.ComputePlatformQuotaPeriodReset(
+			row.PlatformQuotaPeriod, row.PlatformQuotaPeriodStart, now)
+
+		var updates map[string]interface{}
+		if needReset {
+			updates = map[string]interface{}{
+				"platform_quota_used":         int64(quotaDelta),
+				"platform_quota_period_start": newStart,
+			}
+		} else {
+			updates = map[string]interface{}{
+				"platform_quota_used": gorm.Expr("platform_quota_used + ?", quotaDelta),
+			}
+		}
+
+		// Optimistic guard: only succeed if period_start hasn't shifted
+		// between our SELECT and this UPDATE. Lost-race ⇒ RowsAffected=0.
+		res := model.WithTenantBypass(model.DB).Table("tenant_plans").
+			Where("tenant_id = ? AND platform_quota_period_start = ?",
+				tenantId, row.PlatformQuotaPeriodStart).
+			Updates(updates)
+		if res.Error != nil {
+			common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed UPDATE failed tenant=%d delta=%d: %s", tenantId, quotaDelta, res.Error.Error()))
+			return
+		}
+		if res.RowsAffected > 0 {
+			model.InvalidateTenantPlanCache(tenantId)
+			return
+		}
+		// Lost the race; loop, re-read, retry.
 	}
-	res := model.WithTenantBypass(model.DB).Model(&model.TenantPlan{}).
-		Where("tenant_id = ?", tenantId).
-		UpdateColumn("platform_quota_used", gorm.Expr("platform_quota_used + ?", quotaDelta))
-	if res.Error != nil {
-		common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed UPDATE failed tenant=%d delta=%d: %s", tenantId, quotaDelta, res.Error.Error()))
-		return
-	}
-	model.InvalidateTenantPlanCache(tenantId)
+	common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed: exhausted %d retries tenant=%d delta=%d", platformQuotaIncrementMaxRetries, tenantId, quotaDelta))
 }
 ```
 
-Add `"gorm.io/gorm"` to the imports if not already present.
+Add `"gorm.io/gorm"` to imports if not already present.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `go test ./service/ -run TestIncrementTenantPlatformChannelUsed -v`
-Expected: PASS.
+Expected: PASS — no panic on guarded inputs.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add service/tenant_quota.go service/tenant_quota_test.go
-git commit -m "feat(tenant-quota): add IncrementTenantPlatformChannelUsed helper"
+git commit -m "feat(tenant-quota): optimistic-concurrency increment with boundary-safe rollover"
 ```
 
 ---
 
-## Task 4: Wire pre-consume cap-check into the relay flow
+## Task 4: Wire pre-consume cap-check at every channel-bind, AFTER PriceData is filled
 
 **Files:**
-- Modify: `controller/relay.go`
+- Modify: `relay/helper/price.go` — add exported `EnforcePlatformChannelQuota`. **Do NOT change `ApplyChannelBillingOverrides`'s signature** (the previous draft did, but it was wrong — see below).
+- Modify: each main relay handler (`audio_handler.go`, `claude_handler.go`, `compatible_handler.go`, `embedding_handler.go`, `gemini_handler.go`, `image_handler.go`, `rerank_handler.go`, `responses_handler.go`, `websocket.go`) — call `EnforcePlatformChannelQuota` immediately after `ApplyChannelBillingOverrides`.
+- Modify: each task/MJ handler (`relay_task.go`, `mjproxy_handler.go`) — call `EnforcePlatformChannelQuota` immediately after `ModelPriceHelperPerCall` (NOT after `ApplyChannelBillingOverrides`, see below).
 
-**Where:** The check must run after the channel has been chosen (so we know `Scope == "platform"`) but before `PreConsumeBilling` actually decrements wallet quota — i.e. at the point we already have `priceData.QuotaToPreConsume` and `info.ChannelMeta` populated.
+**Why two different insertion points (this is the heart of the fix):**
 
-**How to find the exact spot:** Search `controller/relay.go` for `PreConsumeBilling(`. The check goes immediately before that call. The channel is on `relayInfo.ChannelMeta.Channel` (or `model.CacheGetChannel(relayInfo.ChannelId)`); the projected quota is `relayInfo.PriceData.QuotaToPreConsume` (or `relayInfo.PriceData.Quota` for per-call billing).
+The two relay families fill `info.PriceData` in different orders:
 
-- [ ] **Step 1: Read the relay flow to confirm insertion point**
+| Family | Order |
+|---|---|
+| **Main relay handlers** (compatible/claude/audio/embedding/gemini/image/rerank/responses/websocket) | `controller/relay.go:337` calls `ModelPriceHelper` BEFORE the retry loop → PriceData is filled. Inside the loop each handler runs `InitChannelMeta + ApplyChannelBillingOverrides`. PriceData stays valid across retries (`ApplyChannelBillingOverrides` resets `ModelRatio` to `OriginalModelRatio` but does NOT recompute `QuotaToPreConsume`). |
+| **Task / MJ** (relay_task / mjproxy) | Handler runs `InitChannelMeta + ApplyChannelBillingOverrides` FIRST, then `ModelPriceHelperPerCall` builds `PriceData.Quota`. At the `ApplyChannelBillingOverrides` line, `info.PriceData.Quota == 0`. |
 
-```bash
-grep -n "PreConsumeBilling\|ChannelMeta\|PriceData" controller/relay.go | head -30
-```
+If we put enforce inside `ApplyChannelBillingOverrides` (as the previous draft did), task/MJ paths read `projected == 0`, the early-return triggers, and the cap silently does nothing. (Review item.)
 
-Identify the line number where `PreConsumeBilling(c, ...` is invoked. Insert the new check immediately above it. If there are multiple call sites (e.g. for streaming vs non-streaming), insert at each. The intent is "guard before any wallet decrement on a platform channel."
+The handler is the only place that knows when its own `PriceData` is ready, so it has to be the one calling enforce. We expose enforce as a public helper and keep `ApplyChannelBillingOverrides` untouched.
 
-- [ ] **Step 2: Write the check block**
+**Why typed `*types.NewAPIError`, not a bare `error`:** Same as the previous draft — `controller/relay.go:340` collapses bare errors into `ErrorCodeModelPriceError`/500, losing `tenant_quota_exceeded`/429/skipRetry. Keep typed.
 
-Insert directly above each `service.PreConsumeBilling(...)` call:
+**Why every channel bind, not just the first:** Retry loops in `controller/relay.go:387` (main chat) and `controller/relay.go:935` (task) re-enter the handler, which re-runs `InitChannelMeta` + the enforce site. So the cap check fires per attempt, on every channel switched in.
+
+- [ ] **Step 1: Read `applyPlatformMarkup` (`relay/helper/price.go:241-288`) to confirm channel-resolution pattern**
+
+Pattern: pull `channelID` from `info.ChannelId` (when `ChannelMeta != nil`), else fall back to `common.GetContextKeyInt(c, constant.ContextKeyChannelId)`. Then `model.CacheGetChannel(channelID)`, check `ch.Scope == model.ChannelScopePlatform`.
+
+- [ ] **Step 2: Add exported `EnforcePlatformChannelQuota` to `relay/helper/price.go`**
+
+Append after `applyPlatformMarkup`:
 
 ```go
-// Platform-channel cap enforcement: only when the chosen channel is platform-scope.
-if relayInfo.TenantId > 0 && relayInfo.ChannelMeta != nil && relayInfo.ChannelMeta.Channel != nil &&
-	relayInfo.ChannelMeta.Channel.Scope == model.ChannelScopePlatform {
-	projected := relayInfo.PriceData.QuotaToPreConsume
-	if projected == 0 {
-		projected = relayInfo.PriceData.Quota
+// EnforcePlatformChannelQuota rejects the request if the tenant has hit
+// their platform-channel cap for the current period. Mirrors
+// applyPlatformMarkup's channel resolution so the gate fires for the
+// same set of requests the markup applies to.
+//
+// Call this from each handler at the point where:
+//   1. The channel is bound (post InitChannelMeta), AND
+//   2. info.PriceData.QuotaToPreConsume / .Quota is filled.
+//
+// Two call patterns exist depending on the handler family:
+//   - Main relay handlers (compatible/claude/audio/embedding/gemini/image/
+//     rerank/responses/websocket):
+//     PriceData is filled by controller/relay.go before the retry loop;
+//     call this immediately after ApplyChannelBillingOverrides.
+//   - Task / MJ (relay_task, mjproxy_handler): PriceData is filled by
+//     ModelPriceHelperPerCall AFTER ApplyChannelBillingOverrides; call
+//     this immediately after ModelPriceHelperPerCall.
+//
+// Returns:
+//   - nil when no enforcement applies (tenant <=0, projected <=0, channel
+//     unknown, channel not platform-scoped, or cap unlimited).
+//   - *types.NewAPIError with HTTP 429 + skipRetry when the cap would be
+//     exceeded. Caller MUST return this verbatim — do not wrap.
+func EnforcePlatformChannelQuota(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if info == nil || info.TenantId <= 0 {
+		return nil
 	}
-	if err := service.CheckTenantPlatformChannelQuota(relayInfo.TenantId, projected); err != nil {
-		addTraceEvent(c, "tenant_check", fmt.Sprintf("租户平台渠道额度检查失败: %s", err.Error()), nil)
-		newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeTenantQuotaExceeded, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
-		return
+	projected := info.PriceData.QuotaToPreConsume
+	if projected <= 0 {
+		projected = info.PriceData.Quota
 	}
+	if projected <= 0 {
+		return nil
+	}
+	var channelID int
+	if info.ChannelMeta != nil {
+		channelID = info.ChannelId
+	}
+	if channelID <= 0 && c != nil {
+		channelID = common.GetContextKeyInt(c, constant.ContextKeyChannelId)
+	}
+	if channelID <= 0 {
+		return nil
+	}
+	ch, err := model.CacheGetChannel(channelID)
+	if err != nil || ch == nil || ch.Scope != model.ChannelScopePlatform {
+		return nil
+	}
+	if err := service.CheckTenantPlatformChannelQuota(info.TenantId, projected); err != nil {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeTenantQuotaExceeded,
+			http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+	}
+	return nil
 }
 ```
 
-If `relayInfo.ChannelMeta.Channel` is not directly accessible, fall back to:
+Required imports if not present: `"net/http"`, `"github.com/QuantumNous/new-api/types"`, `"github.com/QuantumNous/new-api/service"`.
 
-```go
-if ch, _ := model.CacheGetChannel(relayInfo.ChannelId); ch != nil && ch.Scope == model.ChannelScopePlatform {
+**Important:** Do NOT modify `ApplyChannelBillingOverrides`. Its signature stays `func ApplyChannelBillingOverrides(info *relaycommon.RelayInfo)` and its body is untouched.
+
+- [ ] **Step 3: Wire enforce into each main relay handler (after ApplyChannelBillingOverrides)**
+
+Find call sites:
+
+```bash
+grep -rn "helper.ApplyChannelBillingOverrides" relay/
 ```
 
-- [ ] **Step 3: Build and run existing relay tests to confirm no regression**
+Expected list (verify): `audio_handler.go`, `claude_handler.go`, `compatible_handler.go`, `embedding_handler.go`, `gemini_handler.go` (2 call sites), `image_handler.go`, `rerank_handler.go`, `responses_handler.go`, `websocket.go`.
+
+For each main relay handler that returns `*types.NewAPIError`, insert immediately after the existing `helper.ApplyChannelBillingOverrides(info)` line:
+
+```go
+	helper.ApplyChannelBillingOverrides(info)
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return apiErr
+	}
+```
+
+(`c` is already in scope in every handler's signature — verify per file.)
+
+- [ ] **Step 4: Wire enforce into task/MJ handlers (after ModelPriceHelperPerCall)**
+
+For `relay/relay_task.go::RelayTaskSubmit`, after the existing `info.PriceData = priceData` (around line 191), insert:
+
+```go
+	info.PriceData = priceData
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		// Task handlers wrap *NewAPIError into TaskError. Use the same wrapper
+		// as the surrounding errors in this file (search for TaskErrorWrapper).
+		return nil, service.TaskErrorWrapper(apiErr.Err, string(apiErr.GetErrorCode()), apiErr.StatusCode)
+	}
+```
+
+For `relay/mjproxy_handler.go::RelaySwapFace`, after the existing `priceData, err := helper.ModelPriceHelperPerCall(c, info)` block (around line 197-203) where `priceData` is assigned, insert:
+
+```go
+	info.PriceData = priceData
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return &dto.MidjourneyResponse{
+			Code:        4,
+			Description: apiErr.Error(),
+		}
+	}
+```
+
+Also locate the second `ModelPriceHelperPerCall` call in `mjproxy_handler.go` (around line 505 per earlier grep) and apply the same pattern.
+
+For any other task-family handler that calls `ModelPriceHelperPerCall`, follow the existing error-wrapping convention in that file.
+
+**Note:** Verify each file's existing pattern by reading it before editing. The wrappers (`TaskErrorWrapper`, `MidjourneyErrorWrapper`, `dto.MidjourneyResponse{Code:4,...}`) are domain-specific; copy the surrounding style instead of inventing new envelopes.
+
+- [ ] **Step 5: Build to verify all call sites compiled**
 
 Run: `go build ./...`
-Expected: success.
+Expected: success. Compiler errors will pinpoint any handler with a missing or mistyped enforce call.
 
-Run: `go test ./controller/... -run TestRelay -v`
-Expected: same pass count as before this task (no new failures). If there are no relay unit tests, that's fine — Task 9 covers integration manually.
+- [ ] **Step 6: Run tests to confirm no regression**
 
-- [ ] **Step 4: Commit**
+Run: `go test ./relay/... ./service/... ./controller/... -v`
+Expected: same pass count as before. `ApplyChannelBillingOverrides`'s signature is unchanged so existing call sites/tests still compile without edits.
+
+- [ ] **Step 7: Manually trace the four cap-trigger paths**
+
+For each of these four cases, trace the call flow on paper and confirm enforce fires:
+
+1. **Main relay handler, first attempt, platform channel** — `controller/relay.go:337` ModelPriceHelper fills PriceData → enter retry loop → handler runs ApplyChannelBillingOverrides → enforce reads PriceData.QuotaToPreConsume (>0) → channel is platform → check fires.
+2. **Main relay handler, retry switching channels** — handler returns error → retry loop calls handler again on new channel → handler re-runs ApplyChannelBillingOverrides → enforce re-fires against the NEW channel. (PriceData.QuotaToPreConsume is still the same value from step 1 — that's fine, projected isn't channel-specific.)
+   This same trace covers text, audio, image, rerank, responses, and realtime websocket handlers because they all enter through the same controller path and all bind the channel before their handler-specific upstream call.
+3. **Task/MJ, first attempt, platform channel** — RelayTaskSubmit runs ApplyChannelBillingOverrides (PriceData.Quota is 0 here, but we no longer enforce here) → ModelPriceHelperPerCall fills PriceData.Quota → enforce reads PriceData.Quota (>0) → check fires.
+4. **Task/MJ, retry switching channels** — RelayTaskSubmit re-runs both ApplyChannelBillingOverrides AND ModelPriceHelperPerCall on the new channel → enforce re-fires.
+
+If any case doesn't fire, the call-site insertion is wrong — fix before Step 8.
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add controller/relay.go
-git commit -m "feat(relay): enforce platform-channel quota cap at pre-consume"
+git add relay/helper/price.go relay/audio_handler.go relay/claude_handler.go \
+        relay/compatible_handler.go relay/embedding_handler.go \
+        relay/gemini_handler.go relay/image_handler.go \
+        relay/rerank_handler.go relay/responses_handler.go \
+        relay/websocket.go relay/relay_task.go relay/mjproxy_handler.go
+git commit -m "feat(relay): enforce platform-channel cap after PriceData fill on every attempt"
 ```
+
+(Adjust the staged file list to match what `git status` shows — only files actually modified.)
 
 ---
 
-## Task 5: Wire post-settle increment into the relay flow
+## Task 5: Wire post-settle increment into SettleBilling
 
 **Files:**
-- Modify: `controller/relay.go` (or wherever `SettleBilling` is called from — likely the same file)
+- Modify: `service/billing.go`
 
-**Where:** Immediately after `service.SettleBilling(...)` returns nil. Use the actual settled quota (the value passed to SettleBilling), not the pre-consumed estimate.
+**Why here, not the call sites:**
+- `SettleBilling` is invoked from THREE places: `service/text_quota.go:330` (main text/chat path), `service/quota.go:338` (audio/wss), and `controller/relay.go:960` (task: MJ/Suno). The earlier draft only mentioned the controller path — main chat traffic would never accumulate. (Review item P1-2.)
+- Putting the increment at the tail of `SettleBilling` itself covers all three with one insertion.
+- The tracking is post-settle, fail-quiet; we use the same `actualQuota` that just decremented the wallet.
 
-- [ ] **Step 1: Find every SettleBilling call site**
+- [ ] **Step 1: Add the channel-scope check helper to `service/billing.go`**
 
-```bash
-grep -n "SettleBilling" controller/ -r
-```
-
-For each call site, the actual quota is the second argument. Capture it in a local `actualQuota` if it's not already named.
-
-- [ ] **Step 2: Insert the increment after each call**
-
-Pattern:
+Append (after `SettleBilling` definition):
 
 ```go
-if err := service.SettleBilling(c, relayInfo, actualQuota); err != nil {
-	// existing error handling
-}
-// Track platform-channel usage for cap accounting (no-op if no cap configured).
-if relayInfo.TenantId > 0 && relayInfo.ChannelMeta != nil && relayInfo.ChannelMeta.Channel != nil &&
-	relayInfo.ChannelMeta.Channel.Scope == model.ChannelScopePlatform {
-	service.IncrementTenantPlatformChannelUsed(relayInfo.TenantId, actualQuota)
+// incrementPlatformChannelUsedIfApplicable runs after SettleBilling has
+// successfully charged the wallet. It checks whether the channel that
+// served this request was platform-scope; if so, accumulates the actual
+// settled quota into the tenant's per-period counter for cap enforcement.
+//
+// Best-effort: any error is swallowed by IncrementTenantPlatformChannelUsed.
+// Channel resolution mirrors enforcePlatformChannelQuota in relay/helper/price.go
+// (CacheGetChannel + Scope check) so the gate-on / track-on conditions match exactly.
+func incrementPlatformChannelUsedIfApplicable(relayInfo *relaycommon.RelayInfo, actualQuota int) {
+	if relayInfo == nil || relayInfo.TenantId <= 0 || actualQuota <= 0 {
+		return
+	}
+	channelID := relayInfo.ChannelId
+	if channelID <= 0 {
+		return
+	}
+	ch, err := model.CacheGetChannel(channelID)
+	if err != nil || ch == nil || ch.Scope != model.ChannelScopePlatform {
+		return
+	}
+	IncrementTenantPlatformChannelUsed(relayInfo.TenantId, actualQuota)
 }
 ```
 
-If the same condition is being tested in Task 4 and Task 5 in the same function, hoist the channel pointer into a variable at the top so both checks reuse it.
+Add `"github.com/QuantumNous/new-api/model"` to imports if not present.
 
-- [ ] **Step 3: Build and confirm no regression**
+- [ ] **Step 2: Hook it into `SettleBilling`**
 
-Run: `go build ./... && go test ./controller/... -v`
-Expected: success, no new failures.
+Modify `SettleBilling` so the increment runs on the success path of BOTH branches (the BillingSession branch and the legacy fallback). The cleanest insertion is right before each `return nil`:
+
+In the BillingSession branch, after `return nil` is reached (just before it):
+
+```go
+		if err := relayInfo.Billing.Settle(actualQuota); err != nil {
+			return err
+		}
+
+		// Send notifications, then track platform-channel usage.
+		if actualQuota != 0 {
+			// ... existing notification code unchanged ...
+		}
+		incrementPlatformChannelUsedIfApplicable(relayInfo, actualQuota)
+		return nil
+```
+
+In the legacy fallback branch:
+
+```go
+	// 回退：无 BillingSession 时使用旧路径
+	quotaDelta := actualQuota - relayInfo.FinalPreConsumedQuota
+	if quotaDelta != 0 {
+		if err := PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true); err != nil {
+			return err
+		}
+	}
+	incrementPlatformChannelUsedIfApplicable(relayInfo, actualQuota)
+	return nil
+```
+
+The increment uses `actualQuota` (the settled total), not the delta — the cap counter tracks total consumption per request, not the post-consume adjustment.
+
+- [ ] **Step 3: Build and run all tests**
+
+Run: `go build ./... && go test ./service/... ./controller/... -v`
+Expected: green. If any existing `SettleBilling` test mocks the function signature, our addition is backward-compatible (no signature change).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add controller/relay.go
-git commit -m "feat(relay): increment tenant platform-channel quota usage after settle"
+git add service/billing.go
+git commit -m "feat(billing): track platform-channel usage after every successful settle"
 ```
 
 ---
@@ -1092,7 +1317,7 @@ Expected: request succeeds again, `used` starts climbing from 0.
 UPDATE tenant_plans SET platform_quota_period_start = UNIX_TIMESTAMP(CURDATE() - INTERVAL 1 DAY) WHERE tenant_id = 2;
 ```
 
-Expected: the next request triggers `MaybeResetPlatformQuotaPeriod`, `used` resets to 0, and the period_start updates to today 00:00. Verify by reloading the usage tab.
+Expected: the next request goes through `ComputePlatformQuotaPeriodReset` + the optimistic conditional-UPDATE path, `used` resets to 0, and `platform_quota_period_start` updates to today 00:00. Verify by reloading the usage tab.
 
 - [ ] **Step 6: Commit (docs only — confirm the smoke test pass in the plan log)**
 
@@ -1103,9 +1328,12 @@ No commit needed unless you discovered a bug — in which case open a follow-up 
 ## Self-Review Checklist (run before handing off)
 
 - [ ] Every task has actual code, no `// TODO` placeholders.
-- [ ] Type names line up across tasks: `TenantPlan` field names match between Go struct (Task 1), API JSON (Task 6), and TypeScript type (Task 7) — all snake_case in JSON, camelCase in TS only where TS conventions demand.
-- [ ] Pre-consume check (Task 4) and post-settle increment (Task 5) both gate on `Channel.Scope == ChannelScopePlatform` so tenant-owned channels are unaffected.
-- [ ] Lazy reset is called in BOTH the check helper AND the increment helper, so a tenant whose only traffic is bursts still resets correctly.
-- [ ] Cap value `-1` short-circuits both check (skip) and increment (skip persistence) — no useless DB writes.
-- [ ] Frontend hides the Section gracefully when the backend returns the field defaults (cap=-1, period='none' is a valid "feature inactive" state — don't error on it).
+- [ ] Type names line up across tasks: `TenantPlan` field names match between Go struct (Task 1), API JSON (Task 6), and TypeScript type (Task 7) — all snake_case in JSON.
+- [ ] Pre-consume gate (Task 4) is exposed as `helper.EnforcePlatformChannelQuota` and called explicitly by each handler at the point its `info.PriceData` is filled — after `ApplyChannelBillingOverrides` for the main relay handlers (`compatible/claude/audio/embedding/gemini/image/rerank/responses/websocket`), after `ModelPriceHelperPerCall` for task/MJ. Each retry re-runs the handler, so the gate re-fires on every switched channel (not just the first attempt). Returns typed `*types.NewAPIError` (HTTP 429 + skipRetry) so it survives intact through `controller/relay.go` without being re-wrapped as `ErrorCodeModelPriceError`. Post-settle increment (Task 5) lives in `service/billing.go::SettleBilling` covering all three settle paths.
+- [ ] `ComputePlatformQuotaPeriodReset` is a pure function — no `*TenantPlan` argument, no mutation. Failed persists therefore cannot poison the in-memory plan cache. (Resolves P2-1 from first review.)
+- [ ] `IncrementTenantPlatformChannelUsed` uses optimistic concurrency (conditional UPDATE on `period_start`) with bounded retries — works on SQLite, MySQL, and Postgres without `FOR UPDATE`. No two-statement non-atomic window at the day/month boundary. (Resolves P1-3 from first review and P2-1 from second review.)
+- [ ] `enforcePlatformChannelQuota` and `incrementPlatformChannelUsedIfApplicable` use the SAME channel-resolution dance (CacheGetChannel + Scope check) so the gate condition and the tracking condition match exactly — no asymmetric tracking.
+- [ ] Cap value `-1` short-circuits the gate (returns nil before any work) AND short-circuits the increment loop (returns before any UPDATE) — no useless DB writes for unenforced tenants.
+- [ ] All errors out of the increment path are swallowed (logged via `common.SysError`) — usage tracking is best-effort and must never break the billing flow.
+- [ ] Frontend handles the "feature inactive" state (cap=-1, period='none') as a valid render, not an error.
 - [ ] No new permission middleware needed — the new endpoints reuse the same `PlatformAdminAuth` group as `tenants/plans`.

@@ -27,6 +27,10 @@ export type TenantPlan = {
   renew_period_days: number;
   renew_price_amount: number; // CNY cents
   renew_currency: string;
+  platform_quota_cap: number;
+  platform_quota_period: 'none' | 'daily' | 'monthly';
+  platform_quota_used: number;
+  platform_quota_period_start: number;
   created_at: number;
   updated_at: number;
 };
@@ -46,6 +50,8 @@ export type UpdateTenantPlanPayload = {
   renew_period_days?: number;
   renew_price_amount?: number;
   renew_currency?: string;
+  platform_quota_cap?: number;
+  platform_quota_period?: 'none' | 'daily' | 'monthly';
 };
 
 export function usePlatformTenants() {

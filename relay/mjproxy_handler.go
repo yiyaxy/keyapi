@@ -201,6 +201,13 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: err.Error(),
 		}
 	}
+	info.PriceData = priceData
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return &dto.MidjourneyResponse{
+			Code:        4,
+			Description: apiErr.Error(),
+		}
+	}
 
 	userQuota, err := model.GetUserQuota(info.UserId, false, info.TenantId)
 	if err != nil {
@@ -228,6 +235,8 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			err := service.PostConsumeQuota(info, priceData.Quota, 0, true)
 			if err != nil {
 				common.SysLog("error consuming token remain quota: " + err.Error())
+			} else {
+				service.TrackPlatformChannelUsageIfApplicable(info, priceData.Quota)
 			}
 
 			tokenName := c.GetString("token_name")
@@ -509,6 +518,13 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			Description: err.Error(),
 		}
 	}
+	relayInfo.PriceData = priceData
+	if apiErr := helper.EnforcePlatformChannelQuota(c, relayInfo); apiErr != nil {
+		return &dto.MidjourneyResponse{
+			Code:        4,
+			Description: apiErr.Error(),
+		}
+	}
 
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false, relayInfo.TenantId)
 	if err != nil {
@@ -536,6 +552,8 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			err := service.PostConsumeQuota(relayInfo, priceData.Quota, 0, true)
 			if err != nil {
 				common.SysLog("error consuming token remain quota: " + err.Error())
+			} else {
+				service.TrackPlatformChannelUsageIfApplicable(relayInfo, priceData.Quota)
 			}
 			tokenName := c.GetString("token_name")
 			logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)

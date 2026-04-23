@@ -28,6 +28,9 @@ import (
 func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 	helper.ApplyChannelBillingOverrides(info)
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return apiErr
+	}
 
 	textReq, ok := info.Request.(*dto.GeneralOpenAIRequest)
 	if !ok {

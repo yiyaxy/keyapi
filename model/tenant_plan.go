@@ -37,8 +37,18 @@ type TenantPlan struct {
 	// Falls back value when channel.markup_ratio is unset.
 	// Defaults to 1.0 (no markup).
 	PlatformMarkup float64 `json:"platform_markup" gorm:"type:decimal(10,4);not null;default:1.0"`
-	CreatedAt      int64   `json:"created_at" gorm:"bigint;autoCreateTime"`
-	UpdatedAt      int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
+	// PlatformQuotaCap is the per-period quota ceiling for platform-scope channels.
+	// -1 means unlimited.
+	PlatformQuotaCap int64 `json:"platform_quota_cap" gorm:"bigint;default:-1"`
+	// PlatformQuotaPeriod controls when PlatformQuotaUsed resets to zero.
+	// One of: none, daily, monthly.
+	PlatformQuotaPeriod string `json:"platform_quota_period" gorm:"type:varchar(16);default:'none'"`
+	// PlatformQuotaUsed is the amount consumed within the current period.
+	PlatformQuotaUsed int64 `json:"platform_quota_used" gorm:"bigint;default:0"`
+	// PlatformQuotaPeriodStart is the unix timestamp anchoring the current period.
+	PlatformQuotaPeriodStart int64 `json:"platform_quota_period_start" gorm:"bigint;default:0"`
+	CreatedAt                int64 `json:"created_at" gorm:"bigint;autoCreateTime"`
+	UpdatedAt                int64 `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
 const (
@@ -46,6 +56,10 @@ const (
 	TenantPlanStatusDisabled = 0
 
 	TenantPlanDefaultName = "free"
+
+	PlatformQuotaPeriodNone    = "none"
+	PlatformQuotaPeriodDaily   = "daily"
+	PlatformQuotaPeriodMonthly = "monthly"
 )
 
 // ---------- cache ----------
@@ -88,19 +102,23 @@ func GetTenantPlan(tenantId int) (*TenantPlan, error) {
 	// Create default free plan
 	now := common.GetTimestamp()
 	plan = TenantPlan{
-		TenantId:       tenantId,
-		PlanName:       TenantPlanDefaultName,
-		QuotaLimit:     -1,
-		RPMLimit:       -1,
-		TPMLimit:       -1,
-		MaxMembers:     -1,
-		MaxTokens:      -1,
-		MaxChannels:    -1,
-		PlatformMarkup: 1.0,
-		Status:         TenantPlanStatusActive,
-		ExpiresAt:      0,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		TenantId:                 tenantId,
+		PlanName:                 TenantPlanDefaultName,
+		QuotaLimit:               -1,
+		RPMLimit:                 -1,
+		TPMLimit:                 -1,
+		MaxMembers:               -1,
+		MaxTokens:                -1,
+		MaxChannels:              -1,
+		PlatformMarkup:           1.0,
+		PlatformQuotaCap:         -1,
+		PlatformQuotaPeriod:      PlatformQuotaPeriodNone,
+		PlatformQuotaUsed:        0,
+		PlatformQuotaPeriodStart: 0,
+		Status:                   TenantPlanStatusActive,
+		ExpiresAt:                0,
+		CreatedAt:                now,
+		UpdatedAt:                now,
 	}
 	if err := WithTenantBypass(DB).Create(&plan).Error; err != nil {
 		// Another goroutine may have created it concurrently; try to read again
@@ -208,4 +226,25 @@ func GetTenantPlanAllowedModels(plan *TenantPlan) map[string]struct{} {
 		return nil
 	}
 	return result
+}
+
+// ComputePlatformQuotaPeriodReset decides whether the platform-channel quota
+// period has rolled over. It is pure: no mutation, no cache writes, no DB.
+//
+// Returns (needReset, newPeriodStart). If needReset is false, callers should
+// ignore newPeriodStart.
+func ComputePlatformQuotaPeriodReset(period string, periodStart int64, now time.Time) (bool, int64) {
+	switch period {
+	case PlatformQuotaPeriodDaily:
+		startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+		if periodStart < startOfToday {
+			return true, startOfToday
+		}
+	case PlatformQuotaPeriodMonthly:
+		startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
+		if periodStart < startOfMonth {
+			return true, startOfMonth
+		}
+	}
+	return false, 0
 }

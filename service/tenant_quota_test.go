@@ -83,3 +83,44 @@ func TestCheckTenantTPMMemory_WindowExpiry(t *testing.T) {
 		t.Fatalf("expected nil after window expiry, got %v", err)
 	}
 }
+
+func TestEvaluateProjectedQuota_Unlimited(t *testing.T) {
+	if err := evaluateProjectedQuota(-1, 99999, 99999); err != nil {
+		t.Fatalf("expected nil for unlimited cap, got %v", err)
+	}
+}
+
+func TestEvaluateProjectedQuota_FitsUnderCap(t *testing.T) {
+	if err := evaluateProjectedQuota(10000, 5000, 1000); err != nil {
+		t.Fatalf("expected nil when under cap, got %v", err)
+	}
+}
+
+func TestEvaluateProjectedQuota_ExceedsCap(t *testing.T) {
+	err := evaluateProjectedQuota(10000, 9500, 1000)
+	if err == nil {
+		t.Fatal("expected error when usage exceeds cap")
+	}
+	if !strings.Contains(err.Error(), "10000") {
+		t.Fatalf("error should mention cap, got: %s", err.Error())
+	}
+}
+
+func TestEvaluateProjectedQuota_AtCapBoundary(t *testing.T) {
+	if err := evaluateProjectedQuota(10000, 10000, 1); err == nil {
+		t.Fatal("expected error when already at cap")
+	}
+}
+
+func TestEvaluateProjectedQuota_ZeroProjected(t *testing.T) {
+	if err := evaluateProjectedQuota(10000, 10000, 0); err != nil {
+		t.Fatalf("expected nil for zero projected, got %v", err)
+	}
+}
+
+func TestIncrementTenantPlatformChannelUsed_GuardsAreNoOps(t *testing.T) {
+	IncrementTenantPlatformChannelUsed(0, 100)
+	IncrementTenantPlatformChannelUsed(-1, 100)
+	IncrementTenantPlatformChannelUsed(42, 0)
+	IncrementTenantPlatformChannelUsed(42, -5)
+}

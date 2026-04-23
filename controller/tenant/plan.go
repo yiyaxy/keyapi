@@ -44,9 +44,11 @@ type UpdateTenantPlanRequest struct {
 	// Renewal pricing (S2). Setting RenewPriceAmount > 0 is the signal that
 	// a tenant admin can self-serve renew via WeChat Pay; <=0 disables the
 	// renewal flow entirely.
-	RenewPeriodDays  *int    `json:"renew_period_days"`
-	RenewPriceAmount *int64  `json:"renew_price_amount"`
-	RenewCurrency    *string `json:"renew_currency"`
+	RenewPeriodDays     *int    `json:"renew_period_days"`
+	RenewPriceAmount    *int64  `json:"renew_price_amount"`
+	RenewCurrency       *string `json:"renew_currency"`
+	PlatformQuotaCap    *int64  `json:"platform_quota_cap"`
+	PlatformQuotaPeriod *string `json:"platform_quota_period"`
 }
 
 // UpdateTenantPlanHandler updates a tenant's plan.
@@ -136,6 +138,22 @@ func UpdateTenantPlanHandler(c *gin.Context) {
 	}
 	if req.RenewCurrency != nil {
 		plan.RenewCurrency = *req.RenewCurrency
+	}
+	if req.PlatformQuotaCap != nil {
+		v := *req.PlatformQuotaCap
+		if v < -1 {
+			v = -1
+		}
+		plan.PlatformQuotaCap = v
+	}
+	if req.PlatformQuotaPeriod != nil {
+		switch *req.PlatformQuotaPeriod {
+		case model.PlatformQuotaPeriodNone, model.PlatformQuotaPeriodDaily, model.PlatformQuotaPeriodMonthly:
+			plan.PlatformQuotaPeriod = *req.PlatformQuotaPeriod
+		default:
+			common.ApiErrorMsg(c, "无效的周期类型，必须是 none/daily/monthly")
+			return
+		}
 	}
 
 	if err := model.UpsertTenantPlan(plan); err != nil {
