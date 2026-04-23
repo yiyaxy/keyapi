@@ -92,7 +92,7 @@ func MergeUserInto(sourceId, targetId, operatorId int, reason string) (*MergeRes
 			return err
 		}
 
-		// 3) (user_id, provider) 唯一的表：按 provider 逐个处理。
+		// 3) (user_id, provider_id) unique table: merge provider bindings one by one.
 		if err := moveOAuthBindings(tx, sourceId, targetId); err != nil {
 			return err
 		}
@@ -218,18 +218,18 @@ func MergeUserInto(sourceId, targetId, operatorId int, reason string) (*MergeRes
 		if err := WithTenantBypass(tx).Unscoped().Model(&User{}).
 			Where("id = ?", sourceId).
 			Updates(map[string]interface{}{
-				"wechat_id":      "",
-				"github_id":      "",
-				"discord_id":     "",
-				"oidc_id":        "",
-				"telegram_id":    "",
-				"linux_do_id":    "",
+				"wechat_id":       "",
+				"github_id":       "",
+				"discord_id":      "",
+				"oidc_id":         "",
+				"telegram_id":     "",
+				"linux_do_id":     "",
 				"stripe_customer": "",
-				"quota":          0,
-				"aff_quota":      0,
-				"status":         common.UserStatusDisabled,
-				"merged_into":    targetId,
-				"deleted_at":     gorm.DeletedAt{Time: time.Now(), Valid: true},
+				"quota":           0,
+				"aff_quota":       0,
+				"status":          common.UserStatusDisabled,
+				"merged_into":     targetId,
+				"deleted_at":      gorm.DeletedAt{Time: time.Now(), Valid: true},
 			}).Error; err != nil {
 			return fmt.Errorf("标记源账户合并失败: %w", err)
 		}
@@ -323,19 +323,20 @@ func moveUserUniqueRow(tx *gorm.DB, table string, sourceId, targetId int) error 
 	).Error
 }
 
-// moveOAuthBindings 把 source 的 oauth binding reassign 到 target；若 target
-// 已绑同一个 provider，删 source 的避免撞 (user_id, provider) 唯一键。
+// moveOAuthBindings reassigns source OAuth bindings to target. If target
+// already has the same provider_id, delete source's row first to avoid the
+// (user_id, provider_id) unique key.
 func moveOAuthBindings(tx *gorm.DB, sourceId, targetId int) error {
-	var targetProviders []string
+	var targetProviderIds []int
 	if err := WithTenantBypass(tx).Table("user_oauth_bindings").
 		Where("user_id = ?", targetId).
-		Pluck("provider", &targetProviders).Error; err != nil {
+		Pluck("provider_id", &targetProviderIds).Error; err != nil {
 		return err
 	}
-	if len(targetProviders) > 0 {
+	if len(targetProviderIds) > 0 {
 		if err := WithTenantBypass(tx).Exec(
-			"DELETE FROM user_oauth_bindings WHERE user_id = ? AND provider IN ?",
-			sourceId, targetProviders,
+			"DELETE FROM user_oauth_bindings WHERE user_id = ? AND provider_id IN ?",
+			sourceId, targetProviderIds,
 		).Error; err != nil {
 			return err
 		}
@@ -357,4 +358,3 @@ func reassignUserId(tx *gorm.DB, table string, sourceId, targetId int) error {
 		targetId, sourceId,
 	).Error
 }
-
