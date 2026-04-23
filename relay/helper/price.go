@@ -289,6 +289,11 @@ func applyPlatformMarkup(c *gin.Context, info *relaycommon.RelayInfo, priceData 
 // EnforcePlatformChannelQuota rejects a request when the bound channel is
 // platform-scoped and the tenant's projected usage would exceed their cap.
 // Callers must invoke it only after the handler's PriceData has been filled.
+//
+// Checks against the "tenant real cost" portion of the projected quota —
+// i.e. the value before applyPlatformMarkup lifted it. Keeps cap semantics
+// decoupled from the tenant's user-facing markup choice; see
+// TrackPlatformChannelUsageIfApplicable for the mirror on the settle side.
 func EnforcePlatformChannelQuota(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	if info == nil || info.TenantId <= 0 {
 		return nil
@@ -298,6 +303,10 @@ func EnforcePlatformChannelQuota(c *gin.Context, info *relaycommon.RelayInfo) *t
 	if projected <= 0 {
 		projected = info.PriceData.Quota
 	}
+	if projected <= 0 {
+		return nil
+	}
+	projected = service.StripMarkup(projected, info.PriceMarkupRatio)
 	if projected <= 0 {
 		return nil
 	}

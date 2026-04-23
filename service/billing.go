@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -84,6 +85,10 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 
 // TrackPlatformChannelUsageIfApplicable records actual settled usage against
 // the tenant's platform-channel quota accumulator. Best-effort only.
+//
+// Cap 语义是"租户对平台的真实成本上限"——不应被租户自设的 platform_markup
+// 放大（否则租户吸收 channel 折扣时 cap 会按虚高的用户账单扣）。因此累加
+// 的是 actualQuota / markup，即 markup 乘入之前的值。
 func TrackPlatformChannelUsageIfApplicable(relayInfo *relaycommon.RelayInfo, actualQuota int) {
 	if relayInfo == nil || relayInfo.TenantId <= 0 || actualQuota <= 0 {
 		return
@@ -96,5 +101,24 @@ func TrackPlatformChannelUsageIfApplicable(relayInfo *relaycommon.RelayInfo, act
 	if err != nil || ch == nil || ch.Scope != model.ChannelScopePlatform {
 		return
 	}
-	IncrementTenantPlatformChannelUsed(relayInfo.TenantId, actualQuota)
+	tenantCost := StripMarkup(actualQuota, relayInfo.PriceMarkupRatio)
+	if tenantCost <= 0 {
+		return
+	}
+	IncrementTenantPlatformChannelUsed(relayInfo.TenantId, tenantCost)
+}
+
+// StripMarkup reverses the markup multiplication applied in
+// applyPlatformMarkup, returning the "tenant-vs-platform real cost" portion
+// of a settled quota. Used by both pre-consume enforcement and settle-time
+// platform_quota_cap accounting so cap stays decoupled from the tenant's
+// user-facing markup choice.
+func StripMarkup(quota int, markup float64) int {
+	if quota <= 0 {
+		return 0
+	}
+	if markup <= 0 || markup == 1.0 {
+		return quota
+	}
+	return int(math.Ceil(float64(quota) / markup))
 }
