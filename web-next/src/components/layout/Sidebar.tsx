@@ -140,11 +140,6 @@ export function Sidebar() {
                 label={t('nav.admin.purchase_analytics')}
                 icon={PieChart}
               />
-              <NavItem
-                to='/admin/settings'
-                label={t('nav.admin.settings')}
-                icon={Settings}
-              />
             </SidebarGroup>
             <SidebarGroup label={t('nav.tenant')}>
               <NavItem
@@ -180,6 +175,11 @@ export function Sidebar() {
               icon={Plug}
             />
             <NavItem to='/admin/models' label={t('nav.admin.models')} icon={Database} />
+            <NavItem
+              to='/admin/settings'
+              label={t('nav.admin.settings')}
+              icon={Settings}
+            />
           </SidebarGroup>
         )}
       </nav>

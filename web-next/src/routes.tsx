@@ -158,7 +158,6 @@ export const router = createBrowserRouter([
                     path: '/admin/request-trace/:requestId',
                     element: <RequestTracePage />,
                   },
-                  { path: '/admin/settings', element: <SettingsAdminPage /> },
                   { path: '/tenant/dashboard', element: <TenantDashboardPage /> },
                   { path: '/tenant/info', element: <TenantInfoPage /> },
                   { path: '/tenant/members', element: <TenantMembersPage /> },
@@ -181,6 +180,7 @@ export const router = createBrowserRouter([
                     path: '/admin/platform/channels',
                     element: <PlatformChannelsAdminPage />,
                   },
+                  { path: '/admin/settings', element: <SettingsAdminPage /> },
                   { path: '/admin/models', element: <ModelsAdminPage /> },
                   {
                     path: '/admin/deployment',
