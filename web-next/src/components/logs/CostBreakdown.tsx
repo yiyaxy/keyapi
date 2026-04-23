@@ -1,9 +1,16 @@
 import { Info } from 'lucide-react';
+import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useAuth } from '@/hooks/useAuth';
 import type { LogRow } from '@/hooks/useLogs';
 import { type PublicConfig, toDisplay } from '@/hooks/usePublicConfig';
+
+// 管理员门槛：platform/tenant/legacy role 三者取 max ≥ 10 视为管理员
+// （与 Sidebar.tsx 中 ROLE_ADMIN 保持一致）。管理员能在 CostBreakdown
+// 里看到 channel / markup 拆分和"真实成本"；普通用户只看合并倍率。
+const ROLE_ADMIN = 10;
 
 export type OtherData = {
   model_ratio?: number;
@@ -11,6 +18,7 @@ export type OtherData = {
   group_ratio?: number;
   user_group_ratio?: number;
   channel_ratio?: number;
+  markup_ratio?: number;
   cache_tokens?: number;
   cache_ratio?: number;
   model_price?: number;
@@ -45,6 +53,12 @@ function fmtPrice(usd: number, cfg: PublicConfig): string {
   return `${fmtUnit(usd, cfg)} / 1M Token`;
 }
 
+// fmtRatio: 倍率数值去尾零 + 避免浮点精度噪音（1.0000001x → 1x）。
+function fmtRatio(n: number): string {
+  if (!Number.isFinite(n)) return '1';
+  return Number(n.toFixed(4)).toString();
+}
+
 export function CostBreakdown({
   row,
   cfg,
@@ -55,6 +69,11 @@ export function CostBreakdown({
   children: React.ReactNode;
 }) {
   const { t } = useTranslation('logs');
+  const { user } = useAuth();
+  const isAdmin =
+    user !== null &&
+    Math.max(user.role, user.platform_role ?? 0, user.tenant_role ?? 0) >=
+      ROLE_ADMIN;
   const other = parseOther(row.other);
 
   if (
@@ -77,6 +96,11 @@ export function CostBreakdown({
       ? specialRatio
       : fallbackGroupRatio;
   const channelRatio = other.channel_ratio ?? 1;
+  const markupRatio =
+    other.markup_ratio && other.markup_ratio > 0 ? other.markup_ratio : 1;
+  // 普通用户看不到 channel vs markup 拆分；合并成一个"渠道倍率"展示，
+  // 避免暴露租户对用户的定价策略（例如租户吸收/加成平台折扣）。
+  const combinedChannelRatio = channelRatio * markupRatio;
   const cacheRatio = other.cache_ratio ?? 1;
   const cacheTokens = Math.min(other.cache_tokens ?? 0, row.prompt_tokens);
   const hasCache = cacheTokens > 0 && cacheRatio > 0 && cacheRatio !== 1;
@@ -173,47 +197,73 @@ export function CostBreakdown({
             </>
           )}
 
-          {(groupRatio !== 1 || (channelRatio > 0 && channelRatio !== 1)) && (
-            <>
-              {groupRatio !== 1 && (
-                <>
-                  <dt className='mt-1 border-t border-line pt-1 text-fg-2'>
-                    {t('cost.group_ratio')}
-                  </dt>
-                  <dd className='mt-1 border-t border-line pt-1 text-right font-semibold'>
-                    {groupRatio}x
-                  </dd>
-                </>
-              )}
-              {channelRatio > 0 && channelRatio !== 1 && (
-                <>
-                  <dt
-                    className={
-                      groupRatio !== 1
-                        ? 'text-fg-2'
-                        : 'mt-1 border-t border-line pt-1 text-fg-2'
-                    }
-                  >
-                    {t('cost.channel_ratio')}
-                  </dt>
-                  <dd
-                    className={
-                      groupRatio !== 1
-                        ? 'text-right font-semibold'
-                        : 'mt-1 border-t border-line pt-1 text-right font-semibold'
-                    }
-                  >
-                    {channelRatio}x
-                  </dd>
-                </>
-              )}
-
-              <dt className='text-fg-2'>{t('cost.original')}</dt>
-              <dd className='text-right font-medium'>
-                {fmtUnit(baseUsd, cfg)}
-              </dd>
-            </>
-          )}
+          {(() => {
+            const rows: Array<{ label: string; value: string }> = [];
+            if (groupRatio !== 1) {
+              rows.push({
+                label: t('cost.group_ratio'),
+                value: `${fmtRatio(groupRatio)}x`,
+              });
+            }
+            if (isAdmin) {
+              if (channelRatio > 0 && channelRatio !== 1) {
+                rows.push({
+                  label: t('cost.channel_ratio'),
+                  value: `${fmtRatio(channelRatio)}x`,
+                });
+              }
+              if (markupRatio !== 1) {
+                rows.push({
+                  label: t('cost.platform_markup'),
+                  value: `${fmtRatio(markupRatio)}x`,
+                });
+              }
+            } else if (combinedChannelRatio > 0 && combinedChannelRatio !== 1) {
+              rows.push({
+                label: t('cost.channel_ratio'),
+                value: `${fmtRatio(combinedChannelRatio)}x`,
+              });
+            }
+            if (rows.length === 0) return null;
+            return (
+              <>
+                {rows.map((r, idx) => (
+                  <Fragment key={idx}>
+                    <dt
+                      className={
+                        idx === 0
+                          ? 'mt-1 border-t border-line pt-1 text-fg-2'
+                          : 'text-fg-2'
+                      }
+                    >
+                      {r.label}
+                    </dt>
+                    <dd
+                      className={
+                        idx === 0
+                          ? 'mt-1 border-t border-line pt-1 text-right font-semibold'
+                          : 'text-right font-semibold'
+                      }
+                    >
+                      {r.value}
+                    </dd>
+                  </Fragment>
+                ))}
+                <dt className='text-fg-2'>{t('cost.original')}</dt>
+                <dd className='text-right font-medium'>
+                  {fmtUnit(baseUsd, cfg)}
+                </dd>
+                {isAdmin && markupRatio !== 1 && (
+                  <>
+                    <dt className='text-fg-2'>{t('cost.tenant_cost')}</dt>
+                    <dd className='text-right font-medium'>
+                      {fmtUnit(baseUsd * groupRatio * channelRatio, cfg)}
+                    </dd>
+                  </>
+                )}
+              </>
+            );
+          })()}
 
           <dt className='mt-1 border-t border-line pt-1 text-fg-2'>
             {t('cost.billed')}
