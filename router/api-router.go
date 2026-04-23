@@ -688,6 +688,7 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.POST("/bills/current/refresh", tenant.RefreshCurrentTenantBillHandler)
 			tenantRoute.GET("/ledger", tenant.ListTenantLedgerHandler)
 			tenantRoute.GET("/plan", tenant.GetTenantPlanInfo)
+			tenantRoute.PUT("/plan/markup", tenant.UpdateTenantPlanMarkup)
 			// Payment configuration (see docs/superpowers/specs/2026-04-17-wechat-pay-multi-tenant-design.md §7.1)
 			tenantRoute.GET("/payment/configs", tenant.GetTenantPaymentConfigs)
 			tenantRoute.PUT("/payment/configs/wechat", tenant.UpdateTenantWechatConfig)

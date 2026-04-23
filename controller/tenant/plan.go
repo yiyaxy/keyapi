@@ -28,6 +28,80 @@ func GetTenantPlanInfo(c *gin.Context) {
 	common.ApiSuccess(c, plan)
 }
 
+// UpdateTenantMarkupRequest 是"租户自助调整对用户加价倍率"的请求体。
+// 刻意不复用 UpdateTenantPlanRequest（那是超管权限），确保租户管理员
+// 只能改 platform_markup 一个字段，不能越权改 quota/RPM/限流等。
+type UpdateTenantMarkupRequest struct {
+	PlatformMarkup *float64 `json:"platform_markup"`
+}
+
+// UpdateTenantPlanMarkup 让租户管理员自助调整对自己用户的加价倍率。
+//
+// 语义说明：
+//   - platform_markup = 1.0：把平台给的渠道折扣（channel_ratio）完全传递给用户
+//   - platform_markup > 1.0：对用户加价，相对吸收平台折扣（最终用户账单升高）
+//   - platform_markup < 1.0：对用户再让利（用户账单低于平台已给的折扣）
+//
+// 不影响平台渠道额度（cap）消耗速度——那是按租户对平台的真实成本扣的
+// （StripMarkup，见 service/billing.go）。
+//
+// 范围 [0.1, 10] 防止误输入极端值。channel 级 MarkupRatio 若已被超管设置，
+// 会覆盖这里的 plan 级值（EffectiveMarkup 的 channel > plan 优先级）。
+//
+// PUT /api/tenant/plan/markup (TenantAdminAuth)
+func UpdateTenantPlanMarkup(c *gin.Context) {
+	tenantId := middleware.GetTenantId(c)
+	if tenantId <= 0 {
+		common.ApiErrorMsg(c, "租户信息无效")
+		return
+	}
+
+	var req UpdateTenantMarkupRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.PlatformMarkup == nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	mk := *req.PlatformMarkup
+	if mk < 0.1 || mk > 10 {
+		common.ApiErrorMsg(c, "对用户加价倍率需在 0.1 到 10 之间")
+		return
+	}
+
+	plan, err := model.GetTenantPlan(tenantId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	beforeMk := plan.PlatformMarkup
+	plan.PlatformMarkup = mk
+	if err := model.UpsertTenantPlan(plan); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	updated, err := model.GetTenantPlan(tenantId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	_ = model.CreateTenantAuditLog(&model.TenantAuditLog{
+		TenantId:    tenantId,
+		ActorUserId: c.GetInt("id"),
+		ActorRole:   "tenant_admin",
+		Action:      "plan.markup.update",
+		Target:      "plan",
+		TargetId:    updated.Id,
+		Detail: func() string {
+			b, _ := json.Marshal(gin.H{"before": beforeMk, "after": mk})
+			return string(b)
+		}(),
+		ClientIP: c.ClientIP(),
+	})
+
+	common.ApiSuccess(c, updated)
+}
+
 // UpdateTenantPlanRequest holds the fields that can be updated by platform admin.
 type UpdateTenantPlanRequest struct {
 	PlanName           string `json:"plan_name"`
