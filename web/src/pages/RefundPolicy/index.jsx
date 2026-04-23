@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { useTranslation } from 'react-i18next';
 import DocumentRenderer from '../../components/common/DocumentRenderer';
 
@@ -10,7 +10,7 @@ const multiLangContent = `## 中文版
 
 **生效日期：2025年1月1日**
 
-CaMeL API（以下简称"我们"）提供基于 API 的人工智能模型接入服务。本退款政策旨在向您说明我们的退款规则和订阅取消流程。
+AllModels（以下简称"我们"）提供基于 API 的人工智能模型接入服务。本退款政策旨在向您说明我们的退款规则和订阅取消流程。
 
 ### 1. 服务性质
 
@@ -60,7 +60,7 @@ CaMeL API（以下简称"我们"）提供基于 API 的人工智能模型接入�
 
 ---
 
-*本退款政策的最终解释权归 CaMeL API 所有。*
+*本退款政策的最终解释权归 AllModels 所有。*
 
 ---
 
@@ -72,7 +72,7 @@ CaMeL API（以下简称"我们"）提供基于 API 的人工智能模型接入�
 
 **Effective Date: January 1, 2025**
 
-CaMeL API (hereinafter referred to as "we" or "us") provides API-based artificial intelligence model access services. This Refund Policy explains our refund rules and subscription cancellation procedures.
+AllModels (hereinafter referred to as "we" or "us") provides API-based artificial intelligence model access services. This Refund Policy explains our refund rules and subscription cancellation procedures.
 
 ### 1. Nature of Service
 
@@ -122,7 +122,7 @@ For refund-related inquiries, please contact:
 
 ---
 
-*CaMeL API reserves the right of final interpretation of this Refund Policy.*
+*AllModels reserves the right of final interpretation of this Refund Policy.*
 
 ---
 
@@ -134,7 +134,7 @@ For refund-related inquiries, please contact:
 
 **発効日：2025年1月1日**
 
-CaMeL API（以下「当社」）は、APIベースの人工知能モデルアクセスサービスを提供しています。本返金ポリシーは、当社の返金規則とサブスクリプション解約手続きについて説明するものです。
+AllModels（以下「当社」）は、APIベースの人工知能モデルアクセスサービスを提供しています。本返金ポリシーは、当社の返金規則とサブスクリプション解約手続きについて説明するものです。
 
 ### 1. サービスの性質
 
@@ -184,7 +184,7 @@ CaMeL API（以下「当社」）は、APIベースの人工知能モデルア�
 
 ---
 
-*本返金ポリシーの最終解釈権はCaMeL APIに帰属します。*
+*本返金ポリシーの最終解釈権はAllModelsに帰属します。*
 
 ---
 
@@ -196,7 +196,7 @@ CaMeL API（以下「当社」）は、APIベースの人工知能モデルア�
 
 **Date d'entrée en vigueur : 1er janvier 2025**
 
-CaMeL API (ci-après « nous ») fournit des services d'accès aux modèles d'intelligence artificielle basés sur API. Cette Politique de Remboursement explique nos règles de remboursement et les procédures d'annulation d'abonnement.
+AllModels (ci-après « nous ») fournit des services d'accès aux modèles d'intelligence artificielle basés sur API. Cette Politique de Remboursement explique nos règles de remboursement et les procédures d'annulation d'abonnement.
 
 ### 1. Nature du service
 
@@ -246,7 +246,7 @@ Pour les questions relatives aux remboursements :
 
 ---
 
-*CaMeL API se réserve le droit d'interprétation finale de cette Politique de Remboursement.*`;
+*AllModels se réserve le droit d'interprétation finale de cette Politique de Remboursement.*`;
 
 const RefundPolicy = () => {
   const { t } = useTranslation();

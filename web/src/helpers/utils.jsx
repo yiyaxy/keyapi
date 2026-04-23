@@ -46,9 +46,11 @@ export function isRoot() {
   return user.role >= 100;
 }
 
+const LEGACY_BRAND_NAMES = ['CaMeL API', 'New API', 'One API', 'new-api', 'one-api'];
+
 export function getSystemName() {
   let system_name = localStorage.getItem('system_name');
-  if (!system_name) return 'CaMeL API';
+  if (!system_name || LEGACY_BRAND_NAMES.includes(system_name)) return 'AllModels';
   return system_name;
 }
 

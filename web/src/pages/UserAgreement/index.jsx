@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -29,11 +29,11 @@ const multiLangContent = `## 中文版
 
 **生效日期：2025年1月1日**
 
-欢迎使用 CaMeL API（以下简称"本平台"或"我们"）。请您在注册和使用本平台服务前，仔细阅读并充分理解本用户协议（以下简称"本协议"）的全部内容。
+欢迎使用 AllModels（以下简称"本平台"或"我们"）。请您在注册和使用本平台服务前，仔细阅读并充分理解本用户协议（以下简称"本协议"）的全部内容。
 
 ### 1. 服务说明
 
-CaMeL API 是一个大模型统一接口网关平台，提供以下服务：
+AllModels 是一个大模型统一接口网关平台，提供以下服务：
 
 - 聚合全球 40+ 主流 AI 模型供应商的 API 接口
 - 提供统一的 OpenAI 兼容格式 API
@@ -117,7 +117,7 @@ CaMeL API 是一个大模型统一接口网关平台，提供以下服务：
 
 ---
 
-*本用户协议的最终解释权归 CaMeL API 所有。*
+*本用户协议的最终解释权归 AllModels 所有。*
 
 ---
 
@@ -129,11 +129,11 @@ CaMeL API 是一个大模型统一接口网关平台，提供以下服务：
 
 **Effective Date: January 1, 2025**
 
-Welcome to CaMeL API (hereinafter referred to as "the Platform" or "we"). Please carefully read and fully understand this User Agreement (hereinafter referred to as "this Agreement") before registering and using our services.
+Welcome to AllModels (hereinafter referred to as "the Platform" or "we"). Please carefully read and fully understand this User Agreement (hereinafter referred to as "this Agreement") before registering and using our services.
 
 ### 1. Service Description
 
-CaMeL API is a unified LLM gateway platform that provides the following services:
+AllModels is a unified LLM gateway platform that provides the following services:
 
 - Aggregated API access to 40+ mainstream global AI model providers
 - Unified OpenAI-compatible API format
@@ -217,7 +217,7 @@ If you have any questions or suggestions about this Agreement, please contact us
 
 ---
 
-*CaMeL API reserves the right of final interpretation of this User Agreement.*
+*AllModels reserves the right of final interpretation of this User Agreement.*
 
 ---
 
@@ -229,11 +229,11 @@ If you have any questions or suggestions about this Agreement, please contact us
 
 **発効日：2025年1月1日**
 
-CaMeL API（以下「本プラットフォーム」または「当社」）へようこそ。本プラットフォームのサービスに登録・利用する前に、本利用規約（以下「本規約」）の全内容をよくお読みいただき、十分にご理解ください。
+AllModels（以下「本プラットフォーム」または「当社」）へようこそ。本プラットフォームのサービスに登録・利用する前に、本利用規約（以下「本規約」）の全内容をよくお読みいただき、十分にご理解ください。
 
 ### 1. サービス説明
 
-CaMeL APIは、以下のサービスを提供する統合LLMゲートウェイプラットフォームです：
+AllModelsは、以下のサービスを提供する統合LLMゲートウェイプラットフォームです：
 
 - 世界40以上の主要AIモデルプロバイダーのAPI統合アクセス
 - 統一されたOpenAI互換APIフォーマット
@@ -317,7 +317,7 @@ CaMeL APIは、以下のサービスを提供する統合LLMゲートウェイ�
 
 ---
 
-*本利用規約の最終解釈権はCaMeL APIに帰属します。*
+*本利用規約の最終解釈権はAllModelsに帰属します。*
 
 ---
 
@@ -329,11 +329,11 @@ CaMeL APIは、以下のサービスを提供する統合LLMゲートウェイ�
 
 **Date d'entrée en vigueur : 1er janvier 2025**
 
-Bienvenue sur CaMeL API (ci-après « la Plateforme » ou « nous »). Veuillez lire attentivement et comprendre pleinement les présentes Conditions d'Utilisation (ci-après « le Contrat ») avant de vous inscrire et d'utiliser nos services.
+Bienvenue sur AllModels (ci-après « la Plateforme » ou « nous »). Veuillez lire attentivement et comprendre pleinement les présentes Conditions d'Utilisation (ci-après « le Contrat ») avant de vous inscrire et d'utiliser nos services.
 
 ### 1. Description du service
 
-CaMeL API est une plateforme de passerelle LLM unifiée qui fournit les services suivants :
+AllModels est une plateforme de passerelle LLM unifiée qui fournit les services suivants :
 
 - Accès API agrégé à plus de 40 fournisseurs de modèles IA majeurs dans le monde
 - Format API unifié compatible OpenAI
@@ -417,7 +417,7 @@ Si vous avez des questions ou des suggestions concernant le présent Contrat, ve
 
 ---
 
-*CaMeL API se réserve le droit d'interprétation finale des présentes Conditions d'Utilisation.*`;
+*AllModels se réserve le droit d'interprétation finale des présentes Conditions d'Utilisation.*`;
 
 const UserAgreement = () => {
   const { t } = useTranslation();
