@@ -34,7 +34,7 @@ export function Login() {
   const redirect = params.get('redirect') || '/';
   const registerEnabled = cfg.register_enabled !== false;
   const passwordLoginEnabled = cfg.password_login_enabled !== false;
-  const wechatLoginEnabled = cfg.wechat_login === true;
+  const wechatLoginEnabled = cfg.wechat_login === true || cfg.wx_mini_login === true;
 
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -70,14 +70,17 @@ export function Login() {
       eyebrow={t('login.eyebrow')}
       title={t('login.title')}
       footer={
-        registerEnabled ? (
-          <>
-            {t('login.to_register').replace('→', '')}
-            <Link to='/register' className='ml-1 text-accent hover:underline'>
-              {'→'}
-            </Link>
-          </>
-        ) : undefined
+        registerEnabled ? (() => {
+          const [prefix, cta] = t('login.to_register').split(/(?<=[?？])\s*/);
+          return (
+            <>
+              {prefix}
+              <Link to='/register' className='ml-1 text-accent hover:underline'>
+                {cta ?? t('login.to_register')}
+              </Link>
+            </>
+          );
+        })() : undefined
       }
     >
       {!passwordLoginEnabled && !wechatLoginEnabled ? (

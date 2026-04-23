@@ -15,6 +15,7 @@ export type PublicConfig = {
   password_login_enabled: boolean;
   email_verification: boolean;
   wechat_login?: boolean;
+  wx_mini_login?: boolean;
   price?: number;
   custom_currency_symbol?: string;
   custom_currency_exchange_rate?: number;
@@ -32,6 +33,7 @@ const DEFAULT: PublicConfig = {
   password_login_enabled: true,
   email_verification: true,
   wechat_login: false,
+  wx_mini_login: false,
   price: 7,
   custom_currency_symbol: '¤',
   custom_currency_exchange_rate: 1,

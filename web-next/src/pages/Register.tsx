@@ -131,14 +131,17 @@ export function Register() {
     <AuthLayout
       eyebrow={t('register.eyebrow')}
       title={t('register.title')}
-      footer={
-        <>
-          {t('register.to_login').replace(/→\s*$/, '')}
-          <Link to='/login' className='ml-1 text-accent hover:underline'>
-            {'→'}
-          </Link>
-        </>
-      }
+      footer={(() => {
+        const [prefix, cta] = t('register.to_login').split(/(?<=[?？])\s*/);
+        return (
+          <>
+            {prefix}
+            <Link to='/login' className='ml-1 text-accent hover:underline'>
+              {cta ?? t('register.to_login')}
+            </Link>
+          </>
+        );
+      })()}
     >
       {!registerEnabled ? (
         <InlineBanner level='info' message='当前租户已关闭注册' />
