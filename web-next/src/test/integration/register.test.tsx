@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -12,17 +13,20 @@ import { AuthProvider } from '@/providers/AuthProvider';
 describe('integration: register flow', () => {
   test('two-step form → auto-login → dashboard ComingSoon', async () => {
     const user = userEvent.setup();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <AuthProvider>
-        <MemoryRouter initialEntries={['/register']}>
-          <Routes>
-            <Route path='/register' element={<Register />} />
-            <Route element={<ProtectedRoute />}>
-              <Route path='/' element={<ComingSoon feature='Dashboard' />} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </AuthProvider>
+      <QueryClientProvider client={qc}>
+        <AuthProvider>
+          <MemoryRouter initialEntries={['/register']}>
+            <Routes>
+              <Route path='/register' element={<Register />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path='/' element={<ComingSoon feature='Dashboard' />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </AuthProvider>
+      </QueryClientProvider>
     );
     await user.type(await screen.findByLabelText(/邮箱|email/i), 'alice@example.com');
     await user.click(screen.getByRole('button', { name: /发送|send/i }));

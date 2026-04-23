@@ -37,6 +37,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useUnreadCount } from '@/hooks/useInbox';
+import { useSiteBranding } from '@/hooks/useSiteBranding';
 
 import { Logo } from './Logo';
 import { NavItem } from './NavItem';
@@ -54,12 +55,14 @@ export function Sidebar() {
   const isPlatform =
     user !== null && Math.max(user.role, user.platform_role, user.tenant_role) >= ROLE_PLATFORM;
   const unread = useUnreadCount();
+  const { systemName, logo } = useSiteBranding();
+  const appName = systemName || t('app.name', { ns: 'common' });
 
   return (
     <aside className='flex w-[240px] shrink-0 flex-col border-r border-line bg-bg-0'>
       <div className='flex h-14 items-center gap-2 border-b border-line px-4'>
-        <Logo size={24} />
-        <span className='font-semibold'>{t('app.name', { ns: 'common' })}</span>
+        <Logo size={24} url={logo} alt={appName} />
+        <span className='font-semibold'>{appName}</span>
       </div>
       <nav className='flex-1 overflow-y-auto p-3'>
         <SidebarGroup label={t('nav.build')}>

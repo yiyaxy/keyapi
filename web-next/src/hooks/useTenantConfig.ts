@@ -28,7 +28,10 @@ export function useSetTenantConfig() {
     mutationFn: async (body: { key: string; value: string }) => {
       await api.put('/api/tenant/config', body);
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tenant', 'config'] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenant', 'config'] });
+      void qc.invalidateQueries({ queryKey: ['site-status'] });
+    },
   });
 }
 
@@ -38,6 +41,9 @@ export function useDeleteTenantConfig() {
     mutationFn: async (key: string) => {
       await api.delete('/api/tenant/config', { data: { key } });
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tenant', 'config'] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenant', 'config'] });
+      void qc.invalidateQueries({ queryKey: ['site-status'] });
+    },
   });
 }

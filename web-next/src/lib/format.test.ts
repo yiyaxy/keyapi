@@ -40,6 +40,10 @@ describe('fmtDisplay', () => {
     quota_per_unit: 500_000,
     quota_display_type: 'USD',
     usd_exchange_rate: 7,
+    register_enabled: true,
+    password_register_enabled: true,
+    password_login_enabled: true,
+    email_verification: true,
     custom_currency_symbol: '¤',
     custom_currency_exchange_rate: 1,
   };

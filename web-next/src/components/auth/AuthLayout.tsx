@@ -1,4 +1,5 @@
 import { Logo } from '@/components/layout/Logo';
+import { useSiteBranding } from '@/hooks/useSiteBranding';
 
 type Props = {
   eyebrow: string;
@@ -8,11 +9,12 @@ type Props = {
 };
 
 export function AuthLayout({ eyebrow, title, children, footer }: Props) {
+  const { systemName, logo } = useSiteBranding();
   return (
     <div className='min-h-screen bg-bg-0 px-4 py-12'>
       <div className='mx-auto flex max-w-[400px] flex-col items-stretch'>
         <div className='mx-auto mb-6'>
-          <Logo size={32} />
+          <Logo size={32} url={logo} alt={systemName || 'AllModels'} />
         </div>
         <div className='rounded-md border border-line bg-bg-1 p-6'>
           <div className='eyebrow'>{eyebrow}</div>
