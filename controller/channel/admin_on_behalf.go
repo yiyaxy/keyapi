@@ -43,7 +43,7 @@ func AdminOnBehalfToggleChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "only platform channels can be toggled"})
 		return
 	}
-	if err := model.SetTenantChannelDisabled(tenantId, channelId, body.Disabled); err != nil {
+	if err := model.SetTenantChannelDisabledAsAdmin(tenantId, channelId, body.Disabled); err != nil {
 		common.ApiError(c, err)
 		return
 	}

@@ -9,6 +9,7 @@ import { ChannelsTable } from '@/components/channels/ChannelsTable';
 import { ChannelTestDialog } from '@/components/channels/ChannelTestDialog';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LogsPagination } from '@/components/logs/LogsPagination';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -175,6 +176,11 @@ export function ChannelsAdminPage() {
                         <div className='flex items-center gap-2'>
                           <div className='font-medium text-fg-0'>{channel.name}</div>
                           <span className='text-12 text-fg-2'>{channel.models}</span>
+                          {channel.tenant_channel_locked && (
+                            <Badge variant='outline' className='text-11'>
+                              {t('platform_row.admin_locked')}
+                            </Badge>
+                          )}
                         </div>
                         <div className='mt-1 text-12 text-fg-2'>
                           {channel.group} ·{' '}
@@ -185,12 +191,15 @@ export function ChannelsAdminPage() {
                       </div>
                       <div className='flex items-center gap-3'>
                         <span className='text-12 text-fg-2'>
-                          {channel.tenant_disabled
-                            ? t('platform_row.disabled_for_tenant')
-                            : t('platform_row.enabled')}
+                          {channel.tenant_channel_locked
+                            ? t('platform_row.admin_locked_hint')
+                            : channel.tenant_disabled
+                              ? t('platform_row.disabled_for_tenant')
+                              : t('platform_row.enabled')}
                         </span>
                         <Switch
                           checked={!channel.tenant_disabled}
+                          disabled={!!channel.tenant_channel_locked}
                           onCheckedChange={(checked) =>
                             toggle.mutate(
                               {

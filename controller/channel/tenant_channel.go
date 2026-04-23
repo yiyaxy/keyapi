@@ -2,6 +2,7 @@ package channel
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -19,10 +20,15 @@ import (
 
 type tenantChannelOut struct {
 	*model.Channel
-	TenantDisabled bool `json:"tenant_disabled,omitempty"`
+	TenantDisabled      bool `json:"tenant_disabled,omitempty"`
+	TenantChannelLocked bool `json:"tenant_channel_locked,omitempty"`
 }
 
-func annotateTenantChannels(channels []*model.Channel, disabled map[int]struct{}) []tenantChannelOut {
+func annotateTenantChannels(
+	channels []*model.Channel,
+	disabled map[int]struct{},
+	locked map[int]struct{},
+) []tenantChannelOut {
 	out := make([]tenantChannelOut, 0, len(channels))
 	for _, ch := range channels {
 		model.SanitizeForTenantView(ch)
@@ -30,6 +36,7 @@ func annotateTenantChannels(channels []*model.Channel, disabled map[int]struct{}
 		item := tenantChannelOut{Channel: ch}
 		if ch.Scope == model.ChannelScopePlatform {
 			_, item.TenantDisabled = disabled[ch.Id]
+			_, item.TenantChannelLocked = locked[ch.Id]
 		}
 		out = append(out, item)
 	}
@@ -105,8 +112,9 @@ func TenantListChannels(c *gin.Context) {
 	}
 
 	disabled, _ := model.GetTenantDisabledPlatformChannels(tenantId)
+	locked, _ := model.GetTenantLockedPlatformChannels(tenantId)
 	common.ApiSuccess(c, gin.H{
-		"items":     annotateTenantChannels(channelData, disabled),
+		"items":     annotateTenantChannels(channelData, disabled, locked),
 		"total":     total,
 		"page":      pageInfo.GetPage(),
 		"page_size": pageInfo.GetPageSize(),
@@ -162,11 +170,12 @@ func TenantSearchChannels(c *gin.Context) {
 	}
 
 	disabled, _ := model.GetTenantDisabledPlatformChannels(tenantId)
+	locked, _ := model.GetTenantLockedPlatformChannels(tenantId)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"items": annotateTenantChannels(channelData, disabled),
+			"items": annotateTenantChannels(channelData, disabled, locked),
 			"total": len(channelData),
 		},
 	})
@@ -185,7 +194,8 @@ func TenantGetChannel(c *gin.Context) {
 		return
 	}
 	disabled, _ := model.GetTenantDisabledPlatformChannels(tenantId)
-	out := annotateTenantChannels([]*model.Channel{ch}, disabled)
+	locked, _ := model.GetTenantLockedPlatformChannels(tenantId)
+	out := annotateTenantChannels([]*model.Channel{ch}, disabled, locked)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": out[0]})
 }
 
@@ -258,7 +268,14 @@ func TenantToggleChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "can only toggle platform channels"})
 		return
 	}
-	if err := model.SetTenantChannelDisabled(tenantId, channelId, body.Disabled); err != nil {
+	if err := model.SetTenantChannelDisabledAsTenant(tenantId, channelId, body.Disabled); err != nil {
+		if errors.Is(err, model.ErrTenantChannelLocked) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "此渠道已被平台管理员禁用，无法由租户启用",
+			})
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}

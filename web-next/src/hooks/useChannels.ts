@@ -42,6 +42,9 @@ export type Channel = {
   setting: string | null; // JSON — dto.ChannelSettings
   markup_ratio?: number | null;
   tenant_disabled?: boolean;
+  // 平台管理员强制禁用：租户视角 UI 收到这个字段应把 toggle 置灰，
+  // 并提示"平台管理员已禁用此渠道"。后端 tenant toggle API 也会拒绝改动。
+  tenant_channel_locked?: boolean;
 };
 
 export type ChannelsQuery = {

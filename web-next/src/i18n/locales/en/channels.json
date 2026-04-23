@@ -14,6 +14,8 @@
   "platform_row.plan_markup": "plan markup",
   "platform_row.disabled_for_tenant": "disabled for this tenant",
   "platform_row.enabled": "enabled",
+  "platform_row.admin_locked": "admin locked",
+  "platform_row.admin_locked_hint": "disabled by platform admin",
   "filters.name": "Name / key",
   "filters.type.all": "All types",
   "filters.status.all": "All status",
