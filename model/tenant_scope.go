@@ -449,17 +449,36 @@ func tenantGuardCreate(db *gorm.DB) {
 		return
 	}
 
-	// ReflectValue can be either a single struct (DB.Create(&row)) or a
-	// slice/array (DB.Create(&rows) — batch insert). schema.Field.ValueOf
-	// panics on a slice Value, so we have to dispatch per-element here.
+	// ReflectValue can be a single struct (DB.Create(&row)), a slice/array
+	// (DB.Create(&rows) — batch insert), a map (DB.Create(map{...})), or a
+	// slice of maps (DB.Create(&[]map{...})). schema.Field.ValueOf panics
+	// on slice/map Values, so we dispatch per-element here.
 	rv := reflect.Indirect(db.Statement.ReflectValue)
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < rv.Len(); i++ {
-			if err := checkOrFillTenantId(db, field, rv.Index(i)); err != nil {
-				_ = db.AddError(err)
-				return
+			elem := rv.Index(i)
+			// slice element may be interface{} / *struct / *map; unwrap once.
+			for elem.Kind() == reflect.Interface || elem.Kind() == reflect.Ptr {
+				elem = elem.Elem()
 			}
+			switch elem.Kind() {
+			case reflect.Map:
+				if err := checkOrFillTenantIdForMap(db, elem); err != nil {
+					_ = db.AddError(err)
+					return
+				}
+			default:
+				if err := checkOrFillTenantId(db, field, elem); err != nil {
+					_ = db.AddError(err)
+					return
+				}
+			}
+		}
+	case reflect.Map:
+		if err := checkOrFillTenantIdForMap(db, rv); err != nil {
+			_ = db.AddError(err)
+			return
 		}
 	case reflect.Struct:
 		if err := checkOrFillTenantId(db, field, rv); err != nil {
@@ -467,6 +486,43 @@ func tenantGuardCreate(db *gorm.DB) {
 			return
 		}
 	}
+}
+
+// checkOrFillTenantIdForMap mirrors checkOrFillTenantId but for map-shaped
+// rows (DB.Create(&[]map[string]interface{}{...})). GORM's schema.Field.ValueOf
+// assumes a struct reflect.Value and panics on maps, so we can't reuse it.
+//
+// Contract: rowValue.Kind() == reflect.Map with string keys. Reads the
+// "tenant_id" entry (preferred column name in this codebase), back-fills
+// from request context when missing/zero, fails closed if it's still zero.
+func checkOrFillTenantIdForMap(db *gorm.DB, rowValue reflect.Value) error {
+	if rowValue.Kind() != reflect.Map {
+		return nil
+	}
+	key := reflect.ValueOf("tenant_id")
+	currentTenantId := 0
+	if v := rowValue.MapIndex(key); v.IsValid() {
+		switch x := v.Interface().(type) {
+		case int:
+			currentTenantId = x
+		case int64:
+			currentTenantId = int(x)
+		case int32:
+			currentTenantId = int(x)
+		case uint:
+			currentTenantId = int(x)
+		}
+	}
+	if currentTenantId == 0 {
+		if tenantId := resolveAutoTenantId(db.Statement.Context); tenantId > 0 {
+			rowValue.SetMapIndex(key, reflect.ValueOf(tenantId))
+			currentTenantId = tenantId
+		}
+	}
+	if currentTenantId == 0 {
+		return fmt.Errorf("tenant guardrail: refusing to create %s row without tenant_id (use WithTenantBypass to override)", db.Statement.Schema.Table)
+	}
+	return nil
 }
 
 // checkOrFillTenantId reads tenant_id from a single row, back-fills from

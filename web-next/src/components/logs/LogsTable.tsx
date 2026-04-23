@@ -62,6 +62,7 @@ export function LogsTable({
             <th className='px-3 py-2 font-medium'>{t('table.col.time')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.type')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.model')}</th>
+            <th className='px-3 py-2 font-medium'>{t('table.col.channel')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.token')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.tokens')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.quota')}</th>
@@ -82,6 +83,9 @@ export function LogsTable({
                   <Badge variant={TYPE_VARIANT[r.type]}>{t(TYPE_KEY[r.type])}</Badge>
                 </td>
                 <td className='px-3 py-2 font-mono text-12'>{r.model_name || '—'}</td>
+                <td className='px-3 py-2 text-13'>
+                  {r.channel_name || (r.channel ? `#${r.channel}` : '—')}
+                </td>
                 <td className='px-3 py-2'>{r.token_name || '—'}</td>
                 <td className='px-3 py-2 tabular-nums'>
                   {r.prompt_tokens + r.completion_tokens > 0 ? (

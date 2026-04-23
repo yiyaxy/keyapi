@@ -19,7 +19,8 @@ import {
   type PlatformChannelUsageRow,
 } from '@/hooks/usePlatformChannelUsage';
 import { PageAction } from '@/hooks/usePageAction';
-import { fmtDateSec } from '@/lib/format';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { fmtDateSec, fmtDisplay } from '@/lib/format';
 
 const PAGE_SIZE = 50;
 
@@ -39,6 +40,7 @@ function periodLabel(
 
 function TenantUsagePanel() {
   const { t } = useTranslation('platform');
+  const cfg = usePublicConfig();
   const usage = usePlatformChannelUsage();
   const reset = useResetPlatformChannelUsage();
 
@@ -97,11 +99,13 @@ function TenantUsagePanel() {
               <tr key={row.tenant_id} className='border-b border-line text-13 hover:bg-bg-1'>
                 <td className='px-3 py-3'>{row.tenant_name || `#${row.tenant_id}`}</td>
                 <td className='px-3 py-3'>{row.plan_name}</td>
-                <td className='px-3 py-3 text-right tabular-nums'>{row.platform_quota_used}</td>
+                <td className='px-3 py-3 text-right tabular-nums'>
+                  {fmtDisplay(row.platform_quota_used, cfg)}
+                </td>
                 <td className='px-3 py-3 text-right tabular-nums'>
                   {row.platform_quota_cap < 0
                     ? t('platform_channels.usage.value.unlimited')
-                    : row.platform_quota_cap}
+                    : fmtDisplay(row.platform_quota_cap, cfg)}
                 </td>
                 <td className='px-3 py-3'>
                   <div>{periodLabel(t, row.platform_quota_period)}</div>

@@ -86,14 +86,16 @@ export function CostBreakdown({
   const cachePricePerM = inputPricePerM * cacheRatio;
 
   // 缓存命中的 prompt tokens 按 cache_ratio 折扣计价，其余按正常输入价。
+  // 下面三项 cost 均为 *base*（未乘任何倍率），tooltip 里直接展示 base，
+  // 让用户能用 `原始 × 分组 × 渠道 = 计费` 心算对上。对应 "cost.original"
+  // 行就是这三项的合计，任何 ratio 都在后面的"倍率"小节明示。
   const normalInputTokens = row.prompt_tokens - (hasCache ? cacheTokens : 0);
   const normalInputCostUsd = (normalInputTokens / 1_000_000) * inputPricePerM;
   const cachedInputCostUsd = hasCache
     ? (cacheTokens / 1_000_000) * inputPricePerM * cacheRatio
     : 0;
   const outputCostUsd = (row.completion_tokens / 1_000_000) * outputPricePerM;
-  const originalUsd =
-    (normalInputCostUsd + cachedInputCostUsd + outputCostUsd) * groupRatio;
+  const baseUsd = normalInputCostUsd + cachedInputCostUsd + outputCostUsd;
 
   const billedDisplay = toDisplay(row.quota, cfg);
   const billedNum = new Intl.NumberFormat(undefined, {
@@ -119,26 +121,26 @@ export function CostBreakdown({
             <>
               <dt className='text-fg-2'>{t('cost.input_cost_normal')}</dt>
               <dd className='text-right font-medium'>
-                {fmtUnit(normalInputCostUsd * groupRatio, cfg)}
+                {fmtUnit(normalInputCostUsd, cfg)}
               </dd>
 
               <dt className='text-fg-2'>{t('cost.input_cost_cached')}</dt>
               <dd className='text-right font-medium'>
-                {fmtUnit(cachedInputCostUsd * groupRatio, cfg)}
+                {fmtUnit(cachedInputCostUsd, cfg)}
               </dd>
             </>
           ) : (
             <>
               <dt className='text-fg-2'>{t('cost.input_cost')}</dt>
               <dd className='text-right font-medium'>
-                {fmtUnit(normalInputCostUsd * groupRatio, cfg)}
+                {fmtUnit(normalInputCostUsd, cfg)}
               </dd>
             </>
           )}
 
           <dt className='text-fg-2'>{t('cost.output_cost')}</dt>
           <dd className='text-right font-medium'>
-            {fmtUnit(outputCostUsd * groupRatio, cfg)}
+            {fmtUnit(outputCostUsd, cfg)}
           </dd>
 
           {hasCache && (
@@ -171,18 +173,44 @@ export function CostBreakdown({
             </>
           )}
 
-          {channelRatio > 0 && channelRatio !== 1 && (
+          {(groupRatio !== 1 || (channelRatio > 0 && channelRatio !== 1)) && (
             <>
-              <dt className='mt-1 border-t border-line pt-1 text-fg-2'>
-                {t('cost.multiplier')}
-              </dt>
-              <dd className='mt-1 border-t border-line pt-1 text-right font-semibold'>
-                {channelRatio}x
-              </dd>
+              {groupRatio !== 1 && (
+                <>
+                  <dt className='mt-1 border-t border-line pt-1 text-fg-2'>
+                    {t('cost.group_ratio')}
+                  </dt>
+                  <dd className='mt-1 border-t border-line pt-1 text-right font-semibold'>
+                    {groupRatio}x
+                  </dd>
+                </>
+              )}
+              {channelRatio > 0 && channelRatio !== 1 && (
+                <>
+                  <dt
+                    className={
+                      groupRatio !== 1
+                        ? 'text-fg-2'
+                        : 'mt-1 border-t border-line pt-1 text-fg-2'
+                    }
+                  >
+                    {t('cost.channel_ratio')}
+                  </dt>
+                  <dd
+                    className={
+                      groupRatio !== 1
+                        ? 'text-right font-semibold'
+                        : 'mt-1 border-t border-line pt-1 text-right font-semibold'
+                    }
+                  >
+                    {channelRatio}x
+                  </dd>
+                </>
+              )}
 
               <dt className='text-fg-2'>{t('cost.original')}</dt>
               <dd className='text-right font-medium'>
-                {fmtUnit(originalUsd, cfg)}
+                {fmtUnit(baseUsd, cfg)}
               </dd>
             </>
           )}

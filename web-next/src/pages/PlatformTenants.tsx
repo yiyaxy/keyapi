@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreateTenantDialog } from '@/components/platform/CreateTenantDialog';
+import { TenantChannelAccessDialog } from '@/components/platform/TenantChannelAccessDialog';
 import { TenantPlanEditorDialog } from '@/components/platform/TenantPlanEditorDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ export function PlatformTenantsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
   const [planTarget, setPlanTarget] = useState<{ tenant: Tenant; plan: TenantPlan } | null>(null);
+  const [accessTarget, setAccessTarget] = useState<Tenant | null>(null);
 
   const items = tenants.data ?? [];
   const planByTenant = new Map<number, TenantPlan>();
@@ -113,6 +115,14 @@ export function PlatformTenantsPage() {
                         type='button'
                         variant='ghost'
                         size='sm'
+                        onClick={() => setAccessTarget(tnt)}
+                      >
+                        {t('tenants.action.channel_access')}
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
                         className='text-danger'
                         disabled={tnt.id === 1}
                         onClick={() => setDeleteTarget(tnt)}
@@ -134,6 +144,14 @@ export function PlatformTenantsPage() {
           tenantName={planTarget.tenant.name}
           plan={planTarget.plan}
           onOpenChange={(o) => !o && setPlanTarget(null)}
+        />
+      )}
+      {accessTarget && (
+        <TenantChannelAccessDialog
+          open
+          tenantId={accessTarget.id}
+          tenantName={accessTarget.name}
+          onOpenChange={(o) => !o && setAccessTarget(null)}
         />
       )}
       {deleteTarget && (

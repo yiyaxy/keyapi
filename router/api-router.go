@@ -376,6 +376,7 @@ func SetApiRouter(router *gin.Engine) {
 		adminTenantChannelRoute := apiRouter.Group("/admin/tenant/:tenantId/channel")
 		adminTenantChannelRoute.Use(middleware.RootAuth())
 		{
+			adminTenantChannelRoute.GET("/overrides", channel.AdminOnBehalfListDisabledChannels)
 			adminTenantChannelRoute.POST("/:channelId/toggle", channel.AdminOnBehalfToggleChannel)
 			adminTenantChannelRoute.POST("/fix", channel.AdminOnBehalfFixChannelsAbilities)
 		}

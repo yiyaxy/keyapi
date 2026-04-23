@@ -21,6 +21,14 @@ import {
   type TenantPlan,
   type UpdateTenantPlanPayload,
 } from '@/hooks/usePlatformTenants';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
+import {
+  fmtDisplay,
+  rawToUnit,
+  unitSymbol,
+  unitToRaw,
+  type QuotaUnit,
+} from '@/lib/format';
 
 // Section = collapsible group used on the channel form and here.
 // Inlined (not extracted) because the channel-form version lives in a
@@ -66,6 +74,16 @@ function localInputToUnix(local: string): number {
   if (!local) return 0;
   const ms = new Date(local).getTime();
   return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+}
+
+// fmtCapNumber: 格式化任意单位的浮点数字（USD/CNY/custom）成干净字符串。
+// 用于输入框派生值和等价预览：避免科学记数法和尾零噪音（0.100000 → 0.1）。
+function fmtCapNumber(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  const abs = Math.abs(n);
+  if (abs === 0) return '0';
+  if (abs >= 1) return Number(n.toFixed(2)).toString();
+  return Number(n.toFixed(6)).toString();
 }
 
 type FormState = {
@@ -120,11 +138,21 @@ export function TenantPlanEditorDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { t } = useTranslation('platform');
+  const cfg = usePublicConfig();
   const update = useUpdateTenantPlan();
   const [form, setForm] = useState<FormState>(() => fromPlan(plan));
 
+  // capUnit / capText 配合 form.platform_quota_cap（raw quota string）做"多单位输入"。
+  // - form.platform_quota_cap 永远是 raw quota 字符串，保存直传后端
+  // - capText 是输入框当前显示的字面量（跟 capUnit 一致）
+  // - 切 unit 时从 raw 派生回 text；输入时按当前 unit 解析回 raw
+  const [capUnit, setCapUnit] = useState<QuotaUnit>('quota');
+  const [capText, setCapText] = useState<string>(() => fromPlan(plan).platform_quota_cap);
+
   useEffect(() => {
     setForm(fromPlan(plan));
+    setCapUnit('quota');
+    setCapText(fromPlan(plan).platform_quota_cap);
   }, [plan]);
 
   function patch<K extends keyof FormState>(k: K, v: FormState[K]) {
@@ -298,20 +326,90 @@ export function TenantPlanEditorDialog({
           <Section title={t('plan.section.platform_quota')}>
             <p className='text-12 text-fg-2'>
               {t('plan.hint.platform_quota_used', {
-                used: plan.platform_quota_used,
-                cap: plan.platform_quota_cap < 0 ? '∞' : String(plan.platform_quota_cap),
+                used: fmtDisplay(plan.platform_quota_used, cfg),
+                cap:
+                  plan.platform_quota_cap < 0
+                    ? '∞'
+                    : fmtDisplay(plan.platform_quota_cap, cfg),
               })}
             </p>
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-2'>
                 <Label>{t('plan.field.platform_quota_cap')}</Label>
-                <Input
-                  type='number'
-                  value={form.platform_quota_cap}
-                  onChange={(e) => patch('platform_quota_cap', e.target.value)}
-                  className='tabular-nums'
-                />
-                <p className='text-12 text-fg-2'>{t('plan.hint.platform_quota_cap')}</p>
+                <div className='flex items-center gap-2'>
+                  <Input
+                    type='number'
+                    value={capText}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCapText(v);
+                      if (v === '' || v === '-') {
+                        patch('platform_quota_cap', v);
+                        return;
+                      }
+                      const n = Number(v);
+                      if (!Number.isFinite(n)) return;
+                      const raw = unitToRaw(n, capUnit, cfg);
+                      patch('platform_quota_cap', String(raw));
+                    }}
+                    className='tabular-nums flex-1'
+                    step={capUnit === 'quota' ? 1 : 'any'}
+                  />
+                  <Select
+                    value={capUnit}
+                    onValueChange={(v) => {
+                      const next = v as QuotaUnit;
+                      setCapUnit(next);
+                      const raw = Number(form.platform_quota_cap);
+                      if (!Number.isFinite(raw)) {
+                        return;
+                      }
+                      if (raw < 0) {
+                        setCapText(String(raw));
+                        return;
+                      }
+                      setCapText(fmtCapNumber(rawToUnit(raw, next, cfg)));
+                    }}
+                  >
+                    <SelectTrigger className='w-24 shrink-0'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='quota'>quota</SelectItem>
+                      <SelectItem value='usd'>USD</SelectItem>
+                      <SelectItem value='cny'>CNY</SelectItem>
+                      {cfg.custom_currency_symbol &&
+                      cfg.custom_currency_symbol !== '¤' ? (
+                        <SelectItem value='custom'>
+                          {cfg.custom_currency_symbol}
+                        </SelectItem>
+                      ) : null}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className='text-12 text-fg-2'>
+                  {t('plan.hint.platform_quota_cap')}
+                  {(() => {
+                    const raw = Number(form.platform_quota_cap);
+                    if (!Number.isFinite(raw) || raw <= 0) return null;
+                    const hasCustom =
+                      !!cfg.custom_currency_symbol &&
+                      cfg.custom_currency_symbol !== '¤';
+                    const units = (
+                      ['quota', 'usd', 'cny', 'custom'] as QuotaUnit[]
+                    ).filter(
+                      (u) => u !== capUnit && (u !== 'custom' || hasCustom)
+                    );
+                    const parts = units.map((u) => {
+                      const v = rawToUnit(raw, u, cfg);
+                      if (u === 'quota') return `${v.toFixed(0)} quota`;
+                      return `${unitSymbol(u, cfg)}${fmtCapNumber(v)}`;
+                    });
+                    return (
+                      <span className='ml-1 text-fg-1'>≈ {parts.join(' · ')}</span>
+                    );
+                  })()}
+                </p>
               </div>
               <div className='space-y-2'>
                 <Label>{t('plan.field.platform_quota_period')}</Label>

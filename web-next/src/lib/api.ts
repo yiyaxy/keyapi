@@ -125,7 +125,10 @@ api.interceptors.response.use(
     if (body && typeof body === 'object' && body.success === false) {
       throw ApiError.fromBody(body);
     }
-    if (body && typeof body === 'object' && 'data' in body) {
+    // 某些接口（/api/pricing 等）需要访问 envelope 顶层的非-data 字段，
+    // 调用方可以传 { rawEnvelope: true } 跳过自动解包，拿到完整 body。
+    const rawEnvelope = (response.config as { rawEnvelope?: boolean }).rawEnvelope;
+    if (!rawEnvelope && body && typeof body === 'object' && 'data' in body) {
       response.data = body.data;
     }
     return response;

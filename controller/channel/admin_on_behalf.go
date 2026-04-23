@@ -2,6 +2,7 @@ package channel
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -49,6 +50,26 @@ func AdminOnBehalfToggleChannel(c *gin.Context) {
 	model.InvalidateTenantRoutingCache(tenantId)
 	service.PurgeTenantAffinityCache(tenantId)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}
+
+// AdminOnBehalfListDisabledChannels 返回指定租户禁用了的平台渠道 id 列表。
+// 只读，配合 UI 展示 per-tenant 平台渠道访问开关。
+func AdminOnBehalfListDisabledChannels(c *gin.Context) {
+	tenantId, ok := parseTenantIdParam(c)
+	if !ok {
+		return
+	}
+	disabled, err := model.GetTenantDisabledPlatformChannels(tenantId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	ids := make([]int, 0, len(disabled))
+	for id := range disabled {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"disabled": ids}})
 }
 
 func AdminOnBehalfFixChannelsAbilities(c *gin.Context) {
