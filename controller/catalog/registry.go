@@ -165,6 +165,7 @@ func ListModels(c *gin.Context, modelType int) {
 			})
 			return
 		}
+		tid := middleware.GetTenantId(c)
 		group := userGroup
 		tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if tokenGroup != "" {
@@ -172,14 +173,13 @@ func ListModels(c *gin.Context, modelType int) {
 		} else {
 			// Token has no group set — use user's group if it has channels,
 			// otherwise fall back to "default"
-			if !model.GroupHasChannels(userGroup, middleware.GetTenantId(c)) {
+			if !model.GroupHasChannels(userGroup, tid) {
 				group = "default"
 			}
 		}
 		var models []string
 		if tokenGroup == "auto" {
-			for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
-				tid := middleware.GetTenantId(c)
+			for _, autoGroup := range service.GetTenantUserAutoGroup(tid, userGroup) {
 				groupModels := model.GetGroupEnabledModels(autoGroup, tid)
 				for _, g := range groupModels {
 					if !common.StringsContains(models, g) {
@@ -189,8 +189,7 @@ func ListModels(c *gin.Context, modelType int) {
 			}
 		} else if strings.Contains(group, ",") {
 			// Custom group chain: collect models from all groups in the chain
-			tid := middleware.GetTenantId(c)
-			chainGroups := service.ParseGroupChain(group, userGroup)
+			chainGroups := service.ParseGroupChain(tid, group, userGroup)
 			for _, cg := range chainGroups {
 				groupModels := model.GetGroupEnabledModels(cg, tid)
 				for _, g := range groupModels {
@@ -200,7 +199,7 @@ func ListModels(c *gin.Context, modelType int) {
 				}
 			}
 		} else {
-			models = model.GetGroupEnabledModels(group, middleware.GetTenantId(c))
+			models = model.GetGroupEnabledModels(group, tid)
 		}
 		for _, modelName := range models {
 			if !acceptUnsetRatioModel {

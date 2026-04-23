@@ -5,8 +5,8 @@ import (
 	"math"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -34,16 +34,14 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		relayInfo.UsingGroup = autoGroup.(string)
 	}
 
-	// check user group special ratio
-	userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
-	if ok {
-		// user group special ratio
-		groupRatioInfo.GroupSpecialRatio = userGroupRatio
-		groupRatioInfo.GroupRatio = userGroupRatio
+	groupRatioMap := service.GetTenantGroupRatioMap(relayInfo.TenantId)
+	groupGroupRatioMap := service.GetTenantGroupGroupRatioMap(relayInfo.TenantId)
+	groupRatio, hasSpecial := service.GetTenantUserGroupRatioFromMaps(groupRatioMap, groupGroupRatioMap, relayInfo.UserGroup, relayInfo.UsingGroup)
+	groupRatioInfo.GroupRatio = groupRatio
+	if hasSpecial {
+		groupRatioInfo.GroupSpecialRatio = groupRatio
+		groupRatioInfo.GroupRatio = groupRatio
 		groupRatioInfo.HasSpecialRatio = true
-	} else {
-		// normal group ratio
-		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 
 	return groupRatioInfo

@@ -41,6 +41,8 @@ import { CHANNEL_TYPES } from '@/lib/channelTypes';
 type SettingJson = {
   proxy?: string;
   system_prompt?: string;
+  channel_ratio?: number;
+  model_ratio_override?: Record<string, number>;
   [key: string]: unknown;
 };
 
@@ -54,12 +56,34 @@ function parseSetting(raw: string | null): SettingJson {
   }
 }
 
-function buildSetting(original: SettingJson, proxy: string, systemPrompt: string): string {
+function buildSetting(
+  original: SettingJson,
+  proxy: string,
+  systemPrompt: string,
+  channelRatio: number,
+  modelRatioOverrideRaw: string
+): string {
   const merged: SettingJson = { ...original };
   if (proxy) merged.proxy = proxy;
   else delete merged.proxy;
   if (systemPrompt) merged.system_prompt = systemPrompt;
   else delete merged.system_prompt;
+  if (channelRatio > 0 && channelRatio !== 1) merged.channel_ratio = channelRatio;
+  else delete merged.channel_ratio;
+  if (modelRatioOverrideRaw.trim()) {
+    try {
+      const parsed = JSON.parse(modelRatioOverrideRaw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        merged.model_ratio_override = parsed as Record<string, number>;
+      } else {
+        delete merged.model_ratio_override;
+      }
+    } catch {
+      delete merged.model_ratio_override;
+    }
+  } else {
+    delete merged.model_ratio_override;
+  }
   return Object.keys(merged).length === 0 ? '' : JSON.stringify(merged);
 }
 
@@ -89,6 +113,8 @@ const schema = z.object({
   openai_organization: z.string(),
   proxy: z.string(),
   system_prompt: z.string(),
+  channel_ratio: z.number().min(0),
+  model_ratio_override: jsonString,
   // routing / reliability
   test_model: z.string(),
   model_mapping: jsonString,
@@ -119,6 +145,8 @@ const EMPTY: Values = {
   openai_organization: '',
   proxy: '',
   system_prompt: '',
+  channel_ratio: 1,
+  model_ratio_override: '',
   test_model: '',
   model_mapping: '',
   status_code_mapping: '',
@@ -147,6 +175,10 @@ function fromChannel(ch: Channel): Values {
     openai_organization: ch.openai_organization ?? '',
     proxy: typeof setting.proxy === 'string' ? setting.proxy : '',
     system_prompt: typeof setting.system_prompt === 'string' ? setting.system_prompt : '',
+    channel_ratio: typeof setting.channel_ratio === 'number' ? setting.channel_ratio : 1,
+    model_ratio_override: setting.model_ratio_override
+      ? JSON.stringify(setting.model_ratio_override, null, 2)
+      : '',
     test_model: ch.test_model ?? '',
     model_mapping: ch.model_mapping ?? '',
     status_code_mapping: ch.status_code_mapping ?? '',
@@ -323,7 +355,13 @@ export function ChannelFormDialog({
 
   async function onSubmit(values: Values) {
     const originalSetting = parseSetting(channel?.setting ?? null);
-    const settingJson = buildSetting(originalSetting, values.proxy.trim(), values.system_prompt);
+    const settingJson = buildSetting(
+      originalSetting,
+      values.proxy.trim(),
+      values.system_prompt,
+      values.channel_ratio,
+      values.model_ratio_override
+    );
 
     // Build the write payload. On edit we omit `key` unless the admin
     // typed a new one — the backend treats empty key as "keep existing".
@@ -572,6 +610,17 @@ export function ChannelFormDialog({
                   {...form.register('weight', { valueAsNumber: true })}
                 />
               </div>
+              <div className='space-y-2'>
+                <Label htmlFor='ch-channel-ratio'>{t('form.field.channel_ratio')}</Label>
+                <Input
+                  id='ch-channel-ratio'
+                  type='number'
+                  step='0.01'
+                  min={0}
+                  {...form.register('channel_ratio', { valueAsNumber: true })}
+                />
+                <p className='text-12 text-fg-2'>{t('form.field.channel_ratio_hint')}</p>
+              </div>
             </div>
           </Section>
 
@@ -610,6 +659,21 @@ export function ChannelFormDialog({
                 valuePlaceholder='gpt-4o'
               />
               <p className='text-12 text-fg-2'>{t('form.field.model_mapping_hint')}</p>
+            </div>
+            <div className='space-y-2'>
+              <Label>{t('form.field.model_ratio_override')}</Label>
+              <JsonEditor
+                value={form.watch('model_ratio_override')}
+                onChange={(v) =>
+                  form.setValue('model_ratio_override', v, {
+                    shouldValidate: true,
+                    shouldDirty: true,
+                  })
+                }
+                rows={5}
+                placeholder={`{\n  "gpt-4o": 0.8,\n  "claude-3-5-sonnet": 1.2\n}`}
+              />
+              <p className='text-12 text-fg-2'>{t('form.field.model_ratio_override_hint')}</p>
             </div>
           </Section>
 

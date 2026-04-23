@@ -39,3 +39,13 @@ func GetTopupGroupRatio(name string) float64 {
 	}
 	return ratio
 }
+
+func GetTopupGroupRatioCopy() map[string]float64 {
+	topupGroupRatioMutex.RLock()
+	defer topupGroupRatioMutex.RUnlock()
+	out := make(map[string]float64, len(topupGroupRatio))
+	for k, v := range topupGroupRatio {
+		out[k] = v
+	}
+	return out
+}

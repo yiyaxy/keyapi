@@ -9,7 +9,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 )
 
@@ -44,8 +43,8 @@ func EnableChannel(channelId int, usingKey string, channelName string) {
 	}
 }
 
-func ShouldDisableChannel(channelType int, err *types.NewAPIError) bool {
-	if !common.AutomaticDisableChannelEnabled {
+func ShouldDisableChannel(tenantId int, channelType int, err *types.NewAPIError) bool {
+	if !GetTenantAutomaticDisableChannelEnabled(tenantId) {
 		return false
 	}
 	if err == nil {
@@ -57,7 +56,7 @@ func ShouldDisableChannel(channelType int, err *types.NewAPIError) bool {
 	if types.IsSkipRetryError(err) {
 		return false
 	}
-	if operation_setting.ShouldDisableByStatusCode(err.StatusCode) {
+	if ShouldTenantDisableByStatusCode(tenantId, err.StatusCode) {
 		return true
 	}
 	//if err.StatusCode == http.StatusUnauthorized {
@@ -97,12 +96,12 @@ func ShouldDisableChannel(channelType int, err *types.NewAPIError) bool {
 	}
 
 	lowerMessage := strings.ToLower(err.Error())
-	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
+	search, _ := AcSearch(lowerMessage, GetTenantAutomaticDisableKeywords(tenantId), true)
 	return search
 }
 
-func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {
-	if !common.AutomaticEnableChannelEnabled {
+func ShouldEnableChannel(tenantId int, newAPIError *types.NewAPIError, status int) bool {
+	if !GetTenantAutomaticEnableChannelEnabled(tenantId) {
 		return false
 	}
 	if newAPIError != nil {

@@ -106,11 +106,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		if len(setting.GetAutoGroups()) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}
-		autoGroups := GetUserAutoGroup(userGroup)
+		autoGroups := GetTenantUserAutoGroup(tenantId, userGroup)
 		channel, selectGroup = selectFromGroupChain(param, autoGroups, tenantId)
 	} else if strings.Contains(param.TokenGroup, ",") {
 		// Custom group chain: parse and filter against user's usable groups
-		chainGroups := ParseGroupChain(param.TokenGroup, userGroup)
+		chainGroups := ParseGroupChain(tenantId, param.TokenGroup, userGroup)
 		if len(chainGroups) == 0 {
 			return nil, selectGroup, errors.New("分组链中无可用分组")
 		}
@@ -125,9 +125,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 }
 
 // ParseGroupChain splits a comma-separated group string and filters against user's usable groups.
-func ParseGroupChain(groupChain string, userGroup string) []string {
+func ParseGroupChain(tenantId int, groupChain string, userGroup string) []string {
 	parts := strings.Split(groupChain, ",")
-	usable := GetUserUsableGroups(userGroup)
+	usable := GetTenantUserUsableGroups(tenantId, userGroup)
 	result := make([]string, 0, len(parts))
 	for _, g := range parts {
 		g = strings.TrimSpace(g)
@@ -175,7 +175,7 @@ func selectFromGroupChain(param *RetryParam, groups []string, tenantId int) (*mo
 		selectGroup = group
 		logger.LogDebug(param.Ctx, "Chain selected group: %s", group)
 
-		if crossGroupRetry && priorityRetry >= common.RetryTimes {
+		if crossGroupRetry && priorityRetry >= GetTenantRetryTimes(tenantId) {
 			logger.LogDebug(param.Ctx, "Current group %s retries exhausted, preparing switch to next group", group)
 			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
 			param.SetRetry(0)

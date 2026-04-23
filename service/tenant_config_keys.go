@@ -86,10 +86,12 @@ var TenantOverridableKeys = map[string]bool{
 	"GroupGroupRatio":     true,
 
 	// monitor - without clamp-dependent fields
+	"RetryTimes":                    true,
 	"AutomaticDisableChannelEnabled": true,
 	"AutomaticEnableChannelEnabled":  true,
 	"AutomaticDisableKeywords":       true,
 	"AutomaticDisableStatusCodes":    true,
+	"AutomaticRetryStatusCodes":      true,
 	"ChannelDisableThreshold":        true,
 
 	// permissions
@@ -104,6 +106,14 @@ var TenantOverridableKeys = map[string]bool{
 	"CheckSensitiveEnabled":         true,
 	"CheckSensitiveOnPromptEnabled": true,
 	"StopOnSensitiveEnabled":        true,
+	"SensitiveWords":                true,
+
+	// ratelimit
+	"ModelRequestRateLimitEnabled":         true,
+	"ModelRequestRateLimitCount":           true,
+	"ModelRequestRateLimitSuccessCount":    true,
+	"ModelRequestRateLimitDurationMinutes": true,
+	"ModelRequestRateLimitGroup":           true,
 
 	// integrations
 	"TranslationChannelId":    true,

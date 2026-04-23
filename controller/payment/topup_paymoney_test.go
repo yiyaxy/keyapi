@@ -26,7 +26,7 @@ func TestGetPayMoney_CustomDisplayUsesExchangeRate(t *testing.T) {
 	operation_setting.Price = 7.3
 	ps.AmountDiscount = map[int]float64{}
 
-	got := getPayMoney(5, "")
+	got := getPayMoney(0, 5, "")
 	want := 5.0 / 0.9 * 7.3
 	if math.Abs(got-want) > 1e-9 {
 		t.Fatalf("CUSTOM amount=5: got %.12f, want %.12f", got, want)
@@ -48,7 +48,7 @@ func TestGetPayMoney_CustomDisplayZeroRateReturnsZero(t *testing.T) {
 	gs.CustomCurrencyExchangeRate = 0
 	operation_setting.Price = 7.3
 
-	if got := getPayMoney(5, ""); got != 0 {
+	if got := getPayMoney(0, 5, ""); got != 0 {
 		t.Fatalf("CUSTOM/rate=0: got %.12f, want 0", got)
 	}
 }

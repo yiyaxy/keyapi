@@ -800,10 +800,6 @@ func testAllChannels(notify bool) error {
 	if getChannelErr != nil {
 		return getChannelErr
 	}
-	var disableThreshold = int64(common.ChannelDisableThreshold * 1000)
-	if disableThreshold == 0 {
-		disableThreshold = 10000000 // a impossible value
-	}
 	gopool.Go(func() {
 		// 使用 defer 确保无论如何都会重置运行状态，防止死锁
 		defer func() {
@@ -812,7 +808,16 @@ func testAllChannels(notify bool) error {
 			testAllChannelsLock.Unlock()
 		}()
 
+		disableThresholdByTenant := make(map[int]int64)
 		for _, channel := range channels {
+			disableThreshold, ok := disableThresholdByTenant[channel.TenantId]
+			if !ok {
+				disableThreshold = int64(service.GetTenantChannelDisableThreshold(channel.TenantId) * 1000)
+				if disableThreshold == 0 {
+					disableThreshold = 10000000 // a impossible value
+				}
+				disableThresholdByTenant[channel.TenantId] = disableThreshold
+			}
 			if channel.Status == common.ChannelStatusManuallyDisabled {
 				continue
 			}
@@ -826,11 +831,11 @@ func testAllChannels(notify bool) error {
 			newAPIError := result.newAPIError
 			// request error disables the channel
 			if newAPIError != nil {
-				shouldBanChannel = service.ShouldDisableChannel(channel.Type, result.newAPIError)
+				shouldBanChannel = service.ShouldDisableChannel(channel.TenantId, channel.Type, result.newAPIError)
 			}
 
 			// 当错误检查通过，才检查响应时间
-			if common.AutomaticDisableChannelEnabled && !shouldBanChannel {
+			if service.GetTenantAutomaticDisableChannelEnabled(channel.TenantId) && !shouldBanChannel {
 				if milliseconds > disableThreshold {
 					err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", float64(milliseconds)/1000.0, float64(disableThreshold)/1000.0)
 					newAPIError = types.NewOpenAIError(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
@@ -844,7 +849,7 @@ func testAllChannels(notify bool) error {
 			}
 
 			// enable channel
-			if !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
+			if !isChannelEnabled && service.ShouldEnableChannel(channel.TenantId, newAPIError, channel.Status) {
 				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 			}
 

@@ -56,7 +56,7 @@ func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountU
 	if gerr != nil {
 		return 0, 0, 0, fmt.Errorf("获取用户分组失败: %w", gerr)
 	}
-	payMoney := getPayMoney(amount, group)
+	payMoney := getPayMoney(middleware.GetTenantId(c), amount, group)
 	if payMoney < 0.01 {
 		return 0, 0, 0, errors.New("充值金额过低")
 	}

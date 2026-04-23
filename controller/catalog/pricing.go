@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -11,30 +12,27 @@ import (
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
+	tenantId := middleware.GetTenantId(c)
 	usableGroup := map[string]string{}
-	groupRatio := map[string]float64{}
-	for s, f := range ratio_setting.GetGroupRatioCopy() {
-		groupRatio[s] = f
-	}
+	groupRatio := service.GetTenantGroupRatioMap(tenantId)
+	groupGroupRatio := service.GetTenantGroupGroupRatioMap(tenantId)
 	var group string
 	if exists {
 		user, err := model.GetUserCacheWithContext(c, userId.(int))
 		if err == nil {
 			group = user.Group
 			for g := range groupRatio {
-				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
-				if ok {
-					groupRatio[g] = ratio
-				}
+				ratio, _ := service.GetTenantUserGroupRatioFromMaps(groupRatio, groupGroupRatio, group, g)
+				groupRatio[g] = ratio
 			}
 		}
 	}
 
-	usableGroup = service.GetUserUsableGroups(group)
+	usableGroup = service.GetTenantUserUsableGroups(tenantId, group)
 	// check groupRatio contains usableGroup
-	for group := range ratio_setting.GetGroupRatioCopy() {
-		if _, ok := usableGroup[group]; !ok {
-			delete(groupRatio, group)
+	for groupName := range groupRatio {
+		if _, ok := usableGroup[groupName]; !ok {
+			delete(groupRatio, groupName)
 		}
 	}
 
@@ -45,7 +43,7 @@ func GetPricing(c *gin.Context) {
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        service.GetUserAutoGroup(group),
+		"auto_groups":        service.GetTenantUserAutoGroup(tenantId, group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }

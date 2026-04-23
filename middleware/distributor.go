@@ -119,7 +119,7 @@ func Distribute() func(c *gin.Context) {
 							}
 						} else if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := service.GetUserAutoGroup(userGroup)
+							autoGroups := service.GetTenantUserAutoGroup(common.GetContextKeyInt(c, constant.ContextKeyTenantId), userGroup)
 							for _, g := range autoGroups {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
@@ -132,7 +132,7 @@ func Distribute() func(c *gin.Context) {
 						} else if strings.Contains(tokenGroup, ",") {
 							// Custom group chain: check preferred channel against each group in the chain
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-							chainGroups := service.ParseGroupChain(tokenGroup, userGroup)
+							chainGroups := service.ParseGroupChain(common.GetContextKeyInt(c, constant.ContextKeyTenantId), tokenGroup, userGroup)
 							for _, g := range chainGroups {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g

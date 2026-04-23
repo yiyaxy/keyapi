@@ -36,15 +36,22 @@ func TestTenantOverridableKeys_CoverageNonSecret(t *testing.T) {
 		"GroupRatio", "UserUsableGroups", "TopupGroupRatio",
 		"AutoGroups", "DefaultUseAutoGroup", "GroupGroupRatio",
 		// monitor
+		"RetryTimes",
 		"AutomaticDisableChannelEnabled", "AutomaticEnableChannelEnabled",
 		"AutomaticDisableKeywords", "AutomaticDisableStatusCodes",
+		"AutomaticRetryStatusCodes",
 		"ChannelDisableThreshold",
 		// permissions
 		"ExposeRatioEnabled", "DefaultCollapseSidebar",
 		// log
 		"DataExportDefaultTime", "DataExportEnabled",
-		// sensitive switches
+		// sensitive
 		"CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "StopOnSensitiveEnabled",
+		"SensitiveWords",
+		// ratelimit
+		"ModelRequestRateLimitEnabled", "ModelRequestRateLimitCount",
+		"ModelRequestRateLimitSuccessCount", "ModelRequestRateLimitDurationMinutes",
+		"ModelRequestRateLimitGroup",
 		// integrations
 		"TranslationChannelId", "TranslationModel",
 		"DrawingEnabled", "TaskEnabled", "DisplayTokenStatEnabled",
