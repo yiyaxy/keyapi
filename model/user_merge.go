@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -307,18 +308,26 @@ func deleteConflictingCheckins(tx *gorm.DB, tenantId, sourceId, targetId int) er
 // moveUserUniqueRow 处理 user_id 唯一的表：source 有且 target 无 → reassign；
 // 两者都有 → 删 source 行，保留 target。
 func moveUserUniqueRow(tx *gorm.DB, table string, sourceId, targetId int) error {
+	return moveUserUniqueColumnRow(tx, table, "user_id", sourceId, targetId)
+}
+
+func moveUserUniqueColumnRow(tx *gorm.DB, table, column string, sourceId, targetId int) error {
+	hasColumn, err := tableHasColumn(tx, table, column)
+	if err != nil || !hasColumn {
+		return err
+	}
 	var targetCount int64
 	if err := WithTenantBypass(tx).Table(table).
-		Where("user_id = ?", targetId).Count(&targetCount).Error; err != nil {
+		Where(column+" = ?", targetId).Count(&targetCount).Error; err != nil {
 		return err
 	}
 	if targetCount > 0 {
 		return WithTenantBypass(tx).Exec(
-			fmt.Sprintf("DELETE FROM %s WHERE user_id = ?", table), sourceId,
+			fmt.Sprintf("DELETE FROM %s WHERE %s = ?", table, column), sourceId,
 		).Error
 	}
 	return WithTenantBypass(tx).Exec(
-		fmt.Sprintf("UPDATE %s SET user_id = ? WHERE user_id = ?", table),
+		fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", table, column, column),
 		targetId, sourceId,
 	).Error
 }
@@ -347,14 +356,80 @@ func moveOAuthBindings(tx *gorm.DB, sourceId, targetId int) error {
 	).Error
 }
 
-// reassignUserId 把指定表里 user_id = source 的所有行改为 user_id = target。
+// reassignUserId moves user ownership for business tables. Some tables use
+// sender_id/uploader_id/etc. instead of user_id, so keep those differences
+// centralized here.
 func reassignUserId(tx *gorm.DB, table string, sourceId, targetId int) error {
-	// 有些表可能还不存在（旧库升级场景），提前检测防护。
-	if !tx.Migrator().HasTable(table) {
-		return nil
+	switch table {
+	case "ticket_replies":
+		return reassignUserColumn(tx, table, "sender_id", sourceId, targetId)
+	case "ticket_attachments", "invoice_uploads":
+		return reassignUserColumn(tx, table, "uploader_id", sourceId, targetId)
+	case "messages":
+		if err := reassignUserColumn(tx, table, "target_user_id", sourceId, targetId); err != nil {
+			return err
+		}
+		return reassignUserColumn(tx, table, "sender_id", sourceId, targetId)
+	case "message_read_statuses":
+		if err := deleteConflictingPairRows(tx, table, "user_id", "message_id", sourceId, targetId); err != nil {
+			return err
+		}
+		return reassignUserColumn(tx, table, "user_id", sourceId, targetId)
+	case "user_rebate_settings":
+		return moveUserUniqueColumnRow(tx, table, "inviter_id", sourceId, targetId)
+	case "aff_rebate_logs":
+		if err := reassignUserColumn(tx, table, "user_id", sourceId, targetId); err != nil {
+			return err
+		}
+		return reassignUserColumn(tx, table, "invitee_id", sourceId, targetId)
+	default:
+		return reassignUserColumn(tx, table, "user_id", sourceId, targetId)
+	}
+}
+
+func reassignUserColumn(tx *gorm.DB, table, column string, sourceId, targetId int) error {
+	hasColumn, err := tableHasColumn(tx, table, column)
+	if err != nil || !hasColumn {
+		return err
 	}
 	return WithTenantBypass(tx).Exec(
-		fmt.Sprintf("UPDATE %s SET user_id = ? WHERE user_id = ?", table),
+		fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", table, column, column),
 		targetId, sourceId,
 	).Error
+}
+
+func deleteConflictingPairRows(tx *gorm.DB, table, userColumn, pairColumn string, sourceId, targetId int) error {
+	hasUserColumn, err := tableHasColumn(tx, table, userColumn)
+	if err != nil || !hasUserColumn {
+		return err
+	}
+	hasPairColumn, err := tableHasColumn(tx, table, pairColumn)
+	if err != nil || !hasPairColumn {
+		return err
+	}
+	return WithTenantBypass(tx).Exec(
+		fmt.Sprintf(`DELETE FROM %s
+WHERE %s = ?
+  AND %s IN (SELECT %s FROM (
+      SELECT %s FROM %s WHERE %s = ?
+  ) AS merge_conflicts)`,
+			table, userColumn, pairColumn, pairColumn, pairColumn, table, userColumn),
+		sourceId, targetId,
+	).Error
+}
+
+func tableHasColumn(tx *gorm.DB, table, column string) (bool, error) {
+	if tx == nil || table == "" || column == "" || !tx.Migrator().HasTable(table) {
+		return false, nil
+	}
+	cols, err := tx.Migrator().ColumnTypes(table)
+	if err != nil {
+		return false, err
+	}
+	for _, col := range cols {
+		if strings.EqualFold(col.Name(), column) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
