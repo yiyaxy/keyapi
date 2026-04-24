@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -99,5 +99,67 @@ describe('integration: users admin', () => {
     await waitFor(() => expect(managePayload).not.toBeNull());
     expect(managePayload!.id).toBe(7);
     expect(managePayload!.action).toBe('promote');
+  });
+
+  test('shows the user group and updates it from a select in edit dialog', async () => {
+    mockAuth(100);
+    let updatePayload: Record<string, unknown> | null = null;
+    server.use(
+      http.get('/api/user/', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            items: [
+              {
+                id: 7,
+                tenant_id: 1,
+                username: 'bob',
+                display_name: 'Bob',
+                email: 'bob@x.com',
+                role: 1,
+                status: 1,
+                group: 'default',
+                quota: 500_000,
+                used_quota: 0,
+                request_count: 0,
+              },
+            ],
+            total: 1,
+          },
+        })
+      ),
+      http.get('/api/group/', () =>
+        HttpResponse.json({
+          success: true,
+          data: ['default', 'vip'],
+        })
+      ),
+      http.put('/api/user/', async ({ request }) => {
+        updatePayload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ success: true, data: {} });
+      })
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('bob')).toBeInTheDocument());
+    expect(screen.getByText('default')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Actions/ }));
+    const [editItem] = await screen.findAllByRole('menuitem');
+    await user.click(editItem);
+
+    const dialog = await screen.findByRole('dialog');
+    const groupSelect = within(dialog).getByRole('combobox', { name: /Group|分组/ });
+    await user.click(groupSelect);
+    await user.click(await screen.findByRole('option', { name: 'vip' }));
+    await user.click(within(dialog).getByRole('button', { name: /Save|保存/ }));
+
+    await waitFor(() => expect(updatePayload).not.toBeNull());
+    expect(updatePayload).toMatchObject({
+      id: 7,
+      group: 'vip',
+    });
   });
 });

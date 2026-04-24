@@ -41,10 +41,19 @@ func TestStatus(c *gin.Context) {
 
 func GetStatus(c *gin.Context) {
 
-	cs := console_setting.GetConsoleSetting()
+	cs := *console_setting.GetConsoleSetting()
 	tenantId := middleware.GetTenantId(c)
+
+	// Take a narrow snapshot only for direct OptionMap reads. service.GetConfig*
+	// also reads OptionMap internally, so holding this lock while building the
+	// whole response can deadlock when an option writer is waiting.
 	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
+	topupSubscriptionNotice := strings.TrimSpace(common.OptionMap["TopupSubscriptionNotice"])
+	invoiceDefaultIssueKindCode := common.OptionMap["InvoiceDefaultIssueKindCode"]
+	invoiceDefaultGoodsName := common.OptionMap["InvoiceDefaultGoodsName"]
+	headerNavModules := common.OptionMap["HeaderNavModules"]
+	sidebarModulesAdmin := common.OptionMap["SidebarModulesAdmin"]
+	common.OptionMapRWMutex.RUnlock()
 
 	passkeySetting := system_setting.GetPasskeySettings()
 	legalSetting := system_setting.GetLegalSettings()
@@ -75,7 +84,7 @@ func GetStatus(c *gin.Context) {
 		"turnstile_check":             service.GetConfigBool(tenantId, "TurnstileCheckEnabled", common.TurnstileCheckEnabled),
 		"turnstile_site_key":          service.GetConfig(tenantId, "TurnstileSiteKey", common.TurnstileSiteKey),
 		"top_up_link":                 service.GetConfig(tenantId, "TopUpLink", common.TopUpLink),
-		"topup_subscription_notice":   strings.TrimSpace(common.OptionMap["TopupSubscriptionNotice"]),
+		"topup_subscription_notice":   topupSubscriptionNotice,
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
@@ -100,8 +109,8 @@ func GetStatus(c *gin.Context) {
 		"min_invoice_amount":              service.GetConfigInt(tenantId, "MinInvoiceAmount", operation_setting.MinInvoiceAmount),
 		"invoice_provider":                service.GetConfig(tenantId, "InvoiceProvider", common.InvoiceProvider),
 		"invoice_auto_issue_enabled":      service.GetConfigBool(tenantId, "InvoiceAutoIssueEnabled", common.InvoiceAutoIssueEnabled),
-		"invoice_default_issue_kind_code": strings.TrimSpace(service.GetConfig(tenantId, "InvoiceDefaultIssueKindCode", common.OptionMap["InvoiceDefaultIssueKindCode"])),
-		"invoice_default_goods_name":      strings.TrimSpace(service.GetConfig(tenantId, "InvoiceDefaultGoodsName", common.OptionMap["InvoiceDefaultGoodsName"])),
+		"invoice_default_issue_kind_code": strings.TrimSpace(service.GetConfig(tenantId, "InvoiceDefaultIssueKindCode", invoiceDefaultIssueKindCode)),
+		"invoice_default_goods_name":      strings.TrimSpace(service.GetConfig(tenantId, "InvoiceDefaultGoodsName", invoiceDefaultGoodsName)),
 		"stripe_unit_price":               setting.StripeUnitPrice,
 
 		// 面板启用开关
@@ -111,8 +120,8 @@ func GetStatus(c *gin.Context) {
 		"faq_enabled":           cs.FAQEnabled,
 
 		// 模块管理配置
-		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
-		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
+		"HeaderNavModules":    headerNavModules,
+		"SidebarModulesAdmin": sidebarModulesAdmin,
 
 		"oidc_enabled":                 system_setting.GetOIDCSettings().Enabled,
 		"oidc_client_id":               system_setting.GetOIDCSettings().ClientId,
