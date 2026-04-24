@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,6 +59,157 @@ func getRetryErrors(c *gin.Context) []RetryError {
 	}
 	errs, _ := val.([]RetryError)
 	return errs
+}
+
+func getChannelChain(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if retryErrs := getRetryErrors(c); len(retryErrs) > 0 {
+		ids := make([]string, 0, len(retryErrs))
+		for _, re := range retryErrs {
+			ids = append(ids, fmt.Sprintf("%d", re.ChannelId))
+		}
+		return strings.Join(ids, "->")
+	}
+	if useChannel := c.GetStringSlice("use_channel"); len(useChannel) > 0 {
+		return strings.Join(useChannel, "->")
+	}
+	return ""
+}
+
+func getLastRetryError(c *gin.Context) *RetryError {
+	retryErrs := getRetryErrors(c)
+	if len(retryErrs) == 0 {
+		return nil
+	}
+	last := retryErrs[len(retryErrs)-1]
+	return &last
+}
+
+func formatUpstreamRequestIDs(ids map[string]string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(ids))
+	for key := range ids {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", key, ids[key]))
+	}
+	return strings.Join(parts, ",")
+}
+
+func truncateLogValue(value string, limit int) string {
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "..."
+}
+
+func buildRelayErrorLogMessage(c *gin.Context, err *types.NewAPIError) string {
+	if err == nil {
+		return "relay error"
+	}
+	fields := make([]string, 0, 10)
+	if c != nil && c.Request != nil && c.Request.URL != nil {
+		fields = append(fields, fmt.Sprintf("request=%s %s", c.Request.Method, c.Request.URL.Path))
+	}
+	if c != nil {
+		if modelName := c.GetString("original_model"); modelName != "" {
+			fields = append(fields, fmt.Sprintf("model=%s", modelName))
+		}
+		if group := c.GetString("group"); group != "" {
+			fields = append(fields, fmt.Sprintf("group=%s", group))
+		}
+		if channelId := c.GetInt("channel_id"); channelId > 0 {
+			fields = append(fields, fmt.Sprintf("channel=#%d(%s,type=%d)", channelId, c.GetString("channel_name"), c.GetInt("channel_type")))
+		}
+		if chain := getChannelChain(c); chain != "" {
+			fields = append(fields, fmt.Sprintf("channel_chain=%s", chain))
+		}
+		if baseURL := common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl); baseURL != "" {
+			fields = append(fields, fmt.Sprintf("base_url=%s", baseURL))
+		}
+	}
+	fields = append(fields, fmt.Sprintf("status=%d", err.StatusCode))
+	if err.UpstreamStatusCode > 0 && err.UpstreamStatusCode != err.StatusCode {
+		fields = append(fields, fmt.Sprintf("upstream_status=%d", err.UpstreamStatusCode))
+	}
+	if code := err.GetErrorCode(); code != "" {
+		fields = append(fields, fmt.Sprintf("error_code=%s", code))
+	}
+	if errorType := err.GetErrorType(); errorType != "" {
+		fields = append(fields, fmt.Sprintf("error_type=%s", errorType))
+	}
+	if lastRetry := getLastRetryError(c); lastRetry != nil && len(lastRetry.UpstreamRequestIds) > 0 {
+		fields = append(fields, fmt.Sprintf("upstream_request_ids=%s", formatUpstreamRequestIDs(lastRetry.UpstreamRequestIds)))
+	}
+	fields = append(fields, fmt.Sprintf("message=%s", truncateLogValue(err.MaskSensitiveError(), 300)))
+	return "relay error | " + strings.Join(fields, " | ")
+}
+
+func buildChannelErrorLogMessage(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError, willDisable bool) string {
+	if err == nil {
+		return fmt.Sprintf("channel error | channel=#%d(%s,type=%d)", channelError.ChannelId, channelError.ChannelName, channelError.ChannelType)
+	}
+	fields := []string{
+		fmt.Sprintf("channel=#%d(%s,type=%d)", channelError.ChannelId, channelError.ChannelName, channelError.ChannelType),
+		fmt.Sprintf("auto_ban=%t", channelError.AutoBan),
+		fmt.Sprintf("will_disable=%t", willDisable),
+		fmt.Sprintf("status=%d", err.StatusCode),
+	}
+	if c != nil {
+		if c.Request != nil && c.Request.URL != nil {
+			fields = append(fields, fmt.Sprintf("request=%s %s", c.Request.Method, c.Request.URL.Path))
+		}
+		if modelName := c.GetString("original_model"); modelName != "" {
+			fields = append(fields, fmt.Sprintf("model=%s", modelName))
+		}
+		if chain := getChannelChain(c); chain != "" {
+			fields = append(fields, fmt.Sprintf("channel_chain=%s", chain))
+		}
+	}
+	if code := err.GetErrorCode(); code != "" {
+		fields = append(fields, fmt.Sprintf("error_code=%s", code))
+	}
+	if errorType := err.GetErrorType(); errorType != "" {
+		fields = append(fields, fmt.Sprintf("error_type=%s", errorType))
+	}
+	if lastRetry := getLastRetryError(c); lastRetry != nil && len(lastRetry.UpstreamRequestIds) > 0 {
+		fields = append(fields, fmt.Sprintf("upstream_request_ids=%s", formatUpstreamRequestIDs(lastRetry.UpstreamRequestIds)))
+	}
+	fields = append(fields, fmt.Sprintf("message=%s", truncateLogValue(err.MaskSensitiveError(), 300)))
+	return "channel error | " + strings.Join(fields, " | ")
+}
+
+func appendErrorDiagnosticInfo(c *gin.Context, other map[string]interface{}, adminInfo map[string]interface{}) {
+	if c == nil {
+		return
+	}
+	if c.Request != nil && c.Request.URL != nil {
+		other["request_path"] = c.Request.URL.Path
+		other["request_method"] = c.Request.Method
+	}
+	if chain := getChannelChain(c); chain != "" {
+		adminInfo["channel_chain"] = chain
+	}
+	if baseURL := common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl); baseURL != "" {
+		adminInfo["channel_base_url"] = baseURL
+	}
+	if retryErrors := getRetryErrors(c); len(retryErrors) > 0 {
+		adminInfo["retry_errors"] = retryErrors
+		adminInfo["retry_count"] = len(retryErrors)
+		if lastRetry := retryErrors[len(retryErrors)-1]; lastRetry.ChannelId > 0 {
+			adminInfo["last_retry_error"] = lastRetry
+			if len(lastRetry.UpstreamRequestIds) > 0 {
+				adminInfo["upstream_request_ids"] = lastRetry.UpstreamRequestIds
+			}
+		}
+	}
 }
 
 // friendlyErrorMessage converts raw upstream error into a concise, user-friendly message.
@@ -193,7 +345,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	defer func() {
 		if newAPIError != nil {
-			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
+			logger.LogError(c, buildRelayErrorLogMessage(c, newAPIError))
 
 			// Always record the final relay error to logs table for request tracing.
 			// This is the ONLY log entry for a normal relay request — channel retry
@@ -201,14 +353,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			recordRelayErrorForTrace(c, newAPIError)
 
 			// Build channel chain string (e.g., "3-5-12") from retry history
-			channelChain := ""
-			if retryErrs := getRetryErrors(c); len(retryErrs) > 0 {
-				ids := make([]string, 0, len(retryErrs))
-				for _, re := range retryErrs {
-					ids = append(ids, fmt.Sprintf("%d", re.ChannelId))
-				}
-				channelChain = strings.Join(ids, "-")
-			}
+			channelChain := strings.ReplaceAll(getChannelChain(c), "->", "-")
 			// Build user-facing error message.
 			// Only apply friendlyErrorMessage to upstream relay errors;
 			// system-generated errors (quota, auth, validation) keep their original message.
@@ -391,7 +536,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			addTraceEvent(c, "channel_select", fmt.Sprintf("渠道选择失败: %s", channelErr.Error()), map[string]interface{}{
 				"retry_index": retryParam.GetRetry(),
 			})
-			logger.LogError(c, channelErr.Error())
+			logger.LogError(c, buildRelayErrorLogMessage(c, channelErr))
 			newAPIError = channelErr
 			break
 		}
@@ -652,12 +797,10 @@ func recordRelayErrorForTrace(c *gin.Context, err *types.NewAPIError) {
 	group := c.GetString("group")
 
 	other := make(map[string]interface{})
-	if c.Request != nil && c.Request.URL != nil {
-		other["request_path"] = c.Request.URL.Path
-	}
 	other["error_type"] = err.GetErrorType()
 	other["error_code"] = err.GetErrorCode()
 	other["status_code"] = err.StatusCode
+	other["error_summary"] = buildRelayErrorLogMessage(c, err)
 	if channelId > 0 {
 		other["channel_id"] = channelId
 		other["channel_name"] = c.GetString("channel_name")
@@ -667,6 +810,7 @@ func recordRelayErrorForTrace(c *gin.Context, err *types.NewAPIError) {
 	if useChannel := c.GetStringSlice("use_channel"); len(useChannel) > 0 {
 		adminInfo["use_channel"] = useChannel
 	}
+	appendErrorDiagnosticInfo(c, other, adminInfo)
 	isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
 	if isMultiKey {
 		adminInfo["is_multi_key"] = true
@@ -676,9 +820,6 @@ func recordRelayErrorForTrace(c *gin.Context, err *types.NewAPIError) {
 		adminInfo["site_label"] = common.SiteLabel
 	}
 	service.AppendChannelAffinityAdminInfo(c, adminInfo)
-	if retryErrors, exists := c.Get("retry_errors"); exists && retryErrors != nil {
-		adminInfo["retry_errors"] = retryErrors
-	}
 	if err.UpstreamResponseBody != "" {
 		adminInfo["upstream_response_body"] = err.UpstreamResponseBody
 	}
@@ -706,11 +847,12 @@ func recordRelayErrorForTrace(c *gin.Context, err *types.NewAPIError) {
 }
 
 func processChannelErrorNoLog(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
-	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	tenantId := middleware.GetTenantId(c)
-	if service.ShouldDisableChannel(tenantId, channelError.ChannelType, err) && channelError.AutoBan {
+	shouldDisable := service.ShouldDisableChannel(tenantId, channelError.ChannelType, err)
+	logger.LogError(c, buildChannelErrorLogMessage(c, channelError, err, shouldDisable && channelError.AutoBan))
+	if shouldDisable && channelError.AutoBan {
 		gopool.Go(func() {
 			service.DisableChannel(channelError, err.ErrorWithStatusCode())
 		})
@@ -725,11 +867,12 @@ func processChannelErrorNoLog(c *gin.Context, channelError types.ChannelError, e
 // subpackage's health-check path can reuse the same bookkeeping without
 // duplicating disable/log logic.
 func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
-	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	tenantId := middleware.GetTenantId(c)
-	if service.ShouldDisableChannel(tenantId, channelError.ChannelType, err) && channelError.AutoBan {
+	shouldDisable := service.ShouldDisableChannel(tenantId, channelError.ChannelType, err)
+	logger.LogError(c, buildChannelErrorLogMessage(c, channelError, err, shouldDisable && channelError.AutoBan))
+	if shouldDisable && channelError.AutoBan {
 		gopool.Go(func() {
 			service.DisableChannel(channelError, err.ErrorWithStatusCode())
 		})
@@ -744,17 +887,16 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		userGroup := c.GetString("group")
 		channelId := c.GetInt("channel_id")
 		other := make(map[string]interface{})
-		if c.Request != nil && c.Request.URL != nil {
-			other["request_path"] = c.Request.URL.Path
-		}
 		other["error_type"] = err.GetErrorType()
 		other["error_code"] = err.GetErrorCode()
 		other["status_code"] = err.StatusCode
+		other["error_summary"] = buildChannelErrorLogMessage(c, channelError, err, shouldDisable && channelError.AutoBan)
 		other["channel_id"] = channelId
 		other["channel_name"] = c.GetString("channel_name")
 		other["channel_type"] = c.GetInt("channel_type")
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+		appendErrorDiagnosticInfo(c, other, adminInfo)
 		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
 		if isMultiKey {
 			adminInfo["is_multi_key"] = true
@@ -764,9 +906,6 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["site_label"] = common.SiteLabel
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
-		if retryErrors, exists := c.Get("retry_errors"); exists && retryErrors != nil {
-			adminInfo["retry_errors"] = retryErrors
-		}
 		// Store the final error's upstream response for admin debugging
 		if err.UpstreamResponseBody != "" {
 			adminInfo["upstream_response_body"] = err.UpstreamResponseBody

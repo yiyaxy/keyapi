@@ -48,3 +48,14 @@ func TestTraceColumnWidth_IsThirty(t *testing.T) {
 		t.Fatalf("TraceColumnWidth = %d, want 30", TraceColumnWidth)
 	}
 }
+
+func logCallerFromTestHelper() string {
+	return LogCaller()
+}
+
+func TestLogCaller_ReturnsSourceLocation(t *testing.T) {
+	got := logCallerFromTestHelper()
+	if !strings.Contains(got, "common/") || !strings.Contains(got, ".go:") {
+		t.Fatalf("LogCaller() = %q, want common/<file>.go:<line>", got)
+	}
+}
