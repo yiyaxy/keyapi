@@ -1,0 +1,89 @@
+/* NoteRx — Minimal Global Styles */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+::selection {
+  background-color: rgba(255, 36, 66, 0.15);
+  color: #262626;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255, 92, 111, 0.35), rgba(255, 36, 66, 0.25));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(255, 92, 111, 0.55), rgba(255, 36, 66, 0.45));
+  background-clip: padding-box;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 36, 66, 0.28) transparent;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Remove tap highlight and focus outline on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+*:focus {
+  outline: none;
+}
+*:focus-visible {
+  outline: 2px solid #ff2442;
+  outline-offset: 2px;
+}
+
+/* ── Shimmer animation for progress bars ── */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* ── Subtle pulse for active elements ── */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 36, 66, 0.15); }
+  50% { box-shadow: 0 0 20px rgba(255, 36, 66, 0.3); }
+}
+
+/* ── Safe area for mobile bottom bar ── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .mobile-bottom-bar {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}

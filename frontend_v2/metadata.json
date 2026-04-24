@@ -1,5 +1,0 @@
-{
-  "name": "Gateway Admin Portal",
-  "description": "A comprehensive API Gateway admin portal featuring analytics, key management, usage logs, settings, and plan selection.",
-  "requestFramePermissions": []
-}
