@@ -119,14 +119,37 @@ func (channel *Channel) GetKeys() []string {
 	return keys
 }
 
+// ResolvePlatformCostRatio returns the effective platform cost ratio.
+//
+// Priority:
+//  1. Explicit PlatformCostRatio column (> 0) — platform-admin's explicit
+//     override; wins in subsidy/markup scenarios where cost ledger diverges
+//     from user-facing channel_ratio.
+//  2. ChannelSetting.channel_ratio (platform-scope channels only) — common-
+//     case inheritance so admins setting a single "this channel is 0.7x"
+//     don't have to mirror the same value into two fields.
+//  3. 1.0 fallback — safe default when nothing is configured.
+//
+// Tenant-scope channels intentionally skip the fallback: their
+// ChannelSetting.channel_ratio is tenant-editable and must never reach the
+// platform cost ledger (dual-ledger isolation invariant, see
+// 2026-04-24-dual-ledger-billing-design.md §7.3).
 func (channel *Channel) ResolvePlatformCostRatio() float64 {
-	if channel == nil || channel.PlatformCostRatio == nil {
+	if channel == nil {
 		return 1.0
 	}
-	if *channel.PlatformCostRatio <= 0 {
-		return 1.0
+	if channel.PlatformCostRatio != nil && *channel.PlatformCostRatio > 0 {
+		return *channel.PlatformCostRatio
 	}
-	return *channel.PlatformCostRatio
+	if channel.Scope == ChannelScopePlatform && channel.Setting != nil && *channel.Setting != "" {
+		var parsed struct {
+			ChannelRatio float64 `json:"channel_ratio"`
+		}
+		if err := json.Unmarshal([]byte(*channel.Setting), &parsed); err == nil && parsed.ChannelRatio > 0 {
+			return parsed.ChannelRatio
+		}
+	}
+	return 1.0
 }
 
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
