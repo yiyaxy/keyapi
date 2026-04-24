@@ -241,6 +241,24 @@ function TenantMarkupEditDialogBody({
               </div>
             </div>
           ))}
+
+          <div className='mt-2 border-t border-line pt-3 text-13'>
+            <div className='text-12 text-fg-2'>
+              {t('tenant_markup_dialog.channel_ratio_extra.title')}
+            </div>
+            <div className='mt-1 flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-2'>
+                <span className='size-2 rounded-full bg-bg-3' />
+                <span className='text-fg-1'>
+                  {t('tenant_markup_dialog.channel_ratio_extra.label')}
+                </span>
+              </div>
+              <span className='tabular-nums text-fg-0'>{formatRatio(channelRatio)}</span>
+            </div>
+            <p className='mt-1 text-12 text-fg-2'>
+              {t('tenant_markup_dialog.channel_ratio_extra.help')}
+            </p>
+          </div>
         </section>
 
         <section className='space-y-2'>
@@ -275,6 +293,7 @@ function TenantMarkupEditDialogBody({
             pricingRows={pricingRows}
             groupRatios={groupRatios}
             groupRatioError={pricingError}
+            forceShowChannelRatio
           />
         </section>
 
