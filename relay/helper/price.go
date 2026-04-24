@@ -54,6 +54,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
 	var preConsumedQuota int
+	var preConsumedTokens int
 	var modelRatio float64
 	var completionRatio float64
 	var cacheRatio float64
@@ -65,7 +66,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	var audioCompletionRatio float64
 	var freeModel bool
 	if !usePrice {
-		preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
+		preConsumedTokens = common.Max(promptTokens, common.PreConsumedQuota)
 		if meta.MaxTokens != 0 {
 			preConsumedTokens += meta.MaxTokens
 		}
@@ -135,12 +136,14 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		CacheCreation1hRatio: cacheCreationRatio1h,
 		QuotaToPreConsume:    preConsumedQuota,
 	}
-	applyPlatformMarkup(c, info, &priceData, true)
+	info.PriceData = priceData
+	FillPlatformCostEstimate(c, info, preConsumedTokens)
+	applyPlatformMarkup(c, info, &info.PriceData, true)
+	priceData = info.PriceData
 
 	if common.DebugEnabled {
 		println(fmt.Sprintf("model_price_helper result: %s", priceData.ToSetting()))
 	}
-	info.PriceData = priceData
 	return priceData, nil
 }
 
@@ -173,6 +176,7 @@ func ApplyChannelBillingOverrides(info *relaycommon.RelayInfo) {
 	if settings.ChannelRatio > 0 && settings.ChannelRatio != 1.0 {
 		info.PriceData.AddOtherRatio("channel_ratio", settings.ChannelRatio)
 	}
+	RefreshPlatformCostEstimate(nil, info)
 }
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
@@ -233,7 +237,13 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 		Quota:          quota,
 		GroupRatioInfo: groupRatioInfo,
 	}
-	applyPlatformMarkup(c, info, &priceData, false)
+	if !usePrice {
+		priceData.OriginalModelRatio = modelRatio
+	}
+	info.PriceData = priceData
+	FillPlatformCostPerCallEstimate(c, info)
+	applyPlatformMarkup(c, info, &info.PriceData, false)
+	priceData = info.PriceData
 	return priceData, nil
 }
 
@@ -299,18 +309,6 @@ func EnforcePlatformChannelQuota(c *gin.Context, info *relaycommon.RelayInfo) *t
 		return nil
 	}
 
-	projected := info.PriceData.QuotaToPreConsume
-	if projected <= 0 {
-		projected = info.PriceData.Quota
-	}
-	if projected <= 0 {
-		return nil
-	}
-	projected = service.StripMarkup(projected, info.PriceMarkupRatio)
-	if projected <= 0 {
-		return nil
-	}
-
 	var channelID int
 	if info.ChannelMeta != nil {
 		channelID = info.ChannelId
@@ -326,6 +324,21 @@ func EnforcePlatformChannelQuota(c *gin.Context, info *relaycommon.RelayInfo) *t
 	if err != nil || ch == nil || ch.Scope != model.ChannelScopePlatform {
 		return nil
 	}
+
+	projected := info.PriceData.PlatformCostQuotaToPreConsume
+	if projected <= 0 {
+		projected = info.PriceData.PlatformCostQuota
+	}
+	if projected <= 0 {
+		logger.LogError(c, fmt.Sprintf("platform channel %d has zero platform cost estimate", channelID))
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("platform cost not configured for this channel"),
+			types.ErrorCodeModelPriceError,
+			http.StatusInternalServerError,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+
 	if err := service.CheckTenantPlatformChannelQuota(info.TenantId, projected); err != nil {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeTenantQuotaExceeded, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
 	}

@@ -151,6 +151,21 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if err != nil {
 		return err
 	}
+	if relayInfo.PriceData.PlatformCostModelRatio == 0 {
+		if r, ok, _ := ratio_setting.GetModelRatio(relayInfo.OriginModelName); ok {
+			relayInfo.PriceData.PlatformCostModelRatio = r
+		}
+	}
+	if relayInfo.PriceData.PlatformCostChannelRatio == 0 && relayInfo.ChannelId > 0 {
+		if ch, err := model.CacheGetChannel(relayInfo.ChannelId); err == nil && ch != nil && ch.Scope == model.ChannelScopePlatform {
+			relayInfo.PriceData.PlatformCostChannelRatio = ch.ResolvePlatformCostRatio()
+		}
+	}
+	if relayInfo.PriceData.PlatformCostChannelRatio > 0 {
+		relayInfo.PriceData.PlatformCostQuota = ComputePlatformCostActualRealtime(relayInfo, usage)
+	} else {
+		relayInfo.PriceData.PlatformCostQuota = 0
+	}
 	TrackPlatformChannelUsageIfApplicable(relayInfo, quota)
 	logger.LogInfo(ctx, "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
 	return nil
@@ -230,6 +245,22 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	}
 	other := GenerateWssOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
+	if relayInfo.PriceData.PlatformCostModelRatio == 0 {
+		if r, ok, _ := ratio_setting.GetModelRatio(relayInfo.OriginModelName); ok {
+			relayInfo.PriceData.PlatformCostModelRatio = r
+		}
+	}
+	if relayInfo.PriceData.PlatformCostChannelRatio == 0 && relayInfo.ChannelId > 0 {
+		if ch, err := model.CacheGetChannel(relayInfo.ChannelId); err == nil && ch != nil && ch.Scope == model.ChannelScopePlatform {
+			relayInfo.PriceData.PlatformCostChannelRatio = ch.ResolvePlatformCostRatio()
+		}
+	}
+	if relayInfo.PriceData.PlatformCostChannelRatio > 0 {
+		relayInfo.PriceData.PlatformCostQuota = ComputePlatformCostActualRealtime(relayInfo, usage)
+	} else {
+		relayInfo.PriceData.PlatformCostQuota = 0
+	}
+	AddDualLedgerLogFields(relayInfo, other, quota)
 	// Tenant TPM counter: WSS path.
 	IncrementTenantTPM(relayInfo.TenantId, usage.InputTokens+usage.OutputTokens)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
@@ -336,6 +367,11 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota, relayInfo.TenantId)
 	}
 
+	if relayInfo.PriceData.PlatformCostChannelRatio > 0 {
+		relayInfo.PriceData.PlatformCostQuota = ComputePlatformCostActualText(ctx, relayInfo, relayInfo.PriceData, usage)
+	} else {
+		relayInfo.PriceData.PlatformCostQuota = 0
+	}
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
@@ -346,6 +382,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 	other := GenerateAudioOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
+	AddDualLedgerLogFields(relayInfo, other, quota)
 	// Tenant TPM counter: Audio path.
 	IncrementTenantTPM(relayInfo.TenantId, usage.PromptTokens+usage.CompletionTokens)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{

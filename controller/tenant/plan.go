@@ -43,7 +43,7 @@ type UpdateTenantMarkupRequest struct {
 //   - platform_markup < 1.0：对用户再让利（用户账单低于平台已给的折扣）
 //
 // 不影响平台渠道额度（cap）消耗速度——那是按租户对平台的真实成本扣的
-// （StripMarkup，见 service/billing.go）。
+// （dual-ledger platform cost，见 service/billing.go）。
 //
 // 范围 [0.1, 10] 防止误输入极端值。channel 级 MarkupRatio 若已被超管设置，
 // 会覆盖这里的 plan 级值（EffectiveMarkup 的 channel > plan 优先级）。

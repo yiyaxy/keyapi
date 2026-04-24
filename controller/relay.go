@@ -32,12 +32,12 @@ import (
 
 // RetryError records a single failed relay attempt for admin logging.
 type RetryError struct {
-	ChannelId         int    `json:"channel_id"`
-	ChannelName       string `json:"channel_name"`
-	StatusCode        int    `json:"status_code"`
-	Message           string `json:"message"`
-	UpstreamBody      string `json:"upstream_body,omitempty"`
-	ElapsedMs         int64  `json:"elapsed_ms"`
+	ChannelId          int               `json:"channel_id"`
+	ChannelName        string            `json:"channel_name"`
+	StatusCode         int               `json:"status_code"`
+	Message            string            `json:"message"`
+	UpstreamBody       string            `json:"upstream_body,omitempty"`
+	ElapsedMs          int64             `json:"elapsed_ms"`
 	UpstreamRequestIds map[string]string `json:"upstream_request_ids,omitempty"`
 }
 
@@ -397,13 +397,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		addTraceEvent(c, "channel_select", fmt.Sprintf("选中渠道 #%d %s", channel.Id, channel.Name), map[string]interface{}{
-			"channel_id":      channel.Id,
-			"channel_name":    channel.Name,
-			"channel_type":    channel.Type,
+			"channel_id":       channel.Id,
+			"channel_name":     channel.Name,
+			"channel_type":     channel.Type,
 			"channel_priority": channel.GetPriority(),
-			"channel_weight":  channel.GetWeight(),
-			"max_retry":       channel.GetMaxRetry(),
-			"retry_index":     retryParam.GetRetry(),
+			"channel_weight":   channel.GetWeight(),
+			"max_retry":        channel.GetMaxRetry(),
+			"retry_index":      retryParam.GetRetry(),
 		})
 		addUsedChannel(c, channel.Id)
 		maxChannelRetry := channel.GetMaxRetry()
@@ -957,6 +957,11 @@ func RelayTask(c *gin.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
+		if result.PlatformCostQuota > 0 {
+			relayInfo.PriceData.PlatformCostQuota = result.PlatformCostQuota
+		} else if relayInfo.PriceData.PlatformCostQuota <= 0 {
+			relayInfo.PriceData.PlatformCostQuota = relayInfo.PriceData.PlatformCostQuotaToPreConsume
+		}
 		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 			common.SysError("settle task billing error: " + settleErr.Error())
 		}
@@ -968,14 +973,18 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
-			ModelPrice:      relayInfo.PriceData.ModelPrice,
-			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-			ModelRatio:      relayInfo.PriceData.ModelRatio,
-			OtherRatios:     relayInfo.PriceData.OtherRatios,
-			OriginModelName: relayInfo.OriginModelName,
-			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			ModelPrice:               relayInfo.PriceData.ModelPrice,
+			GroupRatio:               relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+			ModelRatio:               relayInfo.PriceData.ModelRatio,
+			OtherRatios:              relayInfo.PriceData.OtherRatios,
+			OriginModelName:          relayInfo.OriginModelName,
+			PerCallBilling:           common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			PriceMarkupRatio:         relayInfo.PriceMarkupRatio,
+			PlatformCostChannelRatio: relayInfo.PriceData.PlatformCostChannelRatio,
+			PlatformCostQuota:        relayInfo.PriceData.PlatformCostQuota,
 		}
 		task.Quota = result.Quota
+		task.PlatformCostQuota = relayInfo.PriceData.PlatformCostQuota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {

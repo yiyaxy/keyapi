@@ -24,7 +24,7 @@ const (
 )
 
 type Channel struct {
-	Id                 int     `json:"id"`
+	Id int `json:"id"`
 	// tenant_id=0 是"平台渠道"的合法业务值。default 故意写 0 而不是
 	// DefaultTenantId：GORM 的零值替换会用 DefaultValueInterface 覆盖零值
 	// 字段，若 default:1，TenantId=0 会被悄悄改写成 1（破坏平台渠道语义）。
@@ -64,8 +64,9 @@ type Channel struct {
 
 	// Scope distinguishes "platform" (shared, tenant_id=0) and "tenant" (owned).
 	// See docs/superpowers/specs/2026-04-20-shared-channels-design.md §3.1.
-	Scope       string   `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
-	MarkupRatio *float64 `json:"markup_ratio" gorm:"type:decimal(10,4);default:null"`
+	Scope             string   `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
+	MarkupRatio       *float64 `json:"markup_ratio" gorm:"type:decimal(10,4);default:null"`
+	PlatformCostRatio *float64 `json:"platform_cost_ratio" gorm:"type:decimal(10,4);default:null"`
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
@@ -116,6 +117,16 @@ func (channel *Channel) GetKeys() []string {
 	// Otherwise, fall back to splitting by newline
 	keys := strings.Split(strings.Trim(channel.Key, "\n"), "\n")
 	return keys
+}
+
+func (channel *Channel) ResolvePlatformCostRatio() float64 {
+	if channel == nil || channel.PlatformCostRatio == nil {
+		return 1.0
+	}
+	if *channel.PlatformCostRatio <= 0 {
+		return 1.0
+	}
+	return *channel.PlatformCostRatio
 }
 
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
@@ -475,8 +486,8 @@ func SearchChannelsForTenant(tenantId int, keyword, group, modelName string, idS
 }
 
 // GetChannelByIdWithTenant reads a channel row.
-//  - tenantId > 0：按 (id, tenant_id) 精确匹配，用于租户 / 平台读取自家行。
-//  - tenantId <= 0：视为平台超管跨租户查询，显式 WithTenantBypass 放行 guardrail。
+//   - tenantId > 0：按 (id, tenant_id) 精确匹配，用于租户 / 平台读取自家行。
+//   - tenantId <= 0：视为平台超管跨租户查询，显式 WithTenantBypass 放行 guardrail。
 func GetChannelByIdWithTenant(id int, tenantId int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var query *gorm.DB

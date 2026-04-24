@@ -42,6 +42,7 @@ func TestMain(m *testing.M) {
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
+		&model.TenantPlatformChannelMarkup{},
 		&model.UserSubscription{},
 		&model.Tenant{},
 		&model.TenantPlan{},

@@ -236,6 +236,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			if err != nil {
 				common.SysLog("error consuming token remain quota: " + err.Error())
 			} else {
+				helper.RefreshPlatformCostEstimate(c, info)
 				service.TrackPlatformChannelUsageIfApplicable(info, priceData.Quota)
 			}
 
@@ -553,6 +554,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			if err != nil {
 				common.SysLog("error consuming token remain quota: " + err.Error())
 			} else {
+				helper.RefreshPlatformCostEstimate(c, relayInfo)
 				service.TrackPlatformChannelUsageIfApplicable(relayInfo, priceData.Quota)
 			}
 			tokenName := c.GetString("token_name")

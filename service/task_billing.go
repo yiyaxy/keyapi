@@ -50,6 +50,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
+	AddDualLedgerLogFields(info, other, info.PriceData.Quota)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
 		ModelName: info.OriginModelName,
@@ -133,8 +134,11 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 }
 
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
-func taskBillingOther(task *model.Task) map[string]interface{} {
+func taskBillingOther(task *model.Task, userBillQuota int) map[string]interface{} {
 	other := make(map[string]interface{})
+	other["pricing_version"] = "dual-ledger-v1"
+	other["user_bill_quota"] = userBillQuota
+	other["platform_cost_quota"] = task.PlatformCostQuota
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
 		if bc.ModelRatio > 0 {
@@ -145,6 +149,15 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			for k, v := range bc.OtherRatios {
 				other[k] = v
 			}
+		}
+		if bc.PriceMarkupRatio > 0 {
+			other["tenant_markup_ratio"] = bc.PriceMarkupRatio
+		}
+		if bc.PlatformCostChannelRatio > 0 {
+			other["platform_cost_channel_ratio"] = bc.PlatformCostChannelRatio
+		}
+		if task.PlatformCostQuota <= 0 && bc.PlatformCostQuota > 0 {
+			other["platform_cost_quota"] = bc.PlatformCostQuota
 		}
 	}
 	props := task.Properties
@@ -181,7 +194,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	taskAdjustTokenQuota(ctx, task, -quota)
 
 	// 3. 记录日志
-	other := taskBillingOther(task)
+	other := taskBillingOther(task, quota)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
 	tenantId, err := resolveTaskUserTenantID(ctx, task)
@@ -252,7 +265,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
 	}
-	other := taskBillingOther(task)
+	other := taskBillingOther(task, logQuota)
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
