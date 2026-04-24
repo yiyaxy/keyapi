@@ -75,6 +75,64 @@ func TestSanitizeForTenantView_PlatformStripsSensitive(t *testing.T) {
 	}
 }
 
+// Regression for LO's observation 2026-04-24: channel_ratio must survive
+// SanitizeForTenantView so the tenant-side UI can render the pricing formula
+// honestly. proxy / system_prompt / any non-whitelisted keys must still be
+// stripped.
+func TestSanitizeForTenantView_PlatformPreservesChannelRatio(t *testing.T) {
+	setting := `{"channel_ratio":0.3,"proxy":"http://secret","system_prompt":"internal"}`
+	c := &Channel{
+		Id: 10, Scope: ChannelScopePlatform, Setting: &setting,
+	}
+	SanitizeForTenantView(c)
+
+	if c.Setting == nil || *c.Setting == "" {
+		t.Fatalf("Setting should contain preserved channel_ratio, got empty")
+	}
+	// Must contain channel_ratio...
+	if !containsSubstring(*c.Setting, `"channel_ratio":0.3`) {
+		t.Errorf("Setting missing channel_ratio: %q", *c.Setting)
+	}
+	// ...and must NOT leak proxy / system_prompt.
+	if containsSubstring(*c.Setting, "proxy") {
+		t.Errorf("Setting leaked proxy: %q", *c.Setting)
+	}
+	if containsSubstring(*c.Setting, "system_prompt") {
+		t.Errorf("Setting leaked system_prompt: %q", *c.Setting)
+	}
+}
+
+func TestSanitizeForTenantView_PlatformNoChannelRatioReturnsEmpty(t *testing.T) {
+	setting := `{"proxy":"http://secret","system_prompt":"x"}`
+	c := &Channel{
+		Id: 11, Scope: ChannelScopePlatform, Setting: &setting,
+	}
+	SanitizeForTenantView(c)
+	if c.Setting == nil || *c.Setting != "" {
+		t.Fatalf("no channel_ratio should collapse setting to empty, got %q", *c.Setting)
+	}
+}
+
+func TestSanitizeForTenantView_PlatformMalformedSettingReturnsEmpty(t *testing.T) {
+	setting := `not valid json`
+	c := &Channel{
+		Id: 12, Scope: ChannelScopePlatform, Setting: &setting,
+	}
+	SanitizeForTenantView(c)
+	if c.Setting == nil || *c.Setting != "" {
+		t.Fatalf("malformed setting must sanitize to empty, got %q", *c.Setting)
+	}
+}
+
+func containsSubstring(haystack, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
+}
+
 func TestSanitizeForTenantView_TenantOnlyOmitsKey(t *testing.T) {
 	setting := `{"proxy":"local"}`
 	c := &Channel{

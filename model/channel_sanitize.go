@@ -1,10 +1,21 @@
 package model
 
+import "encoding/json"
+
 // SanitizeForTenantView mutates the channel in-place to remove sensitive or
 // operational fields before returning to a tenant admin. Always strips Key.
-// For platform-scoped channels, also strips Setting, HeaderOverride,
-// ParamOverride, OtherSettings, Other, BaseURL, StatusCodeMapping, AutoBan,
-// Balance, UsedQuota, and multi-key operational state.
+// For platform-scoped channels, also strips HeaderOverride, ParamOverride,
+// OtherSettings, Other, BaseURL, StatusCodeMapping, AutoBan, Balance,
+// UsedQuota, and multi-key operational state. The Setting JSON is reduced
+// to ONLY the fields a tenant legitimately needs to understand its own
+// bill — currently just `channel_ratio` — because that value is already
+// observable in each request's quota and hiding it in the UI makes the
+// pricing formula look dishonest (see 2026-04-24-dual-ledger-admin-ui §8.4
+// and the "Tenant markup dialog"/"FormulaPills" contract).
+//
+// Sensitive fields intentionally kept hidden: proxy, system_prompt,
+// model_ratio_override, ChannelRatioOverride, and any future admin-only
+// channel tuning keys.
 // See spec §7.4.
 func SanitizeForTenantView(c *Channel) {
 	if c == nil {
@@ -17,9 +28,10 @@ func SanitizeForTenantView(c *Channel) {
 		return
 	}
 
-	// Platform rows: strip everything operational.
+	// Platform rows: strip everything operational except the
+	// tenant-observable pricing fields in Setting.
+	c.Setting = redactPlatformSettingForTenantView(c.Setting)
 	empty := ""
-	c.Setting = &empty
 	c.HeaderOverride = &empty
 	c.ParamOverride = &empty
 	c.OtherSettings = ""
@@ -37,6 +49,37 @@ func SanitizeForTenantView(c *Channel) {
 	c.ChannelInfo.MultiKeyStatusList = nil
 	c.ChannelInfo.MultiKeyDisabledReason = nil
 	c.ChannelInfo.MultiKeyDisabledTime = nil
+}
+
+// redactPlatformSettingForTenantView keeps the value of `channel_ratio` (if
+// any) and drops everything else. Returns a non-nil *string pointing to the
+// minimized JSON, or to an empty string when no preserved field is present.
+//
+// Whitelist approach (keep only enumerated keys) is safer than blacklist:
+// any future key added by platform admins defaults to hidden unless
+// explicitly opted in here.
+func redactPlatformSettingForTenantView(raw *string) *string {
+	empty := ""
+	if raw == nil || *raw == "" {
+		return &empty
+	}
+	var src map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(*raw), &src); err != nil {
+		return &empty
+	}
+	preserved := make(map[string]json.RawMessage, 1)
+	if v, ok := src["channel_ratio"]; ok {
+		preserved["channel_ratio"] = v
+	}
+	if len(preserved) == 0 {
+		return &empty
+	}
+	out, err := json.Marshal(preserved)
+	if err != nil {
+		return &empty
+	}
+	s := string(out)
+	return &s
 }
 
 // SanitizeListForTenantView applies SanitizeForTenantView to each element.
