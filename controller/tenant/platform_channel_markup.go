@@ -15,6 +15,22 @@ type upsertMarkupReq struct {
 	Enabled     *bool   `json:"enabled"`
 }
 
+func ListPlatformChannelMarkups(c *gin.Context) {
+	tenantID := middleware.GetTenantId(c)
+	if tenantID <= 0 {
+		c.JSON(http.StatusForbidden, gin.H{"message": "tenant context missing"})
+		return
+	}
+
+	rows, err := model.ListTenantPlatformChannelMarkups(tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": rows})
+}
+
 func UpsertPlatformChannelMarkup(c *gin.Context) {
 	tenantID := middleware.GetTenantId(c)
 	if tenantID <= 0 {

@@ -41,6 +41,7 @@ export type Channel = {
   header_override: string | null;
   setting: string | null; // JSON — dto.ChannelSettings
   markup_ratio?: number | null;
+  platform_cost_ratio?: number | null;
   tenant_disabled?: boolean;
   // 平台管理员强制禁用：租户视角 UI 收到这个字段应把 toggle 置灰，
   // 并提示"平台管理员已禁用此渠道"。后端 tenant toggle API 也会拒绝改动。
@@ -114,6 +115,8 @@ export type ChannelInput = {
   tag?: string;
   remark?: string;
   setting?: string;
+  markup_ratio?: number | null;
+  platform_cost_ratio?: number | null;
 };
 
 export type ChannelCreateMode = 'single' | 'batch' | 'multi_to_single';
@@ -216,7 +219,9 @@ export function usePlatformChannelMode(tenantView: boolean) {
   return useQuery<{ mode: string }>({
     queryKey: ['channels', 'platform-mode', tenantView],
     queryFn: async () => {
-      const res = await api.get<{ mode: string }>(tenantView ? '/api/tenant-channel/mode' : '/api/channel/mode');
+      const res = await api.get<{ mode: string }>(
+        tenantView ? '/api/tenant-channel/mode' : '/api/channel/mode'
+      );
       return res.data;
     },
     enabled: tenantView,
@@ -267,4 +272,3 @@ export function useAdminGroups() {
     staleTime: 5 * 60_000,
   });
 }
-

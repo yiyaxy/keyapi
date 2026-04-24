@@ -41,6 +41,12 @@
   "detail.ip": "IP",
   "detail.is_stream": "Stream",
   "detail.content": "Content",
+  "detail.tenant_markup_ratio": "Tenant markup ratio",
+  "detail.markup_source": "Markup source",
+  "detail.markup_source_value.tenant_channel": "Custom override",
+  "detail.markup_source_value.channel": "Platform default",
+  "detail.markup_source_value.plan": "Plan default",
+  "detail.markup_source_value.none": "None",
   "detail.other": "Extra",
   "pagination.prev": "Previous",
   "pagination.next": "Next",
@@ -68,5 +74,11 @@
   "cost.original": "Original",
   "cost.billed": "Billed",
   "cost.cache_tokens": "Cache hit",
-  "cost.cache_cost": "Cache cost"
+  "cost.cache_cost": "Cache cost",
+  "cost.platform_cost.title": "Platform cost ledger",
+  "cost.platform_cost.channel_ratio": "Platform cost channel ratio",
+  "cost.platform_cost.is_platform_channel": "Channel scope",
+  "cost.platform_cost.shared": "Platform shared",
+  "cost.platform_cost.tenant": "Tenant private",
+  "cost.delta": "User bill -> Platform cost"
 }

@@ -64,13 +64,29 @@ export type TenantAuditEntry = {
   created_at: number;
 };
 
-export function useTenantPlan() {
+export type TenantPlatformChannelMarkup = {
+  tenant_id: number;
+  channel_id: number;
+  markup_ratio: number;
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+};
+
+export type UpsertTenantPlatformChannelMarkupInput = {
+  channel_id: number;
+  markup_ratio: number;
+  enabled?: boolean;
+};
+
+export function useTenantPlan(enabled = true) {
   return useQuery<TenantPlan>({
     queryKey: ['tenant', 'plan'] as const,
     queryFn: async () => {
       const res = await api.get<TenantPlan>('/api/tenant/plan');
       return res.data;
     },
+    enabled,
     staleTime: 30_000,
   });
 }
@@ -85,6 +101,48 @@ export function useUpdateTenantPlanMarkup() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tenant', 'plan'] });
+    },
+  });
+}
+
+export function useTenantPlatformChannelMarkups(enabled = true) {
+  return useQuery<TenantPlatformChannelMarkup[]>({
+    queryKey: ['tenant', 'platform-channel-markups'] as const,
+    queryFn: async () => {
+      const res = await api.get<TenantPlatformChannelMarkup[]>(
+        '/api/tenant/platform_channel_markup'
+      );
+      return res.data;
+    },
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useUpsertTenantPlatformChannelMarkup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UpsertTenantPlatformChannelMarkupInput) => {
+      const res = await api.post<TenantPlatformChannelMarkup>(
+        '/api/tenant/platform_channel_markup',
+        input
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenant', 'platform-channel-markups'] });
+    },
+  });
+}
+
+export function useDeleteTenantPlatformChannelMarkup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (channelId: number) => {
+      await api.delete(`/api/tenant/platform_channel_markup/${channelId}`);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenant', 'platform-channel-markups'] });
     },
   });
 }

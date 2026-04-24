@@ -7,6 +7,8 @@ import { ChannelFormDialog } from '@/components/channels/ChannelFormDialog';
 import { ChannelsFilters, type ChannelsFilterState } from '@/components/channels/ChannelsFilters';
 import { ChannelsTable } from '@/components/channels/ChannelsTable';
 import { ChannelTestDialog } from '@/components/channels/ChannelTestDialog';
+import { TenantMarkupCell } from '@/components/channels/TenantMarkupCell';
+import { TenantMarkupEditDialog } from '@/components/channels/TenantMarkupEditDialog';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LogsPagination } from '@/components/logs/LogsPagination';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { PageAction } from '@/hooks/usePageAction';
+import { useAuth } from '@/hooks/useAuth';
 import {
   useChannels,
   useDeleteChannel,
@@ -23,7 +25,9 @@ import {
   useToggleChannelStatus,
   type Channel,
 } from '@/hooks/useChannels';
-import { useAuth } from '@/hooks/useAuth';
+import { PageAction } from '@/hooks/usePageAction';
+import { usePricing } from '@/hooks/usePricing';
+import { useTenantPlan, useTenantPlatformChannelMarkups } from '@/hooks/useTenantBilling';
 
 const PAGE_SIZE = 50;
 
@@ -40,6 +44,7 @@ export function ChannelsAdminPage() {
   const [formTarget, setFormTarget] = useState<'new' | Channel | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null);
   const [testTarget, setTestTarget] = useState<Channel | null>(null);
+  const [markupTarget, setMarkupTarget] = useState<Channel | null>(null);
 
   const channels = useChannels({
     p: page,
@@ -50,6 +55,9 @@ export function ChannelsAdminPage() {
     tenantView,
   });
   const mode = usePlatformChannelMode(tenantView);
+  const tenantPlan = useTenantPlan(tenantView);
+  const tenantOverrides = useTenantPlatformChannelMarkups(tenantView);
+  const pricing = usePricing();
   const setMode = useSetPlatformChannelMode();
   const toggle = useToggleChannelStatus();
   const del = useDeleteChannel();
@@ -61,6 +69,13 @@ export function ChannelsAdminPage() {
     () => items.filter((item) => item.scope === 'platform'),
     [items]
   );
+  const overridesMap = useMemo(
+    () => new Map((tenantOverrides.data ?? []).map((row) => [row.channel_id, row] as const)),
+    [tenantOverrides.data]
+  );
+  const pricingRows = pricing.data?.data ?? [];
+  const groupRatios = pricing.data?.group_ratio ?? {};
+  const planMarkup = tenantPlan.data?.platform_markup ?? 0;
   const currentMode = mode.data?.mode ?? 'private_priority';
 
   return (
@@ -72,7 +87,9 @@ export function ChannelsAdminPage() {
       {tenantView ? (
         <Card className='border-line bg-bg-1 shadow-none'>
           <CardHeader className='pb-3'>
-            <CardTitle className='text-16 font-semibold tracking-tight'>{t('routing.title')}</CardTitle>
+            <CardTitle className='text-16 font-semibold tracking-tight'>
+              {t('routing.title')}
+            </CardTitle>
           </CardHeader>
           <CardContent className='grid gap-3 pt-0 md:grid-cols-2 xl:grid-cols-4'>
             {[
@@ -86,7 +103,7 @@ export function ChannelsAdminPage() {
                 type='button'
                 onClick={() =>
                   setMode.mutate(value, {
-                    onError: (e) => toast.error((e as Error).message),
+                    onError: (error) => toast.error((error as Error).message),
                   })
                 }
                 className={`rounded-md border px-4 py-3 text-left transition-colors ${
@@ -105,11 +122,12 @@ export function ChannelsAdminPage() {
 
       <ChannelsFilters
         value={filters}
-        onChange={(v) => {
-          setFilters(v);
+        onChange={(next) => {
+          setFilters(next);
           setPage(1);
         }}
       />
+
       {channels.isError && (
         <InlineBanner
           level='danger'
@@ -117,10 +135,11 @@ export function ChannelsAdminPage() {
           onClose={() => void channels.refetch()}
         />
       )}
+
       {channels.isPending ? (
         <div className='space-y-2'>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className='h-10 w-full' />
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className='h-10 w-full' />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -142,15 +161,19 @@ export function ChannelsAdminPage() {
                   <ChannelsTable
                     items={myChannels}
                     testingId={null}
-                    onEdit={(c) => setFormTarget(c)}
-                    onDelete={(c) => setDeleteTarget(c)}
-                    onToggle={(c) =>
+                    onEdit={(channel) => setFormTarget(channel)}
+                    onDelete={(channel) => setDeleteTarget(channel)}
+                    onToggle={(channel) =>
                       toggle.mutate(
-                        { id: c.id, nextStatus: c.status === 1 ? 2 : 1, tenantView: true },
-                        { onError: (e) => toast.error((e as Error).message) }
+                        {
+                          id: channel.id,
+                          nextStatus: channel.status === 1 ? 2 : 1,
+                          tenantView: true,
+                        },
+                        { onError: (error) => toast.error((error as Error).message) }
                       )
                     }
-                    onTest={(c) => setTestTarget(c)}
+                    onTest={(channel) => setTestTarget(channel)}
                     showScope
                   />
                 </CardContent>
@@ -163,16 +186,23 @@ export function ChannelsAdminPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='space-y-3 pt-0'>
+                  {tenantOverrides.isError && (
+                    <InlineBanner
+                      level='warn'
+                      message={t('platform_row.override_load_failed')}
+                      onClose={() => void tenantOverrides.refetch()}
+                    />
+                  )}
                   {platformChannels.map((channel) => (
                     <div
                       key={channel.id}
-                      className={`flex items-center justify-between rounded-md border px-4 py-3 ${
+                      className={`flex items-start justify-between gap-4 rounded-md border px-4 py-3 ${
                         channel.tenant_disabled
                           ? 'border-line bg-bg-0 opacity-60'
                           : 'border-line bg-bg-0'
                       }`}
                     >
-                      <div className='min-w-0'>
+                      <div className='min-w-0 flex-1'>
                         <div className='flex items-center gap-2'>
                           <div className='font-medium text-fg-0'>{channel.name}</div>
                           <span className='text-12 text-fg-2'>{channel.models}</span>
@@ -188,7 +218,22 @@ export function ChannelsAdminPage() {
                             ? t('platform_row.markup_x', { n: channel.markup_ratio.toFixed(2) })
                             : t('platform_row.plan_markup')}
                         </div>
+                        <div className='mt-3 space-y-1'>
+                          <div className='text-12 font-medium text-fg-2'>
+                            {t('platform_row.my_markup')}
+                          </div>
+                          <TenantMarkupCell
+                            channel={channel}
+                            override={overridesMap.get(channel.id)}
+                            planMarkup={planMarkup}
+                            pricingRows={pricingRows}
+                            groupRatios={groupRatios}
+                            groupRatioError={pricing.isError}
+                            onEdit={() => setMarkupTarget(channel)}
+                          />
+                        </div>
                       </div>
+
                       <div className='flex items-center gap-3'>
                         <span className='text-12 text-fg-2'>
                           {channel.tenant_channel_locked
@@ -208,7 +253,7 @@ export function ChannelsAdminPage() {
                                 tenantView: true,
                                 platformToggle: true,
                               },
-                              { onError: (e) => toast.error((e as Error).message) }
+                              { onError: (error) => toast.error((error as Error).message) }
                             )
                           }
                         />
@@ -222,29 +267,42 @@ export function ChannelsAdminPage() {
             <ChannelsTable
               items={items}
               testingId={null}
-              onEdit={(c) => setFormTarget(c)}
-              onDelete={(c) => setDeleteTarget(c)}
-              onToggle={(c) =>
+              onEdit={(channel) => setFormTarget(channel)}
+              onDelete={(channel) => setDeleteTarget(channel)}
+              onToggle={(channel) =>
                 toggle.mutate(
-                  { id: c.id, nextStatus: c.status === 1 ? 2 : 1 },
-                  {
-                    onError: (e) => toast.error((e as Error).message),
-                  }
+                  { id: channel.id, nextStatus: channel.status === 1 ? 2 : 1 },
+                  { onError: (error) => toast.error((error as Error).message) }
                 )
               }
-              onTest={(c) => setTestTarget(c)}
+              onTest={(channel) => setTestTarget(channel)}
               showScope
               showMarkup={isRoot}
             />
           )}
+
           <LogsPagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </>
       )}
+
       <ChannelFormDialog
         open={formTarget !== null}
         channel={formTarget === 'new' || formTarget === null ? null : formTarget}
-        onOpenChange={(o) => !o && setFormTarget(null)}
+        onOpenChange={(next) => !next && setFormTarget(null)}
       />
+
+      <TenantMarkupEditDialog
+        open={markupTarget !== null}
+        channel={markupTarget}
+        override={markupTarget ? overridesMap.get(markupTarget.id) : undefined}
+        planMarkup={planMarkup}
+        pricingRows={pricingRows}
+        groupRatios={groupRatios}
+        pricingPending={pricing.isPending}
+        pricingError={pricing.isError}
+        onOpenChange={(next) => !next && setMarkupTarget(null)}
+      />
+
       {deleteTarget && (
         <ConfirmDialog
           open
@@ -252,24 +310,25 @@ export function ChannelsAdminPage() {
           body={t('delete.body', { name: deleteTarget.name })}
           confirmLabel={t('delete.confirm')}
           isPending={del.isPending}
-          onOpenChange={(o) => !o && setDeleteTarget(null)}
+          onOpenChange={(next) => !next && setDeleteTarget(null)}
           onConfirm={() => {
             const target = deleteTarget;
             setDeleteTarget(null);
             del.mutate(
               { id: target.id, tenantView },
               {
-                onSuccess: () => toast.success(t('delete.confirm') + ' ✓'),
-                onError: (err) => toast.error((err as Error).message),
+                onSuccess: () => toast.success(t('delete.success', { defaultValue: 'Deleted' })),
+                onError: (error) => toast.error((error as Error).message),
               }
             );
           }}
         />
       )}
+
       <ChannelTestDialog
         channel={testTarget}
-        onOpenChange={(o) => {
-          if (!o) setTestTarget(null);
+        onOpenChange={(next) => {
+          if (!next) setTestTarget(null);
         }}
         onAfterTest={() => void channels.refetch()}
       />

@@ -41,6 +41,12 @@
   "detail.ip": "IP",
   "detail.is_stream": "流式",
   "detail.content": "内容",
+  "detail.tenant_markup_ratio": "租户倍率",
+  "detail.markup_source": "倍率来源",
+  "detail.markup_source_value.tenant_channel": "自定义覆盖",
+  "detail.markup_source_value.channel": "平台默认",
+  "detail.markup_source_value.plan": "套餐默认",
+  "detail.markup_source_value.none": "无",
   "detail.other": "附加信息",
   "pagination.prev": "上一页",
   "pagination.next": "下一页",
@@ -68,5 +74,11 @@
   "cost.original": "原始",
   "cost.billed": "计费",
   "cost.cache_tokens": "缓存命中",
-  "cost.cache_cost": "缓存成本"
+  "cost.cache_cost": "缓存成本",
+  "cost.platform_cost.title": "平台成本账",
+  "cost.platform_cost.channel_ratio": "平台成本渠道倍率",
+  "cost.platform_cost.is_platform_channel": "渠道范围",
+  "cost.platform_cost.shared": "平台共享",
+  "cost.platform_cost.tenant": "租户私有",
+  "cost.delta": "用户账单 -> 平台成本"
 }

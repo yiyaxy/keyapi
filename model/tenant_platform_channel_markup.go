@@ -16,6 +16,12 @@ type TenantPlatformChannelMarkup struct {
 	UpdatedAt   int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
+func ListTenantPlatformChannelMarkups(tenantID int) ([]TenantPlatformChannelMarkup, error) {
+	var rows []TenantPlatformChannelMarkup
+	err := DB.Where("tenant_id = ?", tenantID).Order("channel_id ASC").Find(&rows).Error
+	return rows, err
+}
+
 func GetTenantPlatformChannelMarkup(tenantID, channelID int) (*TenantPlatformChannelMarkup, error) {
 	var row TenantPlatformChannelMarkup
 	err := DB.Where("tenant_id = ? AND channel_id = ? AND enabled = ?", tenantID, channelID, true).First(&row).Error
