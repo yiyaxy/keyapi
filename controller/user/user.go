@@ -823,8 +823,15 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
+	userTenantId, err := model.GetUserTenantId(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
 	cleanUser := model.User{
 		Id:          c.GetInt("id"),
+		TenantId:    userTenantId,
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
