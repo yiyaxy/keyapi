@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useEffect, useMemo } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -10,6 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useAdminGroups } from '@/hooks/useChannels';
 import { fromDisplay, toDisplay, usePublicConfig } from '@/hooks/usePublicConfig';
 import { useUpdateUser, type AdminUser } from '@/hooks/useUsers';
 import { ApiError } from '@/lib/api';
@@ -45,12 +53,14 @@ export function EditUserDialog({
   const { t } = useTranslation('users');
   const cfg = usePublicConfig();
   const update = useUpdateUser();
+  const adminGroups = useAdminGroups();
 
   // Preformat the current balance into display unit with the right digits.
   const currentDisp = toDisplay(user.quota, cfg);
-  const currentStr = currentDisp.digits === 0
-    ? String(currentDisp.value)
-    : currentDisp.value.toFixed(currentDisp.digits);
+  const currentStr =
+    currentDisp.digits === 0
+      ? String(currentDisp.value)
+      : currentDisp.value.toFixed(currentDisp.digits);
 
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -63,7 +73,8 @@ export function EditUserDialog({
     },
   });
 
-  const [displayInput, setDisplayInput] = useState(currentStr);
+  const selectedGroup = useWatch({ control: form.control, name: 'group' });
+  const displayInput = useWatch({ control: form.control, name: 'quota_display' }) ?? '';
 
   useEffect(() => {
     const next = toDisplay(user.quota, cfg);
@@ -75,7 +86,6 @@ export function EditUserDialog({
       quota_display: str,
       password: '',
     });
-    setDisplayInput(str);
   }, [user, cfg, form]);
 
   const preview = useMemo(() => {
@@ -87,6 +97,16 @@ export function EditUserDialog({
     return { raw, delta: raw - user.quota };
   }, [displayInput, cfg, user.quota]);
 
+  const groupOptions = useMemo(() => {
+    const names = new Set((adminGroups.data ?? []).map((group) => group.trim()).filter(Boolean));
+    const currentGroup = selectedGroup?.trim();
+    const originalGroup = user.group?.trim();
+    if (currentGroup) names.add(currentGroup);
+    if (originalGroup) names.add(originalGroup);
+    if (names.size === 0) names.add('default');
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [adminGroups.data, selectedGroup, user.group]);
+
   const presets =
     cfg.quota_display_type === 'TOKENS' ? QUICK_PRESETS_TOKENS : QUICK_PRESETS_CURRENCY;
 
@@ -94,8 +114,8 @@ export function EditUserDialog({
     const current = Number(displayInput);
     const base = Number.isFinite(current) && current >= 0 ? current : 0;
     const summed = base + amount;
-    const next = currentDisp.digits === 0 ? String(Math.round(summed)) : summed.toFixed(currentDisp.digits);
-    setDisplayInput(next);
+    const next =
+      currentDisp.digits === 0 ? String(Math.round(summed)) : summed.toFixed(currentDisp.digits);
     form.setValue('quota_display', next, { shouldValidate: true, shouldDirty: true });
   }
 
@@ -134,9 +154,7 @@ export function EditUserDialog({
   function formatDelta(raw: number): string {
     if (raw === 0) return '';
     const disp = toDisplay(Math.abs(raw), cfg);
-    const body = disp.digits === 0
-      ? disp.value.toLocaleString()
-      : disp.value.toFixed(disp.digits);
+    const body = disp.digits === 0 ? disp.value.toLocaleString() : disp.value.toFixed(disp.digits);
     const prefix = raw > 0 ? '+' : '-';
     if (cfg.quota_display_type === 'TOKENS') return `${prefix}${body}`;
     return `${prefix}${disp.symbol}${body}`;
@@ -168,7 +186,26 @@ export function EditUserDialog({
           </div>
           <div className='space-y-2'>
             <Label htmlFor='eu-group'>{t('edit.group')}</Label>
-            <Input id='eu-group' {...form.register('group')} />
+            <Select
+              value={selectedGroup || groupOptions[0]}
+              onValueChange={(value) =>
+                form.setValue('group', value, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+            >
+              <SelectTrigger id='eu-group' aria-label={t('edit.group')}>
+                <SelectValue placeholder={t('edit.group')} />
+              </SelectTrigger>
+              <SelectContent>
+                {groupOptions.map((group) => (
+                  <SelectItem key={group} value={group}>
+                    {group}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Quota block — adapts to the site's quota_display_type */}
@@ -179,9 +216,10 @@ export function EditUserDialog({
               </Label>
               <span className='text-12 text-fg-2 tabular-nums'>
                 {t('edit.quota_current', {
-                  amount: cfg.quota_display_type === 'TOKENS'
-                    ? Number(currentStr).toLocaleString()
-                    : `${currentDisp.symbol}${currentStr}`,
+                  amount:
+                    cfg.quota_display_type === 'TOKENS'
+                      ? Number(currentStr).toLocaleString()
+                      : `${currentDisp.symbol}${currentStr}`,
                 })}
               </span>
             </div>
@@ -196,9 +234,7 @@ export function EditUserDialog({
                 step={cfg.quota_display_type === 'TOKENS' ? '1' : '0.01'}
                 inputMode='decimal'
                 className='tabular-nums'
-                {...form.register('quota_display', {
-                  onChange: (e) => setDisplayInput(e.target.value),
-                })}
+                {...form.register('quota_display')}
               />
             </div>
             <div className='flex flex-wrap gap-1.5'>
@@ -215,7 +251,6 @@ export function EditUserDialog({
               <button
                 type='button'
                 onClick={() => {
-                  setDisplayInput(currentStr);
                   form.setValue('quota_display', currentStr, {
                     shouldDirty: false,
                     shouldValidate: true,
