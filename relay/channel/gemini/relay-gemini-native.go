@@ -92,6 +92,7 @@ func GeminiTextGenerationStreamHandler(c *gin.Context, info *relaycommon.RelayIn
 			return false
 		}
 		info.SendResponseCount++
+		info.MarkFirstStreamContent()
 		return true
 	})
 }

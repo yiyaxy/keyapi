@@ -47,6 +47,11 @@ func InitOptionMap() {
 	common.OptionMap["RegisterEnabled"] = strconv.FormatBool(common.RegisterEnabled)
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
+	common.OptionMap["ChannelStabilityStreamBoundaryEnabled"] = strconv.FormatBool(common.ChannelStabilityStreamBoundaryEnabled)
+	common.OptionMap["ChannelStabilityErrorClassificationEnabled"] = strconv.FormatBool(common.ChannelStabilityErrorClassificationEnabled)
+	common.OptionMap["ChannelStabilityCooldownEnabled"] = strconv.FormatBool(common.ChannelStabilityCooldownEnabled)
+	common.OptionMap["ChannelStabilityHealthScoreEnabled"] = strconv.FormatBool(common.ChannelStabilityHealthScoreEnabled)
+	common.OptionMap["ChannelStabilityAffinityGovernanceEnabled"] = strconv.FormatBool(common.ChannelStabilityAffinityGovernanceEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
@@ -303,6 +308,16 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AutomaticDisableChannelEnabled = boolValue
 		case "AutomaticEnableChannelEnabled":
 			common.AutomaticEnableChannelEnabled = boolValue
+		case "ChannelStabilityStreamBoundaryEnabled":
+			common.ChannelStabilityStreamBoundaryEnabled = boolValue
+		case "ChannelStabilityErrorClassificationEnabled":
+			common.ChannelStabilityErrorClassificationEnabled = boolValue
+		case "ChannelStabilityCooldownEnabled":
+			common.ChannelStabilityCooldownEnabled = boolValue
+		case "ChannelStabilityHealthScoreEnabled":
+			common.ChannelStabilityHealthScoreEnabled = boolValue
+		case "ChannelStabilityAffinityGovernanceEnabled":
+			common.ChannelStabilityAffinityGovernanceEnabled = boolValue
 		case "LogConsumeEnabled":
 			common.LogConsumeEnabled = boolValue
 		case "DisplayInCurrencyEnabled":

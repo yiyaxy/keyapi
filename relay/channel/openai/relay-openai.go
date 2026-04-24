@@ -23,7 +23,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
+func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) (err error) {
+	defer func() {
+		if err == nil && data != "" {
+			info.MarkFirstStreamContent()
+		}
+	}()
 	if data == "" {
 		return nil
 	}
@@ -162,6 +167,13 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	// Zero chunks = upstream returned empty stream, trigger retry
 	if info.ReceivedResponseCount == 0 {
+		if info.StreamFirstTokenTimedOut() {
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("upstream stream first token timeout"),
+				types.ErrorCodeUpstreamFirstTokenTimeout,
+				http.StatusBadGateway,
+			)
+		}
 		return nil, types.NewOpenAIError(
 			fmt.Errorf("upstream stream ended without sending any data chunks"),
 			types.ErrorCodeBadResponse,

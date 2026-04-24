@@ -78,7 +78,9 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	var toolCallIndex int
 	start := helper.GenerateStartEmptyResponse(responseId, created, model, nil)
 	if data, err := common.Marshal(start); err == nil {
-		_ = helper.StringData(c, string(data))
+		if err := helper.StringData(c, string(data)); err == nil {
+			info.MarkFirstStreamContent()
+		}
 	}
 
 	for scanner.Scan() {
@@ -145,7 +147,9 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 				}
 			}
 			if data, err := common.Marshal(delta); err == nil {
-				_ = helper.StringData(c, string(data))
+				if err := helper.StringData(c, string(data)); err == nil {
+					info.MarkFirstStreamContent()
+				}
 			}
 			continue
 		}
@@ -161,13 +165,17 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		// emit stop delta
 		if stop := helper.GenerateStopResponse(responseId, created, model, finishReason); stop != nil {
 			if data, err := common.Marshal(stop); err == nil {
-				_ = helper.StringData(c, string(data))
+				if err := helper.StringData(c, string(data)); err == nil {
+					info.MarkFirstStreamContent()
+				}
 			}
 		}
 		// emit usage frame
 		if final := helper.GenerateFinalUsageResponse(responseId, created, model, *usage); final != nil {
 			if data, err := common.Marshal(final); err == nil {
-				_ = helper.StringData(c, string(data))
+				if err := helper.StringData(c, string(data)); err == nil {
+					info.MarkFirstStreamContent()
+				}
 			}
 		}
 		// send [DONE]

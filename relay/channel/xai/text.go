@@ -64,6 +64,8 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		if err := helper.ObjectData(c, openaiResponse); err != nil {
 			common.SysLog(err.Error())
 			sr.Error(err)
+		} else {
+			info.MarkFirstStreamContent()
 		}
 	})
 

@@ -104,6 +104,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	if relayInfo.UpstreamRequestIds != nil {
 		adminInfo["upstream_request_ids"] = relayInfo.UpstreamRequestIds
 	}
+	appendStreamBoundaryLogInfo(relayInfo, adminInfo)
 
 	other["admin_info"] = adminInfo
 	if events := tracing.Get(ctx); len(events) > 0 {
@@ -150,6 +151,23 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]inter
 		streamInfo["errors"] = messages
 	}
 	other["stream_status"] = streamInfo
+}
+
+func appendStreamBoundaryLogInfo(relayInfo *relaycommon.RelayInfo, adminInfo map[string]interface{}) {
+	if relayInfo == nil || adminInfo == nil || !relayInfo.IsStream || !IsChannelStabilityStreamBoundaryEnabled(relayInfo.TenantId) {
+		return
+	}
+	adminInfo["stream_stage"] = int(relayInfo.CurrentStreamStage())
+	if latencyMs := relayInfo.FirstTokenLatencyMs(); latencyMs >= 0 {
+		adminInfo["first_token_latency_ms"] = latencyMs
+	}
+	if relayInfo.FirstTokenTimeout > 0 {
+		adminInfo["first_token_timeout_ms"] = relayInfo.FirstTokenTimeout.Milliseconds()
+	}
+	adminInfo["cross_channel_switch_after_token"] = false
+	if relayInfo.StreamFirstTokenTimedOut() {
+		adminInfo["first_token_timed_out"] = true
+	}
 }
 
 func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

@@ -1,10 +1,12 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -29,6 +31,14 @@ const (
 	LastMessageTypeText     = "text"
 	LastMessageTypeTools    = "tools"
 	LastMessageTypeThinking = "thinking"
+)
+
+type StreamStage int
+
+const (
+	StreamStagePreConnect StreamStage = iota
+	StreamStageConnectedNoToken
+	StreamStageTokenReceived
 )
 
 type ClaudeConvertInfo struct {
@@ -120,6 +130,10 @@ type RelayInfo struct {
 	RelayFormat            types.RelayFormat
 	SendResponseCount      int
 	ReceivedResponseCount  int
+	FirstTokenReceivedAt   time.Time
+	FirstTokenTimeout      time.Duration
+	FirstTokenTimedOut     bool
+	StreamStage            StreamStage
 	FinalPreConsumedQuota  int // 最终预消耗的配额
 	// Platform channel markup applied at pricing time. Post-consume and logs
 	// reuse the same resolved ratio/source so pre-charge and settlement stay aligned.
@@ -151,18 +165,18 @@ type RelayInfo struct {
 	SubscriptionAmountUsedAfterPreConsume int64
 	// WalletShortfall is the amount that couldn't be covered by subscription and was pre-consumed from wallet.
 	// When WalletShortfall > 0, the billing is split between subscription and wallet.
-	WalletShortfall int64
-	VirtualCacheTokens int
-	VirtualCacheHitRate float64
-	IsClaudeBetaQuery                     bool // /v1/messages?beta=true
-	IsChannelTest                         bool // channel test request
-	UpstreamAddress                       string // 本站出口实际连接的 IP:Port
-	UpstreamRequestIds                    map[string]string // 上游 provider 返回的 request IDs, key=header name, value=header value
-	RetryIndex                            int
-	LastError                             *types.NewAPIError
-	RuntimeHeadersOverride                map[string]interface{}
-	UseRuntimeHeadersOverride             bool
-	ParamOverrideAudit                    []string
+	WalletShortfall           int64
+	VirtualCacheTokens        int
+	VirtualCacheHitRate       float64
+	IsClaudeBetaQuery         bool              // /v1/messages?beta=true
+	IsChannelTest             bool              // channel test request
+	UpstreamAddress           string            // 本站出口实际连接的 IP:Port
+	UpstreamRequestIds        map[string]string // 上游 provider 返回的 request IDs, key=header name, value=header value
+	RetryIndex                int
+	LastError                 *types.NewAPIError
+	RuntimeHeadersOverride    map[string]interface{}
+	UseRuntimeHeadersOverride bool
+	ParamOverrideAudit        []string
 
 	PriceData types.PriceData
 
@@ -176,6 +190,10 @@ type RelayInfo struct {
 	FinalRequestRelayFormat types.RelayFormat
 
 	StreamStatus *StreamStatus
+
+	streamBoundaryMu sync.Mutex
+	streamCancel     context.CancelFunc
+	firstTokenTimer  *time.Timer
 
 	ThinkingContentInfo
 	TokenCountMeta
@@ -664,6 +682,139 @@ func (info *RelayInfo) SetFirstResponseTime() {
 
 func (info *RelayInfo) HasSendResponse() bool {
 	return info.FirstResponseTime.After(info.StartTime)
+}
+
+func (info *RelayInfo) MarkStreamConnected(firstTokenTimeout time.Duration, cancel context.CancelFunc) {
+	if info == nil || !info.IsStream {
+		return
+	}
+
+	info.streamBoundaryMu.Lock()
+	if info.StreamStage < StreamStageConnectedNoToken {
+		info.StreamStage = StreamStageConnectedNoToken
+	}
+	if info.StreamStage < StreamStageTokenReceived {
+		info.FirstTokenTimedOut = false
+	}
+	info.FirstTokenTimeout = firstTokenTimeout
+	if cancel != nil {
+		info.streamCancel = cancel
+	}
+	if firstTokenTimeout > 0 && info.StreamStage < StreamStageTokenReceived && info.firstTokenTimer == nil {
+		info.firstTokenTimer = time.AfterFunc(firstTokenTimeout, info.markFirstTokenTimedOut)
+	}
+	info.streamBoundaryMu.Unlock()
+}
+
+func (info *RelayInfo) MarkFirstStreamContent() {
+	if info == nil || !info.IsStream {
+		return
+	}
+
+	now := time.Now()
+	var timer *time.Timer
+
+	info.streamBoundaryMu.Lock()
+	if info.StreamStage < StreamStageTokenReceived {
+		info.StreamStage = StreamStageTokenReceived
+		info.FirstTokenReceivedAt = now
+	}
+	timer = info.firstTokenTimer
+	info.firstTokenTimer = nil
+	info.streamBoundaryMu.Unlock()
+
+	if timer != nil {
+		timer.Stop()
+	}
+}
+
+func (info *RelayInfo) StopFirstTokenTimer() {
+	if info == nil {
+		return
+	}
+
+	info.streamBoundaryMu.Lock()
+	timer := info.firstTokenTimer
+	info.firstTokenTimer = nil
+	cancel := info.streamCancel
+	info.streamCancel = nil
+	info.streamBoundaryMu.Unlock()
+
+	if timer != nil {
+		timer.Stop()
+	}
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (info *RelayInfo) HasStreamContent() bool {
+	if info == nil || !info.IsStream {
+		return false
+	}
+	if info.SendResponseCount > 0 {
+		return true
+	}
+
+	info.streamBoundaryMu.Lock()
+	defer info.streamBoundaryMu.Unlock()
+	return info.StreamStage >= StreamStageTokenReceived || !info.FirstTokenReceivedAt.IsZero()
+}
+
+func (info *RelayInfo) CurrentStreamStage() StreamStage {
+	if info == nil || !info.IsStream {
+		return StreamStagePreConnect
+	}
+	if info.SendResponseCount > 0 {
+		return StreamStageTokenReceived
+	}
+
+	info.streamBoundaryMu.Lock()
+	defer info.streamBoundaryMu.Unlock()
+	return info.StreamStage
+}
+
+func (info *RelayInfo) FirstTokenLatencyMs() int64 {
+	if info == nil || info.StartTime.IsZero() {
+		return -1
+	}
+
+	info.streamBoundaryMu.Lock()
+	firstTokenReceivedAt := info.FirstTokenReceivedAt
+	info.streamBoundaryMu.Unlock()
+
+	if firstTokenReceivedAt.IsZero() && info.SendResponseCount > 0 && info.FirstResponseTime.After(info.StartTime) {
+		firstTokenReceivedAt = info.FirstResponseTime
+	}
+	if firstTokenReceivedAt.IsZero() {
+		return -1
+	}
+	return firstTokenReceivedAt.Sub(info.StartTime).Milliseconds()
+}
+
+func (info *RelayInfo) StreamFirstTokenTimedOut() bool {
+	if info == nil {
+		return false
+	}
+	info.streamBoundaryMu.Lock()
+	defer info.streamBoundaryMu.Unlock()
+	return info.FirstTokenTimedOut
+}
+
+func (info *RelayInfo) markFirstTokenTimedOut() {
+	info.streamBoundaryMu.Lock()
+	if info.StreamStage >= StreamStageTokenReceived {
+		info.streamBoundaryMu.Unlock()
+		return
+	}
+	info.FirstTokenTimedOut = true
+	cancel := info.streamCancel
+	info.firstTokenTimer = nil
+	info.streamBoundaryMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
 }
 
 type TaskRelayInfo struct {

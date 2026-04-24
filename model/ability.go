@@ -14,18 +14,18 @@ import (
 )
 
 type Ability struct {
-	Group     string  `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
-	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
-	ChannelId int     `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
+	Group     string `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
+	Model     string `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
+	ChannelId int    `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
 	// 对称 Channel.TenantId：tenant_id=0 是平台 ability 合法业务值。
 	// 当前写入走 createAbilityRows 的 map-based 路径（tag 不生效），
 	// default:0 主要是保证 AutoMigrate 生成的 DDL 默认值语义一致。
-	TenantId  int     `json:"tenant_id" gorm:"index;not null;default:0"`
-	Enabled   bool    `json:"enabled"`
-	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
-	Weight    uint    `json:"weight" gorm:"default:0;index"`
-	Tag       *string `json:"tag" gorm:"index"`
-	Scope     string  `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
+	TenantId int     `json:"tenant_id" gorm:"index;not null;default:0"`
+	Enabled  bool    `json:"enabled"`
+	Priority *int64  `json:"priority" gorm:"bigint;default:0;index"`
+	Weight   uint    `json:"weight" gorm:"default:0;index"`
+	Tag      *string `json:"tag" gorm:"index"`
+	Scope    string  `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
 }
 
 type AbilityWithChannel struct {
@@ -176,17 +176,26 @@ func GetChannel(group string, model string, retry int, tenantId ...int) (*Channe
 	if err != nil {
 		return nil, err
 	}
+	abilities = filterCooledDownAbilities(tid, abilities)
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one
 		weightSum := uint(0)
 		for _, ability_ := range abilities {
-			weightSum += ability_.Weight + 10
+			weight := int(ability_.Weight)
+			if ChannelCooldownEnabledForTenant(tid) {
+				weight = effectiveCooldownWeight(ability_.ChannelId, weight)
+			}
+			weightSum += uint(weight) + 10
 		}
 		// Randomly choose one
 		weight := common.GetRandomInt(int(weightSum))
 		for _, ability_ := range abilities {
-			weight -= int(ability_.Weight) + 10
+			abilityWeight := int(ability_.Weight)
+			if ChannelCooldownEnabledForTenant(tid) {
+				abilityWeight = effectiveCooldownWeight(ability_.ChannelId, abilityWeight)
+			}
+			weight -= abilityWeight + 10
 			//log.Printf("weight: %d, ability weight: %d", weight, *ability_.Weight)
 			if weight <= 0 {
 				channel.Id = ability_.ChannelId

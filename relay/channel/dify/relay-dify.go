@@ -248,6 +248,8 @@ func difyStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 		if err := helper.ObjectData(c, openaiResponse); err != nil {
 			common.SysLog(err.Error())
 			sr.Error(err)
+		} else {
+			info.MarkFirstStreamContent()
 		}
 	})
 	helper.Done(c)

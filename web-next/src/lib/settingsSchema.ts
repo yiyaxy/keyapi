@@ -157,7 +157,7 @@ export const SETTINGS_GROUPS: Group[] = [
         {
           zh: '扫码登录/绑定使用的小程序码环境。未发布时选体验版或开发版；选体验版时扫码者必须是微信后台的体验成员。',
           en: 'Which mini-program build the scan QR targets. Before publishing, pick Trial or Develop. Trial QRs only open for accounts added as trial members in mp.weixin.qq.com.',
-        },
+        }
       ),
       f('LinuxDOOAuthEnabled', 'bool', {
         zh: '启用 LinuxDO',
@@ -456,6 +456,72 @@ export const SETTINGS_GROUPS: Group[] = [
         zh: '渠道监控可见性',
         en: 'Channel monitor visibility',
       }),
+    ],
+  },
+  {
+    id: 'channel-stability',
+    title: { zh: '渠道稳定性', en: 'Channel stability' },
+    fields: [
+      f(
+        'ChannelStabilityStreamBoundaryEnabled',
+        'bool',
+        {
+          zh: '启用流式重试边界',
+          en: 'Stream retry boundary',
+        },
+        {
+          zh: '阶段一：首 token 返回后禁止跨渠道静默切换。',
+          en: 'Phase 1: prevent silent cross-channel retry after the first stream token.',
+        }
+      ),
+      f(
+        'ChannelStabilityErrorClassificationEnabled',
+        'bool',
+        {
+          zh: '启用错误分类',
+          en: 'Error classification',
+        },
+        {
+          zh: '阶段二：区分永久故障、短期抖动和普通错误。',
+          en: 'Phase 2: classify permanent failures, transient upstream issues, and normal errors.',
+        }
+      ),
+      f(
+        'ChannelStabilityCooldownEnabled',
+        'bool',
+        {
+          zh: '启用冷却状态',
+          en: 'Cooldown state',
+        },
+        {
+          zh: '阶段三：短期抖动渠道临时退出选路并自动恢复。',
+          en: 'Phase 3: temporarily remove transiently failing channels and restore them automatically.',
+        }
+      ),
+      f(
+        'ChannelStabilityHealthScoreEnabled',
+        'bool',
+        {
+          zh: '启用健康分选路',
+          en: 'Health-score routing',
+        },
+        {
+          zh: '阶段四：用监控健康度动态调整渠道选路权重。',
+          en: 'Phase 4: feed monitor health scores back into channel routing weights.',
+        }
+      ),
+      f(
+        'ChannelStabilityAffinityGovernanceEnabled',
+        'bool',
+        {
+          zh: '启用亲和治理',
+          en: 'Affinity governance',
+        },
+        {
+          zh: '阶段五：按错误、冷却和 fallback 衰减会话亲和。',
+          en: 'Phase 5: decay session affinity after errors, cooldown, or fallback.',
+        }
+      ),
     ],
   },
   {

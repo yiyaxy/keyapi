@@ -834,6 +834,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			}
 		}
 		helper.ClaudeChunkData(c, claudeResponse, data)
+		info.MarkFirstStreamContent()
 	} else if info.RelayFormat == types.RelayFormatOpenAI {
 		response := StreamResponseClaude2OpenAI(&claudeResponse)
 
@@ -844,6 +845,8 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		err = helper.ObjectData(c, response)
 		if err != nil {
 			logger.LogError(c, "send_stream_response_failed: "+err.Error())
+		} else {
+			info.MarkFirstStreamContent()
 		}
 	}
 	return nil
@@ -899,6 +902,13 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 
 	// Zero chunks = upstream returned empty stream, trigger retry
 	if info.ReceivedResponseCount == 0 {
+		if info.StreamFirstTokenTimedOut() {
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("upstream Claude stream first token timeout"),
+				types.ErrorCodeUpstreamFirstTokenTimeout,
+				http.StatusBadGateway,
+			)
+		}
 		return nil, types.NewOpenAIError(
 			fmt.Errorf("upstream stream ended without sending any data chunks"),
 			types.ErrorCodeBadResponse,

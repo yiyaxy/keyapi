@@ -1312,6 +1312,13 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 
 	// Zero chunks = upstream returned empty stream, trigger retry
 	if info.ReceivedResponseCount == 0 {
+		if info.StreamFirstTokenTimedOut() {
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("upstream Gemini stream first token timeout"),
+				types.ErrorCodeUpstreamFirstTokenTimeout,
+				http.StatusBadGateway,
+			)
+		}
 		return nil, types.NewOpenAIError(
 			fmt.Errorf("upstream Gemini stream ended without sending any data chunks"),
 			types.ErrorCodeBadResponse,

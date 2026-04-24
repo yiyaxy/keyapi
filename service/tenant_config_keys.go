@@ -86,13 +86,18 @@ var TenantOverridableKeys = map[string]bool{
 	"GroupGroupRatio":     true,
 
 	// monitor - without clamp-dependent fields
-	"RetryTimes":                    true,
-	"AutomaticDisableChannelEnabled": true,
-	"AutomaticEnableChannelEnabled":  true,
-	"AutomaticDisableKeywords":       true,
-	"AutomaticDisableStatusCodes":    true,
-	"AutomaticRetryStatusCodes":      true,
-	"ChannelDisableThreshold":        true,
+	"RetryTimes":                                 true,
+	"AutomaticDisableChannelEnabled":             true,
+	"AutomaticEnableChannelEnabled":              true,
+	"AutomaticDisableKeywords":                   true,
+	"AutomaticDisableStatusCodes":                true,
+	"AutomaticRetryStatusCodes":                  true,
+	"ChannelDisableThreshold":                    true,
+	"ChannelStabilityStreamBoundaryEnabled":      true,
+	"ChannelStabilityErrorClassificationEnabled": true,
+	"ChannelStabilityCooldownEnabled":            true,
+	"ChannelStabilityHealthScoreEnabled":         true,
+	"ChannelStabilityAffinityGovernanceEnabled":  true,
 
 	// permissions
 	"ExposeRatioEnabled":     true,

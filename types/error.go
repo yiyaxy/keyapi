@@ -60,6 +60,15 @@ const (
 	ErrorCodeChannelInvalidKey            ErrorCode = "channel:invalid_key"
 	ErrorCodeChannelResponseTimeExceeded  ErrorCode = "channel:response_time_exceeded"
 
+	// OAuth 渠道专属错误码。通用跨渠道（Codex / Claude OAuth / 其他订阅号池）。
+	// 由 adaptor 层在识别到 OAuth 特定故障时构造进 NewAPIError，供错误分类器区分：
+	// - TokenExpired 走 AuthRefresh（触发刷新）
+	// - InvalidGrant 走 Permanent（refresh token 已废，需人工介入或换号）
+	// - RefreshFailed 走 Transient（刷新接口网络/短期错误，可重试）
+	ErrorCodeOAuthTokenExpired  ErrorCode = "oauth_token_expired"
+	ErrorCodeOAuthInvalidGrant  ErrorCode = "oauth_invalid_grant"
+	ErrorCodeOAuthRefreshFailed ErrorCode = "oauth_refresh_failed"
+
 	// client request error
 	ErrorCodeReadRequestBodyFailed ErrorCode = "read_request_body_failed"
 	ErrorCodeConvertRequestFailed  ErrorCode = "convert_request_failed"
@@ -69,14 +78,15 @@ const (
 	ErrorCodeBadRequestBody ErrorCode = "bad_request_body"
 
 	// response error
-	ErrorCodeReadResponseBodyFailed ErrorCode = "read_response_body_failed"
-	ErrorCodeBadResponseStatusCode  ErrorCode = "bad_response_status_code"
-	ErrorCodeBadResponse            ErrorCode = "bad_response"
-	ErrorCodeBadResponseBody        ErrorCode = "bad_response_body"
-	ErrorCodeEmptyResponse          ErrorCode = "empty_response"
-	ErrorCodeAwsInvokeError         ErrorCode = "aws_invoke_error"
-	ErrorCodeModelNotFound          ErrorCode = "model_not_found"
-	ErrorCodePromptBlocked          ErrorCode = "prompt_blocked"
+	ErrorCodeReadResponseBodyFailed    ErrorCode = "read_response_body_failed"
+	ErrorCodeBadResponseStatusCode     ErrorCode = "bad_response_status_code"
+	ErrorCodeBadResponse               ErrorCode = "bad_response"
+	ErrorCodeBadResponseBody           ErrorCode = "bad_response_body"
+	ErrorCodeEmptyResponse             ErrorCode = "empty_response"
+	ErrorCodeUpstreamFirstTokenTimeout ErrorCode = "upstream_first_token_timeout"
+	ErrorCodeAwsInvokeError            ErrorCode = "aws_invoke_error"
+	ErrorCodeModelNotFound             ErrorCode = "model_not_found"
+	ErrorCodePromptBlocked             ErrorCode = "prompt_blocked"
 
 	// sql error
 	ErrorCodeQueryDataError  ErrorCode = "query_data_error"

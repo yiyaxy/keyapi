@@ -44,6 +44,10 @@ type Channel struct {
 	Other              string  `json:"other"`
 	Balance            float64 `json:"balance"` // in USD
 	BalanceUpdatedTime int64   `json:"balance_updated_time" gorm:"bigint"`
+	CooldownUntil      int64   `json:"cooldown_until" gorm:"bigint;default:0"`
+	CooldownReason     string  `json:"cooldown_reason" gorm:"type:varchar(128);default:''"`
+	CooldownCount      int     `json:"cooldown_count" gorm:"default:0"`
+	LastCooldownAt     int64   `json:"last_cooldown_at" gorm:"bigint;default:0"`
 	Models             string  `json:"models"`
 	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`

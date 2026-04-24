@@ -15,10 +15,10 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -518,6 +518,17 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	var streamCancel context.CancelFunc
+	if info.IsStream && service.IsChannelStabilityStreamBoundaryEnabled(info.TenantId) {
+		baseCtx := req.Context()
+		if c != nil && c.Request != nil {
+			baseCtx = c.Request.Context()
+		}
+		var streamCtx context.Context
+		streamCtx, streamCancel = context.WithCancel(baseCtx)
+		req = req.WithContext(streamCtx)
+	}
+
 	// 通过 httptrace 捕获本站出口实际连接的 IP:Port
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
@@ -535,11 +546,20 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if streamCancel != nil {
+			streamCancel()
+		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
+		if streamCancel != nil {
+			streamCancel()
+		}
 		return nil, errors.New("resp is nil")
+	}
+	if streamCancel != nil {
+		info.MarkStreamConnected(service.GetFirstTokenTimeout(info.OriginModelName), streamCancel)
 	}
 
 	// Extract upstream provider request IDs from response headers

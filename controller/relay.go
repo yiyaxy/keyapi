@@ -179,11 +179,75 @@ func buildChannelErrorLogMessage(c *gin.Context, channelError types.ChannelError
 	if errorType := err.GetErrorType(); errorType != "" {
 		fields = append(fields, fmt.Sprintf("error_type=%s", errorType))
 	}
+	if class, reason, ok := channelErrorClassificationForLog(c, channelError.ChannelType, err); ok {
+		fields = append(fields, fmt.Sprintf("channel_error_class=%s", class))
+		fields = append(fields, fmt.Sprintf("classified_reason=%s", reason))
+	}
 	if lastRetry := getLastRetryError(c); lastRetry != nil && len(lastRetry.UpstreamRequestIds) > 0 {
 		fields = append(fields, fmt.Sprintf("upstream_request_ids=%s", formatUpstreamRequestIDs(lastRetry.UpstreamRequestIds)))
 	}
 	fields = append(fields, fmt.Sprintf("message=%s", truncateLogValue(err.MaskSensitiveError(), 300)))
 	return "channel error | " + strings.Join(fields, " | ")
+}
+
+func channelErrorClassificationForLog(c *gin.Context, channelType int, err *types.NewAPIError) (string, string, bool) {
+	if err == nil {
+		return "", "", false
+	}
+	tenantId := 0
+	if c != nil {
+		tenantId = middleware.GetTenantId(c)
+	}
+	if !service.IsChannelStabilityErrorClassificationEnabled(tenantId) {
+		return "", "", false
+	}
+	class, reason := types.ClassifyChannelErrorWithReason(err, channelType)
+	return class.String(), reason, true
+}
+
+func appendChannelErrorClassification(c *gin.Context, adminInfo map[string]interface{}, channelType int, err *types.NewAPIError) {
+	if class, reason, ok := channelErrorClassificationForLog(c, channelType, err); ok {
+		adminInfo["channel_error_class"] = class
+		adminInfo["classified_reason"] = reason
+	}
+}
+
+func appendChannelCooldownAdminInfo(c *gin.Context, adminInfo map[string]interface{}, channelType int, err *types.NewAPIError) {
+	if c == nil || adminInfo == nil {
+		return
+	}
+	tenantId := middleware.GetTenantId(c)
+	if !service.IsChannelStabilityCooldownEnabled(tenantId) || !service.ShouldCooldownChannel(tenantId, channelType, err) {
+		return
+	}
+	adminInfo["channel_cooldown_eligible"] = true
+	channelId := c.GetInt("channel_id")
+	if cooldown, ok := model.GetChannelCooldown(channelId); ok {
+		adminInfo["channel_cooldown_until"] = cooldown.Until
+		adminInfo["channel_cooldown_reason"] = cooldown.Reason
+		adminInfo["channel_cooldown_count"] = cooldown.Count
+	}
+}
+
+func shouldStopStreamRetryAfterContent(tenantId int, info *relaycommon.RelayInfo) bool {
+	return service.IsChannelStabilityStreamBoundaryEnabled(tenantId) && info != nil && info.IsStream && info.HasStreamContent()
+}
+
+func appendStreamBoundaryAdminInfo(adminInfo map[string]interface{}, info *relaycommon.RelayInfo) {
+	if adminInfo == nil || info == nil || !info.IsStream || !service.IsChannelStabilityStreamBoundaryEnabled(info.TenantId) {
+		return
+	}
+	adminInfo["stream_stage"] = int(info.CurrentStreamStage())
+	if latencyMs := info.FirstTokenLatencyMs(); latencyMs >= 0 {
+		adminInfo["first_token_latency_ms"] = latencyMs
+	}
+	if info.FirstTokenTimeout > 0 {
+		adminInfo["first_token_timeout_ms"] = info.FirstTokenTimeout.Milliseconds()
+	}
+	adminInfo["cross_channel_switch_after_token"] = false
+	if info.StreamFirstTokenTimedOut() {
+		adminInfo["first_token_timed_out"] = true
+	}
 }
 
 func appendErrorDiagnosticInfo(c *gin.Context, other map[string]interface{}, adminInfo map[string]interface{}) {
@@ -330,6 +394,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	var (
 		newAPIError *types.NewAPIError
+		relayInfo   *relaycommon.RelayInfo
 		ws          *websocket.Conn
 	)
 
@@ -350,7 +415,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			// Always record the final relay error to logs table for request tracing.
 			// This is the ONLY log entry for a normal relay request — channel retry
 			// errors are consolidated into admin_info.retry_errors, not logged separately.
-			recordRelayErrorForTrace(c, newAPIError)
+			recordRelayErrorForTrace(c, relayInfo, newAPIError)
 
 			// Build channel chain string (e.g., "3-5-12") from retry history
 			channelChain := strings.ReplaceAll(getChannelChain(c), "->", "-")
@@ -409,7 +474,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		service.ApplyPromptRules(openaiReq, 0)
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		addTraceEvent(c, "init", fmt.Sprintf("RelayInfo 初始化失败: %s", err.Error()), nil)
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
@@ -530,6 +595,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	maxRetryTimes := service.GetTenantRetryTimes(relayInfo.TenantId)
 
 	for ; retryParam.GetRetry() <= maxRetryTimes; retryParam.IncreaseRetry() {
+		if shouldStopStreamRetryAfterContent(relayInfo.TenantId, relayInfo) {
+			addTraceEvent(c, "stream_boundary", "stream content already sent; stop retry", map[string]interface{}{
+				"retry_index":  retryParam.GetRetry(),
+				"stream_stage": int(relayInfo.CurrentStreamStage()),
+			})
+			break
+		}
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
@@ -578,6 +650,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			default:
 				newAPIError = relayHandler(c, relayInfo)
 			}
+			relayInfo.StopFirstTokenTimer()
 
 			if newAPIError == nil {
 				elapsedMs := time.Since(attemptStart).Milliseconds()
@@ -612,6 +685,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				"upstream_request_ids": relayInfo.UpstreamRequestIds,
 			})
 
+			if shouldStopStreamRetryAfterContent(relayInfo.TenantId, relayInfo) {
+				addTraceEvent(c, "stream_boundary", "stream content already sent; stop same-channel retry", map[string]interface{}{
+					"channel_id":   channel.Id,
+					"stream_stage": int(relayInfo.CurrentStreamStage()),
+				})
+				break
+			}
+
 			if types.IsSkipRetryError(newAPIError) {
 				break
 			}
@@ -634,7 +715,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		processChannelErrorNoLog(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
-		if !shouldRetry(c, relayInfo.TenantId, newAPIError, maxRetryTimes-retryParam.GetRetry()) {
+		if shouldStopStreamRetryAfterContent(relayInfo.TenantId, relayInfo) {
+			addTraceEvent(c, "stream_boundary", "stream content already sent; stop cross-channel retry", map[string]interface{}{
+				"channel_id":   channel.Id,
+				"stream_stage": int(relayInfo.CurrentStreamStage()),
+			})
+			break
+		}
+
+		if !shouldRetry(c, relayInfo.TenantId, channel.Type, newAPIError, maxRetryTimes-retryParam.GetRetry()) {
 			break
 		}
 	}
@@ -748,7 +837,7 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
-func shouldRetry(c *gin.Context, tenantId int, openaiErr *types.NewAPIError, retryTimes int) bool {
+func shouldRetry(c *gin.Context, tenantId int, channelType int, openaiErr *types.NewAPIError, retryTimes int) bool {
 	if openaiErr == nil {
 		return false
 	}
@@ -767,6 +856,14 @@ func shouldRetry(c *gin.Context, tenantId int, openaiErr *types.NewAPIError, ret
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
+	if service.IsChannelStabilityErrorClassificationEnabled(tenantId) {
+		switch types.ClassifyChannelError(openaiErr, channelType) {
+		case types.ChannelErrorClassPermanent:
+			return false
+		case types.ChannelErrorClassTransient:
+			return true
+		}
+	}
 	code := openaiErr.StatusCode
 	if code >= 200 && code < 300 {
 		return false
@@ -783,7 +880,7 @@ func shouldRetry(c *gin.Context, tenantId int, openaiErr *types.NewAPIError, ret
 // recordRelayErrorForTrace writes a single error log per request to the database,
 // consolidating all retry/channel-switch information into one entry.
 // This is the ONLY place that writes error logs for relay requests.
-func recordRelayErrorForTrace(c *gin.Context, err *types.NewAPIError) {
+func recordRelayErrorForTrace(c *gin.Context, relayInfo *relaycommon.RelayInfo, err *types.NewAPIError) {
 	// Skip if the error explicitly opts out of logging
 	if !types.IsRecordErrorLog(err) {
 		return
@@ -820,6 +917,9 @@ func recordRelayErrorForTrace(c *gin.Context, err *types.NewAPIError) {
 		adminInfo["site_label"] = common.SiteLabel
 	}
 	service.AppendChannelAffinityAdminInfo(c, adminInfo)
+	appendChannelErrorClassification(c, adminInfo, c.GetInt("channel_type"), err)
+	appendChannelCooldownAdminInfo(c, adminInfo, c.GetInt("channel_type"), err)
+	appendStreamBoundaryAdminInfo(adminInfo, relayInfo)
 	if err.UpstreamResponseBody != "" {
 		adminInfo["upstream_response_body"] = err.UpstreamResponseBody
 	}
@@ -852,9 +952,9 @@ func processChannelErrorNoLog(c *gin.Context, channelError types.ChannelError, e
 	tenantId := middleware.GetTenantId(c)
 	shouldDisable := service.ShouldDisableChannel(tenantId, channelError.ChannelType, err)
 	logger.LogError(c, buildChannelErrorLogMessage(c, channelError, err, shouldDisable && channelError.AutoBan))
-	if shouldDisable && channelError.AutoBan {
+	if shouldDisable || service.ShouldCooldownChannel(tenantId, channelError.ChannelType, err) {
 		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+			service.HandleChannelAnomaly(tenantId, channelError, err)
 		})
 	}
 	// Note: per-channel error logging removed to prevent duplicate logs.
@@ -872,9 +972,9 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	tenantId := middleware.GetTenantId(c)
 	shouldDisable := service.ShouldDisableChannel(tenantId, channelError.ChannelType, err)
 	logger.LogError(c, buildChannelErrorLogMessage(c, channelError, err, shouldDisable && channelError.AutoBan))
-	if shouldDisable && channelError.AutoBan {
+	if shouldDisable || service.ShouldCooldownChannel(tenantId, channelError.ChannelType, err) {
 		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+			service.HandleChannelAnomaly(tenantId, channelError, err)
 		})
 	}
 
@@ -906,6 +1006,7 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["site_label"] = common.SiteLabel
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
+		appendChannelErrorClassification(c, adminInfo, channelError.ChannelType, err)
 		// Store the final error's upstream response for admin debugging
 		if err.UpstreamResponseBody != "" {
 			adminInfo["upstream_response_body"] = err.UpstreamResponseBody

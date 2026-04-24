@@ -286,6 +286,7 @@ func GetRandomSatisfiedChannel(tenantId int, group string, model string, retry i
 			channels = platform
 		}
 	}
+	channels = filterCooledDownChannelIds(tenantId, channels)
 	if len(channels) == 0 {
 		return nil, nil
 	}
@@ -322,7 +323,11 @@ func GetRandomSatisfiedChannel(tenantId int, group string, model string, retry i
 	for _, channelId := range channels {
 		if channel, ok := channelsIDM[channelId]; ok {
 			if channel.GetPriority() == targetPriority {
-				sumWeight += channel.GetWeight()
+				weight := channel.GetWeight()
+				if ChannelCooldownEnabledForTenant(tenantId) {
+					weight = effectiveCooldownWeight(channel.Id, weight)
+				}
+				sumWeight += weight
 				targetChannels = append(targetChannels, channel)
 			}
 		} else {
@@ -356,7 +361,11 @@ func GetRandomSatisfiedChannel(tenantId int, group string, model string, retry i
 
 	// Find a channel based on its weight
 	for _, channel := range targetChannels {
-		randomWeight -= channel.GetWeight()*smoothingFactor + smoothingAdjustment
+		weight := channel.GetWeight()
+		if ChannelCooldownEnabledForTenant(tenantId) {
+			weight = effectiveCooldownWeight(channel.Id, weight)
+		}
+		randomWeight -= weight*smoothingFactor + smoothingAdjustment
 		if randomWeight < 0 {
 			return channel, nil
 		}

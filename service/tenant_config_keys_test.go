@@ -41,6 +41,11 @@ func TestTenantOverridableKeys_CoverageNonSecret(t *testing.T) {
 		"AutomaticDisableKeywords", "AutomaticDisableStatusCodes",
 		"AutomaticRetryStatusCodes",
 		"ChannelDisableThreshold",
+		"ChannelStabilityStreamBoundaryEnabled",
+		"ChannelStabilityErrorClassificationEnabled",
+		"ChannelStabilityCooldownEnabled",
+		"ChannelStabilityHealthScoreEnabled",
+		"ChannelStabilityAffinityGovernanceEnabled",
 		// permissions
 		"ExposeRatioEnabled", "DefaultCollapseSidebar",
 		// log
