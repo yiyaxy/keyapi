@@ -93,6 +93,7 @@ export function FormulaPills({
   pricingRows,
   groupRatios,
   groupRatioError = false,
+  forceShowChannelRatio = false,
 }: {
   channel: Channel;
   markup: number;
@@ -100,6 +101,12 @@ export function FormulaPills({
   pricingRows: PricingRow[];
   groupRatios: Record<string, number>;
   groupRatioError?: boolean;
+  /**
+   * Render the channel_ratio pill even when the value is 1.0. Enabled in the
+   * edit dialog so tenants can see the platform's extra multiplier exists;
+   * list cells keep the default (false) for visual calm.
+   */
+  forceShowChannelRatio?: boolean;
 }) {
   const { t } = useTranslation('channels');
   const matchedPricing = useMemo(() => {
@@ -161,7 +168,7 @@ export function FormulaPills({
           tooltip={t('tenant_markup_cell.tooltip.my_markup', { source: sourceLabel })}
           highlighted
         />
-        {channelRatio !== 1 && (
+        {(channelRatio !== 1 || forceShowChannelRatio) && (
           <Pill
             label={`${t('tenant_markup_cell.formula.channel_ratio')} ${formatRatio(channelRatio)}`}
             tooltip={t('tenant_markup_cell.tooltip.channel_ratio', {

@@ -151,6 +151,33 @@ describe('TenantMarkupEditDialog', () => {
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(7));
   });
 
+  test('always surfaces the channel_ratio pill and extra section even when value is 1x', async () => {
+    render(
+      <TenantMarkupEditDialog
+        open
+        channel={makeChannel()}
+        override={undefined}
+        planMarkup={1}
+        pricingRows={pricingRows}
+        groupRatios={{ default: 1 }}
+        onOpenChange={() => {}}
+      />
+    );
+
+    // Pill chain in the formula preview shows the channel_ratio pill even
+    // though the value is 1x (forceShowChannelRatio=true is passed by the
+    // dialog so tenants can see the hidden platform multiplier exists).
+    expect(
+      screen.getByRole('button', { name: /Channel ratio 1x|渠道倍率 1x/i })
+    ).toBeInTheDocument();
+
+    // Extra section under priority chain makes the "platform-only, not
+    // tenant-overridable" semantic explicit.
+    expect(
+      screen.getByText(/Platform also applies on this channel|此外平台对该渠道另加/i)
+    ).toBeInTheDocument();
+  });
+
   test('opens a confirmation dialog when the input matches the plan default', async () => {
     const user = userEvent.setup();
 
