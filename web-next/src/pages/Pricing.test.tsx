@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import '@/i18n';
@@ -97,5 +98,27 @@ describe('PricingPage', () => {
 
     expect(defaultTag).toHaveAttribute('data-selected', 'true');
     expect(vipTag).toHaveAttribute('data-selected', 'false');
+  });
+
+  test('allows switching a non-USD pricing display to USD', async () => {
+    const user = userEvent.setup();
+    mockUsePublicConfig.mockReturnValue({
+      quota_per_unit: 500_000,
+      quota_display_type: 'CNY',
+      usd_exchange_rate: 7,
+      register_enabled: true,
+      password_register_enabled: true,
+      password_login_enabled: true,
+      email_verification: true,
+    });
+
+    render(<PricingPage />);
+
+    expect(within(findRow('gpt-5.4')).getByText(/140\.00/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'USD' }));
+
+    expect(within(findRow('gpt-5.4')).getByText(/\$20\.00/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'USD' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

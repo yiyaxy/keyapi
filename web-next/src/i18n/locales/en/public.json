@@ -33,6 +33,7 @@
   "pricing.search": "Search model",
   "pricing.filter.group": "Group",
   "pricing.filter.vendor": "Vendor",
+  "pricing.filter.currency": "Currency",
   "pricing.filter.all_groups": "All groups",
   "pricing.filter.all_vendors": "All vendors",
   "pricing.col.model": "Model",
