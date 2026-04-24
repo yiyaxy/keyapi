@@ -741,7 +741,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		// AI App Marketplace — admin management
 		appAdminRoute := apiRouter.Group("/admin/app")
-		appAdminRoute.Use(middleware.TenantAdminAuth())
+		appAdminRoute.Use(middleware.AdminAuth())
 		{
 			appAdminRoute.GET("", app.AdminListApps)
 			appAdminRoute.POST("", app.AdminCreateApp)

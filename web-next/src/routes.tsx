@@ -10,7 +10,6 @@ import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
 import { PublicLayout } from '@/components/public/PublicLayout';
 import { AboutPage } from '@/pages/About';
-import { DocsPage } from '@/pages/Docs';
 import { AccountPage } from '@/pages/Account';
 import { AiAppsAdminPage } from '@/pages/AiAppsAdmin';
 import { AppMarketplacePage } from '@/pages/AppMarketplace';
@@ -85,7 +84,6 @@ export const router = createBrowserRouter([
         children: [
           { path: '/', element: <HomePage /> },
           { path: '/about', element: <AboutPage /> },
-          { path: '/docs', element: <DocsPage /> },
           { path: '/pricing', element: <PricingPage /> },
           { path: '/apps', element: <AppMarketplacePage /> },
           { path: '/user-agreement', element: <LegalPage kind='terms' /> },
@@ -158,7 +156,6 @@ export const router = createBrowserRouter([
                     path: '/admin/agent-report',
                     element: <AgentReportAdminPage />,
                   },
-                  { path: '/admin/ai-apps', element: <AiAppsAdminPage /> },
                   { path: '/admin/request-trace', element: <RequestTracePage /> },
                   {
                     path: '/admin/request-trace/:requestId',
@@ -178,6 +175,7 @@ export const router = createBrowserRouter([
               {
                 element: <AdminRoute minRole={100} />,
                 children: [
+                  { path: '/admin/ai-apps', element: <AiAppsAdminPage /> },
                   {
                     path: '/admin/platform-tenants',
                     element: <PlatformTenantsPage />,

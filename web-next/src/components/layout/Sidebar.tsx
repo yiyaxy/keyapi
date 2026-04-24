@@ -131,11 +131,6 @@ export function Sidebar() {
                 icon={FileBarChart}
               />
               <NavItem
-                to='/admin/ai-apps'
-                label={t('nav.admin.ai_apps')}
-                icon={LayoutGrid}
-              />
-              <NavItem
                 to='/admin/ip-analysis'
                 label={t('nav.admin.ip_analysis')}
                 icon={Network}
@@ -174,6 +169,11 @@ export function Sidebar() {
         )}
         {isPlatform && (
           <SidebarGroup label={t('nav.platform')}>
+            <NavItem
+              to='/admin/ai-apps'
+              label={t('nav.admin.ai_apps')}
+              icon={LayoutGrid}
+            />
             <NavItem
               to='/admin/platform-tenants'
               label={t('nav.admin.platform_tenants')}

@@ -27,7 +27,14 @@ export function PublicLayout() {
             <PublicLink to='/pricing' label={t('nav.pricing')} />
             <PublicLink to='/apps' label={t('nav.apps')} />
             <PublicLink to='/about' label={t('nav.about')} />
-            <PublicLink to='/docs' label={t('nav.docs')} />
+            <a
+              href='https://www.kdocs.cn/l/cgMS9PoVquM0'
+              target='_blank'
+              rel='noopener noreferrer'
+              className='rounded-sm px-3 py-1.5 text-fg-2 transition-colors hover:text-fg-1'
+            >
+              {t('nav.docs')}
+            </a>
           </nav>
           <div className='ml-auto flex items-center gap-2'>
             {status === 'authenticated' ? (

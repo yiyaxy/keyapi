@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AuthContext, type AuthStatus, type User } from '@/hooks/useAuth';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { clearBootstrap, loadBootstrap, saveBootstrap } from '@/lib/bootstrap';
 import { logError } from '@/lib/observability';
 
@@ -43,9 +43,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       if (!mounted.current) return;
       logError(err, { tag: 'auth-refresh' });
-      clearBootstrap();
-      setUser(null);
-      setStatus('unauthenticated');
+      if (err instanceof ApiError && err.status === 401) {
+        clearBootstrap();
+        setUser(null);
+        setStatus('unauthenticated');
+      } else {
+        // Transient network/server error — don't clear the session.
+        // The user likely still has a valid login; a spurious 500 or timeout
+        // should not log them out and force a re-login.
+        setStatus('authenticated');
+      }
     }
   }, []);
 
