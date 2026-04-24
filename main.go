@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -205,7 +206,12 @@ func main() {
 	// Initialize HTTP server
 	server := gin.New()
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
-		common.SysLog(fmt.Sprintf("panic detected: %v", err))
+		requestLine := "-"
+		if c.Request != nil && c.Request.URL != nil {
+			requestLine = fmt.Sprintf("%s %s", c.Request.Method, c.Request.URL.Path)
+		}
+		common.SysError(fmt.Sprintf("panic detected request_id=%s request=%s err=%v", c.GetString(common.RequestIdKey), requestLine, err))
+		common.SysError(fmt.Sprintf("panic stacktrace request_id=%s: %s", c.GetString(common.RequestIdKey), debug.Stack()))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),

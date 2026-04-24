@@ -327,6 +327,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota, relayInfo.TenantId)
 	}
 
+	if relayInfo.PriceData.PlatformCostChannelRatio > 0 {
+		relayInfo.PriceData.PlatformCostQuota = ComputePlatformCostActualText(ctx, relayInfo, relayInfo.PriceData, usage)
+	} else {
+		relayInfo.PriceData.PlatformCostQuota = 0
+	}
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
@@ -412,6 +417,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		// prompt/cache fields here, otherwise old upstream payloads may be double-counted.
 		other["input_tokens_total"] = usage.InputTokens
 	}
+
+	AddDualLedgerLogFields(relayInfo, other, summary.Quota)
 
 	// Tenant TPM counter: accumulate real upstream prompt+completion tokens for this minute.
 	// 用 usage.* 而不是 summary.*：OpenRouter Claude 路径会在 L121/L129 把 summary.PromptTokens

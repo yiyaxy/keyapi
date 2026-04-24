@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/hooks/useAuth';
 import { usePricing, type PricingRow, type PricingVendor } from '@/hooks/usePricing';
-import { usePublicConfig } from '@/hooks/usePublicConfig';
+import { usePublicConfig, type PublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDisplayUsd } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +20,8 @@ const EMPTY_ROWS: PricingRow[] = [];
 const EMPTY_GROUP_RATIO: Record<string, number> = {};
 const EMPTY_USABLE_GROUP: Record<string, string> = {};
 const EMPTY_VENDORS: PricingVendor[] = [];
+
+type PricingCurrencyMode = 'site' | 'usd';
 
 // Backend convention: model_ratio = 1 means $0.002 / 1K input tokens, so the
 // public table needs model_ratio * 2 to display the price per 1M tokens.
@@ -39,6 +41,15 @@ function cacheInputPerMillion(row: PricingRow, mult: number): number | null {
 function formatRatio(ratio: number): string {
   if (!Number.isFinite(ratio)) return '1';
   return String(Math.round(ratio * 1000) / 1000);
+}
+
+function siteCurrencyLabel(cfg: PublicConfig): string {
+  if (cfg.quota_display_type === 'CNY') return 'CNY';
+  if (cfg.quota_display_type === 'CUSTOM') {
+    return cfg.custom_currency_symbol ? `CUSTOM ${cfg.custom_currency_symbol}` : 'CUSTOM';
+  }
+  if (cfg.quota_display_type === 'TOKENS') return 'TOKENS';
+  return 'USD';
 }
 
 type ChipProps = {
@@ -123,12 +134,18 @@ export function PricingPage() {
   // Logged-in users default to their own group until they explicitly switch.
   const [selGroupRaw, setSelGroupRaw] = useState<string | null>(null);
   const [selVendorRaw, setSelVendorRaw] = useState<number | null>(null);
+  const [currencyMode, setCurrencyMode] = useState<PricingCurrencyMode>('site');
   const [query, setQuery] = useState('');
 
   const selGroup =
     selGroupRaw ?? (user?.group && user.group in usableGroup ? user.group : GROUP_ALL);
   const selVendor = selVendorRaw ?? VENDOR_ALL;
   const mult = selGroup !== GROUP_ALL ? (groupRatio[selGroup] ?? 1) : 1;
+  const showUsdSwitch = cfg.quota_display_type !== 'USD';
+  const displayCfg = useMemo(
+    () => (currencyMode === 'usd' ? { ...cfg, quota_display_type: 'USD' as const } : cfg),
+    [cfg, currencyMode]
+  );
 
   const items = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -159,9 +176,43 @@ export function PricingPage() {
   return (
     <TooltipProvider delayDuration={150}>
       <div className='space-y-6'>
-        <header>
-          <h1 className='text-24 font-semibold'>{t('pricing.title')}</h1>
-          <p className='mt-1 text-13 text-fg-2'>{t('pricing.sub')}</p>
+        <header className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div>
+            <h1 className='text-24 font-semibold'>{t('pricing.title')}</h1>
+            <p className='mt-1 text-13 text-fg-2'>{t('pricing.sub')}</p>
+          </div>
+
+          {showUsdSwitch ? (
+            <div className='space-y-1 sm:text-right'>
+              <div className='text-12 uppercase tracking-wide text-fg-2'>
+                {t('pricing.filter.currency')}
+              </div>
+              <div className='inline-flex items-center gap-1 rounded-md border border-line bg-bg-1 p-0.5'>
+                {(
+                  [
+                    { mode: 'site', label: siteCurrencyLabel(cfg) },
+                    { mode: 'usd', label: 'USD' },
+                  ] as const
+                ).map((option) => {
+                  const active = currencyMode === option.mode;
+                  return (
+                    <button
+                      key={option.mode}
+                      type='button'
+                      aria-pressed={active}
+                      onClick={() => setCurrencyMode(option.mode)}
+                      className={cn(
+                        'min-w-[3.5rem] rounded px-3 py-1 text-12 font-medium tabular-nums transition-colors',
+                        active ? 'bg-fg-0 text-bg-0' : 'text-fg-2 hover:bg-bg-2 hover:text-fg-0'
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </header>
 
         {pricing.isPending ? (
@@ -316,16 +367,22 @@ export function PricingPage() {
                         )}
                       </td>
                       <td className='px-3 py-2 text-right'>
-                        {byUsage ? fmtDisplayUsd(inputPerMillion(row, mult), cfg) : EMPTY_CELL}
+                        {byUsage
+                          ? fmtDisplayUsd(inputPerMillion(row, mult), displayCfg)
+                          : EMPTY_CELL}
                       </td>
                       <td className='px-3 py-2 text-right'>
-                        {byUsage ? fmtDisplayUsd(outputPerMillion(row, mult), cfg) : EMPTY_CELL}
+                        {byUsage
+                          ? fmtDisplayUsd(outputPerMillion(row, mult), displayCfg)
+                          : EMPTY_CELL}
                       </td>
                       <td className='px-3 py-2 text-right'>
-                        {byUsage && cacheIn != null ? fmtDisplayUsd(cacheIn, cfg) : EMPTY_CELL}
+                        {byUsage && cacheIn != null
+                          ? fmtDisplayUsd(cacheIn, displayCfg)
+                          : EMPTY_CELL}
                       </td>
                       <td className='px-3 py-2 text-right'>
-                        {byFixed ? fmtDisplayUsd(row.model_price * mult, cfg) : EMPTY_CELL}
+                        {byFixed ? fmtDisplayUsd(row.model_price * mult, displayCfg) : EMPTY_CELL}
                       </td>
                     </tr>
                   );

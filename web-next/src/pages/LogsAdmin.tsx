@@ -72,6 +72,7 @@ export function LogsAdminPage() {
         open={Boolean(detail)}
         log={detail}
         onOpenChange={(o) => !o && setDetail(null)}
+        isAdmin
       />
     </div>
   );

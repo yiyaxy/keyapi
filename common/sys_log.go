@@ -16,22 +16,25 @@ var LogWriterMu sync.RWMutex
 
 func SysLog(s string) {
 	t := time.Now()
+	origin := LogCaller()
 	LogWriterMu.RLock()
-	_, _ = fmt.Fprintf(gin.DefaultWriter, "[SYS] %s | %s | %s\n", FmtLogTime(t), FmtTrace(), s)
+	_, _ = fmt.Fprintf(gin.DefaultWriter, "[SYS] %s | %s | %s | %s\n", FmtLogTime(t), FmtTrace(), origin, s)
 	LogWriterMu.RUnlock()
 }
 
 func SysError(s string) {
 	t := time.Now()
+	origin := LogCaller()
 	LogWriterMu.RLock()
-	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[SYS] %s | %s | %s\n", FmtLogTime(t), FmtTrace(), s)
+	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[SYS] %s | %s | %s | %s\n", FmtLogTime(t), FmtTrace(), origin, s)
 	LogWriterMu.RUnlock()
 }
 
 func FatalLog(v ...any) {
 	t := time.Now()
+	origin := LogCaller()
 	LogWriterMu.RLock()
-	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[FATAL] %s | %s | %v\n", FmtLogTime(t), FmtTrace(), v)
+	_, _ = fmt.Fprintf(gin.DefaultErrorWriter, "[FATAL] %s | %s | %s | %v\n", FmtLogTime(t), FmtTrace(), origin, v)
 	LogWriterMu.RUnlock()
 	os.Exit(1)
 }

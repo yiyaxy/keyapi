@@ -27,10 +27,11 @@ Task 任务通过平台、Action 区分任务
 */
 
 type TaskSubmitResult struct {
-	UpstreamTaskID string
-	TaskData       []byte
-	Platform       constant.TaskPlatform
-	Quota          int
+	UpstreamTaskID    string
+	TaskData          []byte
+	Platform          constant.TaskPlatform
+	Quota             int
+	PlatformCostQuota int
 	//PerCallPrice   types.PriceData
 }
 
@@ -115,6 +116,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 			// 新的 remix 逻辑：直接从原始任务的 BillingContext 中提取 OtherRatios（如果存在）
 			for s, f := range originTask.PrivateData.BillingContext.OtherRatios {
 				info.PriceData.AddOtherRatio(s, f)
+				info.PriceData.AddPlatformCostOtherRatio(s, f)
 			}
 		} else {
 			// 旧的 remix 逻辑：直接从 task data 解析 seconds 和 size（如果存在）
@@ -131,8 +133,11 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 			}
 			info.PriceData.OtherRatios["seconds"] = float64(seconds)
 			info.PriceData.OtherRatios["size"] = 1
+			info.PriceData.AddPlatformCostOtherRatio("seconds", float64(seconds))
+			info.PriceData.AddPlatformCostOtherRatio("size", 1)
 			if sizeStr == "1792x1024" || sizeStr == "1024x1792" {
 				info.PriceData.OtherRatios["size"] = 1.666667
+				info.PriceData.AddPlatformCostOtherRatio("size", 1.666667)
 			}
 		}
 	}
@@ -196,6 +201,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
 		for k, v := range estimatedRatios {
 			info.PriceData.AddOtherRatio(k, v)
+			info.PriceData.AddPlatformCostOtherRatio(k, v)
 		}
 	}
 
@@ -207,6 +213,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			}
 		}
 	}
+	helper.FillPlatformCostPerCallEstimate(c, info)
 	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
 		return nil, service.TaskErrorFromAPIError(apiErr)
 	}
@@ -255,14 +262,20 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		// 基于调整后的 ratios 重新计算 quota
 		finalQuota = recalcQuotaFromRatios(info, adjustedRatios)
 		info.PriceData.OtherRatios = adjustedRatios
+		info.PriceData.PlatformCostOtherRatios = nil
+		for k, v := range adjustedRatios {
+			info.PriceData.AddPlatformCostOtherRatio(k, v)
+		}
 		info.PriceData.Quota = finalQuota
+		helper.FillPlatformCostPerCallEstimate(c, info)
 	}
 
 	return &TaskSubmitResult{
-		UpstreamTaskID: upstreamTaskID,
-		TaskData:       taskData,
-		Platform:       platform,
-		Quota:          finalQuota,
+		UpstreamTaskID:    upstreamTaskID,
+		TaskData:          taskData,
+		Platform:          platform,
+		Quota:             finalQuota,
+		PlatformCostQuota: info.PriceData.PlatformCostQuota,
 	}, nil
 }
 

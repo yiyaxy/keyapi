@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -86,9 +87,9 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 // TrackPlatformChannelUsageIfApplicable records actual settled usage against
 // the tenant's platform-channel quota accumulator. Best-effort only.
 //
-// Cap 语义是"租户对平台的真实成本上限"——不应被租户自设的 platform_markup
-// 放大（否则租户吸收 channel 折扣时 cap 会按虚高的用户账单扣）。因此累加
-// 的是 actualQuota / markup，即 markup 乘入之前的值。
+// Cap semantics are based on the platform-cost ledger, not the user-bill
+// ledger. The accumulated value must come from PriceData.PlatformCostQuota so
+// tenant markup never inflates platform_quota_cap accounting.
 func TrackPlatformChannelUsageIfApplicable(relayInfo *relaycommon.RelayInfo, actualQuota int) {
 	if relayInfo == nil || relayInfo.TenantId <= 0 || actualQuota <= 0 {
 		return
@@ -101,18 +102,19 @@ func TrackPlatformChannelUsageIfApplicable(relayInfo *relaycommon.RelayInfo, act
 	if err != nil || ch == nil || ch.Scope != model.ChannelScopePlatform {
 		return
 	}
-	tenantCost := StripMarkup(actualQuota, relayInfo.PriceMarkupRatio)
-	if tenantCost <= 0 {
+	platformCost := relayInfo.PriceData.PlatformCostQuota
+	if platformCost <= 0 {
+		common.SysError(fmt.Sprintf("platform_cost: tenant %d channel %d settled actualQuota=%d with PlatformCostQuota=0",
+			relayInfo.TenantId, channelID, actualQuota))
 		return
 	}
-	IncrementTenantPlatformChannelUsed(relayInfo.TenantId, tenantCost)
+	IncrementTenantPlatformChannelUsed(relayInfo.TenantId, platformCost)
 }
 
-// StripMarkup reverses the markup multiplication applied in
-// applyPlatformMarkup, returning the "tenant-vs-platform real cost" portion
-// of a settled quota. Used by both pre-consume enforcement and settle-time
-// platform_quota_cap accounting so cap stays decoupled from the tenant's
-// user-facing markup choice.
+// StripMarkup reverses markup multiplication for legacy callers.
+//
+// As of dual-ledger v1 (2026-04-24), the platform-cost path does not use this:
+// enforcement and platform usage tracking read PriceData.PlatformCost* directly.
 func StripMarkup(quota int, markup float64) int {
 	if quota <= 0 {
 		return 0

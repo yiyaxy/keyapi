@@ -50,6 +50,9 @@ func TestLogError_NilContext_DoesNotPanic(t *testing.T) {
 	if !strings.Contains(got, "-") {
 		t.Fatalf("LogError output missing '-' trace placeholder, got %q", got)
 	}
+	if !strings.Contains(got, "logger/") || !strings.Contains(got, ".go:") {
+		t.Fatalf("LogError output missing caller origin, got %q", got)
+	}
 }
 
 func TestLogInfo_CtxRequestId_AppearsInOutput(t *testing.T) {
@@ -65,6 +68,9 @@ func TestLogInfo_CtxRequestId_AppearsInOutput(t *testing.T) {
 	}
 	if !strings.Contains(got, "test-ctx-id") {
 		t.Fatalf("expected message in output, got %q", got)
+	}
+	if !strings.Contains(got, "logger/") || !strings.Contains(got, ".go:") {
+		t.Fatalf("expected caller origin in output, got %q", got)
 	}
 }
 

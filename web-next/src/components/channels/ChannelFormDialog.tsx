@@ -100,6 +100,14 @@ const jsonString = z.string().refine((s) => {
   }
 }, 'invalid JSON');
 
+const positiveNullableNumber = z
+  .union([z.string(), z.number(), z.null(), z.undefined()])
+  .transform((value) => {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = typeof value === 'number' ? value : parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  });
+
 const schema = z.object({
   // basics
   name: z.string().min(1).max(60),
@@ -114,6 +122,8 @@ const schema = z.object({
   proxy: z.string(),
   system_prompt: z.string(),
   channel_ratio: z.number().min(0),
+  markup_ratio: positiveNullableNumber,
+  platform_cost_ratio: positiveNullableNumber,
   model_ratio_override: jsonString,
   // routing / reliability
   test_model: z.string(),
@@ -131,9 +141,10 @@ const schema = z.object({
   multi_key_mode: z.enum(['polling', 'random']),
   batch_add_set_key_prefix_2_name: z.boolean(),
 });
-type Values = z.infer<typeof schema>;
+type FormValues = z.input<typeof schema>;
+type Values = z.output<typeof schema>;
 
-const EMPTY: Values = {
+const EMPTY: FormValues = {
   name: '',
   type: 1,
   key: '',
@@ -146,6 +157,8 @@ const EMPTY: Values = {
   proxy: '',
   system_prompt: '',
   channel_ratio: 1,
+  markup_ratio: '',
+  platform_cost_ratio: '',
   model_ratio_override: '',
   test_model: '',
   model_mapping: '',
@@ -161,7 +174,7 @@ const EMPTY: Values = {
   batch_add_set_key_prefix_2_name: false,
 };
 
-function fromChannel(ch: Channel): Values {
+function fromChannel(ch: Channel): FormValues {
   const setting = parseSetting(ch.setting);
   return {
     name: ch.name,
@@ -176,6 +189,8 @@ function fromChannel(ch: Channel): Values {
     proxy: typeof setting.proxy === 'string' ? setting.proxy : '',
     system_prompt: typeof setting.system_prompt === 'string' ? setting.system_prompt : '',
     channel_ratio: typeof setting.channel_ratio === 'number' ? setting.channel_ratio : 1,
+    markup_ratio: ch.markup_ratio ?? '',
+    platform_cost_ratio: ch.platform_cost_ratio ?? '',
     model_ratio_override: setting.model_ratio_override
       ? JSON.stringify(setting.model_ratio_override, null, 2)
       : '',
@@ -344,7 +359,7 @@ export function ChannelFormDialog({
       : !(user && Math.max(user.role, user.platform_role) >= 100);
   const [modelSearch, setModelSearch] = useState('');
 
-  const form = useForm<Values>({
+  const form = useForm<FormValues, undefined, Values>({
     resolver: zodResolver(schema),
     defaultValues: channel ? fromChannel(channel) : EMPTY,
   });
@@ -384,6 +399,12 @@ export function ChannelFormDialog({
       tag: values.tag || undefined,
       remark: values.remark || undefined,
       setting: settingJson || undefined,
+      ...(effectiveScope === 'platform'
+        ? {
+            markup_ratio: values.markup_ratio,
+            platform_cost_ratio: values.platform_cost_ratio,
+          }
+        : {}),
     };
 
     try {
@@ -622,6 +643,36 @@ export function ChannelFormDialog({
                 <p className='text-12 text-fg-2'>{t('form.field.channel_ratio_hint')}</p>
               </div>
             </div>
+            {effectiveScope === 'platform' && (
+              <div className='grid grid-cols-2 gap-3'>
+                <div className='space-y-2'>
+                  <Label htmlFor='ch-markup-ratio'>{t('form.field.markup_ratio')}</Label>
+                  <Input
+                    id='ch-markup-ratio'
+                    type='number'
+                    step='0.01'
+                    min={0}
+                    placeholder={t('form.field.markup_ratio_placeholder')}
+                    {...form.register('markup_ratio')}
+                  />
+                  <p className='text-12 text-fg-2'>{t('form.field.markup_ratio_hint')}</p>
+                </div>
+                <div className='space-y-2'>
+                  <Label htmlFor='ch-platform-cost-ratio'>
+                    {t('form.field.platform_cost_ratio')}
+                  </Label>
+                  <Input
+                    id='ch-platform-cost-ratio'
+                    type='number'
+                    step='0.01'
+                    min={0}
+                    placeholder={t('form.field.platform_cost_ratio_placeholder')}
+                    {...form.register('platform_cost_ratio')}
+                  />
+                  <p className='text-12 text-fg-2'>{t('form.field.platform_cost_ratio_hint')}</p>
+                </div>
+              </div>
+            )}
           </Section>
 
           {/* Models */}

@@ -105,14 +105,15 @@ func logHelper(ctx context.Context, level string, msg string) {
 	if id == "" {
 		id = trace.Get()
 	}
+	origin := common.LogCaller()
 	now := time.Now()
 	common.LogWriterMu.RLock()
 	writer := gin.DefaultErrorWriter
 	if level == loggerINFO {
 		writer = gin.DefaultWriter
 	}
-	_, _ = fmt.Fprintf(writer, "[%s] %s | %-*s | %s\n",
-		level, common.FmtLogTime(now), common.TraceColumnWidth, id, msg)
+	_, _ = fmt.Fprintf(writer, "[%s] %s | %-*s | %s | %s\n",
+		level, common.FmtLogTime(now), common.TraceColumnWidth, id, origin, msg)
 	common.LogWriterMu.RUnlock()
 	logCount++ // we don't need accurate count, so no lock here
 	if logCount > maxLogCount && !setupLogWorking {

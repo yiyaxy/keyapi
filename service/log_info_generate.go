@@ -224,6 +224,30 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	}
 }
 
+func AddDualLedgerLogFields(relayInfo *relaycommon.RelayInfo, other map[string]interface{}, userBillQuota int) {
+	if relayInfo == nil || other == nil {
+		return
+	}
+	other["pricing_version"] = "dual-ledger-v1"
+	other["user_bill_quota"] = userBillQuota
+	other["platform_cost_quota"] = relayInfo.PriceData.PlatformCostQuota
+	if relayInfo.PriceMarkupRatio > 0 {
+		other["tenant_markup_ratio"] = relayInfo.PriceMarkupRatio
+	}
+	if relayInfo.PriceData.PlatformCostChannelRatio > 0 {
+		other["platform_cost_channel_ratio"] = relayInfo.PriceData.PlatformCostChannelRatio
+	}
+	var channelID int
+	if relayInfo.ChannelMeta != nil {
+		channelID = relayInfo.ChannelId
+	}
+	if channelID > 0 {
+		if ch, err := model.CacheGetChannel(channelID); err == nil && ch != nil {
+			other["platform_channel"] = ch.Scope == model.ChannelScopePlatform
+		}
+	}
+}
+
 func appendRequestConversionChain(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
 	if relayInfo == nil || other == nil {
 		return
@@ -316,5 +340,6 @@ func GenerateMjOtherInfo(relayInfo *relaycommon.RelayInfo, priceData types.Price
 		other["user_group_ratio"] = priceData.GroupRatioInfo.GroupSpecialRatio
 	}
 	appendRequestPath(nil, relayInfo, other)
+	AddDualLedgerLogFields(relayInfo, other, priceData.Quota)
 	return other
 }

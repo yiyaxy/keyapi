@@ -543,6 +543,7 @@ func migrateDBFast() error {
 		{&PaymentOrder{}, "PaymentOrder"},
 		{&PaymentRefund{}, "PaymentRefund"},
 		{&TenantChannelOverride{}, "TenantChannelOverride"},
+		{&TenantPlatformChannelMarkup{}, "TenantPlatformChannelMarkup"},
 		{&UserMergeLog{}, "UserMergeLog"},
 		{&AiApp{}, "AiApp"},
 	}
