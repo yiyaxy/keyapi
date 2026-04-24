@@ -38,6 +38,9 @@ type Log struct {
 	Ip               string `json:"ip" gorm:"index;default:''"`
 	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	Other            string `json:"other"`
+	// AppId: 对应 AI 应用广场中的应用 ID。当使用绑定了 AppId 的 Token 发起调用时，自动回写此字段。
+	// 这是三方应用结算的唯一数据依据：通过按 AppId 聚合查询可计算每个应用的收益。
+	AppId int `json:"app_id" gorm:"default:0;index"`
 }
 
 // don't use iota, avoid change log type value
@@ -212,6 +215,9 @@ type RecordConsumeLogParams struct {
 	// log represents an admin channel test so downstream spend/RPM/TPM
 	// aggregations (which filter on type = LogTypeConsume) exclude it.
 	LogType int `json:"log_type,omitempty"`
+	// AppId: 对应 AI 应用广场的应用 ID。使用绑定了 AppId 的 Session Token 发起调用时，
+	// 会自动从 Token 中解析并写入日志。
+	AppId int `json:"app_id,omitempty"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -251,6 +257,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		Ip:               c.ClientIP(),
 		RequestId:        requestId,
 		Other:            otherStr,
+		AppId:            params.AppId,
 	}
 	err := LOG_DB.Create(log).Error
 	if err != nil {

@@ -4,7 +4,7 @@
 # sudo systemctl enable new-api
 # sudo systemctl status new-api
 [Unit]
-Description=CaMeL API Service
+Description=ALL Models Service
 After=network.target
 
 [Service]

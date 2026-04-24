@@ -25,7 +25,9 @@ export function PublicLayout() {
           <nav className='flex items-center gap-1 text-13'>
             <PublicLink to='/' label={t('nav.home')} end />
             <PublicLink to='/pricing' label={t('nav.pricing')} />
+            <PublicLink to='/apps' label={t('nav.apps')} />
             <PublicLink to='/about' label={t('nav.about')} />
+            <PublicLink to='/docs' label={t('nav.docs')} />
           </nav>
           <div className='ml-auto flex items-center gap-2'>
             {status === 'authenticated' ? (

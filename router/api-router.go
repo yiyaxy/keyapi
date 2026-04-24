@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/QuantumNous/new-api/controller/app"
 	"github.com/QuantumNous/new-api/controller/auth"
 	"github.com/QuantumNous/new-api/controller/catalog"
 	"github.com/QuantumNous/new-api/controller/channel"
@@ -724,6 +725,27 @@ func SetApiRouter(router *gin.Engine) {
 			paymentRoute.POST("/wechat/topup/jsapi", payment.CreateWechatTopupJsapi)
 			paymentRoute.GET("/orders", payment.ListSelfPaymentOrders)
 			paymentRoute.GET("/orders/:out_trade_no", payment.GetPaymentOrderByOutTradeNoHandler)
+		}
+
+		// AI App Marketplace — public browse & session token exchange
+		appPublicRoute := apiRouter.Group("/app")
+		{
+			appPublicRoute.GET("", app.ListApps)
+			appPublicRoute.GET("/:slug", app.GetApp)
+			appPublicRoute.POST("/:slug/guest-session", middleware.CriticalRateLimit(), app.GetGuestToken)
+			appPublicRoute.POST("/:slug/session", middleware.UserAuth(), app.GetSessionToken)
+		}
+
+		// AI App Marketplace — admin management
+		appAdminRoute := apiRouter.Group("/admin/app")
+		appAdminRoute.Use(middleware.TenantAdminAuth())
+		{
+			appAdminRoute.GET("", app.AdminListApps)
+			appAdminRoute.POST("", app.AdminCreateApp)
+			appAdminRoute.GET("/:id", app.AdminGetApp)
+			appAdminRoute.PUT("/:id", app.AdminUpdateApp)
+			appAdminRoute.PATCH("/:id/status", app.AdminUpdateAppStatus)
+			appAdminRoute.DELETE("/:id", app.AdminDeleteApp)
 		}
 	}
 }

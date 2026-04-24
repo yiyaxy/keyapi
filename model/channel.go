@@ -65,7 +65,7 @@ type Channel struct {
 	// Scope distinguishes "platform" (shared, tenant_id=0) and "tenant" (owned).
 	// See docs/superpowers/specs/2026-04-20-shared-channels-design.md §3.1.
 	Scope       string   `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
-	MarkupRatio *float64 `json:"markup_ratio" gorm:"type:decimal(10,4);default:null"`
+	MarkupRatio *float64 `json:"markup_ratio" gorm:"default:null"`
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 

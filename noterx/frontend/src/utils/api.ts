@@ -17,31 +17,77 @@ const api = axios.create({
   timeout: 120_000,
 });
 
+const SESSION_KEY = "noterx.session_token";
+const BASE_URL_KEY = "noterx.llm_base_url";
+const MODEL_KEY = "noterx.llm_model";
+
 /**
- * 提取动态 LLM 配置，支持 URL 参数覆盖与 localStorage 持久化
+ * 初始化：把 URL 里的参数提取到 sessionStorage，然后立即从 URL 清除。
+ * - `token`        — 平台生成的 Session Token（短期凭证，取代明文 API Key）
+ * - `llm_base_url` — 可选，覆盖后端默认 base_url（开发/调试用）
+ * - `llm_model`    — 可选，指定模型
+ *
+ * Token 存到 sessionStorage（标签页关闭即清除），不写 localStorage。
+ */
+function initLlmConfig(): void {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    let dirty = false;
+
+    const token = params.get("token");
+    if (token) {
+      sessionStorage.setItem(SESSION_KEY, token);
+      params.delete("token");
+      dirty = true;
+    }
+
+    const baseUrl = params.get("llm_base_url");
+    if (baseUrl) {
+      sessionStorage.setItem(BASE_URL_KEY, baseUrl);
+      params.delete("llm_base_url");
+      dirty = true;
+    }
+
+    const model = params.get("llm_model");
+    if (model) {
+      sessionStorage.setItem(MODEL_KEY, model);
+      params.delete("llm_model");
+      dirty = true;
+    }
+
+    // 从浏览器历史中清除敏感参数，防止 token 出现在历史记录里
+    if (dirty) {
+      const newSearch = params.toString();
+      const newUrl = newSearch
+        ? `${window.location.pathname}?${newSearch}${window.location.hash}`
+        : `${window.location.pathname}${window.location.hash}`;
+      window.history.replaceState(null, "", newUrl);
+    }
+  } catch (e) {
+    console.warn("Failed to init LLM config from URL", e);
+  }
+}
+
+// 页面加载时执行一次
+initLlmConfig();
+
+/**
+ * 组装每次请求携带的 LLM 鉴权头。
+ * API Key 只从 sessionStorage 读取，绝不出现在 URL 中。
  */
 function getLlmHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   try {
-    const params = new URLSearchParams(window.location.search);
-    const keys = ["llm_api_key", "llm_base_url", "llm_model"];
-    
-    keys.forEach(key => {
-      const val = params.get(key);
-      if (val) {
-        localStorage.setItem(key, val);
-      }
-    });
+    const token = sessionStorage.getItem(SESSION_KEY);
+    if (token) headers["X-LLM-API-Key"] = token;
 
-    const apiKey = localStorage.getItem("llm_api_key");
-    const baseUrl = localStorage.getItem("llm_base_url");
-    const model = localStorage.getItem("llm_model");
-
-    if (apiKey) headers["X-LLM-API-Key"] = apiKey;
+    const baseUrl = sessionStorage.getItem(BASE_URL_KEY);
     if (baseUrl) headers["X-LLM-Base-Url"] = baseUrl;
+
+    const model = sessionStorage.getItem(MODEL_KEY);
     if (model) headers["X-LLM-Model"] = model;
   } catch (e) {
-    console.warn("Failed to get LLM config from URL or localStorage", e);
+    console.warn("Failed to get LLM config from sessionStorage", e);
   }
   return headers;
 }

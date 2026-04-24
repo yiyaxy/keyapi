@@ -36,7 +36,7 @@ type TenantPlan struct {
 	// PlatformMarkup is the default markup ratio for platform channels.
 	// Falls back value when channel.markup_ratio is unset.
 	// Defaults to 1.0 (no markup).
-	PlatformMarkup float64 `json:"platform_markup" gorm:"type:decimal(10,4);not null;default:1.0"`
+	PlatformMarkup float64 `json:"platform_markup" gorm:"not null;default:1.0"`
 	// PlatformQuotaCap is the per-period quota ceiling for platform-scope channels.
 	// -1 means unlimited.
 	PlatformQuotaCap int64 `json:"platform_quota_cap" gorm:"bigint;default:-1"`

@@ -22,7 +22,7 @@ type InvoiceItem struct {
 
 	// Snapshots
 	TradeNo       string  `json:"trade_no" gorm:"type:varchar(255);index;not null"`
-	Money         float64 `json:"money" gorm:"type:decimal(10,6);not null;default:0"`
+	Money         float64 `json:"money" gorm:"not null;default:0"`
 	Currency      string  `json:"currency" gorm:"type:varchar(8);not null;default:'CNY'"`
 	PaymentMethod string  `json:"payment_method" gorm:"type:varchar(50);default:''"`
 	CompleteTime  int64   `json:"complete_time" gorm:"type:bigint;index"`
