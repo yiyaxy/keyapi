@@ -30,7 +30,12 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
-	DeletedAt          gorm.DeletedAt `gorm:"index"`
+	// AppId: AI 应用广场的应用 ID，非零表示此 Token 是为某个 AI 应用生成的 Session Token。
+	// 调用日志里会回写 AppId，作为三方结算的唯一依据。
+	AppId   int  `json:"app_id" gorm:"default:0;index"`
+	// IsGuest: true 表示此 Token 是为未登录访客生成的体验 Token。
+	IsGuest bool `json:"is_guest" gorm:"default:false"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 func (token *Token) Clean() {

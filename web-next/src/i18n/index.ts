@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import { initReactI18next } from 'react-i18next';
 
+import enApps from './locales/en/apps.json';
 import enAccount from './locales/en/account.json';
 import enAff from './locales/en/aff.json';
 import enAgent from './locales/en/agent.json';
@@ -34,6 +35,7 @@ import enTenantPay from './locales/en/tenantpay.json';
 import enTickets from './locales/en/tickets.json';
 import enTopup from './locales/en/topup.json';
 import enUsers from './locales/en/users.json';
+import zhApps from './locales/zh/apps.json';
 import zhAccount from './locales/zh/account.json';
 import zhAff from './locales/zh/aff.json';
 import zhAgent from './locales/zh/agent.json';
@@ -73,6 +75,7 @@ void i18n
   .init({
     resources: {
       zh: {
+        apps: zhApps,
         common: zhCommon,
         auth: zhAuth,
         shell: zhShell,
@@ -107,6 +110,7 @@ void i18n
         tenantpay: zhTenantPay,
       },
       en: {
+        apps: enApps,
         common: enCommon,
         auth: enAuth,
         shell: enShell,
@@ -144,6 +148,7 @@ void i18n
     fallbackLng: 'zh',
     supportedLngs: ['zh', 'en'],
     ns: [
+      'apps',
       'common',
       'auth',
       'shell',

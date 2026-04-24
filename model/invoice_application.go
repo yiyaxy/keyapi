@@ -55,7 +55,7 @@ type InvoiceApplication struct {
 	Provider    string `json:"provider" gorm:"type:varchar(32);not null;default:'manual'"`
 	IssueMode   string `json:"issue_mode" gorm:"type:varchar(32);not null;default:'manual'"`
 
-	TotalMoney float64 `json:"total_money" gorm:"type:decimal(10,6);not null;default:0"`
+	TotalMoney float64 `json:"total_money" gorm:"not null;default:0"`
 	Currency   string  `json:"currency" gorm:"type:varchar(8);not null;default:'CNY'"`
 
 	IssueKindCode               string `json:"issue_kind_code" gorm:"type:varchar(16);default:''"`

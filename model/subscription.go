@@ -163,7 +163,7 @@ type SubscriptionPlan struct {
 	PromoHighlights string `json:"promo_highlights" gorm:"type:text;default:''"`
 
 	// Display money amount (follow existing code style: float64 for money)
-	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
+	PriceAmount float64 `json:"price_amount" gorm:"not null;default:0"`
 	Currency    string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
 
 	DurationUnit  string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
@@ -191,7 +191,7 @@ type SubscriptionPlan struct {
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
 	// Inviter reward amount in USD (0 = no reward)
-	InviterRewardAmount float64 `json:"inviter_reward_amount" gorm:"type:decimal(10,6);not null;default:0"`
+	InviterRewardAmount float64 `json:"inviter_reward_amount" gorm:"not null;default:0"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`

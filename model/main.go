@@ -293,7 +293,13 @@ func migrateDB() error {
 	}
 	if currentVersion == CurrentSchemaVersion {
 		common.SysLog(fmt.Sprintf("schema version matches (%s), skipping AutoMigrate", currentVersion))
-		// 版本匹配仍需执行的启动动作：缓存预热 + 默认租户幂等兜底
+		// 版本匹配时仍做轻量幂等检查：只对不存在的新表跑 AutoMigrate，
+		// 避免因漏 bump 版本导致新表缺失，同时不触发全列元数据扫描。
+		if err := ensureMissingTables(
+			&AiApp{},
+		); err != nil {
+			log.Printf("Warning: ensureMissingTables: %v", err)
+		}
 		LoadIpBanCache()
 		LoadPromptRuleCache()
 		if err := EnsureDefaultTenant(); err != nil {
@@ -316,6 +322,10 @@ func migrateDB() error {
 	if err := migrateUsersUsernameUnique(); err != nil {
 		return err
 	}
+
+	// SQLite: glebarez/sqlite 的 DDL 解析器不支持括号内嵌括号的列类型（如
+	// decimal(10,4)），先把已有表里的问题列改成无括号类型再跑 AutoMigrate。
+	fixSQLiteParenthesizedColumnTypes()
 
 	// 并行 AutoMigrate 所有表（表清单维护在 migrateDBFast 内部）
 	if err := migrateDBFast(); err != nil {
@@ -535,6 +545,7 @@ func migrateDBFast() error {
 		{&TenantChannelOverride{}, "TenantChannelOverride"},
 		{&TenantPlatformChannelMarkup{}, "TenantPlatformChannelMarkup"},
 		{&UserMergeLog{}, "UserMergeLog"},
+		{&AiApp{}, "AiApp"},
 	}
 
 	for _, m := range migrations {
@@ -1004,6 +1015,123 @@ func checkMySQLChineseSupport(db *gorm.DB) error {
 		)
 	}
 	return nil
+}
+
+// ensureMissingTables 仅对尚不存在的表跑 AutoMigrate，已存在的跳过。
+// 用于在 schema 版本快速路径里补建漏掉的新表，不触发全列元数据扫描。
+func ensureMissingTables(models ...interface{}) error {
+	for _, m := range models {
+		if DB.Migrator().HasTable(m) {
+			continue
+		}
+		if err := DB.AutoMigrate(m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// fixSQLiteParenthesizedColumnTypes 修复 glebarez/sqlite DDL 解析器无法处理
+// 含括号的列类型（如 decimal(10,4)）导致的 "invalid DDL, unbalanced brackets" 问题。
+// 扫描 sqlite_master 找到所有含 decimal( 的表，逐列 DROP；AutoMigrate 随后会用
+// 无括号类型（model struct 里已去掉 type:decimal(...)）重建这些列。
+// 要求 SQLite >= 3.35（2021-03）支持 ALTER TABLE ... DROP COLUMN。
+func fixSQLiteParenthesizedColumnTypes() {
+	if !common.UsingSQLite {
+		return
+	}
+	type tableRow struct {
+		Name string `gorm:"column:name"`
+		SQL  string `gorm:"column:sql"`
+	}
+	var tables []tableRow
+	if err := DB.Raw("SELECT name, sql FROM sqlite_master WHERE type='table' AND sql LIKE '%decimal(%'").Scan(&tables).Error; err != nil {
+		log.Printf("Warning: fixSQLiteParenthesizedColumnTypes query: %v", err)
+		return
+	}
+	for _, t := range tables {
+		for _, col := range sqliteDecimalColumns(t.SQL) {
+			stmt := fmt.Sprintf("ALTER TABLE `%s` DROP COLUMN `%s`", t.Name, col)
+			if err := DB.Exec(stmt).Error; err != nil {
+				log.Printf("Warning: fixSQLiteParenthesizedColumnTypes drop %s.%s: %v", t.Name, col, err)
+			} else {
+				log.Printf("fixSQLiteParenthesizedColumnTypes: dropped %s.%s (decimal type)", t.Name, col)
+			}
+		}
+	}
+}
+
+// sqliteDecimalColumns 从 SQLite CREATE TABLE DDL 中提取所有 decimal(...) 类型的列名。
+// GORM 生成的 DDL 是单行的，因此不能按换行切分——必须按括号深度为 0 的逗号切列定义。
+func sqliteDecimalColumns(ddl string) []string {
+	// 找到列定义列表：第一个 '(' 到与之匹配的 ')'
+	start := strings.IndexByte(ddl, '(')
+	if start < 0 {
+		return nil
+	}
+	depth, end := 0, len(ddl)-1
+	for i := start; i < len(ddl); i++ {
+		switch ddl[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				end = i
+				goto foundEnd
+			}
+		}
+	}
+foundEnd:
+	body := ddl[start+1 : end]
+
+	// 在括号深度 0 处按逗号切分，得到每个列定义片段
+	var colDefs []string
+	depth, last := 0, 0
+	for i, ch := range body {
+		switch ch {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				colDefs = append(colDefs, strings.TrimSpace(body[last:i]))
+				last = i + 1
+			}
+		}
+	}
+	colDefs = append(colDefs, strings.TrimSpace(body[last:]))
+
+	var result []string
+	for _, def := range colDefs {
+		if strings.Contains(strings.ToLower(def), "decimal(") {
+			if name := sqliteExtractColName(def); name != "" {
+				result = append(result, name)
+			}
+		}
+	}
+	return result
+}
+
+// sqliteExtractColName 从单个列定义片段中提取列名（支持反引号、双引号、裸名）。
+func sqliteExtractColName(colDef string) string {
+	if i := strings.IndexByte(colDef, '`'); i >= 0 {
+		rest := colDef[i+1:]
+		if j := strings.IndexByte(rest, '`'); j >= 0 {
+			return rest[:j]
+		}
+	}
+	if i := strings.IndexByte(colDef, '"'); i >= 0 {
+		rest := colDef[i+1:]
+		if j := strings.IndexByte(rest, '"'); j >= 0 {
+			return rest[:j]
+		}
+	}
+	if fields := strings.Fields(colDef); len(fields) > 0 {
+		return fields[0]
+	}
+	return ""
 }
 
 var (

@@ -129,6 +129,8 @@ export default function Home() {
   const [userEdited, setUserEdited] = useState({ title: false, content: false, category: false });
   /** null=探测中；false=连不上本机 API（多为未启动或 Vite 代理端口不对） */
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
+  /** 是否持有平台下发的 Session Token（无 token 则大模型调用会 401） */
+  const hasToken = Boolean(sessionStorage.getItem("noterx.session_token"));
 
   const uploadPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analyzePulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -693,6 +695,16 @@ export default function Home() {
                 }} />
               )}
             </Box>
+
+            {!hasToken && (
+              <Alert severity="info" sx={{ fontSize: 12, py: 0.5, borderRadius: "10px" }}>
+                请通过{" "}
+                <a href="/apps" style={{ color: "inherit", fontWeight: 600 }}>
+                  应用广场
+                </a>{" "}
+                进入薯柒，系统将自动为您配置大模型凭证。
+              </Alert>
+            )}
 
             {apiReachable === false && (
               <Alert severity="warning" sx={{ fontSize: 12, py: 0.5, borderRadius: "10px" }}>

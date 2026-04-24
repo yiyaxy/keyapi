@@ -28,6 +28,8 @@
   "nav.admin.message": "消息中心",
   "nav.admin.agent_log": "Agent 日志",
   "nav.admin.agent_report": "Agent 报告",
+  "nav.apps": "应用广场",
+  "nav.admin.ai_apps": "应用广场管理",
   "nav.admin.ip_analysis": "IP 分析",
   "nav.admin.analytics": "使用分析",
   "nav.admin.purchase": "购买",

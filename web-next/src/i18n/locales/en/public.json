@@ -1,7 +1,9 @@
 {
   "nav.home": "Home",
   "nav.pricing": "Pricing",
+  "nav.apps": "Marketplace",
   "nav.about": "About",
+  "nav.docs": "Docs",
   "nav.login": "Sign in",
   "nav.register": "Sign up",
   "nav.dashboard": "Open dashboard",
@@ -52,13 +54,13 @@
   "pricing.failed": "Failed to load pricing",
   "pricing.per_token": "{{amount}}",
   "about.title": "About",
-  "about.body1": "CaMeL-api is a self-hosted LLM gateway and asset manager. It exposes a single OpenAI-compatible endpoint backed by 40+ upstream providers, with per-tenant isolation, quota accounting, and auditable usage.",
-  "about.body2": "This web console is the operator UI. Source code and deployment notes live in your repository.",
+  "about.body1": "ALL Models is a powerful LLM gateway and aggregation platform. By exposing a unified OpenAI-compatible endpoint, we seamlessly integrate with dozens of major providers, delivering low-latency, highly-available AI capabilities on demand.",
+  "about.body2": "With deep multi-tenant isolation and precise quota management built into our core, we ensure transparent billing and reliable routing for every request. Our mission is to abstract away the complexity of LLM infrastructure so you can focus on building great products.",
   "legal.terms.title": "User agreement",
-  "legal.terms.body": "This placeholder agreement exists so the application never renders an empty legal route. Replace with your actual terms before public launch.",
+  "legal.terms.body": "Welcome to ALL Models. By accessing and using our services, you agree to these terms. You must use the API services provided by this platform in compliance with local laws. Any abuse, malicious attacks, or use of the APIs for illegal purposes is strictly prohibited. We reserve the right to suspend or terminate your account if any violation is found. The platform does not assume direct liability for API call failures caused by upstream network fluctuations, but we will do our best to ensure high system availability.",
   "legal.privacy.title": "Privacy policy",
-  "legal.privacy.body": "This placeholder policy exists so the application never renders an empty legal route. Replace with your actual policy before public launch.",
+  "legal.privacy.body": "We take your privacy seriously. ALL Models only collects information strictly necessary for system operation and billing (e.g., registration email, recharge records, invocation logs, and token consumption). We will not sell or disclose your personal information or usage logs to any third party. The platform implements strict data isolation mechanisms to ensure the security of your keys. Please be cautious not to include sensitive personal information in your prompts when using Generative AI services.",
   "legal.refund.title": "Refund policy",
-  "legal.refund.body": "This placeholder policy exists so the application never renders an empty legal route. Replace with your actual policy before public launch.",
-  "footer.rights": "© {{year}} CaMeL-api"
+  "legal.refund.body": "The services provided by ALL Models (including but not limited to API quota recharges, subscriptions, and Quota purchases) are classified as digital virtual goods. Once a recharge or purchase is successful, the corresponding quota is automatically credited to your account. Due to the nature of digital goods and the irreversibility of upstream API billing, all virtual goods and services sold on this platform are non-refundable. Please carefully confirm your needs and the amount before making any purchase.",
+  "footer.rights": "© {{year}} ALL Models"
 }

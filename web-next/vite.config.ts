@@ -2,6 +2,10 @@ import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// const baseTarget = "https://token.cymoon.cn/"
+
+const baseTarget = "http://localhost:3000"
+
 export default defineConfig({
   server: {
     port: 4928,
@@ -10,9 +14,9 @@ export default defineConfig({
       allow: ['..'],
     },
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
-      '/pg': { target: 'http://localhost:3000', changeOrigin: true },
-      '/v1': { target: 'http://localhost:3000', changeOrigin: true },
+      '/api': { target: baseTarget, changeOrigin: true },
+      '/pg': { target: baseTarget, changeOrigin: true },
+      '/v1': { target: baseTarget, changeOrigin: true },
     },
   },
   plugins: [react()],

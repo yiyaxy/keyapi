@@ -17,6 +17,7 @@ import {
   Inbox,
   KeyRound,
   LayoutDashboard,
+  LayoutGrid,
   LifeBuoy,
   List,
   Megaphone,
@@ -70,6 +71,7 @@ export function Sidebar() {
           <NavItem to='/keys' label={t('nav.keys')} icon={KeyRound} />
           <NavItem to='/playground' label={t('nav.playground')} icon={Play} />
           <NavItem to='/logs' label={t('nav.logs')} icon={List} />
+          <NavItem to='/apps' label={t('nav.apps')} icon={LayoutGrid} />
         </SidebarGroup>
         <SidebarGroup label={t('nav.billing')}>
           <NavItem to='/topup' label={t('nav.topup')} icon={Receipt} />
@@ -127,6 +129,11 @@ export function Sidebar() {
                 to='/admin/agent-report'
                 label={t('nav.admin.agent_report')}
                 icon={FileBarChart}
+              />
+              <NavItem
+                to='/admin/ai-apps'
+                label={t('nav.admin.ai_apps')}
+                icon={LayoutGrid}
               />
               <NavItem
                 to='/admin/ip-analysis'
