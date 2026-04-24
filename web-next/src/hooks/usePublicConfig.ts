@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
 import { api } from '@/lib/api';
 
@@ -10,6 +11,12 @@ export type PublicConfig = {
   quota_per_unit: number;
   quota_display_type: 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM';
   usd_exchange_rate: number;
+  register_enabled: boolean;
+  password_register_enabled: boolean;
+  password_login_enabled: boolean;
+  email_verification: boolean;
+  wechat_login?: boolean;
+  wx_mini_login?: boolean;
   price?: number;
   custom_currency_symbol?: string;
   custom_currency_exchange_rate?: number;
@@ -22,6 +29,12 @@ const DEFAULT: PublicConfig = {
   quota_per_unit: 500_000,
   quota_display_type: 'USD',
   usd_exchange_rate: 7,
+  register_enabled: true,
+  password_register_enabled: true,
+  password_login_enabled: true,
+  email_verification: true,
+  wechat_login: false,
+  wx_mini_login: false,
   price: 7,
   custom_currency_symbol: '¤',
   custom_currency_exchange_rate: 1,
@@ -30,16 +43,17 @@ const DEFAULT: PublicConfig = {
 
 export function usePublicConfig() {
   const q = useQuery<PublicConfig>({
-    queryKey: ['public-config'] as const,
-    queryFn: async () => {
-      const res = await api.get<PublicConfig>('/api/status');
-      // /api/status may not populate all optional fields; merge with defaults
-      return { ...DEFAULT, ...res.data };
-    },
+    queryKey: ['site-status'] as const,
+    queryFn: async () => (await api.get<PublicConfig>('/api/status')).data,
     // /api/status is cheap but rarely changes; cache for the whole session.
     staleTime: Infinity,
   });
-  return q.data ?? DEFAULT;
+  // Merge at read time (not in queryFn) so ['site-status'] cache can be
+  // shared with useSiteBranding regardless of fetch race. useMemo keeps
+  // the returned reference stable across renders — consumers pass this
+  // object into useEffect deps (EditUserDialog etc.), a new ref each
+  // render causes infinite update loops (React #185).
+  return useMemo(() => (q.data ? { ...DEFAULT, ...q.data } : DEFAULT), [q.data]);
 }
 
 // snapToCents: raw quota 是整数，但充值/退款等场景用户期望看到整分金额
@@ -53,7 +67,7 @@ export function usePublicConfig() {
 function snapToCents(
   value: number,
   rate: number,
-  quotaPerUnit: number,
+  quotaPerUnit: number
 ): { value: number; digits: number } {
   if (!isFinite(value) || !isFinite(rate) || quotaPerUnit <= 0) {
     return { value, digits: 6 };

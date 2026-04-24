@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -9,15 +10,18 @@ import { AuthProvider } from '@/providers/AuthProvider';
 import { Register } from './Register';
 
 function mount() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthProvider>
-      <MemoryRouter initialEntries={['/register']}>
-        <Routes>
-          <Route path='/register' element={<Register />} />
-          <Route path='/' element={<div data-testid='home'>home</div>} />
-        </Routes>
-      </MemoryRouter>
-    </AuthProvider>
+    <QueryClientProvider client={qc}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/register']}>
+          <Routes>
+            <Route path='/register' element={<Register />} />
+            <Route path='/' element={<div data-testid='home'>home</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

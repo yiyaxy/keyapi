@@ -19,6 +19,7 @@ export type TenantPlan = {
   renew_period_days: number;
   renew_price_amount: number;
   renew_currency: string;
+  platform_markup: number;
   created_at: number;
   updated_at: number;
 };
@@ -71,6 +72,20 @@ export function useTenantPlan() {
       return res.data;
     },
     staleTime: 30_000,
+  });
+}
+
+// useUpdateTenantPlanMarkup 是租户管理员自助调整"对用户加价倍率"的 mutation。
+// 对应后端 PUT /api/tenant/plan/markup，服务端限制范围 [0.1, 10]。
+export function useUpdateTenantPlanMarkup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (markup: number) => {
+      await api.put('/api/tenant/plan/markup', { platform_markup: markup });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tenant', 'plan'] });
+    },
   });
 }
 

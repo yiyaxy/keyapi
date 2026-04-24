@@ -63,6 +63,8 @@
   "cost.multiplier": "Multiplier",
   "cost.group_ratio": "Group ratio",
   "cost.channel_ratio": "Channel ratio",
+  "cost.platform_markup": "Platform markup",
+  "cost.tenant_cost": "Tenant cost",
   "cost.original": "Original",
   "cost.billed": "Billed",
   "cost.cache_tokens": "Cache hit",

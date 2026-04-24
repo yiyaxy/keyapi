@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useCompleteSetup, useSetupStatus } from '@/hooks/useSetup';
+import { useSiteBranding } from '@/hooks/useSiteBranding';
 import { ApiError } from '@/lib/api';
 
 const schema = z
@@ -35,6 +36,8 @@ export function SetupPage() {
   const status = useSetupStatus();
   const complete = useCompleteSetup();
   const navigate = useNavigate();
+  const { systemName, logo } = useSiteBranding();
+  const logoAlt = systemName || 'AllModels';
 
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -71,7 +74,7 @@ export function SetupPage() {
     return (
       <div className='mx-auto max-w-xl space-y-4 pt-16'>
         <div className='flex items-center gap-3'>
-          <Logo size={28} />
+          <Logo size={28} url={logo} alt={logoAlt} />
           <h1 className='text-20 font-semibold'>{t('already_done.title')}</h1>
         </div>
         <p className='text-13 text-fg-2'>{t('already_done.body')}</p>

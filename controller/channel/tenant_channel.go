@@ -2,6 +2,7 @@ package channel
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -19,12 +20,25 @@ import (
 
 type tenantChannelOut struct {
 	*model.Channel
-	TenantDisabled bool `json:"tenant_disabled,omitempty"`
+	TenantDisabled      bool `json:"tenant_disabled,omitempty"`
+	TenantChannelLocked bool `json:"tenant_channel_locked,omitempty"`
 }
 
-func annotateTenantChannels(channels []*model.Channel, disabled map[int]struct{}) []tenantChannelOut {
+func annotateTenantChannels(
+	channels []*model.Channel,
+	disabled map[int]struct{},
+	locked map[int]struct{},
+) []tenantChannelOut {
 	out := make([]tenantChannelOut, 0, len(channels))
 	for _, ch := range channels {
+		// 被平台管理员 admin-lock 的平台渠道：租户视角完全隐藏——既不能
+		// 切换也不能使用，没有在 UI 里占位的理由。超管视角走
+		// /admin/platform-tenants/.../channel/overrides，不受影响。
+		if ch.Scope == model.ChannelScopePlatform {
+			if _, isLocked := locked[ch.Id]; isLocked {
+				continue
+			}
+		}
 		model.SanitizeForTenantView(ch)
 		clearChannelInfo(ch)
 		item := tenantChannelOut{Channel: ch}
@@ -52,6 +66,13 @@ func TenantListChannels(c *gin.Context) {
 	order := "priority desc"
 	if idSort {
 		order = "id desc"
+	}
+
+	disabled, _ := model.GetTenantDisabledPlatformChannels(tenantId)
+	locked, _ := model.GetTenantLockedPlatformChannels(tenantId)
+	lockedIds := make([]int, 0, len(locked))
+	for id := range locked {
+		lockedIds = append(lockedIds, id)
 	}
 
 	var channelData []*model.Channel
@@ -83,7 +104,7 @@ func TenantListChannels(c *gin.Context) {
 				channelData = append(channelData, ch)
 			}
 		}
-		total = int64(len(channelData))
+		// tag 模式没有 DB where-filter，真实可见行数 annotate 之后才稳。
 	} else {
 		baseQuery := model.DB.Model(&model.Channel{}).Where("scope = ? OR tenant_id = ?", model.ChannelScopePlatform, tenantId)
 		if typeFilter >= 0 {
@@ -93,6 +114,11 @@ func TenantListChannels(c *gin.Context) {
 			baseQuery = baseQuery.Where("status = ?", common.ChannelStatusEnabled)
 		} else if statusFilter == 0 {
 			baseQuery = baseQuery.Where("status != ?", common.ChannelStatusEnabled)
+		}
+		// 租户视角隐藏 admin-lock 的平台渠道：Count + Find 一起减掉，
+		// 避免 total 比 items 多、分页尾页凭空少几行。
+		if len(lockedIds) > 0 {
+			baseQuery = baseQuery.Where("NOT (scope = ? AND id IN ?)", model.ChannelScopePlatform, lockedIds)
 		}
 		if err := baseQuery.Count(&total).Error; err != nil {
 			common.ApiError(c, err)
@@ -104,9 +130,12 @@ func TenantListChannels(c *gin.Context) {
 		}
 	}
 
-	disabled, _ := model.GetTenantDisabledPlatformChannels(tenantId)
+	items := annotateTenantChannels(channelData, disabled, locked)
+	if enableTagMode {
+		total = int64(len(items))
+	}
 	common.ApiSuccess(c, gin.H{
-		"items":     annotateTenantChannels(channelData, disabled),
+		"items":     items,
 		"total":     total,
 		"page":      pageInfo.GetPage(),
 		"page_size": pageInfo.GetPageSize(),
@@ -162,12 +191,14 @@ func TenantSearchChannels(c *gin.Context) {
 	}
 
 	disabled, _ := model.GetTenantDisabledPlatformChannels(tenantId)
+	locked, _ := model.GetTenantLockedPlatformChannels(tenantId)
+	items := annotateTenantChannels(channelData, disabled, locked)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"items": annotateTenantChannels(channelData, disabled),
-			"total": len(channelData),
+			"items": items,
+			"total": len(items),
 		},
 	})
 }
@@ -185,7 +216,14 @@ func TenantGetChannel(c *gin.Context) {
 		return
 	}
 	disabled, _ := model.GetTenantDisabledPlatformChannels(tenantId)
-	out := annotateTenantChannels([]*model.Channel{ch}, disabled)
+	locked, _ := model.GetTenantLockedPlatformChannels(tenantId)
+	out := annotateTenantChannels([]*model.Channel{ch}, disabled, locked)
+	// annotate 会把 admin-lock 的平台渠道过滤掉；按 id 直接查 locked 渠道
+	// 要等同于"不存在"——保持 list / get 语义一致，防止信息泄漏。
+	if len(out) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "channel not found"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": out[0]})
 }
 
@@ -258,7 +296,14 @@ func TenantToggleChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "can only toggle platform channels"})
 		return
 	}
-	if err := model.SetTenantChannelDisabled(tenantId, channelId, body.Disabled); err != nil {
+	if err := model.SetTenantChannelDisabledAsTenant(tenantId, channelId, body.Disabled); err != nil {
+		if errors.Is(err, model.ErrTenantChannelLocked) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "此渠道已被平台管理员禁用，无法由租户启用",
+			})
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -314,9 +359,9 @@ func TenantBatchSetChannelTag(c *gin.Context) {
 }
 
 func TenantDeleteDisabledChannel(c *gin.Context) { DeleteDisabledChannel(c) }
-func TenantDisableTagChannels(c *gin.Context)  { DisableTagChannels(c) }
-func TenantEnableTagChannels(c *gin.Context)   { EnableTagChannels(c) }
-func TenantEditTagChannels(c *gin.Context)     { EditTagChannels(c) }
+func TenantDisableTagChannels(c *gin.Context)    { DisableTagChannels(c) }
+func TenantEnableTagChannels(c *gin.Context)     { EnableTagChannels(c) }
+func TenantEditTagChannels(c *gin.Context)       { EditTagChannels(c) }
 
 func TenantGetTagModels(c *gin.Context) {
 	tenantId := middleware.GetTenantId(c)

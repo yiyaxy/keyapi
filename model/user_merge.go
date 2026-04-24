@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -92,7 +93,7 @@ func MergeUserInto(sourceId, targetId, operatorId int, reason string) (*MergeRes
 			return err
 		}
 
-		// 3) (user_id, provider) 唯一的表：按 provider 逐个处理。
+		// 3) (user_id, provider_id) unique table: merge provider bindings one by one.
 		if err := moveOAuthBindings(tx, sourceId, targetId); err != nil {
 			return err
 		}
@@ -206,6 +207,13 @@ func MergeUserInto(sourceId, targetId, operatorId int, reason string) (*MergeRes
 			updates["stripe_customer"] = source.StripeCustomer
 		}
 
+		// PostgreSQL checks the partial unique indexes on github_id/...
+		// immediately. Clear source's identities before target inherits them,
+		// otherwise the target update collides with the still-live source row.
+		if err := clearSourceExternalIdentitiesForMerge(tx, sourceId); err != nil {
+			return fmt.Errorf("清空源账户第三方身份失败: %w", err)
+		}
+
 		if err := WithTenantBypass(tx).Unscoped().Model(&User{}).
 			Where("id = ?", targetId).
 			Updates(updates).Error; err != nil {
@@ -218,18 +226,18 @@ func MergeUserInto(sourceId, targetId, operatorId int, reason string) (*MergeRes
 		if err := WithTenantBypass(tx).Unscoped().Model(&User{}).
 			Where("id = ?", sourceId).
 			Updates(map[string]interface{}{
-				"wechat_id":      "",
-				"github_id":      "",
-				"discord_id":     "",
-				"oidc_id":        "",
-				"telegram_id":    "",
-				"linux_do_id":    "",
+				"wechat_id":       "",
+				"github_id":       "",
+				"discord_id":      "",
+				"oidc_id":         "",
+				"telegram_id":     "",
+				"linux_do_id":     "",
 				"stripe_customer": "",
-				"quota":          0,
-				"aff_quota":      0,
-				"status":         common.UserStatusDisabled,
-				"merged_into":    targetId,
-				"deleted_at":     gorm.DeletedAt{Time: time.Now(), Valid: true},
+				"quota":           0,
+				"aff_quota":       0,
+				"status":          common.UserStatusDisabled,
+				"merged_into":     targetId,
+				"deleted_at":      gorm.DeletedAt{Time: time.Now(), Valid: true},
 			}).Error; err != nil {
 			return fmt.Errorf("标记源账户合并失败: %w", err)
 		}
@@ -307,35 +315,44 @@ func deleteConflictingCheckins(tx *gorm.DB, tenantId, sourceId, targetId int) er
 // moveUserUniqueRow 处理 user_id 唯一的表：source 有且 target 无 → reassign；
 // 两者都有 → 删 source 行，保留 target。
 func moveUserUniqueRow(tx *gorm.DB, table string, sourceId, targetId int) error {
+	return moveUserUniqueColumnRow(tx, table, "user_id", sourceId, targetId)
+}
+
+func moveUserUniqueColumnRow(tx *gorm.DB, table, column string, sourceId, targetId int) error {
+	hasColumn, err := tableHasColumn(tx, table, column)
+	if err != nil || !hasColumn {
+		return err
+	}
 	var targetCount int64
 	if err := WithTenantBypass(tx).Table(table).
-		Where("user_id = ?", targetId).Count(&targetCount).Error; err != nil {
+		Where(column+" = ?", targetId).Count(&targetCount).Error; err != nil {
 		return err
 	}
 	if targetCount > 0 {
 		return WithTenantBypass(tx).Exec(
-			fmt.Sprintf("DELETE FROM %s WHERE user_id = ?", table), sourceId,
+			fmt.Sprintf("DELETE FROM %s WHERE %s = ?", table, column), sourceId,
 		).Error
 	}
 	return WithTenantBypass(tx).Exec(
-		fmt.Sprintf("UPDATE %s SET user_id = ? WHERE user_id = ?", table),
+		fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", table, column, column),
 		targetId, sourceId,
 	).Error
 }
 
-// moveOAuthBindings 把 source 的 oauth binding reassign 到 target；若 target
-// 已绑同一个 provider，删 source 的避免撞 (user_id, provider) 唯一键。
+// moveOAuthBindings reassigns source OAuth bindings to target. If target
+// already has the same provider_id, delete source's row first to avoid the
+// (user_id, provider_id) unique key.
 func moveOAuthBindings(tx *gorm.DB, sourceId, targetId int) error {
-	var targetProviders []string
+	var targetProviderIds []int
 	if err := WithTenantBypass(tx).Table("user_oauth_bindings").
 		Where("user_id = ?", targetId).
-		Pluck("provider", &targetProviders).Error; err != nil {
+		Pluck("provider_id", &targetProviderIds).Error; err != nil {
 		return err
 	}
-	if len(targetProviders) > 0 {
+	if len(targetProviderIds) > 0 {
 		if err := WithTenantBypass(tx).Exec(
-			"DELETE FROM user_oauth_bindings WHERE user_id = ? AND provider IN ?",
-			sourceId, targetProviders,
+			"DELETE FROM user_oauth_bindings WHERE user_id = ? AND provider_id IN ?",
+			sourceId, targetProviderIds,
 		).Error; err != nil {
 			return err
 		}
@@ -346,15 +363,94 @@ func moveOAuthBindings(tx *gorm.DB, sourceId, targetId int) error {
 	).Error
 }
 
-// reassignUserId 把指定表里 user_id = source 的所有行改为 user_id = target。
+func clearSourceExternalIdentitiesForMerge(tx *gorm.DB, sourceId int) error {
+	return WithTenantBypass(tx).Unscoped().Model(&User{}).
+		Where("id = ?", sourceId).
+		Updates(map[string]interface{}{
+			"wechat_id":       "",
+			"github_id":       "",
+			"discord_id":      "",
+			"oidc_id":         "",
+			"telegram_id":     "",
+			"linux_do_id":     "",
+			"stripe_customer": "",
+		}).Error
+}
+
+// reassignUserId moves user ownership for business tables. Some tables use
+// sender_id/uploader_id/etc. instead of user_id, so keep those differences
+// centralized here.
 func reassignUserId(tx *gorm.DB, table string, sourceId, targetId int) error {
-	// 有些表可能还不存在（旧库升级场景），提前检测防护。
-	if !tx.Migrator().HasTable(table) {
-		return nil
+	switch table {
+	case "ticket_replies":
+		return reassignUserColumn(tx, table, "sender_id", sourceId, targetId)
+	case "ticket_attachments", "invoice_uploads":
+		return reassignUserColumn(tx, table, "uploader_id", sourceId, targetId)
+	case "messages":
+		if err := reassignUserColumn(tx, table, "target_user_id", sourceId, targetId); err != nil {
+			return err
+		}
+		return reassignUserColumn(tx, table, "sender_id", sourceId, targetId)
+	case "message_read_statuses":
+		if err := deleteConflictingPairRows(tx, table, "user_id", "message_id", sourceId, targetId); err != nil {
+			return err
+		}
+		return reassignUserColumn(tx, table, "user_id", sourceId, targetId)
+	case "user_rebate_settings":
+		return moveUserUniqueColumnRow(tx, table, "inviter_id", sourceId, targetId)
+	case "aff_rebate_logs":
+		if err := reassignUserColumn(tx, table, "user_id", sourceId, targetId); err != nil {
+			return err
+		}
+		return reassignUserColumn(tx, table, "invitee_id", sourceId, targetId)
+	default:
+		return reassignUserColumn(tx, table, "user_id", sourceId, targetId)
+	}
+}
+
+func reassignUserColumn(tx *gorm.DB, table, column string, sourceId, targetId int) error {
+	hasColumn, err := tableHasColumn(tx, table, column)
+	if err != nil || !hasColumn {
+		return err
 	}
 	return WithTenantBypass(tx).Exec(
-		fmt.Sprintf("UPDATE %s SET user_id = ? WHERE user_id = ?", table),
+		fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", table, column, column),
 		targetId, sourceId,
 	).Error
 }
 
+func deleteConflictingPairRows(tx *gorm.DB, table, userColumn, pairColumn string, sourceId, targetId int) error {
+	hasUserColumn, err := tableHasColumn(tx, table, userColumn)
+	if err != nil || !hasUserColumn {
+		return err
+	}
+	hasPairColumn, err := tableHasColumn(tx, table, pairColumn)
+	if err != nil || !hasPairColumn {
+		return err
+	}
+	return WithTenantBypass(tx).Exec(
+		fmt.Sprintf(`DELETE FROM %s
+WHERE %s = ?
+  AND %s IN (SELECT %s FROM (
+      SELECT %s FROM %s WHERE %s = ?
+  ) AS merge_conflicts)`,
+			table, userColumn, pairColumn, pairColumn, pairColumn, table, userColumn),
+		sourceId, targetId,
+	).Error
+}
+
+func tableHasColumn(tx *gorm.DB, table, column string) (bool, error) {
+	if tx == nil || table == "" || column == "" || !tx.Migrator().HasTable(table) {
+		return false, nil
+	}
+	cols, err := tx.Migrator().ColumnTypes(table)
+	if err != nil {
+		return false, err
+	}
+	for _, col := range cols {
+		if strings.EqualFold(col.Name(), column) {
+			return true, nil
+		}
+	}
+	return false, nil
+}

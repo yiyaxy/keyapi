@@ -26,10 +26,11 @@ export function useUpdateOption() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['options'] });
-      // Quota / currency / payment option changes feed usePublicConfig
-      // consumers (Topup, RechargeCard, Pricing, QuotaCard, …). Drop the
-      // public-config cache so those views re-render without a full reload.
-      void qc.invalidateQueries({ queryKey: ['public-config'] });
+      // Option changes feed both usePublicConfig (quota/currency/payment)
+      // and useSiteBranding (SystemName/Logo/Footer) which share the
+      // ['site-status'] cache. Drop it so those views re-render without
+      // a full reload.
+      void qc.invalidateQueries({ queryKey: ['site-status'] });
     },
   });
 }

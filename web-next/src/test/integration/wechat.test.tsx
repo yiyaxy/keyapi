@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -12,17 +13,20 @@ import { AuthProvider } from '@/providers/AuthProvider';
 describe('integration: WeChat code login', () => {
   test('click WeChat → enter code → dashboard ComingSoon', async () => {
     const user = userEvent.setup();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <AuthProvider>
-        <MemoryRouter initialEntries={['/login']}>
-          <Routes>
-            <Route path='/login' element={<Login />} />
-            <Route element={<ProtectedRoute />}>
-              <Route path='/' element={<ComingSoon feature='Dashboard' />} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </AuthProvider>
+      <QueryClientProvider client={qc}>
+        <AuthProvider>
+          <MemoryRouter initialEntries={['/login']}>
+            <Routes>
+              <Route path='/login' element={<Login />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path='/' element={<ComingSoon feature='Dashboard' />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </AuthProvider>
+      </QueryClientProvider>
     );
     await user.click(await screen.findByRole('button', { name: /wechat/i }));
     await user.type(await screen.findByLabelText(/wechat code/i), 'ok-code');

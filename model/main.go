@@ -288,6 +288,9 @@ func migrateDB() error {
 	}
 
 	currentVersion := GetSchemaVersion()
+	if err := migrateTenantPaymentConfigProvider(); err != nil {
+		return err
+	}
 	if currentVersion == CurrentSchemaVersion {
 		common.SysLog(fmt.Sprintf("schema version matches (%s), skipping AutoMigrate", currentVersion))
 		// 版本匹配仍需执行的启动动作：缓存预热 + 默认租户幂等兜底
@@ -560,6 +563,47 @@ func migrateLOGDB() error {
 	return nil
 }
 
+func migrateTenantPaymentConfigProvider() error {
+	const tableName = "tenant_payment_configs"
+	if DB == nil || !DB.Migrator().HasTable(tableName) {
+		return nil
+	}
+
+	if !DB.Migrator().HasColumn(&TenantPaymentConfig{}, "Provider") {
+		var addSQL string
+		switch {
+		case common.UsingPostgreSQL:
+			addSQL = "ALTER TABLE tenant_payment_configs ADD COLUMN provider varchar(32)"
+		case common.UsingMySQL:
+			addSQL = "ALTER TABLE tenant_payment_configs ADD COLUMN provider varchar(32) NULL"
+		case common.UsingSQLite:
+			addSQL = "ALTER TABLE tenant_payment_configs ADD COLUMN provider varchar(32) NOT NULL DEFAULT 'wechat'"
+		default:
+			addSQL = "ALTER TABLE tenant_payment_configs ADD COLUMN provider varchar(32)"
+		}
+		if err := DB.Exec(addSQL).Error; err != nil {
+			return fmt.Errorf("add %s.provider: %w", tableName, err)
+		}
+	}
+
+	if err := DB.Exec("UPDATE tenant_payment_configs SET provider = ? WHERE provider IS NULL OR provider = ''", "wechat").Error; err != nil {
+		return fmt.Errorf("backfill %s.provider: %w", tableName, err)
+	}
+
+	switch {
+	case common.UsingPostgreSQL:
+		if err := DB.Exec("ALTER TABLE tenant_payment_configs ALTER COLUMN provider SET NOT NULL").Error; err != nil {
+			return fmt.Errorf("enforce %s.provider not null: %w", tableName, err)
+		}
+	case common.UsingMySQL:
+		if err := DB.Exec("ALTER TABLE tenant_payment_configs MODIFY COLUMN provider varchar(32) NOT NULL").Error; err != nil {
+			return fmt.Errorf("enforce %s.provider not null: %w", tableName, err)
+		}
+	}
+
+	return nil
+}
+
 type sqliteColumnDef struct {
 	Name string
 	DDL  string
@@ -748,7 +792,7 @@ func migrateUsersUsernameUnique() error {
 // wechat_id / telegram_id / linux_do_id —— so concurrent OAuth
 // registrations within one tenant can't produce duplicate rows.
 //
-// Partial `WHERE col <> ''` keeps empty strings out of the index (most
+// Partial `WHERE col <> ”` keeps empty strings out of the index (most
 // users never bind any given provider), so the composite still permits
 // many rows with empty github_id in the same tenant.
 //

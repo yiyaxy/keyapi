@@ -14,6 +14,8 @@
   "platform_row.plan_markup": "按计划加价",
   "platform_row.disabled_for_tenant": "当前租户已禁用",
   "platform_row.enabled": "已启用",
+  "platform_row.admin_locked": "平台已禁用",
+  "platform_row.admin_locked_hint": "平台管理员已禁用，不可由租户启用",
   "filters.name": "名称 / 密钥",
   "filters.type.all": "全部类型",
   "filters.status.all": "全部状态",

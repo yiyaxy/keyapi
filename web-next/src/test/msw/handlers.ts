@@ -15,6 +15,16 @@ const okUser = {
 };
 
 export const handlers = [
+  http.get('/api/status', () =>
+    HttpResponse.json({
+      register_enabled: true,
+      password_register_enabled: true,
+      password_login_enabled: true,
+      email_verification: true,
+      wechat_login: true,
+    })
+  ),
+
   http.get('/api/user/self', ({ request }) => {
     if (!request.headers.get('new-api-user')) {
       return HttpResponse.json({ success: false, message: 'unauthorized' }, { status: 401 });

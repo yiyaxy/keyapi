@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -8,14 +9,17 @@ import '@/i18n';
 import { Reset } from './Reset';
 
 function mount(path: string) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path='/reset' element={<Reset />} />
-        <Route path='/user/reset' element={<Reset />} />
-        <Route path='/forgot' element={<div data-testid='forgot'>forgot</div>} />
-      </Routes>
-    </MemoryRouter>
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path='/reset' element={<Reset />} />
+          <Route path='/user/reset' element={<Reset />} />
+          <Route path='/forgot' element={<div data-testid='forgot'>forgot</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 

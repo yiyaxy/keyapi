@@ -1,11 +1,19 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePublicConfig, type PublicConfig } from '@/hooks/usePublicConfig';
-import { useTenantPlan } from '@/hooks/useTenantBilling';
+import {
+  useTenantPlan,
+  useUpdateTenantPlanMarkup,
+} from '@/hooks/useTenantBilling';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 function formatLimit(
@@ -81,7 +89,77 @@ export function TenantPlanPage() {
           </dl>
         </CardContent>
       </Card>
+
+      <MarkupCard currentMarkup={p.platform_markup ?? 1} />
     </div>
+  );
+}
+
+function MarkupCard({ currentMarkup }: { currentMarkup: number }) {
+  const { t } = useTranslation('tenant');
+  const update = useUpdateTenantPlanMarkup();
+  const [input, setInput] = useState<string>(() => String(currentMarkup));
+
+  // 后端更新后 currentMarkup 会变（useTenantPlan invalidate 后），
+  // 重置本地输入到最新值——避免用户刚保存又看到旧输入残留。
+  useEffect(() => {
+    setInput(String(currentMarkup));
+  }, [currentMarkup]);
+
+  const parsed = Number(input);
+  const valid = Number.isFinite(parsed) && parsed >= 0.1 && parsed <= 10;
+  const dirty = valid && parsed !== currentMarkup;
+
+  function onSave() {
+    if (!dirty) return;
+    update.mutate(parsed, {
+      onSuccess: () => toast.success(t('plan.markup.saved')),
+      onError: (e) => toast.error((e as Error).message),
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('plan.markup.title')}</CardTitle>
+      </CardHeader>
+      <CardContent className='space-y-3'>
+        <p className='text-12 leading-relaxed text-fg-2'>
+          {t('plan.markup.hint')}
+        </p>
+        <div className='flex items-end gap-2'>
+          <div className='space-y-1'>
+            <Label htmlFor='markup-input'>{t('plan.markup.field')}</Label>
+            <div className='flex items-center gap-2'>
+              <Input
+                id='markup-input'
+                type='number'
+                min={0.1}
+                max={10}
+                step={0.05}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                className='w-32 tabular-nums'
+              />
+              <span className='text-13 text-fg-2'>x</span>
+            </div>
+          </div>
+          <Button
+            type='button'
+            onClick={onSave}
+            disabled={!dirty || update.isPending}
+          >
+            {t('plan.markup.save')}
+          </Button>
+        </div>
+        <p className='text-12 text-fg-2'>
+          {t('plan.markup.current', { value: currentMarkup })}
+        </p>
+        {!valid && (
+          <p className='text-12 text-danger'>{t('plan.markup.out_of_range')}</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

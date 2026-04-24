@@ -61,7 +61,7 @@ func wxMiniResolveUser(code string, tenantId int) (*model.User, error) {
 		return &user, nil
 	}
 
-	if !common.RegisterEnabled {
+	if !service.GetConfigBool(tenantId, "RegisterEnabled", common.RegisterEnabled) {
 		return nil, errors.New("管理员关闭了新用户注册")
 	}
 

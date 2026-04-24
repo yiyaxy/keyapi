@@ -63,6 +63,8 @@
   "cost.multiplier": "倍率",
   "cost.group_ratio": "分组倍率",
   "cost.channel_ratio": "渠道倍率",
+  "cost.platform_markup": "平台加价",
+  "cost.tenant_cost": "真实成本",
   "cost.original": "原始",
   "cost.billed": "计费",
   "cost.cache_tokens": "缓存命中",
