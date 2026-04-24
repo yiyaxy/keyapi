@@ -8,9 +8,11 @@ Description=ALL Models Service
 After=network.target
 
 [Service]
-User=ubuntu  # 注意修改用户名
-WorkingDirectory=/path/to/new-api  # 注意修改路径
-ExecStart=/path/to/new-api/new-api --port 3000 --log-dir /path/to/new-api/logs  # 注意修改路径和端口号
+Type=simple
+User=root
+WorkingDirectory=/data/service/key-api/keyapi
+EnvironmentFile=/data/service/key-api/keyapi/.env
+ExecStart=/data/service/key-api/keyapi/new-api --port 3000 --log-dir /data/service/key-api/keyapi/logs
 Restart=always
 RestartSec=5
 
