@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,10 +42,14 @@ func ReloadTenantRoutingCache(tenantId int) {
 	tenantDisabledChannel[tenantId] = dis
 }
 
-// InvalidateTenantRoutingCache refreshes the cache for a single tenant.
-// Alias for ReloadTenantRoutingCache — kept for naming clarity at call sites.
+// InvalidateTenantRoutingCache refreshes the cache for a single tenant
+// AND broadcasts to peer instances so they reload too.
 func InvalidateTenantRoutingCache(tenantId int) {
 	ReloadTenantRoutingCache(tenantId)
+	_ = common.PublishInvalidate(common.InvalidateMessage{
+		Type: "tenant_routing",
+		Key:  strconv.Itoa(tenantId),
+	})
 }
 
 // GetCachedTenantMode returns the cached mode or the default when unloaded.

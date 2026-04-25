@@ -97,7 +97,12 @@ func InvalidateTenantOptionCache(tenantId int) {
 	})
 }
 
-// InvalidateTenantOptionCacheKey removes a single cached entry for a tenant+key pair.
+// InvalidateTenantOptionCacheKey removes a single cached entry for a tenant+key pair
+// AND broadcasts to peer instances so they evict their copies too.
 func InvalidateTenantOptionCacheKey(tenantId int, key string) {
 	tenantOptionCache.Delete(cacheKey(tenantId, key))
+	_ = common.PublishInvalidate(common.InvalidateMessage{
+		Type: "tenant_option",
+		Key:  cacheKey(tenantId, key), // "<tenantId>:<optionKey>"
+	})
 }
