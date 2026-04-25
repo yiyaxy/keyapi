@@ -118,3 +118,71 @@ func TestChannelDelete_PublishesInvalidate(t *testing.T) {
 	}
 	waitForChannelInvalidate(t, ch, 2*time.Second)
 }
+
+func TestUpdateChannelStatus_PublishesInvalidate(t *testing.T) {
+	setupTestRedisForChannel(t)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM channels")
+		DB.Exec("DELETE FROM abilities")
+	})
+
+	c := &Channel{Name: "test-ch", Type: 1, Key: "sk-x", Status: common.ChannelStatusEnabled, Models: "gpt-4"}
+	if err := c.Insert(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	sub := common.RDB.Subscribe(context.Background(), common.InvalidateChannel)
+	defer sub.Close()
+	ch := sub.Channel()
+	time.Sleep(100 * time.Millisecond)
+
+	UpdateChannelStatus(c.Id, "", common.ChannelStatusAutoDisabled, "test-failover")
+	waitForChannelInvalidate(t, ch, 2*time.Second)
+}
+
+func TestEnableChannelByTag_PublishesInvalidate(t *testing.T) {
+	setupTestRedisForChannel(t)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM channels")
+		DB.Exec("DELETE FROM abilities")
+	})
+
+	tag := "demo" // Channel.Tag 是 *string
+	c := &Channel{Name: "tagged", Type: 1, Key: "sk-x", Status: common.ChannelStatusManuallyDisabled, Models: "gpt-4", Tag: &tag, TenantId: 1}
+	if err := c.Insert(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	sub := common.RDB.Subscribe(context.Background(), common.InvalidateChannel)
+	defer sub.Close()
+	ch := sub.Channel()
+	time.Sleep(100 * time.Millisecond)
+
+	if err := EnableChannelByTag("demo", 1); err != nil {
+		t.Fatalf("EnableChannelByTag: %v", err)
+	}
+	waitForChannelInvalidate(t, ch, 2*time.Second)
+}
+
+func TestBatchInsertChannels_PublishesInvalidate(t *testing.T) {
+	setupTestRedisForChannel(t)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM channels")
+		DB.Exec("DELETE FROM abilities")
+	})
+
+	sub := common.RDB.Subscribe(context.Background(), common.InvalidateChannel)
+	defer sub.Close()
+	ch := sub.Channel()
+	time.Sleep(100 * time.Millisecond)
+
+	// 注意：BatchInsertChannels 签名是 []Channel（值切片），不是 []*Channel — 见 model/channel.go:589
+	channels := []Channel{
+		{Name: "batch-1", Type: 1, Key: "sk-1", Status: common.ChannelStatusEnabled, Models: "gpt-4"},
+		{Name: "batch-2", Type: 1, Key: "sk-2", Status: common.ChannelStatusEnabled, Models: "gpt-4"},
+	}
+	if err := BatchInsertChannels(channels); err != nil {
+		t.Fatalf("BatchInsertChannels: %v", err)
+	}
+	waitForChannelInvalidate(t, ch, 2*time.Second)
+}

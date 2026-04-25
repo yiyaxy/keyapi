@@ -625,7 +625,11 @@ func batchInsertChannels(db *gorm.DB, channels []Channel) (retErr error) {
 			}
 		}
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 func BatchDeleteChannels(tenantId int, ids []int) error {
@@ -647,7 +651,11 @@ func BatchDeleteChannels(tenantId int, ids []int) error {
 			return err
 		}
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 // BatchDeleteChannelsBypass 超管级跨租户批量删除，授权由 controller 的 role
@@ -914,16 +922,11 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 			return false
 		}
 		if channelCache.ChannelInfo.IsMultiKey {
-			// Use per-channel lock to prevent concurrent map read/write with GetNextEnabledKey
 			pollingLock := GetChannelPollingLock(channelId)
 			pollingLock.Lock()
-			// 如果是多Key模式，更新缓存中的状态
 			handlerMultiKeyUpdate(channelCache, usingKey, status, reason)
 			pollingLock.Unlock()
-			//CacheUpdateChannel(channelCache)
-			//return true
 		} else {
-			// 如果缓存渠道存在，且状态已是目标状态，直接返回
 			if channelCache.Status == status {
 				return false
 			}
@@ -931,51 +934,47 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 		}
 	}
 
-	var loadedTenantId int
-	shouldUpdateAbilities := false
-	defer func() {
-		// loadedTenantId > 0 → 租户渠道；== 0 → 平台渠道（UpdateAbilityStatus
-		// 内部走 bypass 分支）。两种都要联动 abilities.enabled。
-		if shouldUpdateAbilities {
-			err := UpdateAbilityStatus(loadedTenantId, channelId, status == common.ChannelStatusEnabled)
-			if err != nil {
-				common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))
-			}
-		}
-	}()
 	channel, err := GetChannelById(channelId, true)
 	if err != nil {
 		return false
-	} else {
-		loadedTenantId = channel.TenantId
-		if channel.Status == status {
-			return false
-		}
+	}
+	loadedTenantId := channel.TenantId
+	if channel.Status == status {
+		return false // 无实际变更，不 publish
+	}
 
-		if channel.ChannelInfo.IsMultiKey {
-			beforeStatus := channel.Status
-			// Protect map writes with the same per-channel lock used by readers
-			pollingLock := GetChannelPollingLock(channelId)
-			pollingLock.Lock()
-			handlerMultiKeyUpdate(channel, usingKey, status, reason)
-			pollingLock.Unlock()
-			if beforeStatus != channel.Status {
-				shouldUpdateAbilities = true
-			}
-		} else {
-			info := channel.GetOtherInfo()
-			info["status_reason"] = reason
-			info["status_time"] = common.GetTimestamp()
-			channel.SetOtherInfo(info)
-			channel.Status = status
+	shouldUpdateAbilities := false
+	if channel.ChannelInfo.IsMultiKey {
+		beforeStatus := channel.Status
+		pollingLock := GetChannelPollingLock(channelId)
+		pollingLock.Lock()
+		handlerMultiKeyUpdate(channel, usingKey, status, reason)
+		pollingLock.Unlock()
+		if beforeStatus != channel.Status {
 			shouldUpdateAbilities = true
 		}
-		err = channel.SaveWithoutKey()
-		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, err))
-			return false
+	} else {
+		info := channel.GetOtherInfo()
+		info["status_reason"] = reason
+		info["status_time"] = common.GetTimestamp()
+		channel.SetOtherInfo(info)
+		channel.Status = status
+		shouldUpdateAbilities = true
+	}
+
+	if err := channel.SaveWithoutKey(); err != nil {
+		common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, err))
+		return false // SaveWithoutKey 失败，channel 没写成功，不 publish
+	}
+
+	if shouldUpdateAbilities {
+		if err := UpdateAbilityStatus(loadedTenantId, channelId, status == common.ChannelStatusEnabled); err != nil {
+			common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))
+			// channel 已写成功 abilities 没写：publish 让 peer 至少和本机一致（一致性 over 完美性，与原代码"abilities 失败只 SysLog"语义对齐）
 		}
 	}
+
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
 	return true
 }
 
@@ -983,26 +982,32 @@ func EnableChannelByTag(tag string, tenantId int) error {
 	if tenantId <= 0 {
 		return errors.New("tenantId 不能为空")
 	}
-	err := DB.Model(&Channel{}).
+	if err := DB.Model(&Channel{}).
 		Where("tag = ? AND tenant_id = ?", tag, tenantId).
-		Update("status", common.ChannelStatusEnabled).Error
-	if err != nil {
+		Update("status", common.ChannelStatusEnabled).Error; err != nil {
 		return err
 	}
-	return UpdateAbilityStatusByTag(tag, true, tenantId)
+	if err := UpdateAbilityStatusByTag(tag, true, tenantId); err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 func DisableChannelByTag(tag string, tenantId int) error {
 	if tenantId <= 0 {
 		return errors.New("tenantId 不能为空")
 	}
-	err := DB.Model(&Channel{}).
+	if err := DB.Model(&Channel{}).
 		Where("tag = ? AND tenant_id = ?", tag, tenantId).
-		Update("status", common.ChannelStatusManuallyDisabled).Error
-	if err != nil {
+		Update("status", common.ChannelStatusManuallyDisabled).Error; err != nil {
 		return err
 	}
-	return UpdateAbilityStatusByTag(tag, false, tenantId)
+	if err := UpdateAbilityStatusByTag(tag, false, tenantId); err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string, tenantId int) error {
@@ -1063,6 +1068,7 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 			return err
 		}
 	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
 	return nil
 }
 
@@ -1094,7 +1100,11 @@ func updateChannelUsedQuota(id int, quota int, tenantId int) {
 // DeleteChannelByStatus 管理员级跨租户删除，需显式 bypass guardrail。
 func DeleteChannelByStatus(status int64) (int64, error) {
 	result := WithTenantBypass(DB).Where("status = ?", status).Delete(&Channel{})
-	return result.RowsAffected, result.Error
+	if result.Error != nil {
+		return result.RowsAffected, result.Error
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return result.RowsAffected, nil
 }
 
 // DeleteDisabledChannel 按 tenant 清理被禁用渠道。
@@ -1283,7 +1293,11 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	}
 
 	// 提交事务
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 // BatchSetChannelTagForTenant updates tags only for channels owned by the tenant.
@@ -1316,7 +1330,11 @@ func BatchSetChannelTagForTenant(ids []int, tag *string, tenantId int) error {
 			return err
 		}
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 // CountAllChannels returns total channels in DB
