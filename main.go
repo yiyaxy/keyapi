@@ -312,6 +312,8 @@ func InitResources() error {
 
 	logger.SetupLogger()
 
+	common.InitInstanceID()
+
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
 
