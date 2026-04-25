@@ -83,6 +83,13 @@ func tenantGroupKey(tenantId int, group string) string {
 	return fmt.Sprintf("%d:%s", tenantId, group)
 }
 
+// ReloadChannelCache rebuilds the global channel cache from DB.
+// Same implementation as InitChannelCache; provided as a semantic alias
+// for cache-invalidate subscriber call sites.
+func ReloadChannelCache() {
+	InitChannelCache()
+}
+
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		return
