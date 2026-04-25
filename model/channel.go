@@ -713,13 +713,14 @@ func (channel *Channel) GetStatusCodeMapping() string {
 }
 
 func (channel *Channel) Insert() error {
-	var err error
-	err = DB.Create(channel).Error
-	if err != nil {
+	if err := DB.Create(channel).Error; err != nil {
 		return err
 	}
-	err = channel.AddAbilities(nil)
-	return err
+	if err := channel.AddAbilities(nil); err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 func (channel *Channel) Update() error {
@@ -765,13 +766,15 @@ func (channel *Channel) Update() error {
 	if err != nil {
 		return err
 	}
-	err = q.Updates(channel).Error
-	if err != nil {
+	if err := q.Updates(channel).Error; err != nil {
 		return err
 	}
 	DB.Model(&Channel{}).First(channel, "id = ? AND tenant_id = ?", channel.Id, channel.TenantId)
-	err = channel.UpdateAbilities(nil)
-	return err
+	if err := channel.UpdateAbilities(nil); err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 func (channel *Channel) UpdateResponseTime(responseTime int64) {
@@ -820,7 +823,11 @@ func (channel *Channel) Delete() error {
 	if err := db.Delete(&Channel{}).Error; err != nil {
 		return err
 	}
-	return channel.DeleteAbilities()
+	if err := channel.DeleteAbilities(); err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 var channelStatusLock sync.Mutex
