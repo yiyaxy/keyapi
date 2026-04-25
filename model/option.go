@@ -645,3 +645,14 @@ func handleConfigUpdate(key, value string, changed bool) bool {
 
 	return true // 已处理
 }
+
+// ReloadOption re-reads a single option from DB and applies it via updateOptionMap.
+// Used by the cache-invalidate subscriber when a peer instance updates an option.
+func ReloadOption(key string) error {
+	var opt Option
+	err := DB.Where("`key` = ?", key).First(&opt).Error
+	if err != nil {
+		return err
+	}
+	return updateOptionMap(opt.Key, opt.Value)
+}
