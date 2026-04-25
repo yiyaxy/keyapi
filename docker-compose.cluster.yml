@@ -1,0 +1,38 @@
+version: "3.8"
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: keyapi
+    ports: ["3306:3306"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  keyapi-1: &keyapi
+    build: .
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      SQL_DSN: root:root@tcp(mysql:3306)/keyapi?charset=utf8mb4&parseTime=true
+      REDIS_CONN_STRING: redis://redis:6379/0
+      MEMORY_CACHE_ENABLED: "true"
+      SYNC_FREQUENCY: "60"
+      SESSION_SECRET: dev-cluster-secret
+      PORT: "3000"
+    ports: ["3001:3000"]
+
+  keyapi-2:
+    <<: *keyapi
+    ports: ["3002:3000"]

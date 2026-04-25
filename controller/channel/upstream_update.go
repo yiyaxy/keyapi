@@ -359,6 +359,7 @@ func checkAndPersistChannelUpstreamModelUpdates(
 		if err = updateChannelUpstreamModelSettings(channel, *settings, false); err != nil {
 			return false, 0, err
 		}
+		_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
 		return false, 0, fetchErr
 	}
 
@@ -379,10 +380,13 @@ func checkAndPersistChannelUpstreamModelUpdates(
 	if err = updateChannelUpstreamModelSettings(channel, *settings, modelsChanged); err != nil {
 		return false, autoAdded, err
 	}
+	abilitiesErr := error(nil)
 	if modelsChanged {
-		if err = channel.UpdateAbilities(nil); err != nil {
-			return true, autoAdded, err
-		}
+		abilitiesErr = channel.UpdateAbilities(nil)
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	if abilitiesErr != nil {
+		return true, autoAdded, abilitiesErr
 	}
 	return modelsChanged, autoAdded, nil
 }
@@ -804,10 +808,13 @@ func applyChannelUpstreamModelUpdates(
 		return nil, nil, nil, nil, false, err
 	}
 
+	abilitiesErr := error(nil)
 	if modelsChanged {
-		if err := channel.UpdateAbilities(nil); err != nil {
-			return addModels, removeModels, remainingModels, remainingRemoveModels, true, err
-		}
+		abilitiesErr = channel.UpdateAbilities(nil)
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	if abilitiesErr != nil {
+		return addModels, removeModels, remainingModels, remainingRemoveModels, true, abilitiesErr
 	}
 	return addModels, removeModels, remainingModels, remainingRemoveModels, modelsChanged, nil
 }

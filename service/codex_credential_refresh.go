@@ -95,6 +95,8 @@ func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts Code
 		return nil, nil, err
 	}
 
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+
 	if opts.ResetCaches {
 		model.InitChannelCache()
 		ResetProxyClientCache()

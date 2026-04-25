@@ -233,19 +233,26 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	// Save to database first
-	option := Option{
-		Key: key,
+	// 原代码忽略了 FirstOrCreate / Save 的错误，单实例下没人发现；
+	// 多实例 + Pub/Sub 后果会放大：本机内存已是新值，但 peer 收到广播去 DB
+	// reload 拿到的还是旧值，状态分叉。所以必须严格按 "DB 写成功 → 内存写成功 → publish" 顺序。
+	option := Option{Key: key}
+	if err := DB.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+		return err
 	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
 	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
-	// Update OptionMap
-	return updateOptionMap(key, value)
+	if err := DB.Save(&option).Error; err != nil {
+		return err
+	}
+	if err := updateOptionMap(key, value); err != nil {
+		return err
+	}
+	// 通知集群其他实例从 DB reload 该 key。RedisEnabled=false 时是 no-op。
+	_ = common.PublishInvalidate(common.InvalidateMessage{
+		Type: "option",
+		Key:  key,
+	})
+	return nil
 }
 
 func updateOptionMap(key string, value string) (err error) {
@@ -644,4 +651,15 @@ func handleConfigUpdate(key, value string, changed bool) bool {
 	}
 
 	return true // 已处理
+}
+
+// ReloadOption re-reads a single option from DB and applies it via updateOptionMap.
+// Used by the cache-invalidate subscriber when a peer instance updates an option.
+func ReloadOption(key string) error {
+	var opt Option
+	err := DB.Where("`key` = ?", key).First(&opt).Error
+	if err != nil {
+		return err
+	}
+	return updateOptionMap(opt.Key, opt.Value)
 }

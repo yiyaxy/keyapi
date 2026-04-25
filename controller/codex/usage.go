@@ -91,7 +91,9 @@ func GetCodexChannelUsage(c *gin.Context) {
 
 			encoded, encErr := common.Marshal(oauthKey)
 			if encErr == nil {
-				_ = model.DB.Model(&model.Channel{}).Where("id = ?", ch.Id).Update("key", string(encoded)).Error
+				if err := model.DB.Model(&model.Channel{}).Where("id = ?", ch.Id).Update("key", string(encoded)).Error; err == nil {
+					_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+				}
 				model.InitChannelCache()
 				service.ResetProxyClientCache()
 			}

@@ -217,6 +217,7 @@ func completeCodexOAuthWithChannelID(c *gin.Context, channelID int) {
 			common.ApiError(c, err)
 			return
 		}
+		_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
 		model.InitChannelCache()
 		service.ResetProxyClientCache()
 		c.JSON(http.StatusOK, gin.H{

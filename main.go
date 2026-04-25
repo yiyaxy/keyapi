@@ -103,6 +103,10 @@ func main() {
 		})
 	}
 
+	if common.RedisEnabled {
+		trace.GoJob("cacheinvalsub", service.StartCacheInvalidator)
+	}
+
 	// 热更新配置
 	trace.GoJob("optsync", func() {
 		model.SyncOptions(common.SyncFrequency)
@@ -311,6 +315,8 @@ func InitResources() error {
 	common.InitEnv()
 
 	logger.SetupLogger()
+
+	common.InitInstanceID()
 
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
