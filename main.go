@@ -103,6 +103,10 @@ func main() {
 		})
 	}
 
+	if common.RedisEnabled {
+		trace.GoJob("cacheinvalsub", service.StartCacheInvalidator)
+	}
+
 	// 热更新配置
 	trace.GoJob("optsync", func() {
 		model.SyncOptions(common.SyncFrequency)
