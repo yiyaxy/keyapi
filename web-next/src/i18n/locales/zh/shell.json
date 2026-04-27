@@ -5,6 +5,7 @@
   "nav.dashboard": "控制台",
   "nav.keys": "API 密钥",
   "nav.playground": "模型广场",
+  "nav.tasks": "异步任务",
   "nav.logs": "日志",
   "nav.topup": "充值与发票",
   "nav.orders": "订单中心",

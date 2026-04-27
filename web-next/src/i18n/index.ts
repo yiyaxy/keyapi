@@ -31,6 +31,7 @@ import enRedemption from './locales/en/redemption.json';
 import enSettings from './locales/en/settings.json';
 import enSetup from './locales/en/setup.json';
 import enShell from './locales/en/shell.json';
+import enTasks from './locales/en/tasks.json';
 import enTenant from './locales/en/tenant.json';
 import enTenantPay from './locales/en/tenantpay.json';
 import enTickets from './locales/en/tickets.json';
@@ -65,6 +66,7 @@ import zhRedemption from './locales/zh/redemption.json';
 import zhSettings from './locales/zh/settings.json';
 import zhSetup from './locales/zh/setup.json';
 import zhShell from './locales/zh/shell.json';
+import zhTasks from './locales/zh/tasks.json';
 import zhTenant from './locales/zh/tenant.json';
 import zhTenantPay from './locales/zh/tenantpay.json';
 import zhTickets from './locales/zh/tickets.json';
@@ -111,6 +113,7 @@ void i18n
         analytics: zhAnalytics,
         settings: zhSettings,
         tenantpay: zhTenantPay,
+        tasks: zhTasks,
       },
       en: {
         apps: enApps,
@@ -147,6 +150,7 @@ void i18n
         analytics: enAnalytics,
         settings: enSettings,
         tenantpay: enTenantPay,
+        tasks: enTasks,
       },
     },
     fallbackLng: 'zh',
@@ -186,6 +190,7 @@ void i18n
       'analytics',
       'settings',
       'tenantpay',
+      'tasks',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },

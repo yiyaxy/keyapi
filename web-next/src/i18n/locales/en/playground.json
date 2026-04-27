@@ -89,6 +89,8 @@
   "use.result_empty": "Waiting for response",
   "use.result_empty_image": "Waiting for generated image",
   "use.generated_image_alt": "Generated image {{index}}",
+  "use.preview_image": "Preview image",
+  "use.download_image": "Download image",
   "use.run_success": "Request completed",
   "use.run_failed": "Request failed",
   "use.run_failed_with_reason": "Request failed: {{reason}}",

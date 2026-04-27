@@ -61,6 +61,7 @@ import { TenantInfoPage } from '@/pages/TenantInfo';
 import { TenantMembersPage } from '@/pages/TenantMembers';
 import { TenantPaymentPage } from '@/pages/TenantPayment';
 import { TenantPlanPage } from '@/pages/TenantPlan';
+import { TasksPage } from '@/pages/Tasks';
 import { TicketAdminDetailPage } from '@/pages/TicketAdminDetail';
 import { TicketDetailPage } from '@/pages/TicketDetail';
 import { TicketsAdminPage } from '@/pages/TicketsAdmin';
@@ -113,7 +114,7 @@ export const router = createBrowserRouter([
               { path: '/tickets/:id', element: <TicketDetailPage /> },
               { path: '/aff-transfer', element: <AffTransferPage /> },
               { path: '/midjourney', element: <ComingSoon feature='Midjourney' /> },
-              { path: '/task', element: <ComingSoon feature='Async tasks' /> },
+              { path: '/task', element: <TasksPage /> },
               { path: '/chat/:id?', element: <ComingSoon feature='Chat' /> },
               { path: '/chat2link', element: <ComingSoon feature='Chat2Link' /> },
               {
