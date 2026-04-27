@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -84,7 +85,8 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 }
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
-	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	hints := channelErrorHintsFromResponse(resp)
+	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode, types.ErrOptionWithChannelErrorHints(hints))
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -128,18 +130,92 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
-			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
+			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode, types.ErrOptionWithChannelErrorHints(hints))
 			if showBodyWhenFail {
 				newApiErr.Err = buildErrWithBody(newApiErr.Error())
 			}
 			return
 		}
 	}
-	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode, types.ErrOptionWithChannelErrorHints(hints))
 	if showBodyWhenFail {
 		newApiErr.Err = buildErrWithBody(newApiErr.Error())
 	}
 	return
+}
+
+func channelErrorHintsFromResponse(resp *http.Response) types.ChannelErrorHints {
+	if resp == nil {
+		return types.ChannelErrorHints{}
+	}
+	if retryAfter, ok := retryAfterFromHeaders(resp.Header, time.Now()); ok {
+		return types.ChannelErrorHints{RetryAfter: &retryAfter}
+	}
+	return types.ChannelErrorHints{}
+}
+
+func retryAfterFromHeaders(headers http.Header, now time.Time) (time.Time, bool) {
+	if len(headers) == 0 {
+		return time.Time{}, false
+	}
+	candidateHeaders := []string{
+		"Retry-After",
+		"X-RateLimit-Reset",
+		"X-RateLimit-Reset-Requests",
+		"X-RateLimit-Reset-Tokens",
+		"X-RateLimit-Reset-Input-Tokens",
+		"X-RateLimit-Reset-Output-Tokens",
+		"Anthropic-RateLimit-Unified-Reset",
+	}
+	var latest time.Time
+	for _, header := range candidateHeaders {
+		for _, value := range headers.Values(header) {
+			parsed, ok := parseRetryAfterValue(value, now)
+			if !ok {
+				continue
+			}
+			if latest.IsZero() || parsed.After(latest) {
+				latest = parsed
+			}
+		}
+	}
+	if latest.IsZero() {
+		return time.Time{}, false
+	}
+	return latest, true
+}
+
+func parseRetryAfterValue(value string, now time.Time) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil {
+		if seconds < 0 {
+			return time.Time{}, false
+		}
+		// Large numeric values are treated as Unix timestamps; small values follow
+		// Retry-After's delay-seconds convention.
+		if seconds > 1_000_000_000_000 {
+			return time.UnixMilli(int64(seconds)), true
+		}
+		if seconds > 1_000_000_000 {
+			return time.Unix(int64(seconds), 0), true
+		}
+		return now.Add(time.Duration(seconds * float64(time.Second))), true
+	}
+	if duration, err := time.ParseDuration(value); err == nil && duration >= 0 {
+		return now.Add(duration), true
+	}
+	if parsed, err := http.ParseTime(value); err == nil {
+		return parsed, true
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func ResetStatusCode(newApiErr *types.NewAPIError, statusCodeMappingStr string) {

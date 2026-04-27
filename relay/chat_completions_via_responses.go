@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -130,12 +131,15 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 		return nil, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 	if resp == nil {
-		return nil, types.NewOpenAIError(nil, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+		return nil, types.NewOpenAIError(fmt.Errorf("empty upstream response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
-	httpResp = resp.(*http.Response)
+	httpResp, ok := resp.(*http.Response)
+	if !ok {
+		return nil, types.NewOpenAIError(fmt.Errorf("unexpected upstream response type %T", resp), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
 	info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 	if httpResp.StatusCode != http.StatusOK {
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)

@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,6 +196,55 @@ func TestHandleChannelAnomalySetsCooldownForTransient(t *testing.T) {
 	}
 }
 
+func TestHandleChannelAnomalyUsesScheduledRetryAfter(t *testing.T) {
+	restoreDB := setupTenantMonitorTestDB(t)
+	defer restoreDB()
+	if err := model.DB.AutoMigrate(&model.Channel{}); err != nil {
+		t.Fatalf("migrate channel: %v", err)
+	}
+
+	prevRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
+	t.Cleanup(func() { common.RedisEnabled = prevRedisEnabled })
+
+	withOptionMapForChannelStabilityTest(t, map[string]string{
+		ChannelStabilityErrorClassificationEnabledKey: "true",
+		ChannelStabilityCooldownEnabledKey:            "true",
+	})
+
+	channel := &model.Channel{
+		Type:        constant.ChannelTypeOpenAI,
+		Key:         "scheduled-cooldown-key",
+		Status:      common.ChannelStatusEnabled,
+		Name:        "scheduled-cooldown",
+		Scope:       model.ChannelScopeTenant,
+		TenantId:    77,
+		CreatedTime: 1,
+	}
+	if err := model.WithTenantBypass(model.DB).Create(channel).Error; err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+
+	resetAt := time.Now().Add(90 * time.Second)
+	err := types.WithOpenAIError(
+		types.OpenAIError{Message: "rate limit"},
+		http.StatusTooManyRequests,
+		types.ErrOptionWithChannelErrorHints(types.ChannelErrorHints{RetryAfter: &resetAt}),
+	)
+	HandleChannelAnomaly(0, *types.NewChannelError(channel.Id, channel.Type, channel.Name, false, channel.Key, true), err)
+
+	cooldown, ok := model.GetChannelCooldown(channel.Id)
+	if !ok {
+		t.Fatalf("expected scheduled cooldown to be set")
+	}
+	if cooldown.Until < resetAt.Add(-2*time.Second).UnixMilli() || cooldown.Until > resetAt.Add(2*time.Second).UnixMilli() {
+		t.Fatalf("cooldown until = %d, want around %d", cooldown.Until, resetAt.UnixMilli())
+	}
+	if !strings.Contains(cooldown.Reason, "retry_after=") {
+		t.Fatalf("cooldown reason = %q, want retry_after", cooldown.Reason)
+	}
+}
+
 func TestGetFirstTokenTimeoutUsesExactModelBeforeFamilyAndDefault(t *testing.T) {
 	cfg := channel_stability.Get()
 	original := channel_stability.Default()
@@ -247,5 +297,25 @@ func TestNextChannelCooldownDurationBackoffAndCap(t *testing.T) {
 		if got := NextChannelCooldownDuration(tc.count); got != tc.want {
 			t.Fatalf("NextChannelCooldownDuration(%d) = %v, want %v", tc.count, got, tc.want)
 		}
+	}
+}
+
+func TestScheduledChannelCooldownDurationClampsAndRespectsBackoff(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+
+	duration, clamped := ScheduledChannelCooldownDuration(now, now.Add(2*time.Second), 30*time.Second)
+	if !clamped {
+		t.Fatalf("expected short retry-after to be clamped")
+	}
+	if duration != 30*time.Second {
+		t.Fatalf("duration = %v, want fallback backoff 30s", duration)
+	}
+
+	duration, clamped = ScheduledChannelCooldownDuration(now, now.Add(8*time.Hour), 30*time.Second)
+	if !clamped {
+		t.Fatalf("expected long retry-after to be clamped")
+	}
+	if duration != 6*time.Hour {
+		t.Fatalf("duration = %v, want 6h", duration)
 	}
 }

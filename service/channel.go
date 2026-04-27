@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -129,7 +130,11 @@ func HandleChannelAnomaly(tenantId int, channelError types.ChannelError, err *ty
 		DisableChannel(channelError, err.ErrorWithStatusCode())
 		return
 	}
-	if !IsChannelStabilityCooldownEnabled(tenantId) || !ShouldCooldownChannel(tenantId, channelError.ChannelType, err) {
+	if !IsChannelStabilityCooldownEnabled(tenantId) {
+		return
+	}
+	class, reason := types.ClassifyChannelErrorWithReason(err, channelError.ChannelType)
+	if class != types.ChannelErrorClassTransient && class != types.ChannelErrorClassScheduledCooldown {
 		return
 	}
 
@@ -147,7 +152,16 @@ func HandleChannelAnomaly(tenantId int, channelError types.ChannelError, err *ty
 	}
 
 	duration := NextChannelCooldownDuration(count - 1)
-	reason := formatChannelCooldownReason(channelError.ChannelType, err)
+	if class == types.ChannelErrorClassScheduledCooldown && err != nil && err.ChannelErrorHints.RetryAfter != nil {
+		var clamped bool
+		duration, clamped = ScheduledChannelCooldownDuration(time.Now(), *err.ChannelErrorHints.RetryAfter, duration)
+		if clamped && !strings.Contains(reason, "retry_after_clamped") {
+			reason += ",retry_after_clamped"
+		}
+	}
+	if reason == "" || reason == "default" {
+		reason = formatChannelCooldownReason(channelError.ChannelType, err)
+	}
 	if err := model.SetChannelCooldown(channelError.ChannelId, reason, duration); err != nil {
 		common.SysLog(fmt.Sprintf("failed to set channel cooldown: channel_id=%d count=%d duration_ms=%d error=%v", channelError.ChannelId, count, duration.Milliseconds(), err))
 		return

@@ -1,7 +1,12 @@
 package service
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/types"
 	"github.com/stretchr/testify/require"
@@ -54,4 +59,30 @@ func TestResetStatusCode(t *testing.T) {
 			require.Equal(t, tc.expectedCode, newAPIError.StatusCode)
 		})
 	}
+}
+
+func TestRetryAfterFromHeadersParsesDelayAndResetHeaders(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	headers := http.Header{}
+	headers.Add("Retry-After", "30")
+	headers.Add("X-RateLimit-Reset-Requests", "2m")
+
+	got, ok := retryAfterFromHeaders(headers, now)
+	require.True(t, ok)
+	require.Equal(t, now.Add(2*time.Minute), got)
+}
+
+func TestRelayErrorHandlerCarriesChannelErrorHints(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header: http.Header{
+			"Retry-After": []string{"60"},
+		},
+		Body: io.NopCloser(strings.NewReader(`{"error":{"message":"rate limit","type":"rate_limit_error","code":"rate_limit_error"}}`)),
+	}
+
+	err := RelayErrorHandler(context.Background(), resp, false)
+	require.NotNil(t, err)
+	require.NotNil(t, err.ChannelErrorHints.RetryAfter)
+	require.WithinDuration(t, time.Now().Add(time.Minute), *err.ChannelErrorHints.RetryAfter, 2*time.Second)
 }

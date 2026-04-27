@@ -55,19 +55,33 @@ func (h ChannelErrorHints) hasRetryAfter() bool {
 }
 
 func ClassifyChannelError(err *NewAPIError, channelType int) ChannelErrorClass {
-	class, _ := classifyChannelError(err, channelType, ChannelErrorHints{})
+	class, _ := classifyChannelError(err, channelType, channelErrorHintsFromError(err))
 	return class
 }
 
 func ClassifyChannelErrorWithReason(err *NewAPIError, channelType int) (ChannelErrorClass, string) {
-	return classifyChannelError(err, channelType, ChannelErrorHints{})
+	return classifyChannelError(err, channelType, channelErrorHintsFromError(err))
 }
 
 // ClassifyChannelErrorWithHints 在分类基础上支持把带 reset 时间的瞬时错误提升为
 // scheduled_cooldown。传入的 hints 仅对 transient 类生效，不会改变 permanent /
 // auth_refresh 的判定。
 func ClassifyChannelErrorWithHints(err *NewAPIError, channelType int, hints ChannelErrorHints) (ChannelErrorClass, string) {
-	return classifyChannelError(err, channelType, hints)
+	return classifyChannelError(err, channelType, mergeChannelErrorHints(channelErrorHintsFromError(err), hints))
+}
+
+func channelErrorHintsFromError(err *NewAPIError) ChannelErrorHints {
+	if err == nil {
+		return ChannelErrorHints{}
+	}
+	return err.ChannelErrorHints
+}
+
+func mergeChannelErrorHints(base ChannelErrorHints, override ChannelErrorHints) ChannelErrorHints {
+	if override.hasRetryAfter() {
+		base.RetryAfter = override.RetryAfter
+	}
+	return base
 }
 
 func classifyChannelError(err *NewAPIError, channelType int, hints ChannelErrorHints) (ChannelErrorClass, string) {
@@ -76,6 +90,14 @@ func classifyChannelError(err *NewAPIError, channelType int, hints ChannelErrorH
 	}
 
 	if class, reason, ok := classifyChannelErrorCode(err); ok {
+		return promoteWithHints(class, reason, hints)
+	}
+
+	oaiErr := err.ToOpenAIError()
+	if class, reason, ok := classifyProviderCode(fmt.Sprint(oaiErr.Code), "oaiCode"); ok {
+		return promoteWithHints(class, reason, hints)
+	}
+	if class, reason, ok := classifyProviderCode(oaiErr.Type, "oaiType"); ok {
 		return promoteWithHints(class, reason, hints)
 	}
 
@@ -88,14 +110,6 @@ func classifyChannelError(err *NewAPIError, channelType int, hints ChannelErrorH
 		}
 	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return promoteWithHints(ChannelErrorClassTransient, fmt.Sprintf("status=%d", err.StatusCode), hints)
-	}
-
-	oaiErr := err.ToOpenAIError()
-	if class, reason, ok := classifyProviderCode(fmt.Sprint(oaiErr.Code), "oaiCode"); ok {
-		return promoteWithHints(class, reason, hints)
-	}
-	if class, reason, ok := classifyProviderCode(oaiErr.Type, "oaiType"); ok {
-		return promoteWithHints(class, reason, hints)
 	}
 
 	if isTransientTransportError(err) {

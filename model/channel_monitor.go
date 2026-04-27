@@ -41,6 +41,10 @@ type ChannelMonitorItem struct {
 	Balance          float64 `json:"balance"`
 	AvailabilityRate float64 `json:"availability_rate"`
 	UsedQuota1h      int64   `json:"used_quota_1h"`
+	CooldownUntil    int64   `json:"cooldown_until"`
+	CooldownReason   string  `json:"cooldown_reason"`
+	CooldownCount    int     `json:"cooldown_count"`
+	LastCooldownAt   int64   `json:"last_cooldown_at"`
 }
 
 type ChannelMetricPoint struct {
@@ -74,11 +78,18 @@ func GetChannelMonitorData(tenantId int) (*ChannelMonitorData, error) {
 	if err != nil {
 		return nil, err
 	}
+	lockedPlatformChannelIDs := map[int]struct{}{}
+	if tenantId > 0 {
+		lockedPlatformChannelIDs, err = GetTenantLockedPlatformChannels(tenantId)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	var channels []Channel
 	chQuery := DB.Where("status = ?", common.ChannelStatusEnabled)
 	if tenantId > 0 {
-		chQuery = chQuery.Where("tenant_id = ?", tenantId)
+		chQuery = chQuery.Where("(scope = ? OR tenant_id = ?)", ChannelScopePlatform, tenantId)
 	}
 	if err := chQuery.Find(&channels).Error; err != nil {
 		return nil, err
@@ -88,6 +99,11 @@ func GetChannelMonitorData(tenantId int) (*ChannelMonitorData, error) {
 	for _, ch := range channels {
 		if hiddenChannelIDs[ch.Id] {
 			continue
+		}
+		if ch.Scope == ChannelScopePlatform {
+			if _, locked := lockedPlatformChannelIDs[ch.Id]; locked {
+				continue
+			}
 		}
 		filteredChannels = append(filteredChannels, ch)
 	}
@@ -211,6 +227,10 @@ func GetChannelMonitorData(tenantId int) (*ChannelMonitorData, error) {
 			Balance:          ch.Balance,
 			AvailabilityRate: availRate,
 			UsedQuota1h:      m.usedQuota,
+			CooldownUntil:    ch.CooldownUntil,
+			CooldownReason:   ch.CooldownReason,
+			CooldownCount:    ch.CooldownCount,
+			LastCooldownAt:   ch.LastCooldownAt,
 		}
 
 		tags := splitGroupTags(ch.Group)
