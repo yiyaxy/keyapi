@@ -53,6 +53,15 @@ func waitForChannelInvalidate(t *testing.T, ch <-chan *redis.Message, timeout ti
 	return common.InvalidateMessage{}
 }
 
+func assertNoChannelInvalidate(t *testing.T, ch <-chan *redis.Message, timeout time.Duration) {
+	t.Helper()
+	select {
+	case raw := <-ch:
+		t.Fatalf("unexpected channel invalidate: %s", raw.Payload)
+	case <-time.After(timeout):
+	}
+}
+
 func TestChannelInsert_PublishesInvalidate(t *testing.T) {
 	setupTestRedisForChannel(t)
 	t.Cleanup(func() {
@@ -185,4 +194,76 @@ func TestBatchInsertChannels_PublishesInvalidate(t *testing.T) {
 		t.Fatalf("BatchInsertChannels: %v", err)
 	}
 	waitForChannelInvalidate(t, ch, 2*time.Second)
+}
+
+func TestBatchDeleteChannelsBypass_PublishesInvalidate(t *testing.T) {
+	setupTestRedisForChannel(t)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM channels")
+		DB.Exec("DELETE FROM abilities")
+	})
+
+	c := &Channel{Name: "root-delete", Type: 1, Key: "sk-x", Status: common.ChannelStatusEnabled, Models: "gpt-4", Scope: ChannelScopePlatform}
+	if err := c.Insert(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	sub := common.RDB.Subscribe(context.Background(), common.InvalidateChannel)
+	defer sub.Close()
+	ch := sub.Channel()
+	time.Sleep(100 * time.Millisecond)
+
+	if err := BatchDeleteChannelsBypass([]int{c.Id}); err != nil {
+		t.Fatalf("BatchDeleteChannelsBypass: %v", err)
+	}
+	waitForChannelInvalidate(t, ch, 2*time.Second)
+}
+
+func TestDeleteDisabledChannel_PublishesInvalidate(t *testing.T) {
+	setupTestRedisForChannel(t)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM channels")
+		DB.Exec("DELETE FROM abilities")
+	})
+
+	c := &Channel{Name: "disabled-delete", Type: 1, Key: "sk-x", Status: common.ChannelStatusManuallyDisabled, Models: "gpt-4", TenantId: 1, Scope: ChannelScopeTenant}
+	if err := c.Insert(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	sub := common.RDB.Subscribe(context.Background(), common.InvalidateChannel)
+	defer sub.Close()
+	ch := sub.Channel()
+	time.Sleep(100 * time.Millisecond)
+
+	rows, err := DeleteDisabledChannel(1)
+	if err != nil {
+		t.Fatalf("DeleteDisabledChannel: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows = %d, want 1", rows)
+	}
+	waitForChannelInvalidate(t, ch, 2*time.Second)
+}
+
+func TestDeleteDisabledChannel_NoRowsDoesNotPublishInvalidate(t *testing.T) {
+	setupTestRedisForChannel(t)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM channels")
+		DB.Exec("DELETE FROM abilities")
+	})
+
+	sub := common.RDB.Subscribe(context.Background(), common.InvalidateChannel)
+	defer sub.Close()
+	ch := sub.Channel()
+	time.Sleep(100 * time.Millisecond)
+
+	rows, err := DeleteDisabledChannel(999)
+	if err != nil {
+		t.Fatalf("DeleteDisabledChannel: %v", err)
+	}
+	if rows != 0 {
+		t.Fatalf("rows = %d, want 0", rows)
+	}
+	assertNoChannelInvalidate(t, ch, 300*time.Millisecond)
 }

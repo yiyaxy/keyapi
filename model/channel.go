@@ -678,7 +678,11 @@ func BatchDeleteChannelsBypass(ids []int) error {
 			return err
 		}
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	return nil
 }
 
 func (channel *Channel) GetPriority() int64 {
@@ -1112,7 +1116,13 @@ func DeleteDisabledChannel(tenantId int) (int64, error) {
 	result := DB.Where("tenant_id = ? AND (status = ? or status = ?)",
 		tenantId, common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).
 		Delete(&Channel{})
-	return result.RowsAffected, result.Error
+	if result.Error != nil {
+		return result.RowsAffected, result.Error
+	}
+	if result.RowsAffected > 0 {
+		_ = common.PublishInvalidate(common.InvalidateMessage{Type: "channel_full"})
+	}
+	return result.RowsAffected, nil
 }
 
 func GetPaginatedTags(offset int, limit int) ([]*string, error) {
