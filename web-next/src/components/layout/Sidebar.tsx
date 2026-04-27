@@ -70,6 +70,7 @@ export function Sidebar() {
           <NavItem to='/dashboard' label={t('nav.dashboard')} icon={LayoutDashboard} />
           <NavItem to='/keys' label={t('nav.keys')} icon={KeyRound} />
           <NavItem to='/playground' label={t('nav.playground')} icon={Play} />
+          <NavItem to='/task' label={t('nav.tasks')} icon={ClipboardList} />
           <NavItem to='/logs' label={t('nav.logs')} icon={List} />
           <NavItem to='/apps' label={t('nav.apps')} icon={LayoutGrid} />
         </SidebarGroup>
@@ -110,36 +111,16 @@ export function Sidebar() {
                 label={t('nav.admin.rebate_settings')}
                 icon={Gift}
               />
-              <NavItem
-                to='/admin/prompt-rule'
-                label={t('nav.admin.prompt_rule')}
-                icon={FilterX}
-              />
-              <NavItem
-                to='/admin/message'
-                label={t('nav.admin.message')}
-                icon={Megaphone}
-              />
-              <NavItem
-                to='/admin/agent-log'
-                label={t('nav.admin.agent_log')}
-                icon={Bot}
-              />
+              <NavItem to='/admin/prompt-rule' label={t('nav.admin.prompt_rule')} icon={FilterX} />
+              <NavItem to='/admin/message' label={t('nav.admin.message')} icon={Megaphone} />
+              <NavItem to='/admin/agent-log' label={t('nav.admin.agent_log')} icon={Bot} />
               <NavItem
                 to='/admin/agent-report'
                 label={t('nav.admin.agent_report')}
                 icon={FileBarChart}
               />
-              <NavItem
-                to='/admin/ip-analysis'
-                label={t('nav.admin.ip_analysis')}
-                icon={Network}
-              />
-              <NavItem
-                to='/admin/analytics'
-                label={t('nav.admin.analytics')}
-                icon={Gauge}
-              />
+              <NavItem to='/admin/ip-analysis' label={t('nav.admin.ip_analysis')} icon={Network} />
+              <NavItem to='/admin/analytics' label={t('nav.admin.analytics')} icon={Gauge} />
               <NavItem
                 to='/admin/purchase-analytics'
                 label={t('nav.admin.purchase_analytics')}
@@ -169,27 +150,15 @@ export function Sidebar() {
         )}
         {isPlatform && (
           <SidebarGroup label={t('nav.platform')}>
-            <NavItem
-              to='/admin/ai-apps'
-              label={t('nav.admin.ai_apps')}
-              icon={LayoutGrid}
-            />
+            <NavItem to='/admin/ai-apps' label={t('nav.admin.ai_apps')} icon={LayoutGrid} />
             <NavItem
               to='/admin/platform-tenants'
               label={t('nav.admin.platform_tenants')}
               icon={Globe}
             />
-            <NavItem
-              to='/admin/platform/channels'
-              label={t('nav.platform_channels')}
-              icon={Plug}
-            />
+            <NavItem to='/admin/platform/channels' label={t('nav.platform_channels')} icon={Plug} />
             <NavItem to='/admin/models' label={t('nav.admin.models')} icon={Database} />
-            <NavItem
-              to='/admin/settings'
-              label={t('nav.admin.settings')}
-              icon={Settings}
-            />
+            <NavItem to='/admin/settings' label={t('nav.admin.settings')} icon={Settings} />
           </SidebarGroup>
         )}
       </nav>

@@ -25,6 +25,7 @@
   "filters.status.disabled": "Disabled",
   "table.col.id": "ID",
   "table.col.name": "Name",
+  "table.col.models": "Models",
   "table.col.type": "Type",
   "table.col.group": "Group",
   "table.col.scope": "Scope",

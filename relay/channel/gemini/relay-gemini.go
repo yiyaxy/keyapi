@@ -1591,6 +1591,59 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	return usage, nil
 }
 
+func GeminiGenerateContentImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	responseBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, types.NewOpenAIError(readErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	_ = resp.Body.Close()
+
+	var geminiResponse dto.GeminiChatResponse
+	if jsonErr := common.Unmarshal(responseBody, &geminiResponse); jsonErr != nil {
+		return nil, types.NewOpenAIError(jsonErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	openAIResponse := dto.ImageResponse{
+		Created: common.GetTimestamp(),
+		Data:    make([]dto.ImageData, 0),
+	}
+	for _, candidate := range geminiResponse.Candidates {
+		revisedPromptParts := make([]string, 0)
+		for _, part := range candidate.Content.Parts {
+			if part.Text != "" {
+				revisedPromptParts = append(revisedPromptParts, part.Text)
+				continue
+			}
+			if part.InlineData == nil || !strings.HasPrefix(part.InlineData.MimeType, "image") {
+				continue
+			}
+			openAIResponse.Data = append(openAIResponse.Data, dto.ImageData{
+				B64Json:       part.InlineData.Data,
+				RevisedPrompt: strings.Join(revisedPromptParts, "\n"),
+			})
+		}
+	}
+	if len(openAIResponse.Data) == 0 {
+		return nil, types.NewOpenAIError(errors.New("no images generated"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	jsonResponse, jsonErr := json.Marshal(openAIResponse)
+	if jsonErr != nil {
+		return nil, types.NewError(jsonErr, types.ErrorCodeBadResponseBody)
+	}
+
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.WriteHeader(resp.StatusCode)
+	_, _ = c.Writer.Write(jsonResponse)
+
+	usage := &dto.Usage{
+		PromptTokens:     geminiResponse.UsageMetadata.PromptTokenCount,
+		CompletionTokens: geminiResponse.UsageMetadata.CandidatesTokenCount,
+		TotalTokens:      geminiResponse.UsageMetadata.TotalTokenCount,
+	}
+	return usage, nil
+}
+
 type GeminiModelsResponse struct {
 	Models        []dto.GeminiModel `json:"models"`
 	NextPageToken string            `json:"nextPageToken"`

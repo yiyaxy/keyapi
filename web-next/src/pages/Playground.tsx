@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next';
 import {
   Code2,
   Copy,
+  Download,
   Gauge,
   Image as ImageIcon,
   Layers3,
   Loader2,
+  Maximize2,
   Play,
   RefreshCw,
   Search,
@@ -18,6 +20,7 @@ import { toast } from 'sonner';
 import { InlineBanner } from '@/components/auth/InlineBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -28,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/hooks/useAuth';
 import { PageAction } from '@/hooks/usePageAction';
 import { usePricing, type PricingEnvelope, type PricingRow } from '@/hooks/usePricing';
@@ -257,9 +261,16 @@ function endpointKeysForModel(model: ModelCardData): EndpointKey[] {
   return keys.length ? keys : ['chat'];
 }
 
+function endpointKeyForType(endpointType: string): EndpointKey | undefined {
+  return endpointOrder.find((key) => endpointConfigs[key].endpointType === endpointType);
+}
+
 function preferredEndpointForModel(model: ModelCardData): EndpointKey {
   const keys = endpointKeysForModel(model);
-  if (keys.includes('images') && !keys.includes('chat')) return 'images';
+  for (const endpointType of model.endpointTypes) {
+    const key = endpointKeyForType(endpointType);
+    if (key && keys.includes(key)) return key;
+  }
   return keys[0] ?? 'chat';
 }
 
@@ -287,6 +298,42 @@ function imageSrc(item: ImageResult): string | null {
   if (item.url) return item.url;
   if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
   return null;
+}
+
+function imageExtension(src: string): string {
+  const dataMatch = src.match(/^data:image\/([^;,]+)/);
+  if (dataMatch?.[1]) return dataMatch[1].replace('jpeg', 'jpg');
+  const pathMatch = src.split('?')[0]?.match(/\.([a-z0-9]+)$/i);
+  return pathMatch?.[1] ?? 'png';
+}
+
+function triggerImageDownload(src: string, filename: string) {
+  const link = document.createElement('a');
+  link.href = src;
+  link.download = filename;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function downloadGeneratedImage(src: string, index: number) {
+  const filename = `generated-image-${index + 1}.${imageExtension(src)}`;
+  if (src.startsWith('data:')) {
+    triggerImageDownload(src, filename);
+    return;
+  }
+
+  try {
+    const response = await fetch(src);
+    if (!response.ok) throw new Error(`Image download failed: ${response.status}`);
+    const blobUrl = URL.createObjectURL(await response.blob());
+    triggerImageDownload(blobUrl, filename);
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch {
+    triggerImageDownload(src, filename);
+  }
 }
 
 function formatRaw(data: PlaygroundRunResponse): string {
@@ -630,6 +677,10 @@ function ResultPanel({ endpoint, result }: { endpoint: EndpointKey; result: RunR
   const { t } = useTranslation('playground');
   const isImage = endpoint === 'images';
   const images = result?.images?.map(imageSrc).filter((src): src is string => Boolean(src)) ?? [];
+  const [preview, setPreview] = useState<{ src: string; index: number } | null>(null);
+  const previewLabel = preview
+    ? t('use.generated_image_alt', { index: preview.index + 1 })
+    : t('use.preview_image');
 
   if (!result) {
     return (
@@ -644,17 +695,93 @@ function ResultPanel({ endpoint, result }: { endpoint: EndpointKey; result: RunR
 
   if (isImage && images.length > 0) {
     return (
-      <div className='grid gap-3 sm:grid-cols-2'>
-        {images.map((src, index) => (
-          <div key={src} className='overflow-hidden rounded-md border border-line bg-bg-0'>
-            <img
-              src={src}
-              alt={t('use.generated_image_alt', { index: index + 1 })}
-              className='aspect-square w-full object-cover'
-            />
+      <>
+        <TooltipProvider delayDuration={150}>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            {images.map((src, index) => (
+              <div
+                key={src}
+                className='group relative overflow-hidden rounded-md border border-line bg-bg-0'
+              >
+                <button
+                  type='button'
+                  onClick={() => setPreview({ src, index })}
+                  className='block w-full cursor-zoom-in text-left'
+                  aria-label={t('use.preview_image')}
+                >
+                  <img
+                    src={src}
+                    alt={t('use.generated_image_alt', { index: index + 1 })}
+                    className='aspect-square w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]'
+                  />
+                </button>
+                <div className='absolute right-2 top-2 flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100'>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type='button'
+                        size='icon'
+                        variant='secondary'
+                        className='size-8 bg-bg-1/90 shadow-sm backdrop-blur'
+                        onClick={() => setPreview({ src, index })}
+                        aria-label={t('use.preview_image')}
+                      >
+                        <Maximize2 className='size-4' />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('use.preview_image')}</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type='button'
+                        size='icon'
+                        variant='secondary'
+                        className='size-8 bg-bg-1/90 shadow-sm backdrop-blur'
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void downloadGeneratedImage(src, index);
+                        }}
+                        aria-label={t('use.download_image')}
+                      >
+                        <Download className='size-4' />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('use.download_image')}</TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </TooltipProvider>
+        <Dialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(null)}>
+          <DialogContent className='max-h-[92vh] max-w-[min(96vw,1120px)] overflow-hidden border-line bg-bg-1 p-0'>
+            <DialogTitle className='sr-only'>{previewLabel}</DialogTitle>
+            {preview ? (
+              <>
+                <div className='flex min-h-14 items-center justify-end border-b border-line px-4 py-3 pr-14'>
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='outline'
+                    onClick={() => void downloadGeneratedImage(preview.src, preview.index)}
+                  >
+                    <Download className='size-4' />
+                    {t('use.download_image')}
+                  </Button>
+                </div>
+                <div className='max-h-[calc(92vh-56px)] overflow-auto bg-bg-0 p-3'>
+                  <img
+                    src={preview.src}
+                    alt={previewLabel}
+                    className='mx-auto max-h-[calc(92vh-80px)] max-w-full rounded-sm object-contain'
+                  />
+                </div>
+              </>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 

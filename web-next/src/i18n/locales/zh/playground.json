@@ -89,6 +89,8 @@
   "use.result_empty": "等待响应结果",
   "use.result_empty_image": "等待生成图片",
   "use.generated_image_alt": "生成图片 {{index}}",
+  "use.preview_image": "预览图片",
+  "use.download_image": "下载图片",
   "use.run_success": "请求完成",
   "use.run_failed": "请求失败",
   "use.run_failed_with_reason": "请求失败：{{reason}}",

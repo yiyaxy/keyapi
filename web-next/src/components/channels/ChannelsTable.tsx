@@ -13,6 +13,14 @@ import {
 import type { Channel } from '@/hooks/useChannels';
 import { channelTypeName } from '@/lib/channelTypes';
 
+function formatModels(models: string): string {
+  return models
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
 export function ChannelsTable({
   items,
   testingId,
@@ -23,6 +31,7 @@ export function ChannelsTable({
   readOnly = false,
   showScope = false,
   showMarkup = false,
+  showModels = false,
 }: {
   items: Channel[];
   testingId: number | null;
@@ -33,6 +42,7 @@ export function ChannelsTable({
   readOnly?: boolean;
   showScope?: boolean;
   showMarkup?: boolean;
+  showModels?: boolean;
 }) {
   const { t } = useTranslation('channels');
   return (
@@ -42,6 +52,7 @@ export function ChannelsTable({
           <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
             <th className='px-3 py-2 font-medium'>{t('table.col.id')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.name')}</th>
+            {showModels ? <th className='px-3 py-2 font-medium'>{t('table.col.models')}</th> : null}
             <th className='px-3 py-2 font-medium'>{t('table.col.type')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.group')}</th>
             {showScope ? <th className='px-3 py-2 font-medium'>{t('table.col.scope')}</th> : null}
@@ -55,10 +66,22 @@ export function ChannelsTable({
         <tbody>
           {items.map((ch) => {
             const isTesting = testingId === ch.id;
+            const modelsLabel = showModels ? formatModels(ch.models) : '';
             return (
               <tr key={ch.id} className='border-b border-line text-13 hover:bg-bg-1'>
                 <td className='px-3 py-2 text-fg-2'>{ch.id}</td>
                 <td className='px-3 py-2'>{ch.name || '-'}</td>
+                {showModels ? (
+                  <td className='px-3 py-2'>
+                    {modelsLabel ? (
+                      <div className='max-w-[360px] truncate text-12 text-fg-2' title={modelsLabel}>
+                        {modelsLabel}
+                      </div>
+                    ) : (
+                      <span className='text-fg-2'>-</span>
+                    )}
+                  </td>
+                ) : null}
                 <td className='px-3 py-2'>{channelTypeName(ch.type)}</td>
                 <td className='px-3 py-2'>{ch.group}</td>
                 {showScope ? (

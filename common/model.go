@@ -12,10 +12,11 @@ var (
 	ImageGenerationModels = []string{
 		"dall-e-3",
 		"dall-e-2",
-		"gpt-image-1",
+		"gpt-image-",
 		"prefix:imagen-",
 		"flux-",
 		"flux.1-",
+		"image-preview",
 	}
 	OpenAITextModels = []string{
 		"gpt-",
