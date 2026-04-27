@@ -12,7 +12,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useChannels, useDeleteChannel, useToggleChannelStatus, type Channel } from '@/hooks/useChannels';
+import {
+  useChannels,
+  useDeleteChannel,
+  useToggleChannelStatus,
+  type Channel,
+} from '@/hooks/useChannels';
 import {
   usePlatformChannelUsage,
   useResetPlatformChannelUsage,
@@ -93,7 +98,10 @@ function TenantUsagePanel() {
           {rows.map((row) => {
             const pct =
               row.platform_quota_cap > 0
-                ? Math.min(100, Math.round((row.platform_quota_used / row.platform_quota_cap) * 100))
+                ? Math.min(
+                    100,
+                    Math.round((row.platform_quota_used / row.platform_quota_cap) * 100)
+                  )
                 : null;
             return (
               <tr key={row.tenant_id} className='border-b border-line text-13 hover:bg-bg-1'>
@@ -124,9 +132,7 @@ function TenantUsagePanel() {
                       />
                     </div>
                     <span className='tabular-nums text-fg-2'>
-                      {pct === null
-                        ? t('platform_channels.usage.value.not_applicable')
-                        : `${pct}%`}
+                      {pct === null ? t('platform_channels.usage.value.not_applicable') : `${pct}%`}
                     </span>
                   </div>
                 </td>
@@ -138,7 +144,8 @@ function TenantUsagePanel() {
                     disabled={reset.isPending}
                     onClick={() =>
                       reset.mutate(row.tenant_id, {
-                        onSuccess: () => toast.success(t('platform_channels.usage.action.reset_ok')),
+                        onSuccess: () =>
+                          toast.success(t('platform_channels.usage.action.reset_ok')),
                         onError: (err) => toast.error((err as Error).message),
                       })
                     }
@@ -280,6 +287,7 @@ export function PlatformChannelsAdminPage() {
               onTest={(c) => setTestTarget(c)}
               showScope
               showMarkup
+              showModels
             />
           )}
 

@@ -25,6 +25,7 @@
   "filters.status.disabled": "已禁用",
   "table.col.id": "ID",
   "table.col.name": "名称",
+  "table.col.models": "模型",
   "table.col.type": "类型",
   "table.col.group": "分组",
   "table.col.scope": "范围",
