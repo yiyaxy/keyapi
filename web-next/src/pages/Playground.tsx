@@ -1,17 +1,17 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  CheckCircle2,
-  Clock3,
   Code2,
   Copy,
   Gauge,
+  Image as ImageIcon,
+  Layers3,
   Loader2,
-  MessageSquareText,
+  Play,
   RefreshCw,
   Search,
   SlidersHorizontal,
-  Send,
+  TerminalSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,8 +39,16 @@ import { cn } from '@/lib/utils';
 
 const NO_TOKEN = '__no_token__';
 
-type FilterKey = 'hot' | 'cheap' | 'long' | 'vision' | 'stable';
-type ViewTab = 'market' | 'chat';
+type FilterKey = 'hot' | 'cheap' | 'long' | 'vision' | 'image' | 'stable';
+type EndpointKey = 'chat' | 'responses' | 'images' | 'embeddings' | 'rerank';
+
+type EndpointConfig = {
+  endpointType: string;
+  publicPath: string;
+  playgroundPath: string;
+  labelKey: string;
+  shortLabelKey: string;
+};
 
 type ModelCardData = {
   name: string;
@@ -48,24 +56,72 @@ type ModelCardData = {
   description: string;
   descriptionKey?: string;
   capabilities: string[];
+  endpointTypes: string[];
   inputUsd: number;
   outputUsd: number;
+  imageUsd: number;
   latencyMs: number;
   health: number;
 };
 
-type ChatMessage = {
-  id: number;
-  role: 'user' | 'assistant';
-  content: string;
+type ImageResult = {
+  url?: string;
+  b64_json?: string;
+  revised_prompt?: string;
 };
 
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
+type RunResult = {
+  raw: string;
+  text?: string;
+  images?: ImageResult[];
+};
+
+type PlaygroundRunResponse =
+  | Record<string, unknown>
+  | Array<unknown>
+  | string
+  | number
+  | boolean
+  | null;
+
+const endpointOrder: EndpointKey[] = ['chat', 'responses', 'images', 'embeddings', 'rerank'];
+
+const endpointConfigs: Record<EndpointKey, EndpointConfig> = {
+  chat: {
+    endpointType: 'openai',
+    publicPath: '/v1/chat/completions',
+    playgroundPath: '/pg/chat/completions',
+    labelKey: 'endpoint.chat',
+    shortLabelKey: 'endpoint.short.chat',
+  },
+  responses: {
+    endpointType: 'openai-response',
+    publicPath: '/v1/responses',
+    playgroundPath: '/pg/responses',
+    labelKey: 'endpoint.responses',
+    shortLabelKey: 'endpoint.short.responses',
+  },
+  images: {
+    endpointType: 'image-generation',
+    publicPath: '/v1/images/generations',
+    playgroundPath: '/pg/images/generations',
+    labelKey: 'endpoint.images',
+    shortLabelKey: 'endpoint.short.images',
+  },
+  embeddings: {
+    endpointType: 'embeddings',
+    publicPath: '/v1/embeddings',
+    playgroundPath: '/pg/embeddings',
+    labelKey: 'endpoint.embeddings',
+    shortLabelKey: 'endpoint.short.embeddings',
+  },
+  rerank: {
+    endpointType: 'jina-rerank',
+    publicPath: '/v1/rerank',
+    playgroundPath: '/pg/rerank',
+    labelKey: 'endpoint.rerank',
+    shortLabelKey: 'endpoint.short.rerank',
+  },
 };
 
 const fallbackModels: ModelCardData[] = [
@@ -75,10 +131,25 @@ const fallbackModels: ModelCardData[] = [
     description: '',
     descriptionKey: 'fallback.gpt_4_1_mini',
     capabilities: ['128k', 'text', 'tool_call'],
+    endpointTypes: ['openai', 'openai-response'],
     inputUsd: 0.4,
     outputUsd: 1.6,
+    imageUsd: 0,
     latencyMs: 720,
     health: 99.98,
+  },
+  {
+    name: 'gpt-image-1',
+    vendor: 'OpenAI',
+    description: '',
+    descriptionKey: 'fallback.gpt_image_1',
+    capabilities: ['image_generation', 'vision'],
+    endpointTypes: ['image-generation'],
+    inputUsd: 0,
+    outputUsd: 0,
+    imageUsd: 0.04,
+    latencyMs: 1680,
+    health: 99.9,
   },
   {
     name: 'claude-sonnet-4',
@@ -86,8 +157,10 @@ const fallbackModels: ModelCardData[] = [
     description: '',
     descriptionKey: 'fallback.claude_sonnet_4',
     capabilities: ['200k', 'reasoning', 'code'],
+    endpointTypes: ['openai', 'anthropic'],
     inputUsd: 3,
     outputUsd: 15,
+    imageUsd: 0,
     latencyMs: 1180,
     health: 99.91,
   },
@@ -97,8 +170,10 @@ const fallbackModels: ModelCardData[] = [
     description: '',
     descriptionKey: 'fallback.gemini_2_5_pro',
     capabilities: ['1M', 'vision', 'long_doc'],
+    endpointTypes: ['openai', 'gemini'],
     inputUsd: 1.25,
     outputUsd: 10,
+    imageUsd: 0,
     latencyMs: 1420,
     health: 99.84,
   },
@@ -128,12 +203,18 @@ function splitTags(value?: string): string[] {
 }
 
 function inferCapabilities(row: PricingRow): string[] {
-  const lower = `${row.model_name} ${row.description ?? ''} ${row.tags ?? ''} ${(
-    row.supported_endpoint_types ?? []
-  ).join(' ')}`.toLowerCase();
+  const endpointTypes = row.supported_endpoint_types ?? [];
+  const lower = `${row.model_name} ${row.description ?? ''} ${row.tags ?? ''} ${endpointTypes.join(
+    ' '
+  )}`.toLowerCase();
   const caps = splitTags(row.tags);
 
-  if (lower.includes('vision') || lower.includes('image')) caps.push('vision');
+  if (endpointTypes.includes('image-generation')) caps.push('image_generation');
+  if (endpointTypes.includes('embeddings')) caps.push('embeddings');
+  if (endpointTypes.includes('jina-rerank')) caps.push('rerank');
+  if (endpointTypes.includes('openai-response')) caps.push('responses');
+  if (lower.includes('vision')) caps.push('vision');
+  if (lower.includes('image') && !caps.includes('image_generation')) caps.push('vision');
   if (lower.includes('tool') || lower.includes('function')) caps.push('tool_call');
   if (lower.includes('code')) caps.push('code');
   if (lower.includes('audio')) caps.push('audio');
@@ -142,34 +223,54 @@ function inferCapabilities(row: PricingRow): string[] {
   if (lower.includes('1m') || lower.includes('long')) caps.push('long_context');
   if (caps.length === 0) caps.push('text', 'chat');
 
-  return Array.from(new Set(caps)).slice(0, 3);
+  return Array.from(new Set(caps)).slice(0, 4);
 }
 
 function modelsFromPricing(envelope?: PricingEnvelope): ModelCardData[] {
   if (!envelope?.data?.length) return fallbackModels;
 
   const vendorById = new Map(envelope.vendors.map((vendor) => [vendor.id, vendor.name]));
-  return envelope.data.slice(0, 24).map((row) => {
+  return envelope.data.map((row) => {
     const hash = stableHash(row.model_name);
     return {
       name: row.model_name,
       vendor: row.vendor_id ? (vendorById.get(row.vendor_id) ?? row.owner_by) : row.owner_by,
       description: row.description || '',
       capabilities: inferCapabilities(row),
+      endpointTypes: row.supported_endpoint_types?.length
+        ? row.supported_endpoint_types
+        : ['openai'],
       inputUsd: inputPerMillion(row),
       outputUsd: outputPerMillion(row),
+      imageUsd: row.image_ratio ?? 0,
       latencyMs: 640 + (hash % 920),
       health: 99 + (hash % 99) / 100,
     };
   });
 }
 
+function endpointKeysForModel(model: ModelCardData): EndpointKey[] {
+  const endpointTypes = new Set(model.endpointTypes);
+  const keys = endpointOrder.filter((key) => endpointTypes.has(endpointConfigs[key].endpointType));
+  return keys.length ? keys : ['chat'];
+}
+
+function preferredEndpointForModel(model: ModelCardData): EndpointKey {
+  const keys = endpointKeysForModel(model);
+  if (keys.includes('images') && !keys.includes('chat')) return 'images';
+  return keys[0] ?? 'chat';
+}
+
 function modelMatchesFilter(model: ModelCardData, filter: FilterKey): boolean {
   const caps = model.capabilities.join(' ').toLowerCase();
-  if (filter === 'cheap') return model.inputUsd <= 1;
+  const endpoints = model.endpointTypes.join(' ').toLowerCase();
+  if (filter === 'cheap')
+    return model.inputUsd <= 1 || (model.imageUsd > 0 && model.imageUsd <= 0.05);
   if (filter === 'long')
     return caps.includes('128k') || caps.includes('200k') || caps.includes('long');
-  if (filter === 'vision') return caps.includes('vision') || caps.includes('image');
+  if (filter === 'vision') return caps.includes('vision');
+  if (filter === 'image')
+    return caps.includes('image_generation') || endpoints.includes('image-generation');
   return true;
 }
 
@@ -178,6 +279,110 @@ function capabilityLabel(capability: string, t: ReturnType<typeof useTranslation
   const key = `capabilities.${normalized}`;
   const translated = t(key);
   return translated === key ? capability : translated;
+}
+
+function imageSrc(item: ImageResult): string | null {
+  if (item.url) return item.url;
+  if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
+  return null;
+}
+
+function formatRaw(data: PlaygroundRunResponse): string {
+  if (typeof data === 'string') return data;
+  return JSON.stringify(data, null, 2);
+}
+
+function extractRunResult(endpoint: EndpointKey, data: PlaygroundRunResponse): RunResult {
+  const raw = formatRaw(data);
+  if (endpoint === 'images') {
+    const items =
+      data && typeof data === 'object' && !Array.isArray(data) && Array.isArray(data.data)
+        ? data.data
+        : Array.isArray(data)
+          ? data
+          : [];
+    return { raw, images: items as ImageResult[] };
+  }
+
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const choices = data.choices;
+    if (Array.isArray(choices)) {
+      const first = choices[0] as { message?: { content?: unknown }; text?: unknown } | undefined;
+      const content = first?.message?.content ?? first?.text;
+      if (typeof content === 'string') return { raw, text: content };
+    }
+    if (typeof data.output_text === 'string') return { raw, text: data.output_text };
+  }
+
+  return { raw };
+}
+
+function buildRequestPayload({
+  endpoint,
+  model,
+  prompt,
+  group,
+  imageSize,
+  imageQuality,
+  imageCount,
+  responseFormat,
+}: {
+  endpoint: EndpointKey;
+  model: string;
+  prompt: string;
+  group?: string;
+  imageSize: string;
+  imageQuality: string;
+  imageCount: number;
+  responseFormat: string;
+}) {
+  const base = {
+    model,
+    ...(group ? { group } : {}),
+  };
+
+  if (endpoint === 'images') {
+    return {
+      ...base,
+      prompt,
+      size: imageSize,
+      quality: imageQuality,
+      n: imageCount,
+      response_format: responseFormat,
+    };
+  }
+
+  if (endpoint === 'responses') {
+    return {
+      ...base,
+      input: prompt,
+    };
+  }
+
+  if (endpoint === 'embeddings') {
+    return {
+      ...base,
+      input: prompt,
+    };
+  }
+
+  if (endpoint === 'rerank') {
+    return {
+      ...base,
+      query: prompt,
+      documents: [
+        'The gateway routes requests to the best available channel.',
+        'Billing records usage after each completed request.',
+        'Image models should use the image generation endpoint.',
+      ],
+    };
+  }
+
+  return {
+    ...base,
+    messages: [{ role: 'user', content: prompt }],
+    stream: false,
+  };
 }
 
 function MetricTile({
@@ -224,72 +429,6 @@ function FilterChip({
       )}
     >
       {children}
-    </button>
-  );
-}
-
-function ModelCard({
-  model,
-  selected,
-  onSelect,
-}: {
-  model: ModelCardData;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const cfg = usePublicConfig();
-  const { t } = useTranslation('playground');
-  const description = model.descriptionKey
-    ? t(model.descriptionKey)
-    : model.description || t('models.default_description');
-
-  return (
-    <button
-      type='button'
-      onClick={onSelect}
-      className={cn(
-        'grid min-h-[172px] gap-4 rounded-md border bg-bg-0 p-4 text-left transition-colors hover:border-line-strong hover:bg-bg-2',
-        selected &&
-          'border-accent/60 bg-accent-soft/40 hover:border-accent/60 hover:bg-accent-soft/50'
-      )}
-    >
-      <div className='flex items-start justify-between gap-3'>
-        <div className='min-w-0'>
-          <div className='truncate text-12 text-fg-2'>{model.vendor}</div>
-          <div className='mt-1 truncate font-semibold'>{model.name}</div>
-        </div>
-        <div className='inline-flex shrink-0 items-center gap-1.5 text-12 text-fg-1'>
-          <span className='size-1.5 rounded-full bg-success' aria-hidden />
-          {model.health.toFixed(2)}%
-        </div>
-      </div>
-
-      <p className='line-clamp-2 text-13 text-fg-2'>{description}</p>
-
-      <div className='flex flex-wrap gap-1.5'>
-        {model.capabilities.map((capability) => (
-          <Badge
-            key={capability}
-            variant='secondary'
-            className='rounded-xs px-1.5 py-0 text-12 font-normal text-fg-1'
-          >
-            {capabilityLabel(capability, t)}
-          </Badge>
-        ))}
-      </div>
-
-      <div className='grid grid-cols-2 gap-3 text-13'>
-        <div>
-          <div className='text-12 text-fg-2'>{t('labels.input')}</div>
-          <div className='font-semibold tabular-nums'>{fmtDisplayUsd(model.inputUsd, cfg)}</div>
-        </div>
-        <div>
-          <div className='text-12 text-fg-2'>{t('labels.latency')}</div>
-          <div className='font-semibold tabular-nums'>
-            {fmtNum(model.latencyMs)} {t('unit.ms')}
-          </div>
-        </div>
-      </div>
     </button>
   );
 }
@@ -355,34 +494,380 @@ function TokenSelect({
   );
 }
 
-function ViewTabButton({
-  active,
-  onClick,
-  children,
+function ModelRow({
+  model,
+  selected,
+  onSelect,
 }: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
+  model: ModelCardData;
+  selected: boolean;
+  onSelect: () => void;
 }) {
+  const cfg = usePublicConfig();
+  const { t } = useTranslation('playground');
+
   return (
     <button
       type='button'
-      aria-pressed={active}
-      onClick={onClick}
+      onClick={onSelect}
       className={cn(
-        'h-9 rounded-sm px-4 text-13 font-medium transition-colors',
-        active ? 'bg-bg-0 text-fg-0 shadow-sm' : 'text-fg-2 hover:bg-bg-2 hover:text-fg-0'
+        'w-full rounded-md border p-3 text-left transition-colors hover:border-line-strong hover:bg-bg-2',
+        selected ? 'border-accent/60 bg-accent-soft/50' : 'border-line bg-bg-0'
       )}
     >
-      {children}
+      <div className='flex items-start justify-between gap-3'>
+        <div className='min-w-0'>
+          <div className='truncate text-12 text-fg-2'>{model.vendor}</div>
+          <div className='mt-1 truncate text-14 font-semibold'>{model.name}</div>
+        </div>
+        <div className='shrink-0 text-12 font-medium tabular-nums text-fg-1'>
+          {model.imageUsd > 0
+            ? fmtDisplayUsd(model.imageUsd, cfg)
+            : fmtDisplayUsd(model.inputUsd, cfg)}
+        </div>
+      </div>
+      <div className='mt-3 flex flex-wrap gap-1.5'>
+        {model.capabilities.slice(0, 3).map((capability) => (
+          <Badge
+            key={capability}
+            variant='secondary'
+            className='rounded-xs px-1.5 py-0 text-12 font-normal text-fg-1'
+          >
+            {capabilityLabel(capability, t)}
+          </Badge>
+        ))}
+      </div>
     </button>
   );
 }
 
-function ChatPanel({
+function ModelBrowser({
+  models,
+  selectedModel,
+  filter,
+  onFilterChange,
+  onModelSelect,
+  pending,
+}: {
+  models: ModelCardData[];
+  selectedModel: ModelCardData;
+  filter: FilterKey;
+  onFilterChange: (filter: FilterKey) => void;
+  onModelSelect: (model: ModelCardData) => void;
+  pending: boolean;
+}) {
+  const { t } = useTranslation('playground');
+
+  return (
+    <SectionShell title={t('models.title')} subtitle={t('models.subtitle')}>
+      <div className='space-y-3 p-4'>
+        <div className='flex flex-wrap gap-2'>
+          {(['hot', 'cheap', 'long', 'vision', 'image', 'stable'] as const).map((item) => (
+            <FilterChip key={item} active={filter === item} onClick={() => onFilterChange(item)}>
+              {t(`filters.${item}`)}
+            </FilterChip>
+          ))}
+        </div>
+        {pending ? (
+          <div className='space-y-2'>
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className='h-[92px] rounded-md' />
+            ))}
+          </div>
+        ) : models.length === 0 ? (
+          <div className='rounded-md border border-line bg-bg-0 p-8 text-center text-13 text-fg-2'>
+            {t('models.empty')}
+          </div>
+        ) : (
+          <div className='max-h-[720px] space-y-2 overflow-y-auto pr-1'>
+            {models.map((model) => (
+              <ModelRow
+                key={model.name}
+                model={model}
+                selected={model.name === selectedModel.name}
+                onSelect={() => onModelSelect(model)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </SectionShell>
+  );
+}
+
+function EndpointButton({
+  endpoint,
+  active,
+  disabled,
+  onClick,
+}: {
+  endpoint: EndpointKey;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation('playground');
+
+  return (
+    <button
+      type='button'
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'h-9 rounded-sm px-3 text-13 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+        active ? 'bg-bg-0 text-fg-0 shadow-sm' : 'text-fg-2 hover:bg-bg-2 hover:text-fg-0'
+      )}
+    >
+      {t(endpointConfigs[endpoint].shortLabelKey)}
+    </button>
+  );
+}
+
+function ResultPanel({ endpoint, result }: { endpoint: EndpointKey; result: RunResult | null }) {
+  const { t } = useTranslation('playground');
+  const isImage = endpoint === 'images';
+  const images = result?.images?.map(imageSrc).filter((src): src is string => Boolean(src)) ?? [];
+
+  if (!result) {
+    return (
+      <div className='flex min-h-[260px] items-center justify-center rounded-md border border-dashed border-line bg-bg-0 text-center text-13 text-fg-2'>
+        <div>
+          <ImageIcon className='mx-auto mb-3 size-8 text-fg-1' />
+          {t(isImage ? 'use.result_empty_image' : 'use.result_empty')}
+        </div>
+      </div>
+    );
+  }
+
+  if (isImage && images.length > 0) {
+    return (
+      <div className='grid gap-3 sm:grid-cols-2'>
+        {images.map((src, index) => (
+          <div key={src} className='overflow-hidden rounded-md border border-line bg-bg-0'>
+            <img
+              src={src}
+              alt={t('use.generated_image_alt', { index: index + 1 })}
+              className='aspect-square w-full object-cover'
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <pre className='max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-bg-0 p-4 font-mono text-12 leading-5 text-fg-0'>
+      {result.text ?? result.raw}
+    </pre>
+  );
+}
+
+function UseWorkbench({
   allModels,
   selectedModel,
+  selectedEndpoint,
+  availableEndpoints,
+  prompt,
+  imageSize,
+  imageQuality,
+  imageCount,
+  responseFormat,
+  isRunning,
+  result,
   onModelChange,
+  onEndpointChange,
+  onPromptChange,
+  onImageSizeChange,
+  onImageQualityChange,
+  onImageCountChange,
+  onResponseFormatChange,
+  onRun,
+}: {
+  allModels: ModelCardData[];
+  selectedModel: ModelCardData;
+  selectedEndpoint: EndpointKey;
+  availableEndpoints: EndpointKey[];
+  prompt: string;
+  imageSize: string;
+  imageQuality: string;
+  imageCount: number;
+  responseFormat: string;
+  isRunning: boolean;
+  result: RunResult | null;
+  onModelChange: (name: string) => void;
+  onEndpointChange: (endpoint: EndpointKey) => void;
+  onPromptChange: (value: string) => void;
+  onImageSizeChange: (value: string) => void;
+  onImageQualityChange: (value: string) => void;
+  onImageCountChange: (value: number) => void;
+  onResponseFormatChange: (value: string) => void;
+  onRun: () => void;
+}) {
+  const { t } = useTranslation('playground');
+  const canRun = prompt.trim().length > 0 && !isRunning;
+  const isImage = selectedEndpoint === 'images';
+
+  return (
+    <section className='grid min-h-[720px] grid-rows-[auto_auto_1fr] rounded-md border border-line bg-bg-1'>
+      <div className='flex flex-col gap-3 border-b border-line p-4 lg:flex-row lg:items-start lg:justify-between'>
+        <div>
+          <h2 className='font-semibold'>{t('use.title')}</h2>
+          <p className='mt-1 text-13 text-fg-2'>
+            {selectedModel.vendor} / {selectedModel.name}
+          </p>
+        </div>
+        <div className='w-full lg:w-[340px]'>
+          <label className='mb-1.5 block text-12 text-fg-2'>{t('use.model')}</label>
+          <Select value={selectedModel.name} onValueChange={onModelChange}>
+            <SelectTrigger className='h-9 bg-bg-0'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {allModels.slice(0, 120).map((model) => (
+                <SelectItem key={model.name} value={model.name}>
+                  {model.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className='border-b border-line p-4'>
+        <div className='inline-flex max-w-full overflow-x-auto rounded-md border border-line bg-bg-2 p-1'>
+          {endpointOrder.map((endpoint) => (
+            <EndpointButton
+              key={endpoint}
+              endpoint={endpoint}
+              active={selectedEndpoint === endpoint}
+              disabled={!availableEndpoints.includes(endpoint)}
+              onClick={() => onEndpointChange(endpoint)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className='grid gap-4 p-4'>
+        <div className='rounded-md border border-line bg-bg-0 p-3'>
+          <div className='mb-2 flex items-center justify-between gap-3'>
+            <label className='text-12 font-medium uppercase tracking-normal text-fg-2'>
+              {t('use.prompt')}
+            </label>
+            <Badge variant='outline' className='font-normal'>
+              {t(endpointConfigs[selectedEndpoint].labelKey)}
+            </Badge>
+          </div>
+          <Textarea
+            value={prompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+            placeholder={t(`use.placeholder.${selectedEndpoint}`)}
+            className='min-h-[180px] resize-none border-0 bg-transparent text-14 leading-6 focus-visible:ring-0 focus-visible:ring-offset-0'
+          />
+          <div className='mt-3 grid gap-3 border-t border-line pt-3 md:grid-cols-4'>
+            {isImage ? (
+              <>
+                <div className='space-y-1.5'>
+                  <label className='text-12 text-fg-2'>{t('use.size')}</label>
+                  <Select value={imageSize} onValueChange={onImageSizeChange}>
+                    <SelectTrigger className='h-9 bg-bg-1'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='1024x1024'>1024x1024</SelectItem>
+                      <SelectItem value='1024x1792'>1024x1792</SelectItem>
+                      <SelectItem value='1792x1024'>1792x1024</SelectItem>
+                      <SelectItem value='512x512'>512x512</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className='space-y-1.5'>
+                  <label className='text-12 text-fg-2'>{t('use.quality')}</label>
+                  <Select value={imageQuality} onValueChange={onImageQualityChange}>
+                    <SelectTrigger className='h-9 bg-bg-1'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='auto'>auto</SelectItem>
+                      <SelectItem value='standard'>standard</SelectItem>
+                      <SelectItem value='hd'>hd</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className='space-y-1.5'>
+                  <label className='text-12 text-fg-2'>{t('use.count')}</label>
+                  <Input
+                    type='number'
+                    min={1}
+                    max={4}
+                    value={imageCount}
+                    onChange={(event) =>
+                      onImageCountChange(Math.min(4, Math.max(1, Number(event.target.value) || 1)))
+                    }
+                    className='h-9 bg-bg-1'
+                  />
+                </div>
+                <div className='space-y-1.5'>
+                  <label className='text-12 text-fg-2'>{t('use.format')}</label>
+                  <Select value={responseFormat} onValueChange={onResponseFormatChange}>
+                    <SelectTrigger className='h-9 bg-bg-1'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='url'>url</SelectItem>
+                      <SelectItem value='b64_json'>b64_json</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <>
+                <InfoPill
+                  label={t('use.endpoint')}
+                  value={endpointConfigs[selectedEndpoint].publicPath}
+                />
+                <InfoPill
+                  label={t('labels.input')}
+                  value={fmtNum(Math.max(1, Math.round(prompt.length / 3)))}
+                />
+                <InfoPill label={t('use.mode')} value={t(`endpoint.short.${selectedEndpoint}`)} />
+                <InfoPill
+                  label={t('use.stream')}
+                  value={selectedEndpoint === 'chat' ? 'false' : '-'}
+                />
+              </>
+            )}
+          </div>
+          <div className='mt-3 flex justify-end'>
+            <Button onClick={onRun} disabled={!canRun}>
+              {isRunning ? (
+                <Loader2 className='size-4 animate-spin' />
+              ) : isImage ? (
+                <ImageIcon className='size-4' />
+              ) : (
+                <Play className='size-4' />
+              )}
+              {isImage ? t('use.run_image') : t('use.run')}
+            </Button>
+          </div>
+        </div>
+
+        <ResultPanel endpoint={selectedEndpoint} result={result} />
+      </div>
+    </section>
+  );
+}
+
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className='rounded-md border border-line bg-bg-1 px-3 py-2'>
+      <div className='text-12 text-fg-2'>{label}</div>
+      <div className='mt-1 truncate text-13 font-medium'>{value}</div>
+    </div>
+  );
+}
+
+function InspectorPanel({
   activeTokens,
   selectedToken,
   onTokenChange,
@@ -390,15 +875,11 @@ function ChatPanel({
   tokensError,
   onRetryTokens,
   tokenQuota,
-  messages,
-  chatInput,
-  onChatInputChange,
-  isRunning,
-  onSend,
+  curlSample,
+  selectedModel,
+  selectedEndpoint,
+  onCopySample,
 }: {
-  allModels: ModelCardData[];
-  selectedModel: ModelCardData;
-  onModelChange: (name: string) => void;
   activeTokens: Token[];
   selectedToken?: Token;
   onTokenChange: (id: number) => void;
@@ -406,38 +887,30 @@ function ChatPanel({
   tokensError: boolean;
   onRetryTokens: () => void;
   tokenQuota: string;
-  messages: ChatMessage[];
-  chatInput: string;
-  onChatInputChange: (value: string) => void;
-  isRunning: boolean;
-  onSend: () => void;
+  curlSample: string;
+  selectedModel: ModelCardData;
+  selectedEndpoint: EndpointKey;
+  onCopySample: () => void;
 }) {
   const { t } = useTranslation('playground');
-  const canSend = chatInput.trim().length > 0 && !isRunning;
 
   return (
-    <section className='grid min-h-[680px] grid-rows-[auto_1fr_auto] rounded-md border border-line bg-bg-1'>
-      <div className='flex items-start justify-between gap-4 border-b border-line p-4'>
-        <div>
-          <h2 className='font-semibold'>{t('chat.title')}</h2>
-          <p className='mt-1 text-13 text-fg-2'>{t('chat.subtitle')}</p>
+    <aside className='space-y-4'>
+      {tokensError ? (
+        <InlineBanner level='danger' message={t('tokens.failed')} onClose={onRetryTokens} />
+      ) : null}
+
+      <section className='rounded-md border border-line bg-bg-1 p-4'>
+        <div className='mb-3 flex items-center justify-between gap-3'>
+          <h2 className='flex items-center gap-2 font-semibold'>
+            <Layers3 className='size-4' />
+            {t('use.context')}
+          </h2>
+          <Badge variant='outline' className='font-normal'>
+            {t(endpointConfigs[selectedEndpoint].shortLabelKey)}
+          </Badge>
         </div>
-        <div className='grid w-[520px] max-w-full grid-cols-2 gap-3'>
-          <div className='space-y-1.5'>
-            <label className='text-12 text-fg-2'>{t('chat.model')}</label>
-            <Select value={selectedModel.name} onValueChange={onModelChange}>
-              <SelectTrigger className='h-9 bg-bg-0'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {allModels.slice(0, 40).map((model) => (
-                  <SelectItem key={model.name} value={model.name}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className='space-y-3'>
           <div className='space-y-1.5'>
             <label className='text-12 text-fg-2'>{t('tokens.label')}</label>
             <TokenSelect
@@ -447,85 +920,56 @@ function ChatPanel({
               pending={tokensPending}
             />
           </div>
-        </div>
-      </div>
-
-      <div className='overflow-y-auto px-4 py-6'>
-        <div className='mx-auto max-w-3xl space-y-5'>
-          {tokensError ? (
-            <InlineBanner level='danger' message={t('tokens.failed')} onClose={onRetryTokens} />
-          ) : null}
-
-          <div className='flex items-center justify-between rounded-md border border-line bg-bg-0 px-3 py-2 text-13 text-fg-1'>
-            <span>
-              {t('chat.context', {
-                model: selectedModel.name,
-                token: selectedToken?.name ?? t('tokens.empty_short'),
-              })}
-            </span>
-            <span className='tabular-nums'>{tokenQuota}</span>
+          <div className='grid grid-cols-2 gap-2 text-13'>
+            <InfoPill label={t('tokens.quota')} value={tokenQuota} />
+            <InfoPill
+              label={t('labels.latency')}
+              value={`${fmtNum(selectedModel.latencyMs)} ${t('unit.ms')}`}
+            />
           </div>
-
-          {messages.map((message) => {
-            const isUser = message.role === 'user';
-            return (
-              <div key={message.id} className={cn('flex gap-3', isUser && 'justify-end')}>
-                {!isUser ? (
-                  <div className='flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-bg-2 text-12 font-semibold text-fg-1'>
-                    AI
-                  </div>
-                ) : null}
-                <div
-                  className={cn(
-                    'max-w-[78%] rounded-md border px-4 py-3 text-14 leading-6',
-                    isUser
-                      ? 'border-primary bg-primary text-primary-fg'
-                      : 'border-line bg-bg-0 text-fg-0'
-                  )}
-                >
-                  {message.content}
-                </div>
-              </div>
-            );
-          })}
-
-          {isRunning ? (
-            <div className='flex items-center gap-3 text-13 text-fg-1'>
-              <Loader2 className='size-4 animate-spin' />
-              {t('chat.thinking')}
-            </div>
-          ) : null}
         </div>
-      </div>
+      </section>
 
-      <div className='border-t border-line p-4'>
-        <div className='mx-auto max-w-3xl rounded-md border border-line bg-bg-0 p-2'>
-          <Textarea
-            value={chatInput}
-            onChange={(event) => onChatInputChange(event.target.value)}
-            onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                event.preventDefault();
-                onSend();
-              }
-            }}
-            placeholder={t('chat.placeholder')}
-            className='min-h-[96px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0'
+      <section className='rounded-md border border-line bg-bg-1 p-4'>
+        <div className='mb-3 flex items-center justify-between gap-3'>
+          <h2 className='flex items-center gap-2 font-semibold'>
+            <TerminalSquare className='size-4' />
+            {t('sample.title')}
+          </h2>
+          <Button variant='ghost' size='sm' onClick={onCopySample}>
+            <Copy className='size-4' />
+            {t('sample.copy')}
+          </Button>
+        </div>
+        <pre className='max-h-[320px] overflow-auto whitespace-pre-wrap break-all rounded-md border border-line bg-bg-2 p-3 font-mono text-12 leading-5 text-fg-0'>
+          {curlSample}
+        </pre>
+      </section>
+
+      <section className='rounded-md border border-line bg-bg-1 p-4'>
+        <div className='mb-3 flex items-center justify-between gap-3'>
+          <h2 className='flex items-center gap-2 font-semibold'>
+            <Gauge className='size-4' />
+            {t('routes.title')}
+          </h2>
+          <Button variant='ghost' size='sm'>
+            <RefreshCw className='size-4' />
+            {t('routes.refresh')}
+          </Button>
+        </div>
+        <div className='space-y-2'>
+          <RouteRow
+            name='cn-east-02'
+            meta={`${fmtNum(selectedModel.latencyMs)} ${t('unit.ms')}`}
+            best
           />
-          <div className='flex items-center justify-between gap-3 pt-2'>
-            <span className='px-2 text-12 text-fg-2'>{t('chat.send_hint')}</span>
-            <Button size='sm' onClick={onSend} disabled={!canSend}>
-              {isRunning ? (
-                <Loader2 className='size-4 animate-spin' />
-              ) : (
-                <Send className='size-4' />
-              )}
-              {t('chat.send')}
-            </Button>
-          </div>
+          <RouteRow
+            name='global-fallback'
+            meta={`${fmtNum(selectedModel.latencyMs + 260)} ${t('unit.ms')}`}
+          />
         </div>
-      </div>
-    </section>
+      </section>
+    </aside>
   );
 }
 
@@ -536,16 +980,18 @@ export function PlaygroundPage() {
   const pricing = usePricing();
   const tokens = useTokensQuery(1);
 
-  const [activeTab, setActiveTab] = useState<ViewTab>('market');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('hot');
   const [selectedModelName, setSelectedModelName] = useState<string | null>(null);
+  const [endpointDraft, setEndpointDraft] = useState<EndpointKey>('chat');
   const [selectedTokenId, setSelectedTokenId] = useState<number | null>(null);
+  const [prompt, setPrompt] = useState(t('use.default_prompt'));
+  const [imageSize, setImageSize] = useState('1024x1024');
+  const [imageQuality, setImageQuality] = useState('auto');
+  const [imageCount, setImageCount] = useState(1);
+  const [responseFormat, setResponseFormat] = useState('url');
   const [isRunning, setIsRunning] = useState(false);
-  const [chatInput, setChatInput] = useState(t('chat.default_prompt'));
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 1, role: 'assistant', content: t('chat.welcome') },
-  ]);
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
 
   const allModels = useMemo(() => modelsFromPricing(pricing.data), [pricing.data]);
   const visibleModels = useMemo(() => {
@@ -554,11 +1000,13 @@ export function PlaygroundPage() {
       .filter((model) => modelMatchesFilter(model, filter))
       .filter((model) => {
         if (!needle) return true;
-        return `${model.name} ${model.vendor} ${model.capabilities.join(' ')}`
+        return `${model.name} ${model.vendor} ${model.capabilities.join(' ')} ${model.endpointTypes.join(
+          ' '
+        )}`
           .toLowerCase()
           .includes(needle);
       })
-      .slice(0, 9);
+      .slice(0, 80);
   }, [allModels, filter, query]);
 
   const selectedModel =
@@ -567,6 +1015,11 @@ export function PlaygroundPage() {
     visibleModels[0] ??
     allModels[0] ??
     fallbackModels[0];
+
+  const availableEndpoints = useMemo(() => endpointKeysForModel(selectedModel), [selectedModel]);
+  const selectedEndpoint = availableEndpoints.includes(endpointDraft)
+    ? endpointDraft
+    : preferredEndpointForModel(selectedModel);
 
   const activeTokens = useMemo(
     () => (tokens.data?.items ?? []).filter((token) => token.status === 1),
@@ -578,71 +1031,107 @@ export function PlaygroundPage() {
     () => new Set(allModels.map((model) => model.vendor)).size,
     [allModels]
   );
-  const medianLatency = useMemo(() => {
-    const sorted = allModels.map((model) => model.latencyMs).sort((left, right) => left - right);
-    return sorted[Math.floor(sorted.length / 2)] ?? selectedModel.latencyMs;
-  }, [allModels, selectedModel.latencyMs]);
+  const endpointCount = useMemo(
+    () => new Set(allModels.flatMap((model) => model.endpointTypes)).size,
+    [allModels]
+  );
 
   const estimatedCostUsd = useMemo(() => {
-    const inTokens = Math.max(0, Math.round(chatInput.length / 3));
-    const outTokens = 512;
+    if (selectedEndpoint === 'images') {
+      return Math.max(selectedModel.imageUsd, selectedModel.inputUsd) * imageCount;
+    }
+    const inTokens = Math.max(0, Math.round(prompt.length / 3));
+    const outTokens = selectedEndpoint === 'embeddings' ? 0 : 512;
     return (
       (inTokens / 1_000_000) * selectedModel.inputUsd +
       (outTokens / 1_000_000) * selectedModel.outputUsd
     );
-  }, [chatInput.length, selectedModel.inputUsd, selectedModel.outputUsd]);
+  }, [
+    imageCount,
+    prompt.length,
+    selectedEndpoint,
+    selectedModel.imageUsd,
+    selectedModel.inputUsd,
+    selectedModel.outputUsd,
+  ]);
+
+  const tokenQuota = selectedToken
+    ? selectedToken.unlimited_quota
+      ? t('tokens.unlimited')
+      : fmtDisplay(selectedToken.remain_quota, cfg)
+    : t('tokens.empty_short');
+
+  const publicPayload = useMemo(
+    () =>
+      buildRequestPayload({
+        endpoint: selectedEndpoint,
+        model: selectedModel.name,
+        prompt: prompt || t('sample.prompt'),
+        imageSize,
+        imageQuality,
+        imageCount,
+        responseFormat,
+      }),
+    [
+      imageCount,
+      imageQuality,
+      imageSize,
+      prompt,
+      responseFormat,
+      selectedEndpoint,
+      selectedModel.name,
+      t,
+    ]
+  );
 
   const apiBase =
     typeof window === 'undefined' ? 'https://token.cymoon.cn' : window.location.origin;
-  const sampleToken = selectedToken
-    ? `sk-${selectedToken.name.replace(/\s+/g, '-')}-...`
-    : 'sk-...';
-  const curlSample = `curl ${apiBase}/v1/chat/completions \\
+  const sampleToken =
+    selectedToken?.key ||
+    (selectedToken ? `sk-${selectedToken.name.replace(/\s+/g, '-')}-...` : 'sk-...');
+  const curlSample = `curl ${apiBase}${endpointConfigs[selectedEndpoint].publicPath} \\
   -H "Authorization: Bearer ${sampleToken}" \\
   -H "Content-Type: application/json" \\
-  -d '{
-    "model": "${selectedModel.name}",
-    "messages": [
-      {"role": "user", "content": "${t('sample.prompt')}"}
-    ]
-  }'`;
+  -d '${JSON.stringify(publicPayload, null, 2)}'`;
 
-  async function handleSend() {
-    const content = chatInput.trim();
+  function handleModelSelect(model: ModelCardData) {
+    setSelectedModelName(model.name);
+    setEndpointDraft(preferredEndpointForModel(model));
+    setRunResult(null);
+  }
+
+  async function handleRun() {
+    const content = prompt.trim();
     if (!content || isRunning) return;
     setIsRunning(true);
-    setChatInput('');
-    const userMessage: ChatMessage = { id: Date.now(), role: 'user', content };
-    setMessages((current) => [...current, userMessage]);
+    setRunResult(null);
+
+    const payload = buildRequestPayload({
+      endpoint: selectedEndpoint,
+      model: selectedModel.name,
+      prompt: content,
+      group: selectedToken?.group || user?.group || undefined,
+      imageSize,
+      imageQuality,
+      imageCount,
+      responseFormat,
+    });
 
     try {
-      const chatMessages = [...messages, userMessage].map((message) => ({
-        role: message.role,
-        content: message.content,
-      }));
-      const res = await api.post<ChatCompletionResponse>('/pg/chat/completions', {
-        model: selectedModel.name,
-        group: selectedToken?.group || user?.group || undefined,
-        messages: chatMessages,
-        stream: false,
-      });
-      const reply = res.data.choices?.[0]?.message?.content?.trim() || t('chat.empty_reply');
-      setMessages((current) => [
-        ...current,
-        { id: Date.now() + 1, role: 'assistant', content: reply },
-      ]);
+      const res = await api.post<PlaygroundRunResponse>(
+        endpointConfigs[selectedEndpoint].playgroundPath,
+        payload,
+        { rawEnvelope: true } as never
+      );
+      setRunResult(extractRunResult(selectedEndpoint, res.data));
+      toast.success(t('use.run_success'));
     } catch (err) {
       const message =
         err instanceof ApiError ? (err.backendMessage ?? err.message) : (err as Error).message;
-      toast.error(message || t('chat.failed'));
-      setMessages((current) => [
-        ...current,
-        {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: t('chat.failed_with_reason', { reason: message || t('chat.failed') }),
-        },
-      ]);
+      toast.error(message || t('use.run_failed'));
+      setRunResult({
+        raw: t('use.run_failed_with_reason', { reason: message || t('use.run_failed') }),
+      });
     } finally {
       setIsRunning(false);
     }
@@ -657,12 +1146,6 @@ export function PlaygroundPage() {
     }
   }
 
-  const tokenQuota = selectedToken
-    ? selectedToken.unlimited_quota
-      ? t('tokens.unlimited')
-      : fmtDisplay(selectedToken.remain_quota, cfg)
-    : t('tokens.empty_short');
-
   return (
     <>
       <PageAction>
@@ -670,13 +1153,9 @@ export function PlaygroundPage() {
           <SlidersHorizontal className='size-4' />
           {t('actions.compare')}
         </Button>
-        <Button
-          size='sm'
-          variant={activeTab === 'chat' ? 'default' : 'secondary'}
-          onClick={() => setActiveTab('chat')}
-        >
-          <MessageSquareText className='size-4' />
-          {t('tabs.chat')}
+        <Button size='sm' variant='secondary'>
+          <Code2 className='size-4' />
+          {t(endpointConfigs[selectedEndpoint].shortLabelKey)}
         </Button>
       </PageAction>
 
@@ -713,9 +1192,9 @@ export function PlaygroundPage() {
             caption={t('stats.models_caption', { providers })}
           />
           <MetricTile
-            label={t('stats.latency')}
-            value={`${fmtNum(medianLatency)} ${t('unit.ms')}`}
-            caption={t('stats.latency_caption')}
+            label={t('stats.endpoints')}
+            value={fmtNum(endpointCount)}
+            caption={t('stats.endpoints_caption')}
           />
           <MetricTile
             label={t('stats.estimate')}
@@ -732,132 +1211,43 @@ export function PlaygroundPage() {
           />
         ) : null}
 
-        <div className='inline-flex w-fit rounded-md border border-line bg-bg-1 p-1'>
-          <ViewTabButton active={activeTab === 'market'} onClick={() => setActiveTab('market')}>
-            {t('tabs.market')}
-          </ViewTabButton>
-          <ViewTabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')}>
-            {t('tabs.chat')}
-          </ViewTabButton>
-        </div>
-
-        {activeTab === 'market' ? (
-          <div className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]'>
-            <div className='space-y-6'>
-              <SectionShell
-                title={t('models.title')}
-                subtitle={t('models.subtitle')}
-                action={
-                  <div className='flex flex-wrap justify-end gap-2'>
-                    {(['hot', 'cheap', 'long', 'vision', 'stable'] as const).map((item) => (
-                      <FilterChip
-                        key={item}
-                        active={filter === item}
-                        onClick={() => setFilter(item)}
-                      >
-                        {t(`filters.${item}`)}
-                      </FilterChip>
-                    ))}
-                  </div>
-                }
-              >
-                {pricing.isPending ? (
-                  <div className='grid gap-3 p-4 md:grid-cols-3'>
-                    {Array.from({ length: 3 }).map((_, index) => (
-                      <Skeleton key={index} className='h-[172px] rounded-md' />
-                    ))}
-                  </div>
-                ) : visibleModels.length === 0 ? (
-                  <div className='p-8 text-center text-13 text-fg-2'>{t('models.empty')}</div>
-                ) : (
-                  <div className='grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3'>
-                    {visibleModels.map((model) => (
-                      <ModelCard
-                        key={model.name}
-                        model={model}
-                        selected={model.name === selectedModel.name}
-                        onSelect={() => setSelectedModelName(model.name)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </SectionShell>
-            </div>
-
-            <aside className='space-y-4'>
-              <section className='rounded-md border border-line bg-bg-1 p-4'>
-                <div className='mb-3 flex items-center justify-between gap-3'>
-                  <h2 className='flex items-center gap-2 font-semibold'>
-                    <Code2 className='size-4' />
-                    {t('sample.title')}
-                  </h2>
-                  <Button variant='ghost' size='sm' onClick={() => void copySample()}>
-                    <Copy className='size-4' />
-                    {t('sample.copy')}
-                  </Button>
-                </div>
-                <pre className='max-h-[260px] overflow-auto whitespace-pre-wrap break-all rounded-md border border-line bg-bg-2 p-3 font-mono text-12 leading-5 text-fg-0'>
-                  {curlSample}
-                </pre>
-              </section>
-
-              <section className='rounded-md border border-line bg-bg-1 p-4'>
-                <div className='mb-3 flex items-center justify-between gap-3'>
-                  <h2 className='flex items-center gap-2 font-semibold'>
-                    <Gauge className='size-4' />
-                    {t('routes.title')}
-                  </h2>
-                  <Button variant='ghost' size='sm'>
-                    <RefreshCw className='size-4' />
-                    {t('routes.refresh')}
-                  </Button>
-                </div>
-                <div className='space-y-2'>
-                  <RouteRow
-                    name='cn-east-02'
-                    meta={`${fmtNum(selectedModel.latencyMs)} ${t('unit.ms')}`}
-                    best
-                  />
-                  <RouteRow
-                    name='global-fallback'
-                    meta={`${fmtNum(selectedModel.latencyMs + 260)} ${t('unit.ms')}`}
-                  />
-                </div>
-              </section>
-
-              <section className='rounded-md border border-line bg-bg-1 p-4'>
-                <div className='mb-3 flex items-center justify-between gap-3'>
-                  <h2 className='flex items-center gap-2 font-semibold'>
-                    <Clock3 className='size-4' />
-                    {t('recent.title')}
-                  </h2>
-                  <span className='text-13 font-medium text-accent'>{t('recent.logs')}</span>
-                </div>
-                <div className='space-y-3'>
-                  <RecentRun
-                    title={t('recent.items.0')}
-                    model={selectedModel.name}
-                    meta={`$0.0021 / 836 ${t('unit.ms')}`}
-                  />
-                  <RecentRun
-                    title={t('recent.items.1')}
-                    model='claude-sonnet-4'
-                    meta={`$0.0184 / 1,224 ${t('unit.ms')}`}
-                  />
-                  <RecentRun
-                    title={t('recent.items.2')}
-                    model='gemini-2.5-pro'
-                    meta={`$0.0118 / 1,542 ${t('unit.ms')}`}
-                  />
-                </div>
-              </section>
-            </aside>
-          </div>
-        ) : (
-          <ChatPanel
+        <div className='grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)_360px]'>
+          <ModelBrowser
+            models={visibleModels}
+            selectedModel={selectedModel}
+            filter={filter}
+            onFilterChange={setFilter}
+            onModelSelect={handleModelSelect}
+            pending={pricing.isPending}
+          />
+          <UseWorkbench
             allModels={allModels}
             selectedModel={selectedModel}
-            onModelChange={setSelectedModelName}
+            selectedEndpoint={selectedEndpoint}
+            availableEndpoints={availableEndpoints}
+            prompt={prompt}
+            imageSize={imageSize}
+            imageQuality={imageQuality}
+            imageCount={imageCount}
+            responseFormat={responseFormat}
+            isRunning={isRunning}
+            result={runResult}
+            onModelChange={(name) => {
+              const next = allModels.find((model) => model.name === name);
+              if (next) handleModelSelect(next);
+            }}
+            onEndpointChange={(endpoint) => {
+              setEndpointDraft(endpoint);
+              setRunResult(null);
+            }}
+            onPromptChange={setPrompt}
+            onImageSizeChange={setImageSize}
+            onImageQualityChange={setImageQuality}
+            onImageCountChange={setImageCount}
+            onResponseFormatChange={setResponseFormat}
+            onRun={handleRun}
+          />
+          <InspectorPanel
             activeTokens={activeTokens}
             selectedToken={selectedToken}
             onTokenChange={setSelectedTokenId}
@@ -865,13 +1255,12 @@ export function PlaygroundPage() {
             tokensError={tokens.isError}
             onRetryTokens={() => void tokens.refetch()}
             tokenQuota={tokenQuota}
-            messages={messages}
-            chatInput={chatInput}
-            onChatInputChange={setChatInput}
-            isRunning={isRunning}
-            onSend={handleSend}
+            curlSample={curlSample}
+            selectedModel={selectedModel}
+            selectedEndpoint={selectedEndpoint}
+            onCopySample={() => void copySample()}
           />
-        )}
+        </div>
       </div>
     </>
   );
@@ -896,20 +1285,6 @@ function RouteRow({ name, meta, best }: { name: string; meta: string; best?: boo
           {t('routes.backup')}
         </Badge>
       )}
-    </div>
-  );
-}
-
-function RecentRun({ title, model, meta }: { title: string; model: string; meta: string }) {
-  return (
-    <div className='border-b border-line pb-3 last:border-b-0 last:pb-0'>
-      <div className='flex items-center justify-between gap-3 text-13'>
-        <span>{title}</span>
-        <CheckCircle2 className='size-4 text-success' />
-      </div>
-      <div className='mt-1 text-12 text-fg-2'>
-        {model} / {meta}
-      </div>
     </div>
   );
 }

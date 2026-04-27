@@ -4,16 +4,37 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
 
 func Playground(c *gin.Context) {
+	PlaygroundRelay(c, types.RelayFormatOpenAI)
+}
+
+func PlaygroundResponses(c *gin.Context) {
+	PlaygroundRelay(c, types.RelayFormatOpenAIResponses)
+}
+
+func PlaygroundImage(c *gin.Context) {
+	PlaygroundRelay(c, types.RelayFormatOpenAIImage)
+}
+
+func PlaygroundEmbedding(c *gin.Context) {
+	PlaygroundRelay(c, types.RelayFormatEmbedding)
+}
+
+func PlaygroundRerank(c *gin.Context) {
+	PlaygroundRelay(c, types.RelayFormatRerank)
+}
+
+func PlaygroundRelay(c *gin.Context, relayFormat types.RelayFormat) {
 	var newAPIError *types.NewAPIError
 
 	defer func() {
@@ -30,12 +51,6 @@ func Playground(c *gin.Context) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAI, nil, nil)
-	if err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
-		return
-	}
-
 	userId := c.GetInt("id")
 
 	// Write user context to ensure acceptUnsetRatio is available
@@ -46,12 +61,16 @@ func Playground(c *gin.Context) {
 	}
 	userCache.WriteContext(c)
 
+	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if usingGroup == "" {
+		usingGroup = userCache.Group
+	}
 	tempToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
-		Group:  relayInfo.UsingGroup,
+		Name:   fmt.Sprintf("playground-%s", usingGroup),
+		Group:  usingGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
-	controller.Relay(c, types.RelayFormatOpenAI)
+	controller.Relay(c, relayFormat)
 }
