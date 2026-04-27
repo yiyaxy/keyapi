@@ -1,0 +1,111 @@
+{
+	"pages": [
+		{
+			"path": "pages/home/index",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/invite/index",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/profile/index",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/login/index",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/redeem/index",
+			"style": {
+				"navigationBarTitleText": "充值",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/apikey/index",
+			"style": {
+				"navigationBarTitleText": "API Key",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/usage-records/index",
+			"style": {
+				"navigationBarTitleText": "消费记录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/qr-confirm/index",
+			"style": {
+				"navigationBarTitleText": "扫码登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/topup/index",
+			"style": {
+				"navigationBarTitleText": "充值",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/orders/index",
+			"style": {
+				"navigationBarTitleText": "订单中心",
+				"navigationStyle": "custom"
+			}
+		}
+	],
+	"easycom": {
+		"custom": {
+			"^u-(.*)": "uview-plus/components/u-$1/u-$1.vue"
+		}
+	},
+	"globalStyle": {
+		"navigationBarTitleText": "CaMeL API",
+		"navigationBarBackgroundColor": "#ffffff",
+		"navigationBarTextStyle": "black",
+		"backgroundColor": "#f5f5f7"
+	},
+	"tabBar": {
+		"color": "#6b7280",
+		"selectedColor": "#4F6EF7",
+		"backgroundColor": "#ffffff",
+		"borderStyle": "white",
+		"list": [
+			{
+				"pagePath": "pages/home/index",
+				"iconPath": "static/icon/1-001.png",
+				"selectedIconPath": "static/icon/1-002.png",
+				"text": "首页"
+			},
+			{
+				"pagePath": "pages/invite/index",
+				"iconPath": "static/icon/4-001.png",
+				"selectedIconPath": "static/icon/4-002.png",
+				"text": "邀请"
+			},
+			{
+				"pagePath": "pages/profile/index",
+				"iconPath": "static/icon/5-001.png",
+				"selectedIconPath": "static/icon/5-002.png",
+				"text": "我的"
+			}
+		]
+	}
+}
