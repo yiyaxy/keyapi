@@ -38,6 +38,8 @@ import { fmtDisplay, fmtDisplayUsd, fmtNum } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const NO_TOKEN = '__no_token__';
+const PLAYGROUND_REQUEST_TIMEOUT_MS = 60_000;
+const PLAYGROUND_IMAGE_TIMEOUT_MS = 180_000;
 
 type FilterKey = 'hot' | 'cheap' | 'long' | 'vision' | 'image' | 'stable';
 type EndpointKey = 'chat' | 'responses' | 'images' | 'embeddings' | 'rerank';
@@ -1121,7 +1123,13 @@ export function PlaygroundPage() {
       const res = await api.post<PlaygroundRunResponse>(
         endpointConfigs[selectedEndpoint].playgroundPath,
         payload,
-        { rawEnvelope: true } as never
+        {
+          rawEnvelope: true,
+          timeout:
+            selectedEndpoint === 'images'
+              ? PLAYGROUND_IMAGE_TIMEOUT_MS
+              : PLAYGROUND_REQUEST_TIMEOUT_MS,
+        } as never
       );
       setRunResult(extractRunResult(selectedEndpoint, res.data));
       toast.success(t('use.run_success'));
