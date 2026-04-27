@@ -24,7 +24,7 @@
     </view>
 
     <!-- 微信支付区域 -->
-    <view class="content" v-if="activeTab === 'wechat'">
+    <view class="content" v-if="activeTab === 'wechat' && userStore.wxPayEnabled">
       <!-- 余额卡 -->
       <view class="balance-card">
         <text class="balance-label">当前余额</text>
@@ -136,10 +136,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { redeemCode, getSelf, createWechatTopupJsapi, getPaymentOrder } from '@/services/api.js'
+import { redeemCode, getSelf, createWechatTopupJsapi, getPaymentOrder, getStatus } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
 // ─── 导航 ────────────────────────────────────────────────────────────────────
@@ -316,9 +316,18 @@ async function doRedeem() {
   }
 }
 
-onLoad(() => {
+// wxPayEnabled 变为 false 时（异步 status 返回后）立即切换
+watch(() => userStore.wxPayEnabled, (enabled) => {
+  if (!enabled) activeTab.value = 'redeem'
+})
+
+onLoad(async () => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
-  // 微信支付关闭时强制落到兑换码 tab
+  // 每次进页面都拉一次最新 status，保证与服务端一致
+  try {
+    const data = await getStatus()
+    if (data) userStore.applyStatus(data)
+  } catch {}
   if (!userStore.wxPayEnabled) activeTab.value = 'redeem'
 })
 </script>

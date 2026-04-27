@@ -77,14 +77,14 @@
 		}
 	},
 	"globalStyle": {
-		"navigationBarTitleText": "CaMeL API",
+		"navigationBarTitleText": "ALL Models API",
 		"navigationBarBackgroundColor": "#ffffff",
 		"navigationBarTextStyle": "black",
 		"backgroundColor": "#f5f5f7"
 	},
 	"tabBar": {
 		"color": "#6b7280",
-		"selectedColor": "#4F6EF7",
+		"selectedColor": "#ff0000",
 		"backgroundColor": "#ffffff",
 		"borderStyle": "white",
 		"list": [
