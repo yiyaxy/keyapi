@@ -20,6 +20,7 @@ func TestTenantOverridableKeys_CoverageNonSecret(t *testing.T) {
 		// oauth
 		"GitHubOAuthEnabled", "GitHubClientId",
 		"WeChatAuthEnabled", "WeChatServerAddress", "WeChatAccountQRCodeImageURL", "WxMiniEnvVersion",
+		"WxPayEnabled",
 		"LinuxDOOAuthEnabled", "LinuxDOClientId", "LinuxDOMinimumTrustLevel",
 		"TelegramOAuthEnabled", "TelegramBotName",
 		// smtp

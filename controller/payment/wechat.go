@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	paymentsvc "github.com/QuantumNous/new-api/service/payment"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -103,6 +104,11 @@ func buildNotifyUrl(c *gin.Context, orderType string) (string, error) {
 		base, middleware.GetTenantId(c), orderType), nil
 }
 
+func isMiniProgramPayEnabled(tenantId int, productForm string) bool {
+	return productForm != model.PaymentProductFormJsapi ||
+		service.GetConfigBool(tenantId, "WxPayEnabled", common.WxPayEnabled)
+}
+
 func createTopupHandler(productForm string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tid := middleware.GetTenantId(c)
@@ -113,6 +119,11 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 		userId := c.GetInt("id")
 		if userId <= 0 {
 			common.ApiErrorMsg(c, "未登录")
+			return
+		}
+
+		if !isMiniProgramPayEnabled(tid, productForm) {
+			common.ApiErrorMsg(c, "小程序微信支付未启用")
 			return
 		}
 
@@ -218,6 +229,11 @@ func createSubHandler(productForm string) gin.HandlerFunc {
 		userId := c.GetInt("id")
 		if userId <= 0 {
 			common.ApiErrorMsg(c, "未登录")
+			return
+		}
+
+		if !isMiniProgramPayEnabled(tid, productForm) {
+			common.ApiErrorMsg(c, "小程序微信支付未启用")
 			return
 		}
 

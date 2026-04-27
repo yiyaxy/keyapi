@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -54,12 +55,14 @@ func TestGetStatusUsesTenantAuthOverrides(t *testing.T) {
 	prevPasswordLoginEnabled := common.PasswordLoginEnabled
 	prevTurnstileCheckEnabled := common.TurnstileCheckEnabled
 	prevTurnstileSiteKey := common.TurnstileSiteKey
+	prevWxPayEnabled := common.WxPayEnabled
 	defer func() {
 		common.RegisterEnabled = prevRegisterEnabled
 		common.PasswordRegisterEnabled = prevPasswordRegisterEnabled
 		common.PasswordLoginEnabled = prevPasswordLoginEnabled
 		common.TurnstileCheckEnabled = prevTurnstileCheckEnabled
 		common.TurnstileSiteKey = prevTurnstileSiteKey
+		common.WxPayEnabled = prevWxPayEnabled
 	}()
 
 	common.RegisterEnabled = false
@@ -67,6 +70,7 @@ func TestGetStatusUsesTenantAuthOverrides(t *testing.T) {
 	common.PasswordLoginEnabled = false
 	common.TurnstileCheckEnabled = false
 	common.TurnstileSiteKey = "platform-site-key"
+	common.WxPayEnabled = true
 
 	tenantId := 7
 	overrides := map[string]string{
@@ -75,12 +79,14 @@ func TestGetStatusUsesTenantAuthOverrides(t *testing.T) {
 		"PasswordLoginEnabled":    "true",
 		"TurnstileCheckEnabled":   "true",
 		"TurnstileSiteKey":        "tenant-site-key",
+		"WxPayEnabled":            "false",
 	}
 	for key, value := range overrides {
 		if err := model.SetTenantOption(tenantId, key, value); err != nil {
 			t.Fatalf("set tenant option %s: %v", key, err)
 		}
 	}
+	service.InvalidateTenantOptionCache(tenantId)
 
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -122,5 +128,8 @@ func TestGetStatusUsesTenantAuthOverrides(t *testing.T) {
 
 	if got, ok := resp.Data["turnstile_site_key"].(string); !ok || got != "tenant-site-key" {
 		t.Fatalf("turnstile_site_key = %#v, want tenant-site-key", resp.Data["turnstile_site_key"])
+	}
+	if got, ok := resp.Data["wx_pay_enabled"].(bool); !ok || got {
+		t.Fatalf("wx_pay_enabled = %#v, want false from tenant override", resp.Data["wx_pay_enabled"])
 	}
 }
