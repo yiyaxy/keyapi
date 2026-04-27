@@ -70,6 +70,10 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
 	{
 		playgroundRouter.POST("/chat/completions", media.Playground)
+		playgroundRouter.POST("/responses", media.PlaygroundResponses)
+		playgroundRouter.POST("/images/generations", media.PlaygroundImage)
+		playgroundRouter.POST("/embeddings", media.PlaygroundEmbedding)
+		playgroundRouter.POST("/rerank", media.PlaygroundRerank)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RelayPrometheusMiddleware())
