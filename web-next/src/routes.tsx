@@ -36,6 +36,7 @@ import { MessageAdminPage } from '@/pages/MessageAdmin';
 import { ModelsAdminPage } from '@/pages/ModelsAdmin';
 import { OrdersPage } from '@/pages/Orders';
 import { PlanPage } from '@/pages/PlanPage';
+import { PlaygroundPage } from '@/pages/Playground';
 import { PlatformChannelsAdminPage } from '@/pages/PlatformChannelsAdmin';
 import { PlatformTenantsPage } from '@/pages/PlatformTenants';
 import { PricingPage } from '@/pages/Pricing';
@@ -99,7 +100,7 @@ export const router = createBrowserRouter([
             children: [
               { path: '/dashboard', element: <DashboardPage /> },
               { path: '/keys', element: <KeysPage /> },
-              { path: '/playground', element: <ComingSoon feature='Playground' /> },
+              { path: '/playground', element: <PlaygroundPage /> },
               { path: '/logs', element: <LogsPage /> },
               { path: '/topup', element: <TopupPage /> },
               { path: '/orders', element: <OrdersPage /> },

@@ -22,6 +22,7 @@ import enModels from './locales/en/models.json';
 import enOps from './locales/en/ops.json';
 import enOrders from './locales/en/orders.json';
 import enPlan from './locales/en/plan.json';
+import enPlayground from './locales/en/playground.json';
 import enPlatform from './locales/en/platform.json';
 import enPrompt from './locales/en/prompt.json';
 import enPublic from './locales/en/public.json';
@@ -55,6 +56,7 @@ import zhModels from './locales/zh/models.json';
 import zhOps from './locales/zh/ops.json';
 import zhOrders from './locales/zh/orders.json';
 import zhPlan from './locales/zh/plan.json';
+import zhPlayground from './locales/zh/playground.json';
 import zhPlatform from './locales/zh/platform.json';
 import zhPrompt from './locales/zh/prompt.json';
 import zhPublic from './locales/zh/public.json';
@@ -96,6 +98,7 @@ void i18n
         platform: zhPlatform,
         invoice: zhInvoice,
         plan: zhPlan,
+        playground: zhPlayground,
         ops: zhOps,
         models: zhModels,
         orders: zhOrders,
@@ -131,6 +134,7 @@ void i18n
         platform: enPlatform,
         invoice: enInvoice,
         plan: enPlan,
+        playground: enPlayground,
         ops: enOps,
         models: enModels,
         orders: enOrders,
@@ -169,6 +173,7 @@ void i18n
       'platform',
       'invoice',
       'plan',
+      'playground',
       'ops',
       'models',
       'orders',
