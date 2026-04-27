@@ -288,6 +288,10 @@ func GetAllUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := model.FillUserLevelNames(tenantId, users); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
@@ -308,6 +312,10 @@ func SearchUsers(c *gin.Context) {
 		return
 	}
 	if err := model.ApplyMembershipView(tenantId, users); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.FillUserLevelNames(tenantId, users); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -449,6 +457,24 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+type BindAffCodeRequest struct {
+	AffCode string `json:"aff_code"`
+}
+
+func BindAffCode(c *gin.Context) {
+	var req BindAffCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "invalid request parameters")
+		return
+	}
+	result, err := model.BindInviteCode(middleware.GetTenantId(c), c.GetInt("id"), req.AffCode)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
@@ -460,6 +486,10 @@ func GetSelf(c *gin.Context) {
 		return
 	}
 	if err := model.ApplyMembershipViewToUser(middleware.GetTenantId(c), user); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.FillUserLevelNames(middleware.GetTenantId(c), []*model.User{user}); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -497,6 +527,8 @@ func GetSelf(c *gin.Context) {
 		"aff_quota":         user.AffQuota,
 		"aff_history_quota": user.AffHistoryQuota,
 		"inviter_id":        user.InviterId,
+		"level_id":          user.LevelId,
+		"level_name":        user.LevelName,
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
 		"stripe_customer":   user.StripeCustomer,

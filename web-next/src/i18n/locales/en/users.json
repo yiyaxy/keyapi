@@ -34,6 +34,8 @@
   "edit.display_name": "Display name",
   "edit.email": "Email",
   "edit.group": "Group",
+  "edit.level": "User level",
+  "edit.level_none": "No level",
   "edit.quota": "Balance",
   "edit.quota_current": "Now ${{amount}}",
   "edit.quota_reset": "Reset",

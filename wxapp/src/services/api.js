@@ -137,6 +137,9 @@ export const transferAff = (quota) =>
 export const getAffTransferHistory = (p = 1, size = 20) =>
   request.get('/api/aff_transfer/self', { p, size })
 
+export const bindInviteCode = (affCode) =>
+  request.post('/api/user/aff/bind', { aff_code: affCode })
+
 // ─── 微信支付充值 ───────────────────────────────────────
 /**
  * 发起微信小程序 JSAPI 充值下单

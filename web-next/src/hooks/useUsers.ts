@@ -11,6 +11,8 @@ export type AdminUser = {
   role: number;
   status: number;
   group: string;
+  level_id: number;
+  level_name?: string;
   quota: number;
   used_quota: number;
   request_count: number;
@@ -70,6 +72,7 @@ export type UpdateUserInput = {
   display_name?: string;
   email?: string;
   group?: string;
+  level_id?: number;
   role?: number;
   quota?: number;
   password?: string;

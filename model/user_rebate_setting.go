@@ -67,6 +67,9 @@ func GetEffectiveRebateSetting(inviterId int, tenantId int) *UserRebateSetting {
 	err := DB.Where("inviter_id = ?", inviterId).First(&customSetting).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if levelSetting, ok := getUserLevelRebateSetting(inviterId, tenantId); ok {
+				return levelSetting
+			}
 			return setting
 		}
 		common.SysError("failed to get user rebate setting: " + err.Error())

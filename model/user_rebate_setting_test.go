@@ -33,7 +33,7 @@ func setupUserRebateSettingTestDB(t *testing.T) func() {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&TenantOption{}, &UserRebateSetting{}); err != nil {
+	if err := db.AutoMigrate(&TenantOption{}, &User{}, &UserLevel{}, &UserRebateSetting{}); err != nil {
 		t.Fatalf("migrate tables: %v", err)
 	}
 	DB = db
@@ -145,5 +145,108 @@ func TestGetEffectiveRebateSetting_CustomSettingBeatsTenantDefault(t *testing.T)
 	}
 	if setting.SubscriptionRebateCount != 18 {
 		t.Fatalf("SubscriptionRebateCount = %d, want 18", setting.SubscriptionRebateCount)
+	}
+}
+
+func TestGetEffectiveRebateSetting_UserLevelBeatsTenantDefault(t *testing.T) {
+	restore := setupUserRebateSettingTestDB(t)
+	defer restore()
+
+	common.QuotaForInviter = 1
+	common.QuotaForInvitee = 2
+	common.TopUpRebateCount = 3
+	common.TopUpRebatePercent = 4
+	common.SubscriptionRebateCount = 5
+
+	level := UserLevel{
+		TenantId:                9,
+		Code:                    "gold",
+		Name:                    "Gold",
+		RegisterReward:          701,
+		InviteeReward:           702,
+		TopUpRebateCount:        17,
+		TopUpRebatePercent:      20,
+		SubscriptionRebateCount: 21,
+		Enabled:                 true,
+	}
+	if err := DB.Create(&level).Error; err != nil {
+		t.Fatalf("create level: %v", err)
+	}
+	if err := DB.Create(&User{
+		Id:       42,
+		TenantId: 9,
+		Username: "inviter",
+		Password: "password",
+		LevelId:  level.Id,
+	}).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	setting := GetEffectiveRebateSetting(42, 9)
+	if setting.RegisterReward != 701 {
+		t.Fatalf("RegisterReward = %d, want 701", setting.RegisterReward)
+	}
+	if setting.InviteeReward != 702 {
+		t.Fatalf("InviteeReward = %d, want 702", setting.InviteeReward)
+	}
+	if setting.TopUpRebateCount != 17 {
+		t.Fatalf("TopUpRebateCount = %d, want 17", setting.TopUpRebateCount)
+	}
+	if setting.TopUpRebatePercent != 20 {
+		t.Fatalf("TopUpRebatePercent = %d, want 20", setting.TopUpRebatePercent)
+	}
+	if setting.SubscriptionRebateCount != 21 {
+		t.Fatalf("SubscriptionRebateCount = %d, want 21", setting.SubscriptionRebateCount)
+	}
+}
+
+func TestGetEffectiveRebateSetting_CustomSettingBeatsUserLevel(t *testing.T) {
+	restore := setupUserRebateSettingTestDB(t)
+	defer restore()
+
+	level := UserLevel{
+		TenantId:           9,
+		Code:               "gold",
+		Name:               "Gold",
+		RegisterReward:     701,
+		InviteeReward:      702,
+		TopUpRebateCount:   17,
+		TopUpRebatePercent: 20,
+		Enabled:            true,
+	}
+	if err := DB.Create(&level).Error; err != nil {
+		t.Fatalf("create level: %v", err)
+	}
+	if err := DB.Create(&User{
+		Id:       42,
+		TenantId: 9,
+		Username: "inviter",
+		Password: "password",
+		LevelId:  level.Id,
+	}).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := DB.Create(&UserRebateSetting{
+		InviterId:          42,
+		RegisterReward:     801,
+		InviteeReward:      802,
+		TopUpRebateCount:   27,
+		TopUpRebatePercent: 30,
+	}).Error; err != nil {
+		t.Fatalf("create custom rebate setting: %v", err)
+	}
+
+	setting := GetEffectiveRebateSetting(42, 9)
+	if setting.RegisterReward != 801 {
+		t.Fatalf("RegisterReward = %d, want 801", setting.RegisterReward)
+	}
+	if setting.InviteeReward != 802 {
+		t.Fatalf("InviteeReward = %d, want 802", setting.InviteeReward)
+	}
+	if setting.TopUpRebateCount != 27 {
+		t.Fatalf("TopUpRebateCount = %d, want 27", setting.TopUpRebateCount)
+	}
+	if setting.TopUpRebatePercent != 30 {
+		t.Fatalf("TopUpRebatePercent = %d, want 30", setting.TopUpRebatePercent)
 	}
 }

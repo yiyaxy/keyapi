@@ -48,6 +48,8 @@ type User struct {
 	AffQuota                  int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
 	AffHistoryQuota           int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
 	InviterId                 int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	LevelId                   int            `json:"level_id" gorm:"type:int;default:0;column:user_level_id;index"`
+	LevelName                 string         `json:"level_name,omitempty" gorm:"-"`
 	TopUpCount                int            `json:"top_up_count" gorm:"type:int;default:0;column:top_up_count"` // 用户充值成功次数（用于计算返利）
 	SubscriptionPurchaseCount int            `json:"subscription_purchase_count" gorm:"type:int;default:0;column:subscription_purchase_count"`
 	DeletedAt                 gorm.DeletedAt `gorm:"index"`
@@ -442,9 +444,9 @@ func inviteUser(inviterId int, registerReward int) (err error) {
 	return DB.Model(&User{}).
 		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
 		Updates(map[string]interface{}{
-			"aff_count":         gorm.Expr("aff_count + ?", 1),
-			"aff_quota":         gorm.Expr("aff_quota + ?", registerReward),
-			"aff_history_quota": gorm.Expr("aff_history_quota + ?", registerReward),
+			"aff_count":   gorm.Expr("aff_count + ?", 1),
+			"aff_quota":   gorm.Expr("aff_quota + ?", registerReward),
+			"aff_history": gorm.Expr("aff_history + ?", registerReward),
 		}).Error
 }
 
@@ -545,10 +547,11 @@ func (user *User) Insert(inviterId int) error {
 			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
 			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
+		_ = inviteUser(inviterId, rebateSetting.RegisterReward)
 		if rebateSetting.RegisterReward > 0 {
 			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
-			_ = inviteUser(inviterId, rebateSetting.RegisterReward)
 			CreateAffRebateLog(&AffRebateLog{
+				TenantId:    user.TenantId,
 				UserId:      inviterId,
 				InviteeId:   user.Id,
 				InviteeName: user.Username,
@@ -616,10 +619,11 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
 			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
+		_ = inviteUser(inviterId, rebateSetting.RegisterReward)
 		if rebateSetting.RegisterReward > 0 {
 			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
-			_ = inviteUser(inviterId, rebateSetting.RegisterReward)
 			CreateAffRebateLog(&AffRebateLog{
+				TenantId:    user.TenantId,
 				UserId:      inviterId,
 				InviteeId:   user.Id,
 				InviteeName: user.Username,
@@ -670,11 +674,12 @@ func (user *User) Edit(updatePassword bool) error {
 
 	newUser := *user
 	updates := map[string]interface{}{
-		"username":     newUser.Username,
-		"display_name": newUser.DisplayName,
-		"group":        newUser.Group,
-		"quota":        newUser.Quota,
-		"remark":       newUser.Remark,
+		"username":      newUser.Username,
+		"display_name":  newUser.DisplayName,
+		"group":         newUser.Group,
+		"quota":         newUser.Quota,
+		"remark":        newUser.Remark,
+		"user_level_id": newUser.LevelId,
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password

@@ -95,6 +95,22 @@
           </view>
           <u-icon name="arrow-right" size="15" color="#9ca3af" />
         </view>
+        <view class="menu-div" />
+
+        <view class="menu-item" @click="openInviteBind">
+          <view class="menu-left">
+            <view class="menu-icon" style="background:#eef6ff;">
+              <u-icon name="account-fill" size="20" color="#2563eb" />
+            </view>
+            <view>
+              <text class="menu-label">绑定邀请码</text>
+              <text class="menu-sub">
+                {{ userInfo?.inviter_id ? `已绑定上级 #${userInfo.inviter_id}` : '绑定后充值返利给邀请人' }}
+              </text>
+            </view>
+          </view>
+          <u-icon name="arrow-right" size="15" color="#9ca3af" />
+        </view>
       </view>
 
       <!-- 账户信息 -->
@@ -132,6 +148,27 @@
       <view style="height:48rpx;" />
       </template>
     </scroll-view>
+
+    <view v-if="bindModalOpen" class="modal-mask" @click="closeInviteBind">
+      <view class="bind-panel" @click.stop>
+        <text class="bind-title">绑定邀请码</text>
+        <text class="bind-desc">绑定成功后不可修改，之后你的充值会按规则返利给邀请人。</text>
+        <input
+          class="bind-input"
+          v-model.trim="bindCode"
+          maxlength="32"
+          placeholder="请输入邀请码"
+          confirm-type="done"
+          @confirm="submitInviteBind"
+        />
+        <view class="bind-actions">
+          <view class="bind-btn secondary" @click="closeInviteBind">取消</view>
+          <view class="bind-btn primary" @click="submitInviteBind">
+            {{ bindSubmitting ? '绑定中...' : '确认绑定' }}
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -139,12 +176,15 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { getSelf } from '@/services/api.js'
+import { bindInviteCode, getSelf } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
 const statusBarH = ref(0)
 const refreshing = ref(false)
 const userInfo = ref(null)
+const bindModalOpen = ref(false)
+const bindCode = ref('')
+const bindSubmitting = ref(false)
 
 const displayName = computed(() => {
   const u = userInfo.value
@@ -160,6 +200,40 @@ function q2cny(quota) { return renderQuota(quota) }
 
 function nav(url) { uni.navigateTo({ url }) }
 function switchTab(url) { uni.switchTab({ url }) }
+
+function openInviteBind() {
+  if (userInfo.value?.inviter_id) {
+    uni.showToast({ title: '当前账号已绑定邀请码', icon: 'none' })
+    return
+  }
+  bindCode.value = ''
+  bindModalOpen.value = true
+}
+
+function closeInviteBind() {
+  if (bindSubmitting.value) return
+  bindModalOpen.value = false
+}
+
+async function submitInviteBind() {
+  const code = bindCode.value.trim()
+  if (!code) {
+    uni.showToast({ title: '请输入邀请码', icon: 'none' })
+    return
+  }
+  if (bindSubmitting.value) return
+  bindSubmitting.value = true
+  try {
+    await bindInviteCode(code)
+    uni.showToast({ title: '绑定成功', icon: 'success' })
+    bindModalOpen.value = false
+    await loadData()
+  } catch {
+    // request layer has shown a toast
+  } finally {
+    bindSubmitting.value = false
+  }
+}
 
 async function loadData() {
   if (refreshing.value) return
@@ -286,6 +360,7 @@ onLoad(() => {
   margin-right: 20rpx;
 }
 .menu-label { font-size: 28rpx; color: #1a1a2e; font-weight: 500; }
+.menu-sub { display: block; margin-top: 6rpx; font-size: 22rpx; color: #8a8f98; }
 .menu-div { height: 1rpx; background: #f5f5f7; margin: 0 32rpx; }
 
 /* 账户信息 */
@@ -313,4 +388,35 @@ onLoad(() => {
   box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
 }
 .logout-txt { font-size: 30rpx; color: #ef4444; font-weight: 600; margin-left: 12rpx; }
+.modal-mask {
+  position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 300;
+  background: rgba(17,24,39,0.42);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.bind-panel {
+  width: 100%;
+  background: #fff;
+  border-radius: 28rpx 28rpx 0 0;
+  padding: 36rpx 32rpx 40rpx;
+  box-shadow: 0 -8rpx 32rpx rgba(0,0,0,0.12);
+}
+.bind-title { display: block; font-size: 34rpx; font-weight: 700; color: #111827; }
+.bind-desc { display: block; margin-top: 12rpx; font-size: 25rpx; line-height: 1.5; color: #6b7280; }
+.bind-input {
+  margin-top: 28rpx;
+  height: 88rpx;
+  border-radius: 16rpx;
+  background: #f5f7fb;
+  padding: 0 24rpx;
+  font-size: 30rpx;
+  color: #111827;
+}
+.bind-actions { display: flex; gap: 18rpx; margin-top: 28rpx; }
+.bind-btn {
+  flex: 1; height: 88rpx; border-radius: 16rpx;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30rpx; font-weight: 600;
+}
+.bind-btn.secondary { background: #f3f4f6; color: #374151; }
+.bind-btn.primary { background: #2563eb; color: #fff; }
 </style>

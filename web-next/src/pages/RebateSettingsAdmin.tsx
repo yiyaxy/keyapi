@@ -6,6 +6,8 @@ import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LogsPagination } from '@/components/logs/LogsPagination';
 import { RebateFormDialog } from '@/components/rebate/RebateFormDialog';
+import { UserLevelFormDialog } from '@/components/rebate/UserLevelFormDialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +18,7 @@ import {
   useRebateSettings,
   type UserRebateSetting,
 } from '@/hooks/useRebateSettings';
+import { useDeleteUserLevel, useUserLevels, type UserLevel } from '@/hooks/useUserLevels';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 const PAGE_SIZE = 30;
@@ -28,13 +31,17 @@ export function RebateSettingsAdminPage() {
   const [appliedKeyword, setAppliedKeyword] = useState('');
   const [formTarget, setFormTarget] = useState<UserRebateSetting | 'new' | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserRebateSetting | null>(null);
+  const [levelFormTarget, setLevelFormTarget] = useState<UserLevel | 'new' | null>(null);
+  const [levelDeleteTarget, setLevelDeleteTarget] = useState<UserLevel | null>(null);
 
+  const levels = useUserLevels();
   const list = useRebateSettings({
     p: page,
     page_size: PAGE_SIZE,
     keyword: appliedKeyword || undefined,
   });
   const del = useDeleteRebateSetting();
+  const delLevel = useDeleteUserLevel();
 
   const items = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
@@ -44,6 +51,96 @@ export function RebateSettingsAdminPage() {
       <PageAction>
         <Button onClick={() => setFormTarget('new')}>{t('action.create')}</Button>
       </PageAction>
+      <section className='space-y-3'>
+        <div className='flex items-center justify-between gap-3'>
+          <div>
+            <h2 className='text-16 font-semibold text-fg-0'>{t('level.title')}</h2>
+            <p className='text-13 text-fg-2'>{t('level.sub')}</p>
+          </div>
+          <Button variant='secondary' onClick={() => setLevelFormTarget('new')}>
+            {t('level.action.create')}
+          </Button>
+        </div>
+        {levels.isPending ? (
+          <div className='space-y-2'>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className='h-10 w-full' />
+            ))}
+          </div>
+        ) : levels.isError ? (
+          <InlineBanner
+            level='danger'
+            message={String((levels.error as Error).message)}
+            onClose={() => void levels.refetch()}
+          />
+        ) : (levels.data?.length ?? 0) === 0 ? (
+          <div className='rounded-md border border-line bg-bg-1 p-5 text-center text-13 text-fg-2'>
+            {t('level.empty')}
+          </div>
+        ) : (
+          <div className='overflow-x-auto rounded-md border border-line'>
+            <table className='w-full border-collapse tabular-nums'>
+              <thead>
+                <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
+                  <th className='px-3 py-2 font-medium'>{t('level.col.name')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('col.register_reward')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('col.invitee_reward')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('col.top_up_rebate_count')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('col.top_up_rebate_percent')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('level.col.status')}</th>
+                  <th className='px-3 py-2' />
+                </tr>
+              </thead>
+              <tbody>
+                {(levels.data ?? []).map((level) => (
+                  <tr key={level.id} className='border-b border-line text-13 hover:bg-bg-1'>
+                    <td className='px-3 py-2'>
+                      <div className='font-medium'>{level.name}</div>
+                      <div className='font-mono text-12 text-fg-2'>{level.code}</div>
+                    </td>
+                    <td className='px-3 py-2'>{fmtDisplay(level.register_reward, cfg)}</td>
+                    <td className='px-3 py-2'>{fmtDisplay(level.invitee_reward, cfg)}</td>
+                    <td className='px-3 py-2'>{fmtNum(level.top_up_rebate_count)}</td>
+                    <td className='px-3 py-2'>{level.top_up_rebate_percent}%</td>
+                    <td className='px-3 py-2'>
+                      <Badge variant={level.enabled ? 'default' : 'secondary'}>
+                        {t(level.enabled ? 'level.status.enabled' : 'level.status.disabled')}
+                      </Badge>
+                    </td>
+                    <td className='px-3 py-2'>
+                      <div className='flex gap-1'>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => setLevelFormTarget(level)}
+                        >
+                          {t('action.edit')}
+                        </Button>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          className='text-danger'
+                          onClick={() => setLevelDeleteTarget(level)}
+                        >
+                          {t('action.delete')}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <div className='border-t border-line pt-4'>
+        <div>
+          <h2 className='text-16 font-semibold text-fg-0'>{t('override.title')}</h2>
+          <p className='text-13 text-fg-2'>{t('override.sub')}</p>
+        </div>
+      </div>
       <div className='flex items-center gap-2'>
         <Input
           className='max-w-xs'
@@ -138,6 +235,29 @@ export function RebateSettingsAdminPage() {
         record={formTarget === 'new' || formTarget === null ? null : formTarget}
         onOpenChange={(o) => !o && setFormTarget(null)}
       />
+      <UserLevelFormDialog
+        open={levelFormTarget !== null}
+        record={levelFormTarget === 'new' || levelFormTarget === null ? null : levelFormTarget}
+        onOpenChange={(o) => !o && setLevelFormTarget(null)}
+      />
+      {levelDeleteTarget && (
+        <ConfirmDialog
+          open
+          title={t('level.delete.title')}
+          body={t('level.delete.body', { name: levelDeleteTarget.name })}
+          confirmLabel={t('delete.confirm')}
+          isPending={delLevel.isPending}
+          onOpenChange={(o) => !o && setLevelDeleteTarget(null)}
+          onConfirm={() => {
+            const target = levelDeleteTarget;
+            setLevelDeleteTarget(null);
+            delLevel.mutate(target.id, {
+              onSuccess: () => toast.success(t('toast.delete.success')),
+              onError: (e) => toast.error((e as Error).message),
+            });
+          }}
+        />
+      )}
       {deleteTarget && (
         <ConfirmDialog
           open

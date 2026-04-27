@@ -45,6 +45,7 @@ export function UsersTable({
             <th className='px-3 py-2 font-medium'>{t('table.col.display_name')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.email')}</th>
             <th className='px-3 py-2 font-medium'>{t('edit.group')}</th>
+            <th className='px-3 py-2 font-medium'>{t('edit.level')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.role')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.status')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.quota')}</th>
@@ -64,6 +65,9 @@ export function UsersTable({
                 <td className='px-3 py-2'>{u.email || '—'}</td>
                 <td className='px-3 py-2'>
                   {u.group ? <Badge variant='outline'>{u.group}</Badge> : '-'}
+                </td>
+                <td className='px-3 py-2'>
+                  {u.level_id ? <Badge variant='secondary'>{u.level_name || `#${u.level_id}`}</Badge> : '-'}
                 </td>
                 <td className='px-3 py-2'>
                   <Badge

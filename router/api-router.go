@@ -173,6 +173,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", auth.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", auth.PasskeyDelete)
 				selfRoute.GET("/aff", user.GetAffCode)
+				selfRoute.POST("/aff/bind", user.BindAffCode)
 				selfRoute.GET("/topup/info", payment.GetTopUpInfo)
 				selfRoute.GET("/topup/self", payment.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), user.TopUp)
@@ -525,6 +526,15 @@ func SetApiRouter(router *gin.Engine) {
 			rebateSettingRoute.POST("/", user.CreateUserRebateSetting)
 			rebateSettingRoute.PUT("/", user.UpdateUserRebateSetting)
 			rebateSettingRoute.DELETE("/:id", user.DeleteUserRebateSetting)
+		}
+
+		userLevelRoute := apiRouter.Group("/user_level")
+		userLevelRoute.Use(middleware.TenantAdminAuth())
+		{
+			userLevelRoute.GET("/", user.GetAllUserLevels)
+			userLevelRoute.POST("/", user.CreateUserLevel)
+			userLevelRoute.PUT("/", user.UpdateUserLevel)
+			userLevelRoute.DELETE("/:id", user.DeleteUserLevel)
 		}
 
 		// Message routes (admin)

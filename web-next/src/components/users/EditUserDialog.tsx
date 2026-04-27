@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { useAdminGroups } from '@/hooks/useChannels';
 import { fromDisplay, toDisplay, usePublicConfig } from '@/hooks/usePublicConfig';
+import { useUserLevels } from '@/hooks/useUserLevels';
 import { useUpdateUser, type AdminUser } from '@/hooks/useUsers';
 import { ApiError } from '@/lib/api';
 
@@ -32,6 +33,7 @@ const schema = z.object({
   display_name: z.string().max(20),
   email: z.string().email().or(z.literal('')),
   group: z.string().max(64),
+  level_id: z.number().int().min(0),
   // Display-unit value as a string to preserve user-typed precision.
   quota_display: z
     .string()
@@ -54,6 +56,7 @@ export function EditUserDialog({
   const cfg = usePublicConfig();
   const update = useUpdateUser();
   const adminGroups = useAdminGroups();
+  const levels = useUserLevels();
 
   // Preformat the current balance into display unit with the right digits.
   const currentDisp = toDisplay(user.quota, cfg);
@@ -68,6 +71,7 @@ export function EditUserDialog({
       display_name: user.display_name ?? '',
       email: user.email ?? '',
       group: user.group ?? 'default',
+      level_id: user.level_id ?? 0,
       quota_display: currentStr,
       password: '',
     },
@@ -83,6 +87,7 @@ export function EditUserDialog({
       display_name: user.display_name ?? '',
       email: user.email ?? '',
       group: user.group ?? 'default',
+      level_id: user.level_id ?? 0,
       quota_display: str,
       password: '',
     });
@@ -133,6 +138,7 @@ export function EditUserDialog({
         display_name: values.display_name,
         email: values.email,
         group: values.group,
+        level_id: values.level_id,
         quota: rawQuota,
       };
       if (values.password.trim()) payload.password = values.password.trim();
@@ -202,6 +208,31 @@ export function EditUserDialog({
                 {groupOptions.map((group) => (
                   <SelectItem key={group} value={group}>
                     {group}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className='space-y-2'>
+            <Label htmlFor='eu-level'>{t('edit.level')}</Label>
+            <Select
+              value={String(form.watch('level_id') ?? 0)}
+              onValueChange={(value) =>
+                form.setValue('level_id', Number(value), {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+            >
+              <SelectTrigger id='eu-level' aria-label={t('edit.level')}>
+                <SelectValue placeholder={t('edit.level')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='0'>{t('edit.level_none')}</SelectItem>
+                {(levels.data ?? []).map((level) => (
+                  <SelectItem key={level.id} value={String(level.id)}>
+                    {level.name}
                   </SelectItem>
                 ))}
               </SelectContent>

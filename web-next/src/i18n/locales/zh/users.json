@@ -34,6 +34,8 @@
   "edit.display_name": "显示名",
   "edit.email": "邮箱",
   "edit.group": "分组",
+  "edit.level": "用户等级",
+  "edit.level_none": "不设置等级",
   "edit.quota": "余额",
   "edit.quota_current": "当前 ${{amount}}",
   "edit.quota_reset": "还原",
