@@ -2,6 +2,14 @@
   <view class="page">
     <view :style="{ height: statusBarH + 'px' }" />
 
+    <!-- 顶部返回首页 -->
+    <view class="nav-bar">
+      <view class="home-btn" @click="goHome">
+        <u-icon name="home" size="20" color="#1a1a2e" />
+        <text class="home-txt">首页</text>
+      </view>
+    </view>
+
     <view class="logo-area">
       <view class="logo-icon">
         <text class="logo-letter">C</text>
@@ -37,6 +45,9 @@
         <text class="desc">{{ purpose === 'bind' && mergeRequired
           ? '请返回电脑浏览器确认合并操作，本页可关闭'
           : '请回到电脑浏览器继续操作，本页可关闭' }}</text>
+        <view class="btn-ghost" @click="goHome">
+          <text>返回首页</text>
+        </view>
       </block>
 
       <block v-else-if="state === 'error'">
@@ -159,8 +170,12 @@ async function doConfirm() {
   }
 }
 
+function goHome() {
+  uni.switchTab({ url: '/pages/home/index' })
+}
+
 function cancel() {
-  uni.navigateBack({ delta: 1, fail: () => uni.reLaunch({ url: '/pages/home/index' }) })
+  uni.navigateBack({ delta: 1, fail: () => uni.switchTab({ url: '/pages/home/index' }) })
 }
 </script>
 
@@ -175,11 +190,27 @@ function cancel() {
   box-sizing: border-box;
 }
 
+.nav-bar {
+  width: 100%;
+  padding: 8rpx 24rpx;
+  box-sizing: border-box;
+}
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 12rpx 20rpx;
+  gap: 8rpx;
+}
+.home-txt {
+  font-size: 28rpx;
+  color: #1a1a2e;
+}
+
 .logo-area {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 120rpx;
+  margin-top: 60rpx;
   margin-bottom: 56rpx;
 }
 .logo-icon {

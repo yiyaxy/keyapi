@@ -95,6 +95,7 @@ func GetStatus(c *gin.Context) {
 		"enable_batch_update":           common.BatchUpdateEnabled,
 		"enable_drawing":                service.GetConfigBool(tenantId, "DrawingEnabled", common.DrawingEnabled),
 		"enable_task":                   service.GetConfigBool(tenantId, "TaskEnabled", common.TaskEnabled),
+		"wx_pay_enabled":                common.WxPayEnabled,
 		"enable_data_export":            service.GetConfigBool(tenantId, "DataExportEnabled", common.DataExportEnabled),
 		"data_export_default_time":      common.DataExportDefaultTime,
 		"default_collapse_sidebar":      common.DefaultCollapseSidebar,

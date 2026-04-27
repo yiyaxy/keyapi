@@ -1,6 +1,12 @@
 <template>
   <view class="page">
-    <u-navbar title="消费记录" :auto-back="true" bgColor="#fff" :placeholder="true" />
+    <view :style="{ height: statusBarH + 'px' }" />
+    <view class="header">
+      <view class="back-btn" @click="goBack">
+        <u-icon name="arrow-left" size="20" color="#1a1a2e" />
+      </view>
+      <text class="header-title">消费记录</text>
+    </view>
 
     <view class="content">
       <!-- 统计头部 -->
@@ -73,6 +79,7 @@ import { userStore } from '@/store/user.js'
 import { getLogs, getTodayStat, getMonthStat } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
+const statusBarH = ref(0)
 const PAGE_SIZE = 20
 
 const firstLoading = ref(true)
@@ -150,18 +157,42 @@ async function loadMore() {
   await loadLogs(page.value + 1, true)
 }
 
+function goBack() {
+  uni.navigateBack({ delta: 1, fail: () => uni.switchTab({ url: '/pages/profile/index' }) })
+}
+
 onLoad(async () => {
+  statusBarH.value = uni.getSystemInfoSync().statusBarHeight
   if (!userStore.isLoggedIn) {
     uni.navigateTo({ url: '/pages/login/index' })
     return
   }
-  // 并发加载统计和日志列表
   await Promise.allSettled([loadStats(), loadLogs(1, false)])
 })
 </script>
 
 <style lang="scss" scoped>
 .page { min-height: 100vh; background: #f5f5f7; }
+
+.header {
+  height: 88rpx;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 24rpx;
+  position: relative;
+  box-shadow: 0 1rpx 0 #f0f0f0;
+}
+.back-btn {
+  width: 72rpx; height: 72rpx;
+  display: flex; align-items: center; justify-content: center;
+}
+.header-title {
+  position: absolute;
+  left: 50%; transform: translateX(-50%);
+  font-size: 32rpx; font-weight: 600; color: #1a1a2e;
+}
+
 .content { padding: 24rpx; }
 
 /* 统计卡片 */

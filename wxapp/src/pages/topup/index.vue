@@ -74,7 +74,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
 import { createWechatTopupJsapi, getPaymentOrder, getSelf } from '@/services/api.js'
 
-const PRESETS = [1, 5, 10, 20, 50, 100]
+const PRESETS = [20, 50, 100, 200, 500]
 const MIN_AMOUNT = 1
 const MAX_AMOUNT = 10000
 
