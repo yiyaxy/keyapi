@@ -16,6 +16,9 @@ const (
 	ChannelStabilityCooldownEnabledKey            = "ChannelStabilityCooldownEnabled"
 	ChannelStabilityHealthScoreEnabledKey         = "ChannelStabilityHealthScoreEnabled"
 	ChannelStabilityAffinityGovernanceEnabledKey  = "ChannelStabilityAffinityGovernanceEnabled"
+
+	scheduledCooldownMinDuration = 10 * time.Second
+	scheduledCooldownMaxDuration = 6 * time.Hour
 )
 
 func init() {
@@ -126,4 +129,28 @@ func NextChannelCooldownDuration(count int) time.Duration {
 		durationMs = maxMs
 	}
 	return time.Duration(durationMs) * time.Millisecond
+}
+
+func ScheduledChannelCooldownDuration(now time.Time, retryAfter time.Time, fallback time.Duration) (time.Duration, bool) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	duration := retryAfter.Sub(now)
+	clamped := false
+	if duration < scheduledCooldownMinDuration {
+		duration = scheduledCooldownMinDuration
+		clamped = true
+	}
+	if duration > scheduledCooldownMaxDuration {
+		duration = scheduledCooldownMaxDuration
+		clamped = true
+	}
+	if fallback > duration {
+		duration = fallback
+	}
+	if duration > scheduledCooldownMaxDuration {
+		duration = scheduledCooldownMaxDuration
+		clamped = true
+	}
+	return duration, clamped
 }

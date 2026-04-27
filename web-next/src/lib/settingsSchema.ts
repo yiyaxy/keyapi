@@ -470,8 +470,8 @@ export const SETTINGS_GROUPS: Group[] = [
           en: 'Stream retry boundary',
         },
         {
-          zh: '阶段一：首 token 返回后禁止跨渠道静默切换。',
-          en: 'Phase 1: prevent silent cross-channel retry after the first stream token.',
+          zh: '开启后，流式响应一旦已经把首个 token 或内容块发给用户，后续上游报错就不会再静默切到其他渠道重放请求，避免同一次输出混入两个渠道的内容。首 token 前仍允许按原重试策略切换。建议生产环境开启。',
+          en: 'When enabled, once a streaming response has sent the first token or content chunk to the user, later upstream errors will not silently replay the request on another channel. This prevents mixed output from two channels in one response. Retries before the first token still follow the normal retry policy. Recommended for production.',
         }
       ),
       f(
@@ -482,8 +482,8 @@ export const SETTINGS_GROUPS: Group[] = [
           en: 'Error classification',
         },
         {
-          zh: '阶段二：区分永久故障、短期抖动和普通错误。',
-          en: 'Phase 2: classify permanent failures, transient upstream issues, and normal errors.',
+          zh: '开启后，系统会结合 HTTP 状态、供应商错误码和错误文本，把失败分成普通错误、短期抖动、按上游 Retry-After 调度的冷却、认证刷新类错误和永久故障。额度不足、Key 无效等永久错误仍走禁用或告警；429、5xx、连接超时等短期问题会进入重试或冷却，减少误禁用。',
+          en: 'When enabled, failures are classified from HTTP status, provider error code, and error text into normal errors, transient issues, upstream Retry-After scheduled cooldowns, auth-refresh cases, and permanent failures. Permanent problems such as insufficient quota or invalid keys still trigger disable/alert behavior, while 429, 5xx, and timeout-like issues can retry or cool down instead of being misclassified as permanent.',
         }
       ),
       f(
@@ -494,8 +494,8 @@ export const SETTINGS_GROUPS: Group[] = [
           en: 'Cooldown state',
         },
         {
-          zh: '阶段三：短期抖动渠道临时退出选路并自动恢复。',
-          en: 'Phase 3: temporarily remove transiently failing channels and restore them automatically.',
+          zh: '开启后，被错误分类判定为短期抖动或上游要求等待的渠道不会立刻禁用，而是写入 cooldown_until、cooldown_reason 和 cooldown_count。冷却期内该渠道临时退出选路，倒计时结束后自动恢复，并按 warm-up 权重逐步回流。上游 Retry-After 会被采用，但会被限制在安全时长范围内。',
+          en: 'When enabled, channels classified as transiently failing or asked by the upstream to wait are not immediately disabled. The system writes cooldown_until, cooldown_reason, and cooldown_count, temporarily removes the channel from routing during the cooldown, then restores it automatically with warm-up weighting. Upstream Retry-After is honored but clamped to a safe duration range.',
         }
       ),
       f(
@@ -506,8 +506,8 @@ export const SETTINGS_GROUPS: Group[] = [
           en: 'Health-score routing',
         },
         {
-          zh: '阶段四：用监控健康度动态调整渠道选路权重。',
-          en: 'Phase 4: feed monitor health scores back into channel routing weights.',
+          zh: '预留开关。当前监控页已经能展示 normal、degraded、abnormal 和冷却状态，但健康分尚未接入实际选路权重；现在开启不会立刻改变请求分配。后续阶段会把近期成功率、错误率和延迟转换为健康分，让高错误率或高延迟渠道提前降权，恢复后再逐步回流。',
+          en: 'Reserved switch. The monitor page already exposes normal, degraded, abnormal, and cooldown states, but health scores are not yet fed into live routing weights; enabling it now does not immediately change request distribution. A later phase will convert recent success rate, error rate, and latency into a health score so unhealthy channels are down-weighted before hard failure and gradually restored after recovery.',
         }
       ),
       f(
@@ -518,8 +518,8 @@ export const SETTINGS_GROUPS: Group[] = [
           en: 'Affinity governance',
         },
         {
-          zh: '阶段五：按错误、冷却和 fallback 衰减会话亲和。',
-          en: 'Phase 5: decay session affinity after errors, cooldown, or fallback.',
+          zh: '预留开关。现有 channel affinity 仍按原亲和规则和缓存配置运行；该开关用于后续治理增强，包括按模型或租户调整 TTL、统计亲和命中率和失效率，以及在 fallback、冷却或连续失败后衰减甚至清理亲和关系。当前开启不会改变现有亲和缓存行为。',
+          en: 'Reserved switch. Existing channel affinity continues to follow its current rules and cache configuration. This switch is for future governance enhancements, including model/tenant-specific TTL, affinity hit/failure metrics, and decaying or evicting affinity after fallback, cooldown, or repeated failures. Enabling it now does not change current affinity-cache behavior.',
         }
       ),
     ],

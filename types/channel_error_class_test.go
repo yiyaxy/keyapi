@@ -36,6 +36,18 @@ func TestClassifyChannelError(t *testing.T) {
 			want:        ChannelErrorClassTransient,
 		},
 		{
+			name:        "429 insufficient quota code is permanent",
+			err:         WithOpenAIError(OpenAIError{Message: "quota exhausted", Code: "insufficient_quota"}, http.StatusTooManyRequests),
+			channelType: constant.ChannelTypeOpenAI,
+			want:        ChannelErrorClassPermanent,
+		},
+		{
+			name:        "429 insufficient quota type is permanent",
+			err:         WithOpenAIError(OpenAIError{Message: "quota exhausted", Type: "insufficient_quota"}, http.StatusTooManyRequests),
+			channelType: constant.ChannelTypeOpenAI,
+			want:        ChannelErrorClassPermanent,
+		},
+		{
 			name:        "502 is transient",
 			err:         WithOpenAIError(OpenAIError{Message: "bad gateway"}, http.StatusBadGateway),
 			channelType: constant.ChannelTypeOpenAI,

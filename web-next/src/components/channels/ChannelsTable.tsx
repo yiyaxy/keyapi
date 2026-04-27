@@ -1,5 +1,7 @@
+import { MoreHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { ChannelStabilityBadge } from '@/components/channels/ChannelStabilityBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,12 +12,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Channel } from '@/hooks/useChannels';
 import { channelTypeName } from '@/lib/channelTypes';
-
-function statusBadge(status: number) {
-  if (status === 1) return { label: 'status.enabled', variant: 'default' as const };
-  if (status === 3) return { label: 'status.auto_disabled', variant: 'destructive' as const };
-  return { label: 'status.manually_disabled', variant: 'secondary' as const };
-}
 
 export function ChannelsTable({
   items,
@@ -58,12 +54,11 @@ export function ChannelsTable({
         </thead>
         <tbody>
           {items.map((ch) => {
-            const badge = statusBadge(ch.status);
             const isTesting = testingId === ch.id;
             return (
               <tr key={ch.id} className='border-b border-line text-13 hover:bg-bg-1'>
                 <td className='px-3 py-2 text-fg-2'>{ch.id}</td>
-                <td className='px-3 py-2'>{ch.name || '—'}</td>
+                <td className='px-3 py-2'>{ch.name || '-'}</td>
                 <td className='px-3 py-2'>{channelTypeName(ch.type)}</td>
                 <td className='px-3 py-2'>{ch.group}</td>
                 {showScope ? (
@@ -76,42 +71,46 @@ export function ChannelsTable({
                 <td className='px-3 py-2'>{ch.priority ?? 0}</td>
                 {showMarkup ? (
                   <td className='px-3 py-2 text-fg-2'>
-                    {ch.markup_ratio && ch.markup_ratio > 0 ? `${ch.markup_ratio.toFixed(2)}x` : 'plan'}
+                    {ch.markup_ratio && ch.markup_ratio > 0
+                      ? `${ch.markup_ratio.toFixed(2)}x`
+                      : 'plan'}
                   </td>
                 ) : null}
                 <td className='px-3 py-2'>
-                  <Badge variant={badge.variant}>{t(badge.label)}</Badge>
+                  <ChannelStabilityBadge channel={ch} />
                 </td>
                 <td className='px-3 py-2'>
                   {isTesting
                     ? t('test.pending')
                     : ch.response_time > 0
                       ? `${ch.response_time} ms`
-                      : '—'}
+                      : '-'}
                 </td>
-                {!readOnly ? <td className='px-3 py-2'>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant='ghost' size='sm' aria-label='Actions'>
-                        ⋯
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align='end'>
-                      <DropdownMenuItem onSelect={() => onEdit(ch)}>
-                        {t('action.edit')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => onTest(ch)} disabled={isTesting}>
-                        {t('action.test')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => onToggle(ch)}>
-                        {ch.status === 1 ? t('action.disable') : t('action.enable')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => onDelete(ch)} className='text-danger'>
-                        {t('action.delete')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td> : null}
+                {!readOnly ? (
+                  <td className='px-3 py-2'>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant='ghost' size='sm' aria-label='Actions'>
+                          <MoreHorizontal className='h-4 w-4' />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align='end'>
+                        <DropdownMenuItem onSelect={() => onEdit(ch)}>
+                          {t('action.edit')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onTest(ch)} disabled={isTesting}>
+                          {t('action.test')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onToggle(ch)}>
+                          {ch.status === 1 ? t('action.disable') : t('action.enable')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onDelete(ch)} className='text-danger'>
+                          {t('action.delete')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                ) : null}
               </tr>
             );
           })}

@@ -100,6 +100,11 @@ export function BoolRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
           <OverrideBadge meta={overrideMeta} />
         </div>
         <div className='font-mono text-11 text-fg-2'>{field.key}</div>
+        {field.help && (
+          <p className='mt-1 max-w-3xl text-12 leading-5 text-fg-2'>
+            {labelFor(field.help, i18n.language)}
+          </p>
+        )}
       </div>
       <div className='flex shrink-0 items-center gap-1'>
         <ResetButton meta={overrideMeta} />

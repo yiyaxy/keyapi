@@ -29,6 +29,10 @@ export type Channel = {
   priority: number | null;
   auto_ban: number | null;
   max_retry: number | null;
+  cooldown_until?: number;
+  cooldown_reason?: string;
+  cooldown_count?: number;
+  last_cooldown_at?: number;
   tag: string | null;
   remark: string | null;
 

@@ -34,6 +34,10 @@ export type ChannelMonitorItem = {
   balance: number;
   availability_rate: number;
   used_quota_1h: number;
+  cooldown_until?: number;
+  cooldown_reason?: string;
+  cooldown_count?: number;
+  last_cooldown_at?: number;
 };
 
 export type ChannelMonitorGroup = {

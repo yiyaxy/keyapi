@@ -114,6 +114,7 @@ type NewAPIError struct {
 	Metadata             json.RawMessage
 	UpstreamResponseBody string // raw upstream response body for admin debugging
 	UpstreamStatusCode   int    // original HTTP status from upstream provider
+	ChannelErrorHints    ChannelErrorHints
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -405,6 +406,12 @@ func ErrOptionWithSkipRetry() NewAPIErrorOptions {
 func ErrOptionWithNoRecordErrorLog() NewAPIErrorOptions {
 	return func(e *NewAPIError) {
 		e.recordErrorLog = common.GetPointer(false)
+	}
+}
+
+func ErrOptionWithChannelErrorHints(hints ChannelErrorHints) NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.ChannelErrorHints = hints
 	}
 }
 
