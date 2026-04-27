@@ -8,9 +8,10 @@
       <text class="header-title">充值</text>
     </view>
 
-    <!-- Tab 切换 -->
+    <!-- Tab 切换（微信支付关闭时隐藏该 tab） -->
     <view class="tab-bar">
       <view
+        v-if="userStore.wxPayEnabled"
         class="tab-item"
         :class="{ active: activeTab === 'wechat' }"
         @click="activeTab = 'wechat'"
@@ -164,7 +165,7 @@ const statusBarH = ref(0)
 const activeTab = ref('wechat')
 
 // ─── 微信支付 ────────────────────────────────────────────────────────────────
-const PRESETS = [1, 5, 10, 20, 50, 100]
+const PRESETS = [20, 50, 100, 200, 500]
 const MIN_AMOUNT = 1
 const MAX_AMOUNT = 10000
 
@@ -317,6 +318,8 @@ async function doRedeem() {
 
 onLoad(() => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
+  // 微信支付关闭时强制落到兑换码 tab
+  if (!userStore.wxPayEnabled) activeTab.value = 'redeem'
 })
 </script>
 

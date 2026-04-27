@@ -1,6 +1,12 @@
 <template>
   <view class="page">
-    <u-navbar title="API Key" :auto-back="true" bgColor="#fff" :placeholder="true" />
+    <view :style="{ height: statusBarH + 'px' }" />
+    <view class="header">
+      <view class="back-btn" @click="goBack">
+        <u-icon name="arrow-left" size="20" color="#1a1a2e" />
+      </view>
+      <text class="header-title">API Key</text>
+    </view>
 
     <view class="content">
       <!-- 安全提醒 -->
@@ -93,6 +99,7 @@ import { userStore } from '@/store/user.js'
 import { getTokens, getTokenKey } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
+const statusBarH = ref(0)
 const loading = ref(false)
 // token 列表，每条附加 _revealed / _fullKey / _revealing 字段
 const tokens = ref([])
@@ -182,7 +189,12 @@ async function loadTokens() {
   }
 }
 
+function goBack() {
+  uni.navigateBack({ delta: 1, fail: () => uni.switchTab({ url: '/pages/profile/index' }) })
+}
+
 onLoad(() => {
+  statusBarH.value = uni.getSystemInfoSync().statusBarHeight
   if (!userStore.isLoggedIn) {
     uni.navigateTo({ url: '/pages/login/index' })
     return
@@ -193,6 +205,26 @@ onLoad(() => {
 
 <style lang="scss" scoped>
 .page { min-height: 100vh; background: #f5f5f7; }
+
+.header {
+  height: 88rpx;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 24rpx;
+  position: relative;
+  box-shadow: 0 1rpx 0 #f0f0f0;
+}
+.back-btn {
+  width: 72rpx; height: 72rpx;
+  display: flex; align-items: center; justify-content: center;
+}
+.header-title {
+  position: absolute;
+  left: 50%; transform: translateX(-50%);
+  font-size: 32rpx; font-weight: 600; color: #1a1a2e;
+}
+
 .content { padding: 24rpx; }
 
 /* 安全提醒 */

@@ -146,6 +146,15 @@ export const SETTINGS_GROUPS: Group[] = [
         zh: '公众号二维码 URL',
         en: 'WeChat QR image URL',
       }),
+      f(
+        'WxPayEnabled',
+        'bool',
+        { zh: '启用小程序微信支付', en: 'Enable WeChat Pay (mini-program)' },
+        {
+          zh: '关闭后小程序充值页只保留兑换码功能，微信支付 Tab 将隐藏。审核通过后再打开。',
+          en: 'When off, the mini-program top-up page shows only the redeem-code tab. Re-enable after WeChat Pay passes review.',
+        }
+      ),
       sel(
         'WxMiniEnvVersion',
         { zh: '微信小程序版本', en: 'Mini-program version' },

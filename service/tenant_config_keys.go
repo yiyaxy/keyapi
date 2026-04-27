@@ -45,6 +45,7 @@ var TenantOverridableKeys = map[string]bool{
 	"WeChatServerToken":           true,
 	"WeChatAccountQRCodeImageURL": true,
 	"WxMiniEnvVersion":            true,
+	"WxPayEnabled":                true,
 	"LinuxDOOAuthEnabled":         true,
 	"LinuxDOClientId":             true,
 	"LinuxDOClientSecret":         true,
