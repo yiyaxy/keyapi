@@ -21,16 +21,21 @@ import (
 // success and must be computed at order-creation time from the original
 // request amount.
 type CreateTopupOrderInput struct {
-	TenantId    int   // order.TenantId = session tenant (收款归属)
-	UserId      int   // order.UserId = payer
-	AmountCents int64 // CNY cents (what WeChat charges)
-	AmountUnits int64 // top_ups.Amount value; see doc above
-	QuotaDelta  int64 // authoritative raw quota to credit on success
-	ProductForm string
-	Openid      string // jsapi only
-	ClientIp    string // h5 only
-	Description string // shown on WeChat UI
-	NotifyUrl   string // absolute URL the provider calls on callback
+	TenantId          int   // order.TenantId = session tenant (收款归属)
+	UserId            int   // order.UserId = payer
+	AmountCents       int64 // CNY cents (what WeChat charges)
+	AmountUnits       int64 // top_ups.Amount value; see doc above
+	QuotaDelta        int64 // authoritative raw quota to credit on success
+	BaseQuotaDelta    int64
+	BonusQuotaDelta   int64
+	TopUpBonusPercent int
+	UserLevelId       int
+	UserLevelName     string
+	ProductForm       string
+	Openid            string // jsapi only
+	ClientIp          string // h5 only
+	Description       string // shown on WeChat UI
+	NotifyUrl         string // absolute URL the provider calls on callback
 }
 
 // CreateSubOrderInput is what the renewal controller hands in.
@@ -66,8 +71,13 @@ func CreateTopupOrder(ctx context.Context, in CreateTopupOrderInput) (*CreateOrd
 	}
 	// Metadata keys match the applyTopupSuccess reader exactly.
 	meta, _ := json.Marshal(map[string]any{
-		"amount_units": in.AmountUnits,
-		"quota_delta":  in.QuotaDelta,
+		"amount_units":         in.AmountUnits,
+		"quota_delta":          in.QuotaDelta,
+		"base_quota_delta":     in.BaseQuotaDelta,
+		"bonus_quota_delta":    in.BonusQuotaDelta,
+		"top_up_bonus_percent": in.TopUpBonusPercent,
+		"user_level_id":        in.UserLevelId,
+		"user_level_name":      in.UserLevelName,
 	})
 	return createOrder(ctx, createOrderArgs{
 		TenantId:    in.TenantId,
@@ -310,7 +320,8 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 	// amount_units is still persisted into top_ups.Amount for legacy
 	// display/history semantics even though quota_delta is authoritative.
 	var meta struct {
-		AmountUnits int64 `json:"amount_units"`
+		AmountUnits    int64 `json:"amount_units"`
+		BaseQuotaDelta int64 `json:"base_quota_delta"`
 	}
 	if order.Metadata != "" {
 		if err := json.Unmarshal([]byte(order.Metadata), &meta); err != nil {
@@ -354,6 +365,7 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 		UserId:        order.UserId,
 		Amount:        meta.AmountUnits,
 		RawQuota:      quotaToAdd,
+		BaseQuota:     meta.BaseQuotaDelta,
 		Money:         float64(order.Amount) / 100.0, // CNY yuan
 		TradeNo:       order.OutTradeNo,
 		PaymentMethod: "wxpay",
@@ -378,6 +390,7 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 			"amount_cents":   order.Amount,
 			"amount_units":   meta.AmountUnits,
 			"quota_delta":    quotaToAdd,
+			"base_quota":     meta.BaseQuotaDelta,
 			"home_tenant":    homeTenant,
 			"session_tenant": order.TenantId,
 		}),
@@ -396,6 +409,10 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 	// correct.
 	userId := order.UserId
 	delta := quotaToAdd
+	rebateBase := delta
+	if meta.BaseQuotaDelta > 0 {
+		rebateBase = meta.BaseQuotaDelta
+	}
 	tenantForLog := homeTenant
 	money := float64(order.Amount) / 100.0
 	logContent := fmt.Sprintf("使用微信支付充值成功，充值金额: %v，支付金额：%.2f 元",
@@ -404,7 +421,7 @@ func applyTopupSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]fun
 		// 1. Topup log entry — visible in user log UI.
 		model.RecordTopUpLogWithTenant(tenantForLog, userId, int(delta), logContent)
 		// 2. Rebate processing — matches controller/topup.go:382 behavior.
-		model.ProcessTopUpRebate(userId, int(delta))
+		model.ProcessTopUpRebate(userId, int(rebateBase))
 		// 3. User quota cache sync.
 		if err := model.CacheIncrUserQuota(userId, delta); err != nil {
 			common.SysLog(fmt.Sprintf("topup cache sync failed user=%d: %v", userId, err))

@@ -2,11 +2,12 @@ package auth
 
 import (
 	"errors"
-	usercontroller "github.com/QuantumNous/new-api/controller/user"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	usercontroller "github.com/QuantumNous/new-api/controller/user"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -30,13 +31,37 @@ import (
 const wxMiniIdPrefix = "wxmini:"
 
 type wxMiniLoginRequest struct {
-	Code string `json:"code"`
+	Code      string `json:"code"`
+	InviterId int    `json:"inviter_id"`
+	AffCode   string `json:"aff_code"`
+}
+
+func resolveWxMiniInviterId(tenantId int, req wxMiniLoginRequest) int {
+	inviterId := req.InviterId
+	if inviterId <= 0 {
+		if affCode := strings.TrimSpace(req.AffCode); affCode != "" {
+			if id, err := model.GetUserIdByAffCode(affCode); err == nil {
+				inviterId = id
+			}
+		}
+	}
+	if inviterId <= 0 {
+		return 0
+	}
+	inviter, err := model.GetUserByIdGlobal(inviterId, false)
+	if err != nil || inviter == nil {
+		return 0
+	}
+	if inviter.TenantId != tenantId || inviter.Status != common.UserStatusEnabled {
+		return 0
+	}
+	return inviter.Id
 }
 
 // wxMiniResolveUser exchanges a login code for a ready-to-login user,
 // auto-creating the account on first use (when registration is enabled).
 // The returned user is scoped to tenantId.
-func wxMiniResolveUser(code string, tenantId int) (*model.User, error) {
+func wxMiniResolveUser(code string, tenantId int, inviterId int) (*model.User, error) {
 	openid, err := service.ExchangeWxMiniCode(tenantId, code)
 	if err != nil {
 		return nil, err
@@ -69,11 +94,12 @@ func wxMiniResolveUser(code string, tenantId int) (*model.User, error) {
 	user.DisplayName = "WeChat User"
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
+	user.InviterId = inviterId
 
-	if err := user.Insert(0); err != nil {
+	if err := user.Insert(inviterId); err != nil {
 		return nil, err
 	}
-	if err := model.EnsureTenantMembership(user.Id, user.TenantId, model.TenantRoleMember, 0); err != nil {
+	if err := model.EnsureTenantMembership(user.Id, user.TenantId, model.TenantRoleMember, inviterId); err != nil {
 		return nil, err
 	}
 	return &user, nil
@@ -100,7 +126,8 @@ func WxMiniLogin(c *gin.Context) {
 		return
 	}
 
-	user, err := wxMiniResolveUser(req.Code, tenantId)
+	inviterId := resolveWxMiniInviterId(tenantId, req)
+	user, err := wxMiniResolveUser(req.Code, tenantId, inviterId)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

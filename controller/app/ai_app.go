@@ -10,6 +10,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ─── Identity Bridge ─────────────────────────────────────────────────────────
+
+// WhoAmI GET /api/app/whoami — 用 sk-token 换取对应用户信息，供 LobeHub 自动登录使用。
+// 使用 TokenAuth 中间件，sk- token 必须有效且未过期。
+func WhoAmI(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "invalid token"})
+		return
+	}
+
+	user, err := model.GetUserById(userId, false)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "user not found"})
+		return
+	}
+
+	tenantId := middleware.GetTenantId(c)
+	common.ApiSuccess(c, gin.H{
+		"id":           user.Id,
+		"username":     user.Username,
+		"email":        user.Email,
+		"display_name": user.DisplayName,
+		"tenant_id":    tenantId,
+	})
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 // ListApps GET /api/app — returns all published apps for the current tenant.

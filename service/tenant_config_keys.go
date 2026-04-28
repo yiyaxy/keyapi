@@ -71,6 +71,7 @@ var TenantOverridableKeys = map[string]bool{
 	"QuotaForNewUser":                               true,
 	"QuotaForInviter":                               true,
 	"QuotaForInvitee":                               true,
+	"InviteRewardLimit":                             true,
 	"TopUpRebateCount":                              true,
 	"TopUpRebatePercent":                            true,
 	"SubscriptionRebateCount":                       true,

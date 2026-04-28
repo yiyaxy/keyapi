@@ -10,14 +10,12 @@
 		{
 			"path": "pages/invite/index",
 			"style": {
-				"enablePullDownRefresh": true,
 				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/profile/index",
 			"style": {
-				"enablePullDownRefresh": true,
 				"navigationStyle": "custom"
 			}
 		},
@@ -86,12 +84,6 @@
 				"iconPath": "static/icon/1-001.png",
 				"selectedIconPath": "static/icon/1-002.png",
 				"text": "首页"
-			},
-			{
-				"pagePath": "pages/invite/index",
-				"iconPath": "static/icon/4-001.png",
-				"selectedIconPath": "static/icon/4-002.png",
-				"text": "邀请"
 			},
 			{
 				"pagePath": "pages/profile/index",

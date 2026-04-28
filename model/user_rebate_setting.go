@@ -34,6 +34,10 @@ func getNewUserQuotaForTenant(tenantId int) int {
 	return getTenantOptionIntDefault(tenantId, "QuotaForNewUser", common.QuotaForNewUser)
 }
 
+func getInviteRewardLimitForTenant(tenantId int) int {
+	return getTenantOptionIntDefault(tenantId, "InviteRewardLimit", common.InviteRewardLimit)
+}
+
 type UserRebateSetting struct {
 	Id                      int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	InviterId               int    `json:"inviter_id" gorm:"uniqueIndex;not null"`

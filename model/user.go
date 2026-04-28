@@ -433,21 +433,47 @@ func HardDeleteUserByIdWithTenant(id int, tenantId int) error {
 	return err
 }
 
-func inviteUser(inviterId int, registerReward int) (err error) {
-	user, err := GetUserByIdGlobal(inviterId, true)
-	if err != nil {
+func applyInviteRegisterRewardTx(tx *gorm.DB, tenantId int, inviterId int, registerReward int) (bool, error) {
+	if tenantId <= 0 || inviterId <= 0 {
+		return false, errors.New("tenantId 和 inviterId 不能为空")
+	}
+
+	var inviter User
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ? AND tenant_id = ?", inviterId, tenantId).
+		First(&inviter).Error; err != nil {
+		return false, err
+	}
+	if inviter.Status != common.UserStatusEnabled {
+		return false, errors.New("邀请人账号不可用")
+	}
+
+	limit := getInviteRewardLimitForTenant(tenantId)
+	grantReward := registerReward > 0 && (limit <= 0 || inviter.AffCount < limit)
+	updates := map[string]interface{}{
+		"aff_count": gorm.Expr("aff_count + ?", 1),
+	}
+	if grantReward {
+		updates["aff_quota"] = gorm.Expr("aff_quota + ?", registerReward)
+		updates["aff_history"] = gorm.Expr("aff_history + ?", registerReward)
+	}
+
+	if err := tx.Model(&User{}).
+		Where("id = ? AND tenant_id = ?", inviter.Id, tenantId).
+		Updates(updates).Error; err != nil {
+		return false, err
+	}
+	return grantReward, nil
+}
+
+func inviteUser(inviterId int, tenantId int, registerReward int) (bool, error) {
+	var granted bool
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		granted, err = applyInviteRegisterRewardTx(tx, tenantId, inviterId, registerReward)
 		return err
-	}
-	if user.Id == 0 || user.TenantId == 0 {
-		return errors.New("邀请人信息不完整")
-	}
-	return DB.Model(&User{}).
-		Where("id = ? AND tenant_id = ?", user.Id, user.TenantId).
-		Updates(map[string]interface{}{
-			"aff_count":   gorm.Expr("aff_count + ?", 1),
-			"aff_quota":   gorm.Expr("aff_quota + ?", registerReward),
-			"aff_history": gorm.Expr("aff_history + ?", registerReward),
-		}).Error
+	})
+	return granted, err
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
@@ -547,8 +573,8 @@ func (user *User) Insert(inviterId int) error {
 			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
 			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
-		_ = inviteUser(inviterId, rebateSetting.RegisterReward)
-		if rebateSetting.RegisterReward > 0 {
+		registerRewardGranted, _ := inviteUser(inviterId, user.TenantId, rebateSetting.RegisterReward)
+		if registerRewardGranted {
 			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
 			CreateAffRebateLog(&AffRebateLog{
 				TenantId:    user.TenantId,
@@ -619,8 +645,8 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
 			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}
-		_ = inviteUser(inviterId, rebateSetting.RegisterReward)
-		if rebateSetting.RegisterReward > 0 {
+		registerRewardGranted, _ := inviteUser(inviterId, user.TenantId, rebateSetting.RegisterReward)
+		if registerRewardGranted {
 			RecordLogWithTenant(user.TenantId, inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(rebateSetting.RegisterReward)))
 			CreateAffRebateLog(&AffRebateLog{
 				TenantId:    user.TenantId,

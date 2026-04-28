@@ -16,6 +16,7 @@ type UserLevel struct {
 	Description             string `json:"description" gorm:"type:varchar(255);default:''"`
 	RegisterReward          int    `json:"register_reward" gorm:"column:register_reward;default:0"`
 	InviteeReward           int    `json:"invitee_reward" gorm:"column:invitee_reward;default:0"`
+	TopUpBonusPercent       int    `json:"top_up_bonus_percent" gorm:"column:top_up_bonus_percent;default:0"`
 	TopUpRebateCount        int    `json:"top_up_rebate_count" gorm:"column:top_up_rebate_count;default:0"`
 	TopUpRebatePercent      int    `json:"top_up_rebate_percent" gorm:"column:top_up_rebate_percent;default:0"`
 	SubscriptionRebateCount int    `json:"subscription_rebate_count" gorm:"column:subscription_rebate_count;default:0"`
@@ -97,6 +98,7 @@ func UpdateUserLevel(level *UserLevel) error {
 			"description":               level.Description,
 			"register_reward":           level.RegisterReward,
 			"invitee_reward":            level.InviteeReward,
+			"top_up_bonus_percent":      level.TopUpBonusPercent,
 			"top_up_rebate_count":       level.TopUpRebateCount,
 			"top_up_rebate_percent":     level.TopUpRebatePercent,
 			"subscription_rebate_count": level.SubscriptionRebateCount,
@@ -193,4 +195,54 @@ func getUserLevelRebateSetting(inviterId int, tenantId int) (*UserRebateSetting,
 		return nil, false
 	}
 	return userLevelToRebateSetting(inviterId, level), true
+}
+
+type TopUpBonusPreview struct {
+	BaseQuota    int64  `json:"base_quota"`
+	BonusQuota   int64  `json:"bonus_quota"`
+	TotalQuota   int64  `json:"total_quota"`
+	BonusPercent int    `json:"bonus_percent"`
+	LevelId      int    `json:"level_id"`
+	LevelName    string `json:"level_name"`
+}
+
+func GetUserLevelTopUpBonusPreview(userId int, tenantId int, baseQuota int64) TopUpBonusPreview {
+	preview := TopUpBonusPreview{
+		BaseQuota:  baseQuota,
+		TotalQuota: baseQuota,
+	}
+	if userId <= 0 || baseQuota <= 0 {
+		return preview
+	}
+
+	var user User
+	query := WithTenantBypass(DB).Select("id", "tenant_id", "user_level_id").Where("id = ?", userId)
+	if tenantId > 0 {
+		query = query.Where("tenant_id = ?", tenantId)
+	}
+	if err := query.First(&user).Error; err != nil || user.LevelId <= 0 {
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			common.SysError("failed to get user level for topup bonus: " + err.Error())
+		}
+		return preview
+	}
+
+	level, err := GetEnabledUserLevelById(user.TenantId, user.LevelId)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			common.SysError("failed to get user level topup bonus: " + err.Error())
+		}
+		return preview
+	}
+
+	preview.LevelId = level.Id
+	preview.LevelName = level.Name
+	preview.BonusPercent = level.TopUpBonusPercent
+	if level.TopUpBonusPercent <= 0 {
+		return preview
+	}
+
+	preview.BonusQuota = baseQuota * int64(level.TopUpBonusPercent) / 100
+	preview.TotalQuota = preview.BaseQuota + preview.BonusQuota
+	return preview
 }

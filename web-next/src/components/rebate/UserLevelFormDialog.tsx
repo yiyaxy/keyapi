@@ -32,6 +32,7 @@ const schema = z.object({
   description: z.string().max(255),
   register_reward_usd: z.number().min(0),
   invitee_reward_usd: z.number().min(0),
+  top_up_bonus_percent: z.number().int().min(0).max(100),
   top_up_rebate_count: z.number().int().min(0),
   top_up_rebate_percent: z.number().int().min(0).max(100),
   subscription_rebate_count: z.number().int().min(0),
@@ -47,6 +48,7 @@ const EMPTY: Values = {
   description: '',
   register_reward_usd: 0,
   invitee_reward_usd: 0,
+  top_up_bonus_percent: 0,
   top_up_rebate_count: 0,
   top_up_rebate_percent: 0,
   subscription_rebate_count: 0,
@@ -61,6 +63,7 @@ function fromRecord(r: UserLevel): Values {
     description: r.description ?? '',
     register_reward_usd: r.register_reward / QUOTA_PER_UNIT,
     invitee_reward_usd: r.invitee_reward / QUOTA_PER_UNIT,
+    top_up_bonus_percent: r.top_up_bonus_percent ?? 0,
     top_up_rebate_count: r.top_up_rebate_count,
     top_up_rebate_percent: r.top_up_rebate_percent,
     subscription_rebate_count: r.subscription_rebate_count,
@@ -99,6 +102,7 @@ export function UserLevelFormDialog({
       description: values.description.trim(),
       register_reward: Math.round(values.register_reward_usd * QUOTA_PER_UNIT),
       invitee_reward: Math.round(values.invitee_reward_usd * QUOTA_PER_UNIT),
+      top_up_bonus_percent: values.top_up_bonus_percent,
       top_up_rebate_count: values.top_up_rebate_count,
       top_up_rebate_percent: values.top_up_rebate_percent,
       subscription_rebate_count: values.subscription_rebate_count,
@@ -174,6 +178,16 @@ export function UserLevelFormDialog({
             </div>
           </div>
           <div className='grid grid-cols-2 gap-3'>
+            <div className='space-y-2'>
+              <Label htmlFor='ul-bonusp'>{t('form.top_up_bonus_percent.label')}</Label>
+              <Input
+                id='ul-bonusp'
+                type='number'
+                min={0}
+                max={100}
+                {...form.register('top_up_bonus_percent', { valueAsNumber: true })}
+              />
+            </div>
             <div className='space-y-2'>
               <Label htmlFor='ul-topc'>{t('form.top_up_rebate_count.label')}</Label>
               <Input

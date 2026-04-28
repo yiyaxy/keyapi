@@ -2,9 +2,9 @@ import urlJoin from 'url-join';
 
 const isDev = process.env.NODE_ENV === 'development';
 
-export const OFFICIAL_URL = 'https://app.lobehub.com';
-export const OFFICIAL_SITE = 'https://lobehub.com';
-export const OFFICIAL_DOMAIN = 'lobehub.com';
+export const OFFICIAL_URL = process.env.APP_URL || 'http://localhost:3210';
+export const OFFICIAL_SITE = process.env.APP_URL || 'http://localhost:3210';
+export const OFFICIAL_DOMAIN = '';
 
 export const OG_URL = '/og/og.webp?v=1';
 

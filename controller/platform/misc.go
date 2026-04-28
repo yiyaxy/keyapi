@@ -143,6 +143,7 @@ func GetStatus(c *gin.Context) {
 		"top_up_rebate_percent":        service.GetConfigInt(tenantId, "TopUpRebatePercent", common.TopUpRebatePercent),
 		"quota_for_inviter":            service.GetConfigInt(tenantId, "QuotaForInviter", common.QuotaForInviter),
 		"quota_for_invitee":            service.GetConfigInt(tenantId, "QuotaForInvitee", common.QuotaForInvitee),
+		"invite_reward_limit":          service.GetConfigInt(tenantId, "InviteRewardLimit", common.InviteRewardLimit),
 		"subscription_recommend_count": common.SubscriptionRecommendCount,
 		"_qn":                          "new-api",
 	}

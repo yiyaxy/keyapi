@@ -31,7 +31,7 @@ func TestTenantOverridableKeys_CoverageNonSecret(t *testing.T) {
 		"general_setting.custom_currency_exchange_rate",
 		"USDExchangeRate", "Price",
 		"QuotaForNewUser", "QuotaForInviter", "QuotaForInvitee",
-		"TopUpRebateCount", "TopUpRebatePercent", "SubscriptionRebateCount",
+		"InviteRewardLimit", "TopUpRebateCount", "TopUpRebatePercent", "SubscriptionRebateCount",
 		"MinTopUp",
 		// ratios
 		"GroupRatio", "UserUsableGroups", "TopupGroupRatio",

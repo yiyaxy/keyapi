@@ -18,6 +18,7 @@ func setupUserRebateSettingTestDB(t *testing.T) func() {
 	prevUsingPostgreSQL := common.UsingPostgreSQL
 	prevUsingMySQL := common.UsingMySQL
 	prevOptionMap := common.OptionMap
+	prevInviteRewardLimit := common.InviteRewardLimit
 
 	InitColForTest()
 	common.UsingSQLite = true
@@ -45,6 +46,7 @@ func setupUserRebateSettingTestDB(t *testing.T) func() {
 		common.UsingSQLite = prevUsingSQLite
 		common.UsingPostgreSQL = prevUsingPostgreSQL
 		common.UsingMySQL = prevUsingMySQL
+		common.InviteRewardLimit = prevInviteRewardLimit
 		common.OptionMapRWMutex.Lock()
 		common.OptionMap = prevOptionMap
 		common.OptionMapRWMutex.Unlock()
@@ -62,6 +64,63 @@ func TestGetNewUserQuotaForTenant_UsesTenantOverride(t *testing.T) {
 
 	if got := getNewUserQuotaForTenant(7); got != 123 {
 		t.Fatalf("getNewUserQuotaForTenant = %d, want 123", got)
+	}
+}
+
+func TestApplyInviteRegisterRewardTx_RespectsTenantLimit(t *testing.T) {
+	restore := setupUserRebateSettingTestDB(t)
+	defer restore()
+
+	common.InviteRewardLimit = 1
+	if err := DB.Create(&User{
+		Id:       42,
+		TenantId: 9,
+		Username: "inviter",
+		Password: "password",
+		Status:   common.UserStatusEnabled,
+	}).Error; err != nil {
+		t.Fatalf("create inviter: %v", err)
+	}
+
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		granted, err := applyInviteRegisterRewardTx(tx, 9, 42, 100)
+		if err != nil {
+			return err
+		}
+		if !granted {
+			t.Fatalf("first reward was not granted")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("first reward transaction: %v", err)
+	}
+
+	var inviter User
+	if err := DB.First(&inviter, "id = ?", 42).Error; err != nil {
+		t.Fatalf("reload inviter: %v", err)
+	}
+	if inviter.AffCount != 1 || inviter.AffQuota != 100 || inviter.AffHistoryQuota != 100 {
+		t.Fatalf("after first reward: count=%d quota=%d history=%d", inviter.AffCount, inviter.AffQuota, inviter.AffHistoryQuota)
+	}
+
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		granted, err := applyInviteRegisterRewardTx(tx, 9, 42, 100)
+		if err != nil {
+			return err
+		}
+		if granted {
+			t.Fatalf("second reward should hit limit")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("second reward transaction: %v", err)
+	}
+
+	if err := DB.First(&inviter, "id = ?", 42).Error; err != nil {
+		t.Fatalf("reload inviter: %v", err)
+	}
+	if inviter.AffCount != 2 || inviter.AffQuota != 100 || inviter.AffHistoryQuota != 100 {
+		t.Fatalf("after second reward: count=%d quota=%d history=%d", inviter.AffCount, inviter.AffQuota, inviter.AffHistoryQuota)
 	}
 }
 
@@ -197,6 +256,39 @@ func TestGetEffectiveRebateSetting_UserLevelBeatsTenantDefault(t *testing.T) {
 	}
 	if setting.SubscriptionRebateCount != 21 {
 		t.Fatalf("SubscriptionRebateCount = %d, want 21", setting.SubscriptionRebateCount)
+	}
+}
+
+func TestGetUserLevelTopUpBonusPreview_AddsLevelBonus(t *testing.T) {
+	restore := setupUserRebateSettingTestDB(t)
+	defer restore()
+
+	level := UserLevel{
+		TenantId:          9,
+		Code:              "vip",
+		Name:              "VIP",
+		TopUpBonusPercent: 20,
+		Enabled:           true,
+	}
+	if err := DB.Create(&level).Error; err != nil {
+		t.Fatalf("create level: %v", err)
+	}
+	if err := DB.Create(&User{
+		Id:       42,
+		TenantId: 9,
+		Username: "buyer",
+		Password: "password",
+		LevelId:  level.Id,
+	}).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	got := GetUserLevelTopUpBonusPreview(42, 9, 1_000)
+	if got.BaseQuota != 1_000 || got.BonusQuota != 200 || got.TotalQuota != 1_200 {
+		t.Fatalf("preview quota = base %d bonus %d total %d, want 1000/200/1200", got.BaseQuota, got.BonusQuota, got.TotalQuota)
+	}
+	if got.BonusPercent != 20 || got.LevelId != level.Id || got.LevelName != "VIP" {
+		t.Fatalf("preview level = percent %d id %d name %q", got.BonusPercent, got.LevelId, got.LevelName)
 	}
 }
 

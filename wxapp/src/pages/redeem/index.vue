@@ -59,6 +59,32 @@
         </view>
       </view>
 
+      <!-- 到账预览 -->
+      <view class="bonus-card">
+        <view class="bonus-head">
+          <view>
+            <text class="bonus-title">预计到账</text>
+            <text class="bonus-level">{{ previewLevelName }}</text>
+          </view>
+          <view class="bonus-tag" v-if="bonusPercent > 0">赠送 {{ bonusPercent }}%</view>
+        </view>
+        <view class="bonus-total">{{ q2cny(totalQuota) }}</view>
+        <view class="bonus-lines">
+          <view class="bonus-line">
+            <text>基础额度</text>
+            <text>{{ q2cny(baseQuota) }}</text>
+          </view>
+          <view class="bonus-line strong" v-if="bonusQuota > 0">
+            <text>等级赠送</text>
+            <text>+{{ q2cny(bonusQuota) }}</text>
+          </view>
+          <view class="bonus-line muted" v-else>
+            <text>等级赠送</text>
+            <text>暂无赠送规则</text>
+          </view>
+        </view>
+      </view>
+
       <!-- 支付按钮 -->
       <view class="section">
         <view
@@ -75,7 +101,7 @@
           />
           <u-loading-icon v-else color="#fff" size="32" />
           <text style="margin-left: 12rpx;">
-            {{ paying ? '支付中...' : `微信支付 ¥${amount.toFixed(2)}` }}
+            {{ paying ? '支付中...' : '微信支付 ¥' + amount.toFixed(2) }}
           </text>
         </view>
         <text class="tip">支付成功后额度立即到账</text>
@@ -139,7 +165,7 @@
 import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { redeemCode, getSelf, createWechatTopupJsapi, getPaymentOrder, getStatus } from '@/services/api.js'
+import { redeemCode, getSelf, createWechatTopupJsapi, getPaymentOrder, getStatus, getTopupPreview } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
 // ─── 导航 ────────────────────────────────────────────────────────────────────
@@ -173,6 +199,9 @@ const preset = ref(PRESETS[1])
 const customInput = ref('')
 const customMode = ref(false)
 const paying = ref(false)
+const previewLoading = ref(false)
+const topupPreview = ref(null)
+let previewTimer = null
 
 const amount = computed(() => {
   if (customMode.value) {
@@ -186,6 +215,28 @@ const canPay = computed(
   () => amount.value >= MIN_AMOUNT && amount.value <= MAX_AMOUNT,
 )
 
+const fallbackBaseQuota = computed(() => {
+  const qpu = Number(userStore.quotaPerUnit || 500000)
+  if (userStore.quotaDisplayType === 'TOKENS') return amount.value
+  if (userStore.quotaDisplayType === 'CNY') return amount.value / Number(userStore.usdExchangeRate || 1) * qpu
+  if (userStore.quotaDisplayType === 'CUSTOM') return amount.value / Number(userStore.customCurrencyRate || 1) * qpu
+  return amount.value * qpu
+})
+const baseQuota = computed(() => {
+  const raw = topupPreview.value?.base_quota
+  return Number(raw != null ? raw : fallbackBaseQuota.value) || 0
+})
+const bonusQuota = computed(() => Number(topupPreview.value?.bonus_quota) || 0)
+const totalQuota = computed(() => {
+  const raw = topupPreview.value?.total_quota
+  return Number(raw != null ? raw : baseQuota.value) || 0
+})
+const bonusPercent = computed(() => Number(topupPreview.value?.bonus_percent) || 0)
+const previewLevelName = computed(() => {
+  if (!userStore.isLoggedIn) return '登录后查看等级赠送'
+  return topupPreview.value?.level_name || userStore.userInfo?.level_name || '普通用户'
+})
+
 function selectPreset(v) {
   preset.value = v
   customMode.value = false
@@ -194,6 +245,22 @@ function selectPreset(v) {
 
 function onCustomInput() {
   customMode.value = customInput.value !== ''
+}
+
+async function loadTopupPreview() {
+  if (!userStore.isLoggedIn || !canPay.value) {
+    topupPreview.value = null
+    return
+  }
+  previewLoading.value = true
+  try {
+    const data = await getTopupPreview(amount.value)
+    topupPreview.value = data?.quota_preview || null
+  } catch {
+    topupPreview.value = null
+  } finally {
+    previewLoading.value = false
+  }
 }
 
 
@@ -234,6 +301,7 @@ async function doPay() {
     const data = await createWechatTopupJsapi(amount.value)
     const sign = data?.response
     const order = data?.order
+    if (data?.quota_preview) topupPreview.value = data.quota_preview
     if (!sign || !sign.prepay_id) {
       throw new Error('服务端未返回支付签名')
     }
@@ -249,7 +317,7 @@ async function doPay() {
         const me = await getSelf()
         if (me) userStore.setUserInfo(me)
       } catch (_) {}
-      uni.showToast({ title: '充值成功', icon: 'success', duration: 1500 })
+      uni.showToast({ title: `充值成功，到账${q2cny(totalQuota.value)}`, icon: 'success', duration: 1800 })
     } else if (finalStatus === 'expired' || finalStatus === 'closed') {
       uni.showToast({ title: `订单已${finalStatus === 'expired' ? '过期' : '关闭'}`, icon: 'none' })
     } else {
@@ -321,6 +389,13 @@ watch(() => userStore.wxPayEnabled, (enabled) => {
   if (!enabled) activeTab.value = 'redeem'
 })
 
+watch(amount, () => {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    loadTopupPreview()
+  }, 300)
+}, { immediate: true })
+
 onLoad(async () => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
   // 每次进页面都拉一次最新 status，保证与服务端一致
@@ -329,6 +404,7 @@ onLoad(async () => {
     if (data) userStore.applyStatus(data)
   } catch {}
   if (!userStore.wxPayEnabled) activeTab.value = 'redeem'
+  loadTopupPreview()
 })
 </script>
 
@@ -482,6 +558,69 @@ onLoad(async () => {
   color: #1a1a2e;
   box-sizing: border-box;
   font-variant-numeric: tabular-nums;
+}
+
+.bonus-card {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 32rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+  margin-bottom: 24rpx;
+}
+.bonus-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+.bonus-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 8rpx;
+}
+.bonus-level {
+  display: block;
+  font-size: 24rpx;
+  color: #6b7280;
+}
+.bonus-tag {
+  flex-shrink: 0;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: #fff4e6;
+  color: #d97706;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+.bonus-total {
+  margin: 24rpx 0;
+  font-size: 52rpx;
+  line-height: 1.1;
+  font-weight: 700;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
+.bonus-lines {
+  border-top: 1rpx solid #f0f0f0;
+  padding-top: 18rpx;
+}
+.bonus-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
+  font-size: 25rpx;
+  color: #4b5563;
+  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+}
+.bonus-line.strong {
+  color: #d97706;
+  font-weight: 600;
+}
+.bonus-line.muted {
+  color: #9ca3af;
 }
 
 .btn-wechat {

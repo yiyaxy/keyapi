@@ -245,5 +245,6 @@ export function defineConfig() {
 
   logDefault('Middleware configuration: %O', { enableOIDC: authEnv.ENABLE_OIDC });
 
-  return { middleware: betterAuthMiddleware };
+  // 不启用账号体系时直接使用无认证的路由重写中间件
+  return { middleware: defaultMiddleware };
 }

@@ -12,6 +12,8 @@ export const userStore = reactive({
   customCurrencySymbol: '¤',
   customCurrencyRate: 1,
   wxPayEnabled: true,            // 小程序微信支付开关
+  inviteRewardLimit: 0,          // 拉新注册奖励人数上限，0 表示不限制
+  checkinEnabled: false,         // 签到开关
 
   /** 登录后保存 cookie */
   setToken(val) {
@@ -50,6 +52,12 @@ export const userStore = reactive({
     if (data.custom_currency_symbol)   this.customCurrencySymbol   = data.custom_currency_symbol
     if (data.custom_currency_exchange_rate) {
       this.customCurrencyRate = Number(data.custom_currency_exchange_rate) || 1
+    }
+    if (data.invite_reward_limit !== undefined) {
+      this.inviteRewardLimit = Number(data.invite_reward_limit) || 0
+    }
+    if (data.checkin_enabled !== undefined) {
+      this.checkinEnabled = data.checkin_enabled === true
     }
     // wx_pay_enabled 明确为 false 时才关闭，未返回时保持开启（向后兼容）
     if (data.wx_pay_enabled === false)  this.wxPayEnabled = false

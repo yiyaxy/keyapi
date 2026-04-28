@@ -475,6 +475,18 @@ func BindAffCode(c *gin.Context) {
 	common.ApiSuccess(c, result)
 }
 
+func GetInvitees(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	users, total, err := model.GetInviteesByInviterId(middleware.GetTenantId(c), c.GetInt("id"), pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(users)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")

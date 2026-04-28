@@ -68,27 +68,23 @@ func BindInviteCode(tenantId int, userId int, affCode string) (*BindInviteResult
 			}
 		}
 
-		inviterUpdates := map[string]interface{}{
-			"aff_count": gorm.Expr("aff_count + ?", 1),
-		}
-		if rebateSetting.RegisterReward > 0 {
-			inviterUpdates["aff_quota"] = gorm.Expr("aff_quota + ?", rebateSetting.RegisterReward)
-			inviterUpdates["aff_history"] = gorm.Expr("aff_history + ?", rebateSetting.RegisterReward)
-		}
-		if err := tx.Model(&User{}).
-			Where("id = ? AND tenant_id = ?", inviter.Id, tenantId).
-			Updates(inviterUpdates).Error; err != nil {
+		registerRewardGranted, err := applyInviteRegisterRewardTx(tx, tenantId, inviter.Id, rebateSetting.RegisterReward)
+		if err != nil {
 			return err
 		}
-		if rebateSetting.RegisterReward > 0 {
+		registerReward := 0
+		if registerRewardGranted {
+			registerReward = rebateSetting.RegisterReward
+		}
+		if registerReward > 0 {
 			if err := tx.Create(&AffRebateLog{
 				TenantId:    tenantId,
 				UserId:      inviter.Id,
 				InviteeId:   invitee.Id,
 				InviteeName: invitee.Username,
 				Type:        AffRebateTypeRegister,
-				Quota:       rebateSetting.RegisterReward,
-				Remark:      fmt.Sprintf("邀请绑定奖励 %s", logger.LogQuota(rebateSetting.RegisterReward)),
+				Quota:       registerReward,
+				Remark:      fmt.Sprintf("邀请绑定奖励 %s", logger.LogQuota(registerReward)),
 			}).Error; err != nil {
 				return err
 			}
@@ -100,7 +96,7 @@ func BindInviteCode(tenantId int, userId int, affCode string) (*BindInviteResult
 			InviteeId:      invitee.Id,
 			InviteeName:    invitee.Username,
 			InviteeReward:  rebateSetting.InviteeReward,
-			RegisterReward: rebateSetting.RegisterReward,
+			RegisterReward: registerReward,
 		}
 		return nil
 	})
@@ -115,4 +111,24 @@ func BindInviteCode(tenantId int, userId int, affCode string) (*BindInviteResult
 		RecordLogWithTenant(tenantId, result.InviterId, LogTypeSystem, fmt.Sprintf("邀请用户绑定赠送 %s", logger.LogQuota(result.RegisterReward)))
 	}
 	return &result, nil
+}
+
+func GetInviteesByInviterId(tenantId int, inviterId int, pageInfo *common.PageInfo) ([]*User, int64, error) {
+	if tenantId <= 0 || inviterId <= 0 {
+		return nil, 0, errors.New("tenantId and inviterId are required")
+	}
+	var users []*User
+	var total int64
+	query := DB.Model(&User{}).
+		Where("tenant_id = ? AND inviter_id = ?", tenantId, inviterId)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.
+		Select("id", "tenant_id", "username", "display_name", "status", "quota", "used_quota", "request_count", "top_up_count", "subscription_purchase_count", "inviter_id").
+		Order("id desc").
+		Offset(pageInfo.GetStartIdx()).
+		Limit(pageInfo.GetPageSize()).
+		Find(&users).Error
+	return users, total, err
 }

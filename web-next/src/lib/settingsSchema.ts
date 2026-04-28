@@ -267,6 +267,15 @@ export const SETTINGS_GROUPS: Group[] = [
         zh: '被邀请人奖励额度',
         en: 'Invitee reward',
       }),
+      f(
+        'InviteRewardLimit',
+        'number',
+        { zh: '拉新奖励人数上限', en: 'Invite reward limit' },
+        {
+          zh: '每个邀请人最多获得多少次注册拉新奖励；0 表示不限制。达到上限后仍保留上下级关系和充值返利。',
+          en: 'Maximum signup rewards per inviter; 0 means unlimited. Referral relation and top-up rebate remain active after the limit.',
+        }
+      ),
       f('TopUpRebateCount', 'number', {
         zh: '充值返利次数',
         en: 'Top-up rebate count',

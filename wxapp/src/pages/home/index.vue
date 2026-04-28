@@ -60,7 +60,7 @@
             <view class="grid-icon" style="background:#ffeef2;">
               <u-icon name="share" size="52" color="#ef4444" />
             </view>
-            <text class="grid-label">邀请中心</text>
+            <text class="grid-label">分享拉新</text>
           </view>
         </view>
 
@@ -73,8 +73,8 @@
         <view class="hero">
           <view class="hero-top">
             <view>
-              <text class="greeting">你好，{{ displayName }} 👋</text>
-              <text class="greeting-sub">欢迎使用 ALl Models</text>
+              <text class="greeting">你好，{{ displayName }}</text>
+              <text class="greeting-sub">等级：{{ levelName }}</text>
             </view>
             <view class="balance-box">
               <text class="balance-label">账户余额</text>
@@ -101,6 +101,24 @@
           </view>
         </view>
 
+        <!-- 签到 -->
+        <view v-if="userStore.checkinEnabled" class="checkin-card">
+          <view class="checkin-main">
+            <view class="checkin-icon" :class="{ done: checkedInToday }">
+              <u-icon :name="checkedInToday ? 'checkmark' : 'gift'" size="24" :color="checkedInToday ? '#18A058' : '#4F6EF7'" />
+            </view>
+            <view class="checkin-copy">
+              <text class="checkin-title">{{ checkedInToday ? '今日已签到' : '每日签到' }}</text>
+              <text class="checkin-sub">
+                本月 {{ checkinStats.checkin_count || 0 }} 次 · 累计获得 {{ q2cny(checkinStats.total_quota || 0) }}
+              </text>
+            </view>
+          </view>
+          <view class="checkin-action" :class="{ disabled: checkedInToday || checkinLoading }" @click="handleCheckin">
+            {{ checkedInToday ? '已完成' : (checkinLoading ? '签到中' : '立即签到') }}
+          </view>
+        </view>
+
         <!-- 快捷入口 -->
         <text class="section-title">快捷功能</text>
         <view class="grid">
@@ -122,26 +140,26 @@
             </view>
             <text class="grid-label">消费记录</text>
           </view>
-          <view class="grid-item" @click="switchTab('/pages/invite/index')">
+          <view class="grid-item" @click="nav('/pages/invite/index')">
             <view class="grid-icon" style="background:#ffeef2;">
               <u-icon name="share" size="26" color="#ef4444" />
             </view>
-            <text class="grid-label">邀请中心</text>
+            <text class="grid-label">我的下级</text>
           </view>
         </view>
 
         <!-- 邀请摘要卡片 -->
-        <text class="section-title">邀请信息</text>
+        <text class="section-title">拉新信息</text>
         <view class="invite-card">
           <view class="invite-top">
             <view>
-              <text class="invite-key-label">我的邀请码</text>
-              <text class="invite-code">{{ userInfo?.aff_code || '--' }}</text>
+              <text class="invite-key-label">分享小程序拉新</text>
+              <text class="invite-desc">新用户通过你的分享登录后自动成为下级</text>
             </view>
-            <view class="copy-btn" @click="copyCode(userInfo?.aff_code)">
-              <u-icon name="copy" size="17" color="#4F6EF7" />
-              <text class="copy-text">复制</text>
-            </view>
+            <button class="share-mini-btn" open-type="share">
+              <u-icon name="weixin-fill" size="17" color="#fff" />
+              <text class="share-mini-text">分享</text>
+            </button>
           </view>
           <view class="invite-div" />
           <view class="invite-stats">
@@ -170,7 +188,7 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
+import { doCheckin, getCheckinStatus, getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
 const statusBarH = ref(0)
@@ -179,24 +197,52 @@ const refreshing = ref(false)
 const userInfo = ref(null)
 const todayQuota = ref(0)
 const monthQuota = ref(0)
+const checkinLoading = ref(false)
+const checkinInfo = ref(null)
 
 const displayName = computed(() => {
   const u = userInfo.value
   return u?.display_name || u?.username || '用户'
 })
 
+const levelName = computed(() => userInfo.value?.level_name || (userInfo.value?.level_id ? `等级 #${userInfo.value.level_id}` : '普通用户'))
+const checkinStats = computed(() => checkinInfo.value?.stats || {})
+const checkedInToday = computed(() => checkinStats.value?.checked_in_today === true)
+
 function q2cny(quota) { return renderQuota(quota) }
 
 function nav(url) { uni.navigateTo({ url }) }
-function switchTab(url) { uni.switchTab({ url }) }
 function goLogin() { uni.navigateTo({ url: '/pages/login/index' }) }
 
-function copyCode(code) {
-  if (!code) return
-  uni.setClipboardData({
-    data: code,
-    success: () => uni.showToast({ title: '邀请码已复制', icon: 'none' }),
-  })
+async function loadCheckinStatus() {
+  if (!userStore.checkinEnabled || !userStore.isLoggedIn) {
+    checkinInfo.value = null
+    return
+  }
+  try {
+    checkinInfo.value = await getCheckinStatus()
+  } catch {
+    checkinInfo.value = null
+  }
+}
+
+async function handleCheckin() {
+  if (checkedInToday.value || checkinLoading.value) return
+  checkinLoading.value = true
+  try {
+    const data = await doCheckin()
+    const awarded = Number(data?.quota_awarded || 0)
+    if (awarded > 0 && userInfo.value) {
+      userInfo.value = { ...userInfo.value, quota: Number(userInfo.value.quota || 0) + awarded }
+      userStore.setUserInfo(userInfo.value)
+    }
+    uni.showToast({ title: `签到成功 +${q2cny(awarded)}`, icon: 'none', duration: 2200 })
+    await refresh()
+  } catch {
+    await loadCheckinStatus()
+  } finally {
+    checkinLoading.value = false
+  }
 }
 
 async function refresh() {
@@ -224,6 +270,7 @@ async function refresh() {
       if (monthRes.status === 'fulfilled') {
         monthQuota.value = monthRes.value?.quota || 0
       }
+      await loadCheckinStatus()
     }
   } finally {
     firstLoading.value = false
@@ -402,6 +449,59 @@ onLoad(() => {
   background: rgba(255,255,255,0.3);
 }
 
+/* 签到 */
+.checkin-card {
+  margin: 24rpx 24rpx 0;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 28rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
+}
+.checkin-main { display: flex; align-items: center; min-width: 0; flex: 1; }
+.checkin-icon {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 18rpx;
+  background: #eef1ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+.checkin-icon.done { background: #e8faf0; }
+.checkin-copy { min-width: 0; flex: 1; }
+.checkin-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 8rpx;
+}
+.checkin-sub {
+  display: block;
+  font-size: 23rpx;
+  color: #6b7280;
+  line-height: 1.45;
+}
+.checkin-action {
+  min-width: 144rpx;
+  height: 68rpx;
+  border-radius: 999rpx;
+  background: #4F6EF7;
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 20rpx;
+}
+.checkin-action.disabled { background: #e5e7eb; color: #6b7280; }
+
 /* 分组标题 */
 .section-title {
   display: block;
@@ -462,22 +562,29 @@ onLoad(() => {
   color: #6b7280;
   margin-bottom: 8rpx;
 }
-.invite-code {
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #4F6EF7;
-  letter-spacing: 4rpx;
+.invite-desc {
+  display: block;
+  font-size: 26rpx;
+  color: #1a1a2e;
+  font-weight: 600;
+  line-height: 1.45;
 }
-.copy-btn {
+.share-mini-btn {
+  width: 148rpx;
+  height: 64rpx;
+  border-radius: 999rpx;
+  border: 0;
+  padding: 0;
+  background: #09bb07;
   display: flex;
   align-items: center;
-  background: #eef1ff;
-  border-radius: 12rpx;
-  padding: 12rpx 20rpx;
+  justify-content: center;
+  flex-shrink: 0;
 }
-.copy-text {
+.share-mini-btn::after { border: 0; }
+.share-mini-text {
   font-size: 26rpx;
-  color: #4F6EF7;
+  color: #fff;
   margin-left: 8rpx;
 }
 .invite-div {

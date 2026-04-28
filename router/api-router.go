@@ -173,9 +173,11 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", auth.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", auth.PasskeyDelete)
 				selfRoute.GET("/aff", user.GetAffCode)
+				selfRoute.GET("/aff/invitees", user.GetInvitees)
 				selfRoute.POST("/aff/bind", user.BindAffCode)
 				selfRoute.GET("/topup/info", payment.GetTopUpInfo)
 				selfRoute.GET("/topup/self", payment.GetUserTopUps)
+				selfRoute.POST("/topup/preview", payment.PreviewTopUp)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), user.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), payment.RequestEpay)
 				selfRoute.POST("/amount", payment.RequestAmount)
@@ -747,6 +749,7 @@ func SetApiRouter(router *gin.Engine) {
 			appPublicRoute.GET("/:slug", app.GetApp)
 			appPublicRoute.POST("/:slug/guest-session", middleware.CriticalRateLimit(), app.GetGuestToken)
 			appPublicRoute.POST("/:slug/session", middleware.UserAuth(), app.GetSessionToken)
+			appPublicRoute.GET("/whoami", middleware.TokenAuth(), app.WhoAmI)
 		}
 
 		// AI App Marketplace — admin management

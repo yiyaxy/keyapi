@@ -37,6 +37,10 @@ type TopUp struct {
 	// post-migration WeChat/Epay rows. Legacy rows keep 0 and must fall
 	// back to Amount-based reconstruction when no better source exists.
 	RawQuota int64 `json:"raw_quota" gorm:"not null;default:0"`
+	// BaseQuota keeps the paid top-up quota before user-level bonus is added.
+	// Invitation top-up rebate uses this value so level gifts do not change
+	// the original upstream rebate basis.
+	BaseQuota int64 `json:"base_quota" gorm:"not null;default:0"`
 }
 
 // TopUpWithUser is a DTO for admin queries that includes the username.
@@ -381,7 +385,11 @@ func ManualCompleteTopUp(tradeNo string) error {
 	RecordTopUpLogWithTenant(tenantId, userId, quotaToAdd, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
 
 	// 处理充值返利
-	ProcessTopUpRebate(userId, quotaToAdd)
+	rebateBase := quotaToAdd
+	if topUp := GetTopUpByTradeNo(tenantId, tradeNo); topUp != nil && topUp.BaseQuota > 0 {
+		rebateBase = int(topUp.BaseQuota)
+	}
+	ProcessTopUpRebate(userId, rebateBase)
 
 	return nil
 }

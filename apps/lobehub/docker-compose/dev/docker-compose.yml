@@ -39,7 +39,7 @@ services:
     image: redis:7-alpine
     container_name: lobe-redis
     ports:
-      - '6379:6379'
+      - '6380:6379'
     command: redis-server --save 60 1000 --appendonly yes
     volumes:
       - 'redis_data:/data'

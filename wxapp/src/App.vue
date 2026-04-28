@@ -1,11 +1,14 @@
 <script>
 import { userStore } from '@/store/user.js'
 import { getStatus } from '@/services/api.js'
+import { captureInviteSource, registerShareMenu } from '@/utils/share.js'
 
 const updateManager = uni.getUpdateManager()
 
 export default {
-  onLaunch() {
+  onLaunch(options) {
+    captureInviteSource(options)
+    registerShareMenu()
     // 恢复登录态
     userStore.loadToken()
     // 获取系统配置（quota_per_unit 等）
@@ -13,7 +16,9 @@ export default {
     // 检查小程序更新
     this.checkUpdate()
   },
-  onShow() {},
+  onShow(options) {
+    captureInviteSource(options)
+  },
   onHide() {},
   methods: {
     async loadStatus() {

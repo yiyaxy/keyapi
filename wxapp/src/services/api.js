@@ -32,6 +32,12 @@ export const getSelf = () => request.get('/api/user/self')
  */
 export const redeemCode = (key) => request.post('/api/user/topup', { key })
 
+// ─── 签到 ───────────────────────────────────────────────
+export const getCheckinStatus = (month) =>
+  request.get('/api/user/checkin', month ? { month } : undefined)
+
+export const doCheckin = () => request.post('/api/user/checkin', {})
+
 // ─── 日志统计 ───────────────────────────────────────────
 /**
  * 获取指定时间范围内的用量统计
@@ -137,10 +143,16 @@ export const transferAff = (quota) =>
 export const getAffTransferHistory = (p = 1, size = 20) =>
   request.get('/api/aff_transfer/self', { p, size })
 
+export const getInvitees = (p = 1, size = 20) =>
+  request.get('/api/user/aff/invitees', { p, page_size: size })
+
 export const bindInviteCode = (affCode) =>
   request.post('/api/user/aff/bind', { aff_code: affCode })
 
 // ─── 微信支付充值 ───────────────────────────────────────
+export const getTopupPreview = (amount) =>
+  request.post('/api/user/topup/preview', { amount })
+
 /**
  * 发起微信小程序 JSAPI 充值下单
  * @param {number} amount 充值金额（与 PC 端一致：显示单位，USD/CNY/TOKENS 模式自动换算）

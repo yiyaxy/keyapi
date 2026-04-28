@@ -37,29 +37,29 @@ type wechatTopupRequest struct {
 // Accepting an independent "WeChat pricing" path would split behavior
 // by channel — we refuse that.
 //
-// Returns (amountCents, amountUnits, quotaDelta, err) where:
+// Returns (amountCents, amountUnits, quotaPreview, err) where:
 //   - amountCents = CNY price to charge (WeChat API wants integer cents)
 //   - amountUnits = what gets stored in top_ups.Amount; identical to the
 //     epay/stripe value. In CNY/USD display mode this equals the raw
 //     request amount; in Tokens display mode this equals
 //     req.Amount / QuotaPerUnit.
-//   - quotaDelta = authoritative raw quota to credit on success.
-func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountUnits int64, quotaDelta int64, err error) {
+//   - quotaPreview.TotalQuota = authoritative raw quota to credit on success.
+func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountUnits int64, quotaPreview model.TopUpBonusPreview, err error) {
 	minTopup := getMinTopup(middleware.GetTenantId(c))
 	if amount < minTopup {
-		return 0, 0, 0, fmt.Errorf("充值数量不能小于 %d", minTopup)
+		return 0, 0, quotaPreview, fmt.Errorf("充值数量不能小于 %d", minTopup)
 	}
 	userId := c.GetInt("id")
 	if userId <= 0 {
-		return 0, 0, 0, errors.New("未登录")
+		return 0, 0, quotaPreview, errors.New("未登录")
 	}
 	group, gerr := model.GetUserGroup(userId, true)
 	if gerr != nil {
-		return 0, 0, 0, fmt.Errorf("获取用户分组失败: %w", gerr)
+		return 0, 0, quotaPreview, fmt.Errorf("获取用户分组失败: %w", gerr)
 	}
 	payMoney := getPayMoney(middleware.GetTenantId(c), amount, group)
 	if payMoney < 0.01 {
-		return 0, 0, 0, errors.New("充值金额过低")
+		return 0, 0, quotaPreview, errors.New("充值金额过低")
 	}
 	amountCents = decimal.NewFromFloat(payMoney).
 		Mul(decimal.NewFromInt(100)).Round(0).IntPart()
@@ -70,13 +70,14 @@ func resolveTopupPrice(c *gin.Context, amount int64) (amountCents int64, amountU
 		amountUnits = decimal.NewFromInt(amount).
 			Div(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
 		if amountUnits <= 0 {
-			return 0, 0, 0, errors.New("充值数量过小")
+			return 0, 0, quotaPreview, errors.New("充值数量过小")
 		}
 	}
-	quotaDelta = operation_setting.ComputeTopupQuotaDelta(amount)
-	if quotaDelta <= 0 {
-		return 0, 0, 0, errors.New("无法计算充值额度（检查 QuotaDisplayType / USDExchangeRate / CustomCurrencyExchangeRate 配置）")
+	baseQuota := operation_setting.ComputeTopupQuotaDelta(amount)
+	if baseQuota <= 0 {
+		return 0, 0, quotaPreview, errors.New("无法计算充值额度（检查 QuotaDisplayType / USDExchangeRate / CustomCurrencyExchangeRate 配置）")
 	}
+	quotaPreview = model.GetUserLevelTopUpBonusPreview(userId, middleware.GetTenantId(c), baseQuota)
 	return
 }
 
@@ -132,7 +133,7 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 			common.ApiErrorMsg(c, "参数错误")
 			return
 		}
-		amountCents, amountUnits, quotaDelta, err := resolveTopupPrice(c, req.Amount)
+		amountCents, amountUnits, quotaPreview, err := resolveTopupPrice(c, req.Amount)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -159,24 +160,30 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 		}
 
 		resp, order, err := paymentsvc.CreateTopupOrder(c.Request.Context(), paymentsvc.CreateTopupOrderInput{
-			TenantId:    tid,
-			UserId:      userId,
-			AmountCents: amountCents,
-			AmountUnits: amountUnits,
-			QuotaDelta:  quotaDelta,
-			ProductForm: productForm,
-			Openid:      openid,
-			ClientIp:    c.ClientIP(),
-			Description: "充值",
-			NotifyUrl:   notifyUrl,
+			TenantId:          tid,
+			UserId:            userId,
+			AmountCents:       amountCents,
+			AmountUnits:       amountUnits,
+			QuotaDelta:        quotaPreview.TotalQuota,
+			BaseQuotaDelta:    quotaPreview.BaseQuota,
+			BonusQuotaDelta:   quotaPreview.BonusQuota,
+			TopUpBonusPercent: quotaPreview.BonusPercent,
+			UserLevelId:       quotaPreview.LevelId,
+			UserLevelName:     quotaPreview.LevelName,
+			ProductForm:       productForm,
+			Openid:            openid,
+			ClientIp:          c.ClientIP(),
+			Description:       "充值",
+			NotifyUrl:         notifyUrl,
 		})
 		if err != nil {
 			common.ApiError(c, err)
 			return
 		}
 		common.ApiSuccess(c, gin.H{
-			"order":    gin.H{"out_trade_no": order.OutTradeNo, "amount": order.Amount},
-			"response": resp,
+			"order":         gin.H{"out_trade_no": order.OutTradeNo, "amount": order.Amount},
+			"quota_preview": quotaPreview,
+			"response":      resp,
 		})
 	}
 }

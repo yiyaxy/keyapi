@@ -279,11 +279,13 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "error", "data": "无法计算充值额度（检查 QuotaDisplayType 配置）"})
 		return
 	}
+	quotaPreview := model.GetUserLevelTopUpBonusPreview(id, middleware.GetTenantId(c), quotaDelta)
 	topUp := &model.TopUp{
 		TenantId:      middleware.GetTenantId(c),
 		UserId:        id,
 		Amount:        amountUnits,
-		RawQuota:      quotaDelta,
+		RawQuota:      quotaPreview.TotalQuota,
+		BaseQuota:     quotaDelta,
 		Money:         payMoney,
 		TradeNo:       tradeNo,
 		PaymentMethod: req.PaymentMethod,
@@ -445,7 +447,11 @@ func EpayNotify(c *gin.Context) {
 			log.Printf("易支付回调更新用户成功 %v", topUp)
 			model.RecordLogCtx(c, topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
 			// 处理充值返利
-			model.ProcessTopUpRebate(topUp.UserId, quotaToAdd)
+			rebateBase := quotaToAdd
+			if topUp.BaseQuota > 0 {
+				rebateBase = int(topUp.BaseQuota)
+			}
+			model.ProcessTopUpRebate(topUp.UserId, rebateBase)
 		} else if topUp.Status == "success" {
 			notifyPayloadBytes, _ := json.Marshal(params)
 			topUp.EpayTradeNo = params["trade_no"]
@@ -489,6 +495,42 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
+}
+
+func PreviewTopUp(c *gin.Context) {
+	var req AmountRequest
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+
+	minTopup := getMinTopup(middleware.GetTenantId(c))
+	if req.Amount < minTopup {
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minTopup)})
+		return
+	}
+	id := c.GetInt("id")
+	group, err := model.GetUserGroup(id, true)
+	if err != nil {
+		c.JSON(200, gin.H{"message": "error", "data": "获取用户分组失败"})
+		return
+	}
+	payMoney := getPayMoney(middleware.GetTenantId(c), req.Amount, group)
+	if payMoney <= 0.01 {
+		c.JSON(200, gin.H{"message": "error", "data": "充值金额过低"})
+		return
+	}
+	baseQuota := operation_setting.ComputeTopupQuotaDelta(req.Amount)
+	if baseQuota <= 0 {
+		c.JSON(200, gin.H{"message": "error", "data": "无法计算充值额度（检查 QuotaDisplayType 配置）"})
+		return
+	}
+	quotaPreview := model.GetUserLevelTopUpBonusPreview(id, middleware.GetTenantId(c), baseQuota)
+	c.JSON(200, gin.H{"message": "success", "data": gin.H{
+		"amount":        strconv.FormatFloat(payMoney, 'f', 2, 64),
+		"quota_preview": quotaPreview,
+	}})
 }
 
 func GetUserTopUps(c *gin.Context) {

@@ -10,6 +10,7 @@ export type UserLevel = {
   description: string;
   register_reward: number;
   invitee_reward: number;
+  top_up_bonus_percent: number;
   top_up_rebate_count: number;
   top_up_rebate_percent: number;
   subscription_rebate_count: number;
@@ -26,6 +27,7 @@ export type UserLevelInput = {
   description?: string;
   register_reward: number;
   invitee_reward: number;
+  top_up_bonus_percent: number;
   top_up_rebate_count: number;
   top_up_rebate_percent: number;
   subscription_rebate_count: number;

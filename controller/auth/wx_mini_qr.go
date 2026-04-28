@@ -143,7 +143,7 @@ func ConfirmWxQrTicket(c *gin.Context) {
 	// Default: login purpose (ticket.Purpose empty = legacy login ticket).
 	// Scoped to the tenant the web session belongs to, NOT the tenant of the
 	// mini-program request (mini-program has no real tenant context).
-	user, err := wxMiniResolveUser(req.Code, t.TenantId)
+	user, err := wxMiniResolveUser(req.Code, t.TenantId, 0)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return

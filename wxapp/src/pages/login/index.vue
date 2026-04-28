@@ -88,6 +88,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
 import request from '@/services/request.js'
 import env from '@/config/env.js'
+import { clearPendingInviterId, getPendingInviterId } from '@/utils/share.js'
 
 const statusBarH = ref(0)
 const loading = ref(false)
@@ -113,7 +114,7 @@ const agreementDoc = {
     },
     {
       title: '四、充值、订单与返利',
-      body: '你可以通过平台提供的支付方式充值。支付成功后，余额会计入账号。邀请、绑定邀请码和充值返利以平台后台配置为准，返利可能受用户等级、次数、比例、订单状态等因素影响。',
+      body: '你可以通过平台提供的支付方式充值。支付成功后，余额会计入账号。分享拉新、上下级关系和充值返利以平台后台配置为准，返利可能受用户等级、次数、比例、订单状态等因素影响。',
     },
     {
       title: '五、用户行为规范',
@@ -139,7 +140,7 @@ const privacyDoc = {
     },
     {
       title: '三、收集信息的方式',
-      body: '你勾选同意并点击微信一键登录后，我们才会调用微信登录接口获取登录凭证。你在平台内充值、调用模型、绑定邀请码、创建 API Key 或查看订单时，系统会根据你的操作生成相应业务记录。',
+      body: '你勾选同意并点击微信一键登录后，我们才会调用微信登录接口获取登录凭证。你通过分享进入、登录、充值、调用模型、创建 API Key 或查看订单时，系统会根据你的操作生成相应业务记录。',
     },
     {
       title: '四、信息的使用范围',
@@ -214,10 +215,12 @@ function wxGetCode() {
 
 function postLogin(code) {
   return new Promise((resolve, reject) => {
+    const inviterId = getPendingInviterId()
+    const data = inviterId > 0 ? { code, inviter_id: inviterId } : { code }
     uni.request({
       url: env.basePath + '/api/oauth/wx_mini/login',
       method: 'POST',
-      data: { code },
+      data,
       header: { 'Content-Type': 'application/json' },
       success(res) {
         const body = res.data
@@ -230,6 +233,7 @@ function postLogin(code) {
         if (!cookie) return reject(new Error('未收到登录会话，请重试'))
         userStore.setToken(cookie)
         if (body.data) userStore.setUserInfo(body.data)
+        clearPendingInviterId()
         resolve()
       },
       fail() {

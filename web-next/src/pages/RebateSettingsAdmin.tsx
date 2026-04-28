@@ -85,6 +85,7 @@ export function RebateSettingsAdminPage() {
                   <th className='px-3 py-2 font-medium'>{t('level.col.name')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.register_reward')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.invitee_reward')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('col.top_up_bonus_percent')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.top_up_rebate_count')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.top_up_rebate_percent')}</th>
                   <th className='px-3 py-2 font-medium'>{t('level.col.status')}</th>
@@ -100,6 +101,7 @@ export function RebateSettingsAdminPage() {
                     </td>
                     <td className='px-3 py-2'>{fmtDisplay(level.register_reward, cfg)}</td>
                     <td className='px-3 py-2'>{fmtDisplay(level.invitee_reward, cfg)}</td>
+                    <td className='px-3 py-2'>{level.top_up_bonus_percent ?? 0}%</td>
                     <td className='px-3 py-2'>{fmtNum(level.top_up_rebate_count)}</td>
                     <td className='px-3 py-2'>{level.top_up_rebate_percent}%</td>
                     <td className='px-3 py-2'>

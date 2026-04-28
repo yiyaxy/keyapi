@@ -35,9 +35,14 @@ function AppCard({ app }: { app: AiApp }) {
         window.location.href = '/login';
         return;
       }
-      const url = new URL(app.target_url);
-      url.searchParams.set('token', key);
-      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+      // 将 session key 同时用于：
+      // 1. LobeHub 自动登录（token-login 端点创建 session）
+      // 2. 注入 keyVaults，让 LobeHub 用此 key 调用 new-api
+      const settings = { keyVaults: { openai: { apiKey: key } } };
+      const loginUrl = new URL('/api/auth/token-login', app.target_url);
+      loginUrl.searchParams.set('token', key);
+      loginUrl.searchParams.set('settings', JSON.stringify(settings));
+      window.location.href = loginUrl.toString();
     } catch {
       toast.error(t('token_error'));
     }
@@ -85,7 +90,7 @@ function AppCard({ app }: { app: AiApp }) {
             variant='secondary'
             asChild
           >
-            <a href={app.target_url} target='_blank' rel='noopener noreferrer'>
+            <a href={app.target_url} rel='noopener noreferrer'>
               <ExternalLink className='mr-1 h-3.5 w-3.5' />
               {t('preview')}
             </a>
