@@ -7,13 +7,7 @@
       </view>
     </view>
 
-    <scroll-view
-      scroll-y
-      class="scroll"
-      refresher-enabled
-      :refresher-triggered="refreshing"
-      @refresherrefresh="onPullDown"
-    >
+    <scroll-view scroll-y class="scroll" :style="scrollOffsetStyle">
       <!-- 未登录提示 -->
       <view class="login-prompt" v-if="!userStore.isLoggedIn">
         <u-icon name="account" size="50" color="#9ca3af" />
@@ -186,6 +180,11 @@ const bindModalOpen = ref(false)
 const bindCode = ref('')
 const bindSubmitting = ref(false)
 
+const scrollOffsetStyle = computed(() => ({
+  paddingTop: `calc(${statusBarH.value}px + 88rpx)`,
+  height: `calc(100vh - ${statusBarH.value}px - 88rpx)`,
+}))
+
 const displayName = computed(() => {
   const u = userInfo.value
   return u?.display_name || u?.username || '用户'
@@ -266,10 +265,6 @@ function doLogout() {
   })
 }
 
-async function onPullDown() {
-  await loadData()
-}
-
 function goLogin() { uni.navigateTo({ url: '/pages/login/index' }) }
 
 onLoad(() => {
@@ -288,14 +283,14 @@ onLoad(() => {
 .nav {
   background: #fff;
   box-shadow: 0 1rpx 0 #f0f0f0;
-  position: sticky; top: 0; z-index: 100;
+  position: fixed; left: 0; right: 0; top: 0; z-index: 100;
 }
 .nav-inner {
   height: 88rpx; display: flex; align-items: center;
   padding: 0 32rpx;
 }
 .nav-title { font-size: 34rpx; font-weight: 600; color: #1a1a2e; }
-.scroll { flex: 1; }
+.scroll { flex: 1; box-sizing: border-box; }
 
 /* 未登录提示 */
 .login-prompt {

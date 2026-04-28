@@ -12,9 +12,9 @@
 
     <view class="logo-area">
       <view class="logo-icon">
-        <text class="logo-letter">C</text>
+        <text class="logo-letter">A</text>
       </view>
-      <text class="logo-title">CaMeL API</text>
+      <text class="logo-title">ALl Models</text>
       <text class="logo-sub">{{ purpose === 'bind' ? '网页版扫码绑定' : '网页版扫码登录' }}</text>
     </view>
 

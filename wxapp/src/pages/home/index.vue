@@ -29,7 +29,7 @@
           <view class="guest-logo">
             <u-icon name="server" size="80" color="#4F6EF7" />
           </view>
-          <text class="guest-title">CaMeL API</text>
+          <text class="guest-title">ALl Models</text>
           <text class="guest-sub">专业的 AI 模型接入服务</text>
           <text class="guest-desc">支持 OpenAI、Claude、Gemini 等 40+ 主流模型，统一接口，按量计费</text>
           <view class="guest-login-btn" @click="goLogin">立即登录</view>
@@ -74,7 +74,7 @@
           <view class="hero-top">
             <view>
               <text class="greeting">你好，{{ displayName }} 👋</text>
-              <text class="greeting-sub">欢迎使用 CaMeL API</text>
+              <text class="greeting-sub">欢迎使用 ALl Models</text>
             </view>
             <view class="balance-box">
               <text class="balance-label">账户余额</text>
