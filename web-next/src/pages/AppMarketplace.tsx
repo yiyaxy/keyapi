@@ -11,6 +11,12 @@ import { usePublicApps, useGetSessionToken, useGetGuestToken, type AiApp } from 
 
 function launchApp(app: AiApp, key: string) {
   const targetUrl = new URL(app.target_url, window.location.origin);
+  if (targetUrl.origin === window.location.origin) {
+    targetUrl.searchParams.set('token', key);
+    window.location.href = targetUrl.toString();
+    return;
+  }
+
   const loginUrl = new URL('/api/auth/token-login', targetUrl);
   const form = document.createElement('form');
   form.method = 'POST';
