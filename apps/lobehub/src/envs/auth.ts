@@ -100,6 +100,7 @@ declare global {
        * Can be generated using `node scripts/generate-oidc-jwk.mjs`.
        */
       JWKS_KEY?: string;
+      OIDC_JWKS_KEY?: string;
     }
   }
 }
@@ -192,6 +193,7 @@ export const getAuthConfig = () => {
 
       // Generic JWKS key for signing/verifying JWTs
       JWKS_KEY: z.string().optional(),
+      OIDC_JWKS_KEY: z.string().optional(),
       ENABLE_OIDC: z.boolean(),
 
       // Internal JWT expiration time (e.g., '10s', '1m', '1h')
@@ -284,8 +286,9 @@ export const getAuthConfig = () => {
       // Casdoor
       CASDOOR_WEBHOOK_SECRET: process.env.CASDOOR_WEBHOOK_SECRET,
 
-      JWKS_KEY: process.env.JWKS_KEY,
-      ENABLE_OIDC: !!process.env.JWKS_KEY,
+      JWKS_KEY: process.env.JWKS_KEY || process.env.OIDC_JWKS_KEY,
+      OIDC_JWKS_KEY: process.env.OIDC_JWKS_KEY,
+      ENABLE_OIDC: !!(process.env.JWKS_KEY || process.env.OIDC_JWKS_KEY),
 
       // Internal JWT expiration time
       INTERNAL_JWT_EXPIRATION: process.env.INTERNAL_JWT_EXPIRATION,

@@ -14,6 +14,15 @@ import { styles } from './styles';
 import { type ErrorStateProps } from './types';
 import { getThumbnailMaxWidth } from './utils';
 
+const isInternalAsyncTaskStartupError = (message?: string) =>
+  !!message &&
+  (message.includes('start async task error') ||
+    message.includes('JWKS_KEY environment variable is not set'));
+
+const isGenericImageGenerationProblem = (message?: string) =>
+  !!message &&
+  (isInternalAsyncTaskStartupError(message) || message.includes('Invalid image response'));
+
 // Error state component
 export const ErrorState = memo<ErrorStateProps>(
   ({ generation, generationBatch, aspectRatio, onDelete, onCopyError }) => {
@@ -25,6 +34,10 @@ export const ErrorState = memo<ErrorStateProps>(
 
       const error = generation.task.error;
       const errorBody = typeof error.body === 'string' ? error.body : error.body?.detail;
+
+      if (isGenericImageGenerationProblem(errorBody)) {
+        return t('generation.status.problem');
+      }
 
       // Try to translate based on error type if it matches known AgentRuntimeErrorType
       if (errorBody) {
@@ -57,7 +70,7 @@ export const ErrorState = memo<ErrorStateProps>(
 
       // Fallback to original error message
       return errorBody || error.name || 'Unknown error';
-    }, [generation.task.error, tError]);
+    }, [generation.task.error, t, tError]);
 
     const isProviderContentModerationError =
       generation.task.error?.name === AsyncTaskErrorType.ProviderContentModeration;
@@ -81,7 +94,7 @@ export const ErrorState = memo<ErrorStateProps>(
           <Text strong align={'center'} type={'secondary'}>
             {isProviderContentModerationError
               ? tError('response.ProviderContentModeration')
-              : t('generation.status.failed')}
+              : t('generation.status.problem')}
           </Text>
           {generation.task.error && !isProviderContentModerationError && (
             <Text

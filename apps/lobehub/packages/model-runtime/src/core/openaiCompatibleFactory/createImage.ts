@@ -12,6 +12,35 @@ import { convertOpenAIImageUsage } from '../usageConverters/openai';
 
 const log = createDebug('lobe-image:openai-compatible');
 
+const getNonEmptyString = (value: unknown) =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+const isDirectImageUrl = (value: string) =>
+  value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:');
+
+const normalizeBase64Image = (value: string) =>
+  isDirectImageUrl(value) ? value : `data:image/png;base64,${value}`;
+
+const extractImageUrlFromImageData = (imageData: Record<string, any>) => {
+  const directUrl =
+    getNonEmptyString(imageData.url) ||
+    getNonEmptyString(imageData.image_url?.url) ||
+    getNonEmptyString(imageData.image_url) ||
+    getNonEmptyString(imageData.output_url) ||
+    getNonEmptyString(imageData.image?.url);
+
+  if (directUrl) return directUrl;
+
+  const base64Image =
+    getNonEmptyString(imageData.b64_json) ||
+    getNonEmptyString(imageData.result) ||
+    getNonEmptyString(imageData.base64) ||
+    getNonEmptyString(imageData.image?.b64_json) ||
+    getNonEmptyString(imageData.image?.base64);
+
+  return base64Image ? normalizeBase64Image(base64Image) : undefined;
+};
+
 /**
  * Generate images using traditional OpenAI images API (DALL-E, etc.)
  */
@@ -101,26 +130,13 @@ async function generateByImageMode(
     throw new Error('Invalid image response: first data item is null or undefined');
   }
 
-  let imageUrl: string;
+  const imageUrl = extractImageUrlFromImageData(imageData as Record<string, any>);
 
-  // Handle base64 format response
-  if (imageData.b64_json) {
-    // Determine the image's MIME type, default to PNG
-    const mimeType = 'image/png'; // OpenAI image generation defaults to PNG format
-
-    // Convert base64 string to complete data URL
-    imageUrl = `data:${mimeType};base64,${imageData.b64_json}`;
-    log('Successfully converted base64 to data URL, length: %d', imageUrl.length);
-  }
-  // Handle URL format response
-  else if (imageData.url) {
-    imageUrl = imageData.url;
-    log('Using direct image URL: %s', imageUrl);
-  }
-  // If neither format exists, throw error
-  else {
+  if (!imageUrl) {
     throw new Error('Invalid image response: missing both b64_json and url fields');
   }
+
+  log('Successfully extracted image URL, length: %d', imageUrl.length);
 
   return {
     imageUrl,

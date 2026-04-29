@@ -8,7 +8,6 @@ import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import VideoFreeQuotaInfo from '@/business/client/features/VideoFreeQuotaInfo';
-import { loginRequired } from '@/components/Error/loginRequiredNotification';
 import Action from '@/features/ChatInput/ActionBar/components/Action';
 import ModelSwitchPanel from '@/features/ModelSwitchPanel';
 import PromptTransformAction from '@/features/PromptTransform/PromptTransformAction';
@@ -232,7 +231,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   const isSupportWatermark = useVideoStore(isSupportedParamSelector('watermark'));
   const isSupportCameraFixed = useVideoStore(isSupportedParamSelector('cameraFixed'));
   const isSupportWebSearch = useVideoStore(isSupportedParamSelector('webSearch'));
-  const isLogin = useUserStore(authSelectors.isLogin);
+  const isAuthLoaded = useUserStore(authSelectors.isLoaded);
   const { value: duration } = useVideoGenerationConfigParam('duration');
   useFetchAiVideoConfig();
 
@@ -243,11 +242,6 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   const hasProcessedModel = useRef(false);
 
   const handleGenerate = async () => {
-    if (!isLogin) {
-      loginRequired.redirect({ timeout: 2000 });
-      return;
-    }
-
     await createVideo();
   };
 
@@ -270,7 +264,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
 
   // Auto-fill and auto-send when prompt query parameter is present
   useEffect(() => {
-    if (promptParam && !hasProcessedPrompt.current && isLogin) {
+    if (promptParam && !hasProcessedPrompt.current && isAuthLoaded) {
       const decodedPrompt = decodeURIComponent(promptParam);
 
       setValue(decodedPrompt);
@@ -287,7 +281,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
         window.clearTimeout(timeoutId);
       };
     }
-  }, [promptParam, isLogin, setValue, setPromptParam, createVideo]);
+  }, [promptParam, isAuthLoaded, setValue, setPromptParam, createVideo]);
 
   const showInlineFrames = isSupportImageUrl || isSupportImageUrls || isSupportEndImageUrl;
   const framePreviewUrls = useMemo(
