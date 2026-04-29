@@ -22,6 +22,16 @@ interface NewApiUserInfo {
 
 type ProviderKeyVaults = Record<string, Record<string, unknown>>;
 
+function getOpenAIProxyUrl(): string | undefined {
+  const explicitProxyUrl = process.env.OPENAI_PROXY_URL?.trim();
+  if (explicitProxyUrl) return explicitProxyUrl;
+
+  const baseUrl = process.env.NEW_API_BASE_URL?.trim();
+  if (!baseUrl) return undefined;
+
+  return `${baseUrl.replace(/\/+$/, '')}/v1`;
+}
+
 async function fetchNewApiUser(token: string): Promise<NewApiUserInfo | null> {
   const baseUrl = process.env.NEW_API_BASE_URL;
   if (!baseUrl) {
@@ -74,6 +84,7 @@ async function decryptKeyVaults(
 
 async function saveOpenAIKeyVault(userId: string, apiKey: string) {
   const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
+  const baseURL = getOpenAIProxyUrl();
   const existingSettings = await serverDB
     .select({ keyVaults: userSettings.keyVaults })
     .from(userSettings)
@@ -94,6 +105,7 @@ async function saveOpenAIKeyVault(userId: string, apiKey: string) {
     openai: {
       ...currentOpenAIVault,
       apiKey,
+      ...(baseURL ? { baseURL } : {}),
     },
   };
   const encryptedKeyVaults = await gateKeeper.encrypt(JSON.stringify(nextKeyVaults));
