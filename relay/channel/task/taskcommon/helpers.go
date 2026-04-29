@@ -3,7 +3,10 @@ package taskcommon
 import (
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -67,8 +70,43 @@ func BuildProxyURL(taskID string) string {
 	return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, taskID)
 }
 
-func BuildImageProxyURL(taskID string, index int) string {
-	return fmt.Sprintf("%s/v1/images/async/%s/content/%d", system_setting.ServerAddress, taskID, index)
+func BuildImageProxyURL(taskID string, index int, tenantID int) string {
+	return fmt.Sprintf("%s/v1/images/async/%s/content/%d", imageProxyBaseURL(tenantID), taskID, index)
+}
+
+func imageProxyBaseURL(tenantID int) string {
+	base := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
+	if tenantID <= 0 {
+		return base
+	}
+
+	tenant := model.GetTenantById(tenantID)
+	if tenant == nil || tenant.Slug == "" {
+		return base
+	}
+
+	parsed, err := url.Parse(base)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return base
+	}
+
+	host := parsed.Hostname()
+	if host == "" || strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil {
+		return base
+	}
+
+	parts := strings.Split(host, ".")
+	rootHost := host
+	if len(parts) >= 3 {
+		rootHost = strings.Join(parts[1:], ".")
+	}
+
+	newHost := tenant.Slug + "." + rootHost
+	if port := parsed.Port(); port != "" {
+		newHost = net.JoinHostPort(newHost, port)
+	}
+	parsed.Host = newHost
+	return strings.TrimRight(parsed.String(), "/")
 }
 
 func WriteImageAsyncSubmitResponse(c *gin.Context, info *relaycommon.RelayInfo) {

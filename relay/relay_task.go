@@ -412,9 +412,15 @@ func imageAsyncFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskRe
 				return
 			}
 		}
+		tenantID := 0
+		if tid, ok := c.Get(string(constant.ContextKeyTenantId)); ok {
+			if id, ok := tid.(int); ok {
+				tenantID = id
+			}
+		}
 		for i := range data {
 			if data[i].Url != "" {
-				data[i].Url = taskcommon.BuildImageProxyURL(originTask.TaskID, i)
+				data[i].Url = taskcommon.BuildImageProxyURL(originTask.TaskID, i, tenantID)
 			}
 		}
 		completed := originTask.FinishTime
