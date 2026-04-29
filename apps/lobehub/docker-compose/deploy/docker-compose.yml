@@ -40,12 +40,15 @@ services:
       - lobe-network
 
   postgresql:
-    image: paradedb/paradedb:latest-pg17
+    # 钉死具体版本：避免 latest-pg17 浮动标签 attestation 拉取失败问题
+    # 查看可用版本：https://hub.docker.com/r/paradedb/paradedb/tags
+    image: paradedb/paradedb:0.15.18-pg17
     container_name: lobe-postgres
-    # 不向宿主机暴露端口（避免和 keyapi 的 postgres / 系统 5432 冲突）
-    # 如需外部连接调试，改成: ports: ['15432:5432']
-    expose:
-      - '5432'
+    # 仅绑定 127.0.0.1:15432，外网访问不到 —— 必须通过 SSH 隧道才能连
+    # 隧道命令：ssh -L 15432:127.0.0.1:15432 root@<server-ip>
+    # 然后 DBeaver / Navicat 连 localhost:15432
+    ports:
+      - '127.0.0.1:15432:5432'
     volumes:
       - './data:/var/lib/postgresql/data'
     environment:
