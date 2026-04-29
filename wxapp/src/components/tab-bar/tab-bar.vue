@@ -9,7 +9,7 @@
     >
       <view class="dot" v-if="active === t.id" />
       <view class="icon-wrap">
-        <u-icon :name="t.icon" size="22" :color="active === t.id ? '#FFB84A' : '#6b7280'" />
+        <u-icon :name="t.icon" size="22" :color="active === t.id ? '#FFB84A' : '#9ca3af'" />
       </view>
       <text class="label" :class="{ active: active === t.id }">{{ t.label }}</text>
     </view>
@@ -49,9 +49,10 @@ function activeId() {
 .tabbar {
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  background: rgba(16, 20, 25, 0.85);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(24rpx);
-  border-top: 1rpx solid rgba(255,255,255,0.05);
+  border-top: 1rpx solid rgba(0,0,0,0.05);
+  box-shadow: 0 -2rpx 16rpx rgba(20,16,8,0.04);
   padding: 12rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
@@ -82,7 +83,7 @@ function activeId() {
 .tab.active .icon-wrap { transform: scale(1.05); }
 .label {
   font-size: 20rpx;
-  color: #6b7280;
+  color: #9ca3af;
   margin-top: 4rpx;
   font-weight: 500;
 }

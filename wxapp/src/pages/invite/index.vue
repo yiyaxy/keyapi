@@ -11,7 +11,7 @@
 
         <template v-if="!userStore.isLoggedIn">
           <view class="login-prompt">
-            <u-icon name="account" size="44" color="rgba(255,255,255,0.5)" />
+            <u-icon name="account" size="44" color="#9ca3af" />
             <text class="prompt-title">登录后查看下级</text>
             <text class="prompt-sub">分享小程序给新用户，好友登录后自动成为你的下级</text>
             <view class="prompt-btn" @click="goLogin">立即登录</view>
@@ -96,7 +96,7 @@
 
           <view v-if="activeTab === 'invitees'" class="list">
             <view v-if="invitees.length === 0 && !loading" class="empty">
-              <u-icon name="account-fill" size="40" color="rgba(255,255,255,0.2)" />
+              <u-icon name="account-fill" size="40" color="#d1d5db" />
               <text class="empty-title">还没有下级</text>
               <text class="empty-sub">点击上方按钮分享小程序，邀请新用户</text>
             </view>
@@ -221,7 +221,7 @@ onLoad(() => {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #050a10;
+  background: #faf7f0;
   position: relative;
   overflow: hidden;
 }
@@ -235,12 +235,12 @@ onLoad(() => {
 .bg-glow-1 {
   top: -10%; left: -20%;
   width: 500rpx; height: 500rpx;
-  background: rgba(157, 78, 221, 0.18);
+  background: rgba(157, 78, 221, 0.1);
 }
 .bg-glow-2 {
   bottom: 20%; right: -25%;
   width: 500rpx; height: 500rpx;
-  background: rgba(0, 245, 255, 0.1);
+  background: rgba(255, 184, 74, 0.12);
 }
 
 .scroll { position: relative; z-index: 1; height: 100vh; }
@@ -254,28 +254,29 @@ onLoad(() => {
 }
 .head-title {
   font-size: 28rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 700;
   letter-spacing: 6rpx;
 }
 
 .login-prompt {
   margin-top: 80rpx;
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 28rpx;
   padding: 60rpx 40rpx;
   display: flex; flex-direction: column; align-items: center;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
 .prompt-title {
   font-size: 30rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 600;
   margin: 24rpx 0 12rpx;
 }
 .prompt-sub {
   font-size: 24rpx;
-  color: rgba(255,255,255,0.5);
+  color: #6b7280;
   text-align: center;
   line-height: 1.6;
   margin-bottom: 36rpx;
@@ -350,7 +351,7 @@ onLoad(() => {
 .section-label {
   display: block;
   font-size: 22rpx;
-  color: rgba(255,255,255,0.35);
+  color: #9ca3af;
   font-weight: 700;
   letter-spacing: 4rpx;
   margin: 16rpx 0 20rpx;
@@ -364,30 +365,31 @@ onLoad(() => {
   margin-bottom: 36rpx;
 }
 .milestone-card {
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 24rpx;
   padding: 28rpx 16rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
 .ms-icon {
   width: 64rpx; height: 64rpx;
   border-radius: 18rpx;
-  background: rgba(255,184,74,0.12);
+  background: rgba(255,184,74,0.18);
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 16rpx;
 }
 .ms-label {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.5);
+  color: #6b7280;
   margin-bottom: 8rpx;
 }
 .ms-value {
   font-size: 24rpx;
-  color: #FFB84A;
+  color: #d97706;
   font-weight: 700;
 }
 
@@ -399,28 +401,29 @@ onLoad(() => {
   margin-bottom: 36rpx;
 }
 .stat-card {
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 20rpx;
   padding: 24rpx 16rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
 .stat-card-glow {
-  border-color: rgba(0,245,255,0.18);
-  box-shadow: 0 0 16rpx rgba(0,245,255,0.06);
+  border-color: rgba(255,184,74,0.4);
+  box-shadow: 0 6rpx 20rpx rgba(255,184,74,0.15);
 }
 .stat-num {
   font-size: 30rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 700;
   margin-bottom: 6rpx;
 }
-.stat-num.gold { color: #FFB84A; }
+.stat-num.gold { color: #d97706; }
 .stat-label {
   font-size: 20rpx;
-  color: rgba(255,255,255,0.45);
+  color: #9ca3af;
 }
 
 /* Bonus */
@@ -428,9 +431,9 @@ onLoad(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(0,245,255,0.18);
-  box-shadow: 0 0 24rpx rgba(0,245,255,0.05);
+  background: #ffffff;
+  border: 1rpx solid rgba(255,184,74,0.4);
+  box-shadow: 0 8rpx 28rpx rgba(255,184,74,0.15);
   border-radius: 24rpx;
   padding: 32rpx 28rpx;
   margin-bottom: 36rpx;
@@ -439,25 +442,25 @@ onLoad(() => {
 .bonus-pct {
   font-size: 52rpx;
   font-weight: 800;
-  color: #FFB84A;
+  color: #d97706;
   letter-spacing: -1rpx;
 }
 .bonus-title {
   font-size: 32rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 700;
 }
 .bonus-right { text-align: right; }
 .bonus-r-1 {
   display: block;
   font-size: 20rpx;
-  color: rgba(255,255,255,0.5);
+  color: #9ca3af;
   margin-bottom: 4rpx;
 }
 .bonus-r-2 {
   display: block;
   font-size: 20rpx;
-  color: rgba(255,255,255,0.7);
+  color: #1a1a2e;
   font-weight: 700;
   letter-spacing: 1rpx;
 }
@@ -466,7 +469,7 @@ onLoad(() => {
 .list-tabs {
   display: flex;
   gap: 56rpx;
-  border-bottom: 1rpx solid rgba(255,255,255,0.06);
+  border-bottom: 1rpx solid rgba(0,0,0,0.06);
   margin-bottom: 24rpx;
   padding-top: 8rpx;
 }
@@ -474,10 +477,10 @@ onLoad(() => {
   position: relative;
   padding-bottom: 18rpx;
   font-size: 26rpx;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
   font-weight: 700;
 }
-.list-tab.active { color: #ffffff; }
+.list-tab.active { color: #1a1a2e; }
 .tab-underline {
   position: absolute;
   bottom: -1rpx;
@@ -495,13 +498,13 @@ onLoad(() => {
 }
 .empty-title {
   font-size: 26rpx;
-  color: rgba(255,255,255,0.65);
+  color: #4b5563;
   font-weight: 600;
   margin-top: 16rpx;
 }
 .empty-sub {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
   margin-top: 8rpx;
   text-align: center;
 }
@@ -510,28 +513,29 @@ onLoad(() => {
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 0;
+  border-bottom: 1rpx solid rgba(0,0,0,0.04);
 }
 .row-left { display: flex; align-items: center; }
 .row-avatar {
   width: 64rpx; height: 64rpx;
   border-radius: 50%;
-  background: rgba(255,184,74,0.15);
+  background: rgba(255,184,74,0.18);
   display: flex; align-items: center; justify-content: center;
   margin-right: 18rpx;
-  color: #FFB84A;
+  color: #d97706;
   font-size: 26rpx;
   font-weight: 700;
 }
 .row-name {
   display: block;
   font-size: 26rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 600;
 }
 .row-sub {
   display: block;
   font-size: 20rpx;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
   margin-top: 4rpx;
 }
 .row-right { display: flex; align-items: center; gap: 10rpx; }
@@ -539,7 +543,7 @@ onLoad(() => {
   font-size: 22rpx;
   font-weight: 700;
 }
-.row-status.ok { color: #FFB84A; }
+.row-status.ok { color: #d97706; }
 .row-status.err { color: #ef4444; }
 .row-dot {
   width: 10rpx; height: 10rpx;
@@ -550,7 +554,7 @@ onLoad(() => {
   height: 88rpx;
   display: flex; align-items: center; justify-content: center;
   font-size: 24rpx;
-  color: rgba(255,255,255,0.45);
+  color: #9ca3af;
 }
 
 /* Rules */
@@ -581,7 +585,7 @@ onLoad(() => {
 .rule-text {
   flex: 1;
   font-size: 24rpx;
-  color: rgba(255,255,255,0.7);
+  color: #4b5563;
   line-height: 1.7;
 }
 </style>

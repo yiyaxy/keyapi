@@ -8,7 +8,7 @@
 
     <view v-if="canGoBack" class="back-bar">
       <view class="back-btn" @click="goBack">
-        <u-icon name="arrow-left" size="18" color="rgba(255,255,255,0.7)" />
+        <u-icon name="arrow-left" size="18" color="#4b5563" />
         <text class="back-txt">返回</text>
       </view>
     </view>
@@ -76,7 +76,7 @@
         <view class="doc-header">
           <text class="doc-title">{{ activeDoc.title }}</text>
           <view class="doc-close" @click="closeDoc">
-            <u-icon name="close" size="18" color="rgba(255,255,255,0.6)" />
+            <u-icon name="close" size="18" color="#6b7280" />
           </view>
         </view>
         <scroll-view scroll-y class="doc-body">
@@ -285,7 +285,7 @@ async function doWechatLogin() {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #050a10;
+  background: #faf7f0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -306,17 +306,17 @@ async function doWechatLogin() {
 .bg-glow-1 {
   top: -15%; left: -25%;
   width: 600rpx; height: 600rpx;
-  background: rgba(35, 150, 237, 0.22);
+  background: rgba(35, 150, 237, 0.1);
 }
 .bg-glow-2 {
   top: 25%; right: -25%;
   width: 500rpx; height: 500rpx;
-  background: rgba(157, 78, 221, 0.18);
+  background: rgba(157, 78, 221, 0.08);
 }
 .bg-glow-3 {
   bottom: -10%; left: 0;
   width: 600rpx; height: 600rpx;
-  background: rgba(255, 184, 74, 0.08);
+  background: rgba(255, 184, 74, 0.16);
 }
 
 .back-bar {
@@ -333,7 +333,7 @@ async function doWechatLogin() {
 }
 .back-txt {
   font-size: 26rpx;
-  color: rgba(255,255,255,0.7);
+  color: #4b5563;
   margin-left: 8rpx;
 }
 
@@ -363,7 +363,7 @@ async function doWechatLogin() {
   position: absolute;
   inset: -2rpx;
   border-radius: 36rpx;
-  border: 2rpx solid rgba(0, 245, 255, 0.3);
+  border: 2rpx solid rgba(255, 184, 74, 0.4);
 }
 .logo-letter {
   font-size: 68rpx;
@@ -373,13 +373,13 @@ async function doWechatLogin() {
 .logo-title {
   font-size: 52rpx;
   font-weight: 800;
-  color: #ffffff;
+  color: #1a1a2e;
   letter-spacing: -0.5rpx;
   margin-bottom: 10rpx;
 }
 .logo-sub {
   font-size: 26rpx;
-  color: rgba(255,255,255,0.55);
+  color: #6b7280;
   margin-bottom: 24rpx;
 }
 .chips {
@@ -390,9 +390,9 @@ async function doWechatLogin() {
 }
 .chip {
   font-size: 22rpx;
-  color: #FFB84A;
-  border: 1rpx solid rgba(255,184,74,0.4);
-  background: rgba(255,184,74,0.05);
+  color: #b8780c;
+  border: 1rpx solid rgba(255,184,74,0.5);
+  background: rgba(255,184,74,0.1);
   padding: 6rpx 20rpx;
   border-radius: 999rpx;
 }
@@ -400,9 +400,8 @@ async function doWechatLogin() {
 /* 登录卡 */
 .login-card {
   width: 100%;
-  background: rgba(255,255,255,0.04);
-  backdrop-filter: blur(24rpx);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 32rpx;
   padding: 48rpx 40rpx 40rpx;
   display: flex;
@@ -410,23 +409,24 @@ async function doWechatLogin() {
   align-items: center;
   position: relative;
   z-index: 1;
+  box-shadow: 0 12rpx 40rpx rgba(20,16,8,0.06);
 }
 .card-title {
   font-size: 40rpx;
   font-weight: 700;
-  color: #ffffff;
+  color: #1a1a2e;
   margin-bottom: 12rpx;
 }
 .card-desc {
   font-size: 24rpx;
-  color: rgba(255,255,255,0.5);
+  color: #6b7280;
   margin-bottom: 32rpx;
 }
 
 .privacy-notice {
   width: 100%;
-  background: rgba(255,255,255,0.03);
-  border: 1rpx solid rgba(255,255,255,0.06);
+  background: #faf7f0;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 20rpx;
   padding: 24rpx;
   box-sizing: border-box;
@@ -447,13 +447,13 @@ async function doWechatLogin() {
 .notice-title {
   font-size: 26rpx;
   font-weight: 700;
-  color: #ffffff;
+  color: #1a1a2e;
 }
 .notice-text {
   display: block;
   font-size: 22rpx;
   line-height: 1.7;
-  color: rgba(255,255,255,0.5);
+  color: #6b7280;
   margin-top: 8rpx;
 }
 
@@ -467,7 +467,7 @@ async function doWechatLogin() {
   width: 34rpx;
   height: 34rpx;
   border-radius: 8rpx;
-  border: 2rpx solid rgba(255,255,255,0.25);
+  border: 2rpx solid #d1d5db;
   margin-top: 2rpx;
   margin-right: 14rpx;
   display: flex;
@@ -475,7 +475,7 @@ async function doWechatLogin() {
   justify-content: center;
   box-sizing: border-box;
   flex-shrink: 0;
-  background: rgba(255,255,255,0.04);
+  background: #ffffff;
 }
 .check-box.checked {
   background: #FFB84A;
@@ -486,10 +486,10 @@ async function doWechatLogin() {
   flex: 1;
   font-size: 23rpx;
   line-height: 1.55;
-  color: rgba(255,255,255,0.6);
+  color: #6b7280;
 }
 .link {
-  color: #00F5FF;
+  color: #2396ED;
 }
 
 /* 按钮 */
@@ -510,14 +510,14 @@ async function doWechatLogin() {
 .btn-txt { color: #fff; }
 .btn-loading { opacity: 0.85; }
 .btn-wechat.disabled {
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.35);
+  background: #e5e7eb;
+  color: #9ca3af;
   box-shadow: none;
 }
 
 .footer-tip {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.3);
+  color: #9ca3af;
   margin-top: 40rpx;
   text-align: center;
   position: relative;
@@ -532,7 +532,7 @@ async function doWechatLogin() {
   top: 0;
   bottom: 0;
   z-index: 300;
-  background: rgba(5, 10, 16, 0.7);
+  background: rgba(20, 16, 8, 0.4);
   backdrop-filter: blur(8rpx);
   display: flex;
   align-items: flex-end;
@@ -540,8 +540,8 @@ async function doWechatLogin() {
 .doc-panel {
   width: 100%;
   max-height: 82vh;
-  background: #101419;
-  border-top: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border-top: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 32rpx 32rpx 0 0;
   display: flex;
   flex-direction: column;
@@ -549,7 +549,7 @@ async function doWechatLogin() {
 .doc-header {
   height: 104rpx;
   padding: 0 32rpx;
-  border-bottom: 1rpx solid rgba(255,255,255,0.06);
+  border-bottom: 1rpx solid rgba(0,0,0,0.06);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -558,7 +558,7 @@ async function doWechatLogin() {
 .doc-title {
   font-size: 32rpx;
   font-weight: 700;
-  color: #ffffff;
+  color: #1a1a2e;
 }
 .doc-close {
   width: 64rpx;
@@ -579,18 +579,18 @@ async function doWechatLogin() {
   display: block;
   font-size: 28rpx;
   font-weight: 600;
-  color: #ffffff;
+  color: #1a1a2e;
   margin-bottom: 10rpx;
 }
 .doc-section-text {
   display: block;
   font-size: 24rpx;
   line-height: 1.75;
-  color: rgba(255,255,255,0.6);
+  color: #4b5563;
 }
 .doc-footer {
   padding: 20rpx 32rpx 40rpx;
-  border-top: 1rpx solid rgba(255,255,255,0.06);
+  border-top: 1rpx solid rgba(0,0,0,0.06);
   flex-shrink: 0;
 }
 .doc-confirm {

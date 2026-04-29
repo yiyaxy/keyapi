@@ -14,7 +14,7 @@
           </view>
           <view class="head-chip">
             <view class="head-chip-icon">
-              <u-icon name="star" size="11" color="#FFB84A" />
+              <text class="head-chip-emoji">∞</text>
             </view>
             <view class="head-chip-text">
               <text class="head-chip-num">{{ tokenStr(userInfo?.quota) }}</text>
@@ -23,42 +23,45 @@
           </view>
         </view>
 
-        <!-- Featured 大卡 -->
-        <view class="featured" :style="{ background: 'linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#831843 100%)' }" @click="onAppTap">
-          <view class="featured-shade" />
-          <view class="featured-inner">
-            <view class="featured-title-row">
-              <text class="featured-title">AI 形象诊断</text>
-              <view class="featured-tag">
-                <text>⚡ 50K</text>
-              </view>
-            </view>
-            <text class="featured-desc">上传照片，获取多维度面部结构与风格深度解析报告</text>
-            <view class="featured-tags">
-              <text class="featured-tag-pill">面部比例</text>
-              <text class="featured-tag-pill">风格建议</text>
-              <text class="featured-tag-pill">高清输出</text>
-            </view>
-            <view class="featured-btn">
-              <text>立即体验</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- 双列小卡 -->
-        <view class="duo">
+        <!-- 双列瀑布流 -->
+        <view class="masonry">
           <!-- 左列 -->
           <view class="col">
+            <!-- AI 形象诊断 大卡 -->
+            <view class="img-card big-card" :style="{ background: 'linear-gradient(160deg,#1f2024 0%,#2a2826 60%,#3a3833 100%)' }" @click="onAppTap">
+              <view class="card-shade" />
+              <view class="card-overlay">
+                <view class="card-title-row">
+                  <text class="card-title-lg">AI 形象诊断</text>
+                  <view class="badge-tk">
+                    <text class="badge-tk-txt">∞ 50</text>
+                  </view>
+                </view>
+                <text class="card-desc-lg">上传照片，获取多维度面部结构与风格深度解析报告。</text>
+                <view class="tag-row">
+                  <text class="tag-pill">面部比例</text>
+                  <text class="tag-pill">风格建议</text>
+                  <text class="tag-pill">高清输出</text>
+                </view>
+                <view class="btn-yellow">
+                  <text class="btn-yellow-txt">立即体验</text>
+                </view>
+              </view>
+            </view>
+
             <!-- 最近使用 -->
-            <view class="card-recent">
-              <view class="card-recent-head">
-                <u-icon name="search" size="14" color="#00F5FF" />
-                <text class="card-recent-title">最近使用</text>
+            <view class="recent-card">
+              <view class="recent-head">
+                <view class="recent-head-left">
+                  <u-icon name="clock" size="16" color="#1a1a2e" />
+                  <text class="recent-head-title">最近使用</text>
+                </view>
+                <text class="recent-link">查看全部</text>
               </view>
               <view class="recent-list">
                 <view v-for="i in 3" :key="i" class="recent-item">
                   <view class="recent-mini">
-                    <u-icon name="star" size="10" color="#FFB84A" />
+                    <u-icon name="star" size="12" color="#1a1a2e" />
                   </view>
                   <text class="recent-text">AI 形象诊断</text>
                 </view>
@@ -66,38 +69,87 @@
             </view>
 
             <!-- 我的生成记录 -->
-            <view class="card-history" @click="onAppTap">
-              <view class="history-icon">
-                <u-icon name="clock" size="18" color="rgba(255,255,255,0.6)" />
+            <view class="folder-card" @click="onAppTap">
+              <view class="folder-icon">
+                <u-icon name="folder" size="22" color="#6b7280" />
               </view>
-              <text class="history-title">我的生成记录</text>
-              <text class="history-sub">查看所有历史分析报告与生成的资产</text>
-              <u-icon name="arrow-right" size="14" color="rgba(255,255,255,0.35)" />
+              <text class="folder-title">我的生成记录</text>
+              <text class="folder-sub">查看所有历史分析报告与生成的资产</text>
+              <view class="folder-arrow">
+                <u-icon name="arrow-right" size="14" color="#9ca3af" />
+              </view>
             </view>
           </view>
 
           <!-- 右列 -->
           <view class="col">
-            <!-- 手相 -->
-            <view class="img-card-tall" :style="{ background: 'linear-gradient(135deg,#7C2D12 0%,#451A03 100%)' }" @click="onAppTap">
-              <view class="img-card-shade" />
-              <view class="img-card-inner">
+            <!-- AI 手相分享 -->
+            <view class="img-card med-card" :style="{ background: 'linear-gradient(160deg,#3d2b1f 0%,#4a3120 50%,#1f1410 100%)' }" @click="onAppTap">
+              <view class="card-shade" />
+              <view class="card-overlay">
                 <view class="card-title-row">
-                  <text class="card-title">AI 手相诊断</text>
-                  <view class="badge"><text>分享免 Token</text></view>
+                  <text class="card-title-md">AI 手相分享</text>
+                  <view class="badge-share">
+                    <text class="badge-share-txt">分享免 Token</text>
+                  </view>
                 </view>
-                <text class="card-desc">扫描掌纹，解读运势密码</text>
-                <view class="card-btn"><text>去测试</text></view>
+                <text class="card-desc-md">扫描掌纹，解读运势密码，分享可获取额外 Tokens。</text>
+                <view class="tag-row">
+                  <text class="tag-pill">面部比例</text>
+                  <text class="tag-pill">风格建议</text>
+                  <text class="tag-pill">高清输出</text>
+                </view>
+                <view class="btn-dark">
+                  <text class="btn-dark-txt">去测试</text>
+                </view>
               </view>
             </view>
 
-            <!-- 小红书 -->
-            <view class="img-card-square" :style="{ background: 'linear-gradient(135deg,#9F1239 0%,#500724 100%)' }" @click="onAppTap">
-              <view class="img-card-shade" />
-              <view class="img-card-inner">
-                <text class="card-title">小红书文案诊断</text>
-                <text class="card-desc">爆款逻辑拆解，文案优化</text>
-                <view class="card-btn"><text>开始诊断</text></view>
+            <!-- 小红书内容诊断 -->
+            <view class="img-card med-card" :style="{ background: 'linear-gradient(160deg,#2c2c2c 0%,#1f1f1f 60%,#0f0f0f 100%)' }" @click="onAppTap">
+              <view class="card-shade" />
+              <view class="card-overlay">
+                <view class="card-title-row">
+                  <text class="card-title-md">小红书内容诊断</text>
+                  <view class="badge-tk">
+                    <text class="badge-tk-txt">∞ 20</text>
+                  </view>
+                </view>
+                <text class="card-desc-md">爆款逻辑拆解，文案优化建议，提升笔记流量。</text>
+                <view class="tag-row">
+                  <text class="tag-pill">面部比例</text>
+                  <text class="tag-pill">风格建议</text>
+                  <text class="tag-pill">高清输出</text>
+                </view>
+                <view class="btn-dark">
+                  <text class="btn-dark-txt">开始诊断</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 最近使用 - 副 -->
+            <view class="recent-card mini">
+              <view class="recent-head">
+                <view class="recent-head-left">
+                  <u-icon name="clock" size="14" color="#1a1a2e" />
+                  <text class="recent-head-title">最近使用</text>
+                </view>
+                <text class="recent-link">查看全部</text>
+              </view>
+              <view class="folder-icon mini-folder">
+                <u-icon name="folder" size="20" color="#6b7280" />
+              </view>
+            </view>
+
+            <!-- 我的生成记录 - 副 -->
+            <view class="folder-card" @click="onAppTap">
+              <view class="folder-icon">
+                <u-icon name="folder" size="22" color="#6b7280" />
+              </view>
+              <text class="folder-title">我的生成记录</text>
+              <text class="folder-sub">查看所有历史分析报告与生成的资产</text>
+              <view class="folder-arrow">
+                <u-icon name="arrow-right" size="14" color="#9ca3af" />
               </view>
             </view>
           </view>
@@ -134,7 +186,7 @@ onLoad(() => {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #050a10;
+  background: #faf7f0;
   position: relative;
   overflow: hidden;
 }
@@ -148,17 +200,18 @@ onLoad(() => {
 .bg-glow-1 {
   top: -10%; right: -20%;
   width: 500rpx; height: 500rpx;
-  background: rgba(157, 78, 221, 0.18);
+  background: rgba(157, 78, 221, 0.08);
 }
 .bg-glow-2 {
   bottom: 10%; left: -25%;
   width: 500rpx; height: 500rpx;
-  background: rgba(35, 150, 237, 0.15);
+  background: rgba(255, 184, 74, 0.12);
 }
 
 .scroll { position: relative; z-index: 1; height: 100vh; }
 .content { padding: 0 32rpx; }
 
+/* 顶部 */
 .head {
   display: flex;
   align-items: center;
@@ -168,120 +221,56 @@ onLoad(() => {
 .head-title {
   display: block;
   font-size: 40rpx;
-  color: #ffffff;
-  font-weight: 700;
+  color: #1a1a2e;
+  font-weight: 800;
   margin-bottom: 6rpx;
+  letter-spacing: -0.5rpx;
 }
 .head-sub {
   display: block;
   font-size: 22rpx;
-  color: rgba(255,255,255,0.45);
+  color: #6b7280;
 }
 .head-chip {
   display: flex;
   align-items: center;
-  background: rgba(255,255,255,0.05);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.06);
   border-radius: 999rpx;
-  padding: 10rpx 18rpx;
+  padding: 12rpx 20rpx;
+  box-shadow: 0 4rpx 12rpx rgba(20,16,8,0.04);
 }
 .head-chip-icon {
-  width: 32rpx; height: 32rpx;
+  width: 36rpx; height: 36rpx;
   border-radius: 50%;
-  background: rgba(255,184,74,0.2);
+  background: #1a1a2e;
   display: flex; align-items: center; justify-content: center;
   margin-right: 10rpx;
 }
-.head-chip-text { display: flex; flex-direction: column; align-items: flex-end; }
-.head-chip-num {
+.head-chip-emoji {
   font-size: 20rpx;
-  color: rgba(255,255,255,0.45);
-  line-height: 1.1;
+  color: #ffffff;
+  font-weight: 800;
+}
+.head-chip-text { display: flex; flex-direction: column; align-items: flex-start; }
+.head-chip-num {
+  font-size: 22rpx;
+  color: #1a1a2e;
+  font-weight: 700;
+  line-height: 1.2;
 }
 .head-chip-label {
-  font-size: 20rpx;
-  color: rgba(255,255,255,0.7);
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 18rpx;
+  color: #6b7280;
+  line-height: 1.2;
 }
 
-/* Featured 大卡 */
-.featured {
-  position: relative;
-  border-radius: 36rpx;
-  overflow: hidden;
-  border: 1rpx solid rgba(255,255,255,0.06);
-  aspect-ratio: 4 / 5;
-  margin-bottom: 36rpx;
-  box-shadow: 0 16rpx 48rpx rgba(0,0,0,0.4);
-}
-.featured-shade {
-  position: absolute; inset: 0;
-  background: linear-gradient(180deg, transparent 35%, rgba(0,0,0,0.85) 100%);
-}
-.featured-inner {
-  position: absolute; left: 32rpx; right: 32rpx; bottom: 36rpx;
-  background: rgba(0,0,0,0.4);
-  backdrop-filter: blur(20rpx);
-  border: 1rpx solid rgba(255,255,255,0.08);
-  border-radius: 28rpx;
-  padding: 32rpx;
-}
-.featured-title-row {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 14rpx;
-}
-.featured-title {
-  font-size: 36rpx;
-  color: #ffffff;
-  font-weight: 700;
-}
-.featured-tag {
-  background: rgba(255,255,255,0.1);
-  border-radius: 999rpx;
-  padding: 6rpx 14rpx;
-}
-.featured-tag text {
-  font-size: 20rpx;
-  color: #FFB84A;
-  font-weight: 600;
-}
-.featured-desc {
-  display: block;
-  font-size: 24rpx;
-  color: rgba(255,255,255,0.7);
-  line-height: 1.6;
-  margin-bottom: 20rpx;
-}
-.featured-tags {
-  display: flex;
-  gap: 10rpx;
-  margin-bottom: 28rpx;
-}
-.featured-tag-pill {
-  font-size: 20rpx;
-  color: rgba(255,255,255,0.55);
-  background: rgba(255,255,255,0.05);
-  padding: 6rpx 14rpx;
-  border-radius: 8rpx;
-}
-.featured-btn {
-  height: 76rpx;
-  border-radius: 14rpx;
-  background: linear-gradient(90deg, #2396ED 0%, #9D4EDD 100%);
-  display: flex; align-items: center; justify-content: center;
-}
-.featured-btn text {
-  color: #ffffff;
-  font-size: 26rpx;
-  font-weight: 700;
-}
-
-/* 双列 */
-.duo {
+/* 双列瀑布流 */
+.masonry {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20rpx;
+  align-items: start;
 }
 .col {
   display: flex;
@@ -289,131 +278,236 @@ onLoad(() => {
   gap: 20rpx;
 }
 
-.card-recent {
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(0,245,255,0.12);
-  border-radius: 24rpx;
-  padding: 24rpx;
-  aspect-ratio: 1 / 1;
+/* 图片卡（形象诊断/手相/小红书）共用 */
+.img-card {
+  position: relative;
+  border-radius: 32rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(0,0,0,0.05);
+  box-shadow: 0 8rpx 24rpx rgba(20,16,8,0.1);
+}
+.big-card { aspect-ratio: 3 / 6.3; }
+.med-card { aspect-ratio: 3 / 4; }
+.card-shade {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.5) 100%);
+}
+.card-overlay {
+  position: absolute;
+  left: 14rpx; right: 14rpx;
+  top: 66.67%;
+  bottom: 14rpx;
+  background: rgba(255, 247, 240, 0.94);
+  border: 1rpx solid rgba(255,255,255,0.4);
+  border-radius: 22rpx;
+  padding: 18rpx;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
 }
-.card-recent-head {
-  display: flex; align-items: center;
-  margin-bottom: 16rpx;
+.big-card .card-overlay { padding: 24rpx; }
+.med-card .card-overlay { padding: 14rpx; }
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
 }
-.card-recent-title {
-  margin-left: 10rpx;
+.med-card .card-title-row { margin-bottom: 4rpx; }
+.big-card .card-title-row { margin-bottom: 8rpx; }
+.card-title-lg {
+  font-size: 32rpx;
+  color: #1a1a2e;
+  font-weight: 800;
+  letter-spacing: -0.5rpx;
+}
+.card-title-md {
   font-size: 24rpx;
+  color: #1a1a2e;
+  font-weight: 800;
+  letter-spacing: -0.3rpx;
+}
+.badge-tk {
+  background: rgba(0,0,0,0.06);
+  border-radius: 999rpx;
+  padding: 3rpx 10rpx;
+  flex-shrink: 0;
+}
+.badge-tk-txt {
+  font-size: 16rpx;
+  color: #1a1a2e;
   font-weight: 700;
-  color: #ffffff;
 }
-.recent-list { display: flex; flex-direction: column; gap: 12rpx; }
-.recent-item {
-  display: flex; align-items: center;
-  background: rgba(255,255,255,0.05);
-  border-radius: 12rpx;
-  padding: 12rpx;
+.badge-share {
+  background: #FFB84A;
+  border-radius: 6rpx;
+  padding: 3rpx 8rpx;
+  flex-shrink: 0;
 }
-.recent-mini {
-  width: 28rpx; height: 28rpx;
-  border-radius: 50%;
-  background: rgba(255,184,74,0.12);
+.badge-share-txt {
+  font-size: 14rpx;
+  color: #1a1a2e;
+  font-weight: 700;
+}
+.card-desc-lg {
+  display: block;
+  font-size: 22rpx;
+  color: #4b5563;
+  line-height: 1.55;
+  margin-bottom: 12rpx;
+}
+.card-desc-md {
+  display: block;
+  font-size: 18rpx;
+  color: #4b5563;
+  line-height: 1.4;
+  margin-bottom: 6rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.tag-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6rpx;
+  overflow: hidden;
+}
+.big-card .tag-row { margin-bottom: 14rpx; gap: 8rpx; }
+.med-card .tag-row { margin-bottom: 6rpx; }
+.tag-pill {
+  font-size: 14rpx;
+  color: #6b7280;
+  background: rgba(255,255,255,0.7);
+  border: 1rpx solid rgba(0,0,0,0.06);
+  padding: 2rpx 8rpx;
+  border-radius: 6rpx;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.big-card .tag-pill {
+  font-size: 18rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+.btn-yellow {
+  height: 64rpx;
+  border-radius: 16rpx;
+  background: #FFB84A;
   display: flex; align-items: center; justify-content: center;
-  margin-right: 10rpx;
+  box-shadow: 0 4rpx 12rpx rgba(255,184,74,0.3);
 }
-.recent-text {
-  font-size: 20rpx;
-  color: rgba(255,255,255,0.7);
+.btn-yellow-txt {
+  font-size: 24rpx;
+  color: #1a1a2e;
+  font-weight: 700;
+}
+.btn-dark {
+  height: 44rpx;
+  border-radius: 12rpx;
+  background: #1a1a2e;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-dark-txt {
+  font-size: 18rpx;
+  color: #FFB84A;
+  font-weight: 700;
 }
 
-.card-history {
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(255,255,255,0.06);
-  border-radius: 24rpx;
-  padding: 24rpx;
+/* 最近使用 卡 */
+.recent-card {
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
+  border-radius: 28rpx;
+  padding: 22rpx;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
+}
+.recent-card.mini { padding: 18rpx; }
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18rpx;
+}
+.recent-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.recent-head-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+.recent-link {
+  font-size: 20rpx;
+  color: #9ca3af;
+}
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 14rpx;
+  border: 1rpx solid rgba(0,0,0,0.06);
+  border-radius: 999rpx;
+}
+.recent-mini {
+  width: 32rpx; height: 32rpx;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.05);
+  display: flex; align-items: center; justify-content: center;
+}
+.recent-text {
+  font-size: 22rpx;
+  color: #1a1a2e;
+  font-weight: 500;
+}
+
+.mini-folder {
+  margin: 0 auto !important;
+  width: 56rpx; height: 56rpx;
+}
+
+/* 我的生成记录卡 */
+.folder-card {
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
+  border-radius: 28rpx;
+  padding: 28rpx 22rpx 22rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
-.history-icon {
-  width: 60rpx; height: 60rpx;
+.folder-icon {
+  width: 64rpx; height: 64rpx;
   border-radius: 50%;
-  background: rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.05);
   display: flex; align-items: center; justify-content: center;
+  margin-bottom: 16rpx;
+}
+.folder-title {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #1a1a2e;
+  margin-bottom: 8rpx;
+}
+.folder-sub {
+  font-size: 20rpx;
+  color: #9ca3af;
+  line-height: 1.5;
   margin-bottom: 14rpx;
 }
-.history-title {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #ffffff;
-  margin-bottom: 6rpx;
-}
-.history-sub {
-  font-size: 18rpx;
-  color: rgba(255,255,255,0.4);
-  line-height: 1.5;
-  margin-bottom: 12rpx;
-}
-
-.img-card-tall, .img-card-square {
-  position: relative;
-  border-radius: 32rpx;
-  overflow: hidden;
-  border: 1rpx solid rgba(255,255,255,0.06);
-}
-.img-card-tall { aspect-ratio: 2 / 3; }
-.img-card-square { aspect-ratio: 1 / 1; }
-.img-card-shade {
-  position: absolute; inset: 0;
-  background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.8) 100%);
-}
-.img-card-inner {
-  position: absolute; left: 14rpx; right: 14rpx; bottom: 14rpx;
-  background: rgba(0,0,0,0.5);
-  backdrop-filter: blur(14rpx);
-  border-radius: 18rpx;
-  padding: 16rpx;
-}
-.card-title-row {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 6rpx;
-}
-.card-title {
-  font-size: 22rpx;
-  color: #ffffff;
-  font-weight: 700;
-  display: block;
-}
-.badge {
-  background: rgba(255,184,74,0.2);
-  border-radius: 6rpx;
-  padding: 4rpx 8rpx;
-}
-.badge text {
-  font-size: 16rpx;
-  color: #FFB84A;
-}
-.card-desc {
-  display: block;
-  font-size: 18rpx;
-  color: rgba(255,255,255,0.45);
-  line-height: 1.4;
-  margin: 6rpx 0 12rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.card-btn {
-  height: 48rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid rgba(255,255,255,0.2);
-  background: rgba(0,0,0,0.4);
+.folder-arrow {
+  width: 40rpx; height: 40rpx;
   display: flex; align-items: center; justify-content: center;
-}
-.card-btn text {
-  font-size: 20rpx;
-  color: #ffffff;
 }
 </style>

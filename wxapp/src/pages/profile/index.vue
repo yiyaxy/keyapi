@@ -11,7 +11,7 @@
 
         <template v-if="!userStore.isLoggedIn">
           <view class="login-prompt">
-            <u-icon name="account" size="44" color="rgba(255,255,255,0.5)" />
+            <u-icon name="account" size="44" color="#9ca3af" />
             <text class="prompt-title">登录后查看个人信息</text>
             <text class="prompt-sub">管理 API Key、查看消费记录</text>
             <view class="prompt-btn" @click="goLogin">立即登录</view>
@@ -77,25 +77,25 @@
           <view class="quick-grid">
             <view class="q-item" @click="nav('/pages/redeem/index')">
               <view class="q-icon">
-                <u-icon name="rmb-circle-fill" size="22" color="#ffffff" />
+                <u-icon name="rmb-circle-fill" size="22" color="#2396ED" />
               </view>
               <text class="q-label">充值</text>
             </view>
             <view class="q-item" @click="nav('/pages/apikey/index')">
               <view class="q-icon">
-                <u-icon name="setting-fill" size="22" color="#ffffff" />
+                <u-icon name="setting-fill" size="22" color="#9D4EDD" />
               </view>
               <text class="q-label">API 密钥</text>
             </view>
             <view class="q-item" @click="nav('/pages/usage-records/index')">
               <view class="q-icon">
-                <u-icon name="file-text-fill" size="22" color="#ffffff" />
+                <u-icon name="file-text-fill" size="22" color="#FFB84A" />
               </view>
               <text class="q-label">财务明细</text>
             </view>
             <view class="q-item" @click="onContactCS">
               <view class="q-icon">
-                <u-icon name="server-man" size="22" color="#ffffff" />
+                <u-icon name="server-man" size="22" color="#18A058" />
               </view>
               <text class="q-label">在线客服</text>
             </view>
@@ -105,24 +105,24 @@
           <view class="menu-list">
             <view class="menu-item" @click="nav('/pages/orders/index')">
               <view class="menu-left">
-                <u-icon name="clock" size="18" color="rgba(255,255,255,0.6)" />
+                <u-icon name="clock" size="18" color="#6b7280" />
                 <text class="menu-text">订单 / 充值记录</text>
               </view>
-              <u-icon name="arrow-right" size="14" color="rgba(255,255,255,0.3)" />
+              <u-icon name="arrow-right" size="14" color="#9ca3af" />
             </view>
             <view class="menu-item" @click="nav('/pages/usage-records/index')">
               <view class="menu-left">
-                <u-icon name="more-circle" size="18" color="rgba(255,255,255,0.6)" />
+                <u-icon name="more-circle" size="18" color="#6b7280" />
                 <text class="menu-text">API 调用日志</text>
               </view>
-              <u-icon name="arrow-right" size="14" color="rgba(255,255,255,0.3)" />
+              <u-icon name="arrow-right" size="14" color="#9ca3af" />
             </view>
             <view class="menu-item" @click="onAppTap">
               <view class="menu-left">
-                <u-icon name="grid" size="18" color="rgba(255,255,255,0.6)" />
+                <u-icon name="grid" size="18" color="#6b7280" />
                 <text class="menu-text">应用消耗记录</text>
               </view>
-              <u-icon name="arrow-right" size="14" color="rgba(255,255,255,0.3)" />
+              <u-icon name="arrow-right" size="14" color="#9ca3af" />
             </view>
           </view>
 
@@ -213,7 +213,7 @@ onLoad(() => {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #050a10;
+  background: #faf7f0;
   position: relative;
   overflow: hidden;
 }
@@ -227,12 +227,12 @@ onLoad(() => {
 .bg-glow-1 {
   top: 5%; right: -25%;
   width: 500rpx; height: 500rpx;
-  background: rgba(35, 150, 237, 0.18);
+  background: rgba(35, 150, 237, 0.08);
 }
 .bg-glow-2 {
   bottom: 15%; left: -25%;
   width: 500rpx; height: 500rpx;
-  background: rgba(157, 78, 221, 0.15);
+  background: rgba(255, 184, 74, 0.12);
 }
 
 .scroll { position: relative; z-index: 1; height: 100vh; }
@@ -244,27 +244,28 @@ onLoad(() => {
 }
 .head-title {
   font-size: 30rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 700;
 }
 
 .login-prompt {
   margin-top: 80rpx;
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 28rpx;
   padding: 60rpx 40rpx;
   display: flex; flex-direction: column; align-items: center;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
 .prompt-title {
   font-size: 30rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 600;
   margin: 24rpx 0 12rpx;
 }
 .prompt-sub {
   font-size: 24rpx;
-  color: rgba(255,255,255,0.5);
+  color: #6b7280;
   margin-bottom: 36rpx;
 }
 .prompt-btn {
@@ -286,12 +287,13 @@ onLoad(() => {
   position: relative;
   width: 132rpx; height: 132rpx;
   border-radius: 50%;
-  border: 2rpx solid rgba(0,245,255,0.4);
+  border: 2rpx solid rgba(255,184,74,0.4);
   padding: 6rpx;
   background: linear-gradient(135deg, #2396ED 0%, #9D4EDD 100%);
   display: flex; align-items: center; justify-content: center;
   margin-right: 28rpx;
   flex-shrink: 0;
+  box-shadow: 0 8rpx 24rpx rgba(35,150,237,0.2);
 }
 .avatar-letter {
   font-size: 56rpx;
@@ -315,7 +317,7 @@ onLoad(() => {
 .user-name {
   display: block;
   font-size: 44rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 800;
   margin-bottom: 8rpx;
   letter-spacing: -0.5rpx;
@@ -327,26 +329,27 @@ onLoad(() => {
 }
 .user-id {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
 }
 .user-level {
-  border: 1rpx solid rgba(255,255,255,0.18);
+  border: 1rpx solid rgba(0,0,0,0.1);
   border-radius: 999rpx;
   padding: 4rpx 16rpx;
+  background: #ffffff;
 }
 .user-level text {
   font-size: 20rpx;
-  color: rgba(255,255,255,0.55);
+  color: #6b7280;
 }
 
 /* Assets card */
 .assets-card {
-  background: rgba(255,255,255,0.05);
-  border: 1rpx solid rgba(0,245,255,0.18);
+  background: #ffffff;
+  border: 1rpx solid rgba(255,184,74,0.4);
   border-radius: 32rpx;
   padding: 36rpx 32rpx;
   margin-bottom: 36rpx;
-  box-shadow: 0 0 32rpx rgba(0,245,255,0.05);
+  box-shadow: 0 8rpx 32rpx rgba(255,184,74,0.15);
 }
 .assets-head {
   display: flex; align-items: center;
@@ -361,7 +364,7 @@ onLoad(() => {
 }
 .assets-label {
   font-size: 24rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 700;
 }
 .assets-main {
@@ -372,49 +375,49 @@ onLoad(() => {
 }
 .assets-num {
   font-size: 64rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 800;
   letter-spacing: -1rpx;
 }
 .assets-unit {
   font-size: 24rpx;
-  color: rgba(255,184,74,0.6);
+  color: rgba(217,119,6,0.7);
   font-weight: 600;
 }
 .assets-sub {
   display: block;
   font-size: 22rpx;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
   margin-bottom: 24rpx;
 }
 .assets-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16rpx;
-  border-top: 1rpx solid rgba(255,255,255,0.08);
+  border-top: 1rpx solid rgba(0,0,0,0.06);
   padding-top: 24rpx;
   margin-bottom: 24rpx;
 }
 .ag-label {
   display: block;
   font-size: 20rpx;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
   margin-bottom: 6rpx;
 }
 .ag-val {
   display: block;
   font-size: 28rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 700;
 }
 .progress-block {
-  border-top: 1rpx solid rgba(255,255,255,0.08);
+  border-top: 1rpx solid rgba(0,0,0,0.06);
   padding-top: 24rpx;
 }
 .progress-label {
   display: block;
   font-size: 18rpx;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
   letter-spacing: 2rpx;
   margin-bottom: 16rpx;
   text-transform: uppercase;
@@ -427,7 +430,7 @@ onLoad(() => {
 .progress-bar {
   flex: 1;
   height: 8rpx;
-  background: rgba(255,255,255,0.05);
+  background: rgba(0,0,0,0.05);
   border-radius: 999rpx;
   overflow: hidden;
 }
@@ -439,7 +442,7 @@ onLoad(() => {
 }
 .progress-text {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.7);
+  color: #4b5563;
   font-family: monospace;
 }
 
@@ -459,13 +462,15 @@ onLoad(() => {
 .q-icon {
   width: 96rpx; height: 96rpx;
   border-radius: 24rpx;
-  background: rgba(255,255,255,0.05);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
+  box-shadow: 0 4rpx 12rpx rgba(20,16,8,0.04);
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 12rpx;
 }
 .q-label {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.6);
+  color: #4b5563;
   font-weight: 500;
 }
 
@@ -476,18 +481,19 @@ onLoad(() => {
   gap: 16rpx;
 }
 .menu-item {
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 24rpx;
   padding: 24rpx 28rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
 .menu-left { display: flex; align-items: center; gap: 18rpx; }
 .menu-text {
   font-size: 26rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 500;
 }
 
