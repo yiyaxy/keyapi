@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -1229,6 +1230,10 @@ func RelayTask(c *gin.Context) {
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+		} else if postInsertAdaptor := relay.GetTaskAdaptor(result.Platform); postInsertAdaptor != nil {
+			if hook, ok := postInsertAdaptor.(channel.TaskPostInsert); ok {
+				hook.OnTaskInserted(c.Request.Context(), task, relayInfo)
+			}
 		}
 	}
 

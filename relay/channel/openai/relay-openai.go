@@ -5,13 +5,16 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
+	taskapimart "github.com/QuantumNous/new-api/relay/channel/task/apimart"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/service"
@@ -682,6 +685,10 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 
+	if usage, handled, apiErr := handleApimartAsyncImageGeneration(c, info, resp, responseBody); handled {
+		return usage, apiErr
+	}
+
 	var usageResp dto.SimpleResponse
 	err = common.Unmarshal(responseBody, &usageResp)
 	if err != nil {
@@ -707,6 +714,82 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
+}
+
+func handleApimartAsyncImageGeneration(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, submitBody []byte) (*dto.Usage, bool, *types.NewAPIError) {
+	if info == nil ||
+		info.ChannelType != constant.ChannelTypeApimart ||
+		info.RelayMode != relayconstant.RelayModeImagesGenerations {
+		return nil, false, nil
+	}
+
+	var submitResp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    []struct {
+			Status string `json:"status"`
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := common.Unmarshal(submitBody, &submitResp); err != nil {
+		return nil, true, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	if len(submitResp.Data) == 0 || strings.TrimSpace(submitResp.Data[0].TaskID) == "" {
+		return nil, true, types.NewOpenAIError(fmt.Errorf("apimart response missing task_id"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	taskID := submitResp.Data[0].TaskID
+	adaptor := &taskapimart.TaskAdaptor{}
+	baseURL := info.ChannelBaseUrl
+	apiKey := info.ApiKey
+	proxy := info.ChannelSetting.Proxy
+
+	time.Sleep(5 * time.Second)
+	for i := 0; i < 20; i++ {
+		fetchResp, err := adaptor.FetchTask(baseURL, apiKey, map[string]any{"task_id": taskID}, proxy)
+		if err != nil {
+			logger.LogWarn(c.Request.Context(), "apimart image poll failed: "+err.Error())
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		body, readErr := io.ReadAll(fetchResp.Body)
+		_ = fetchResp.Body.Close()
+		if readErr != nil {
+			return nil, true, types.NewOpenAIError(readErr, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+		}
+		if fetchResp.StatusCode != http.StatusOK {
+			return nil, true, types.NewOpenAIError(fmt.Errorf("apimart poll returned %d: %s", fetchResp.StatusCode, string(body)), types.ErrorCodeBadResponse, fetchResp.StatusCode)
+		}
+		taskInfo, err := adaptor.ParseTaskResult(body)
+		if err != nil {
+			return nil, true, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		switch taskInfo.Status {
+		case "SUCCESS":
+			imageResp := dto.ImageResponse{
+				Created: common.GetTimestamp(),
+				Data:    make([]dto.ImageData, 0, len(taskInfo.Urls)),
+			}
+			for _, imageURL := range taskInfo.Urls {
+				imageResp.Data = append(imageResp.Data, dto.ImageData{Url: imageURL})
+			}
+			jsonResponse, err := common.Marshal(imageResp)
+			if err != nil {
+				return nil, true, types.NewError(err, types.ErrorCodeBadResponseBody)
+			}
+			service.IOCopyBytesGracefully(c, resp, jsonResponse)
+			return &dto.Usage{TotalTokens: 1}, true, nil
+		case "FAILURE":
+			reason := taskInfo.Reason
+			if reason == "" {
+				reason = "apimart image task failed"
+			}
+			return nil, true, types.NewOpenAIError(fmt.Errorf("%s", reason), types.ErrorCodeBadResponse, http.StatusBadGateway)
+		default:
+			time.Sleep(10 * time.Second)
+		}
+	}
+	return nil, true, types.NewOpenAIError(fmt.Errorf("apimart image task polling timeout"), types.ErrorCodeBadResponse, http.StatusGatewayTimeout)
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {

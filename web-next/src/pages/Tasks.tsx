@@ -54,6 +54,9 @@ const PLATFORM_LABELS: Record<string, string> = {
   '52': 'Vidu',
   '54': 'Doubao Video',
   '55': 'Sora',
+  '58': 'Apimart',
+  apimart: 'Apimart',
+  image_sync_wrap: 'Image SyncWrap',
 };
 
 function platformLabel(platform: string): string {

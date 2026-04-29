@@ -22,6 +22,7 @@ export const CHANNEL_TYPES: ChannelTypeInfo[] = [
   { id: 41, name: 'Vertex AI' },
   { id: 33, name: 'AWS Bedrock' },
   { id: 48, name: 'xAI Grok' },
+  { id: 58, name: 'Apimart' },
   { id: 8, name: 'Custom (OpenAI-compatible)' },
 ];
 

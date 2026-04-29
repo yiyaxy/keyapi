@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,41 @@ import (
 type Adaptor struct {
 	ChannelType    int
 	ResponseFormat string
+}
+
+func (a *Adaptor) BuildImageHTTPRequest(ctx context.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*http.Request, error) {
+	if info.UpstreamModelName != "" {
+		request.Model = info.UpstreamModelName
+	}
+	convertedRequest, err := a.ConvertImageRequest(nil, info, request)
+	if err != nil {
+		return nil, err
+	}
+	requestBody, err := channel.MarshalImageRequestBody(info, convertedRequest)
+	if err != nil {
+		return nil, err
+	}
+	fullRequestURL, err := a.GetRequestURL(info)
+	if err != nil {
+		return nil, err
+	}
+	req, err := channel.NewJSONImageRequest(ctx, http.MethodPost, fullRequestURL, requestBody)
+	if err != nil {
+		return nil, err
+	}
+	if info.ChannelType == constant.ChannelTypeAzure {
+		req.Header.Set("api-key", info.ApiKey)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+info.ApiKey)
+		if info.ChannelType == constant.ChannelTypeOpenAI && info.Organization != "" {
+			req.Header.Set("OpenAI-Organization", info.Organization)
+		}
+	}
+	return req, nil
+}
+
+func (a *Adaptor) ExtractImageResponse(resp *http.Response, info *relaycommon.RelayInfo) (*dto.ImageResponse, *dto.Usage, error) {
+	return channel.ExtractOpenAIImageResponse(resp, info)
 }
 
 // parseReasoningEffortFromModelSuffix 从模型名称中解析推理级别

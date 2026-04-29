@@ -3,6 +3,7 @@ package taskcommon
 import (
 	"encoding/base64"
 	"fmt"
+	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -64,6 +65,18 @@ func DecodeLocalTaskID(id string) (string, error) {
 // e.g., "https://your-server.com/v1/videos/task_xxxx/content"
 func BuildProxyURL(taskID string) string {
 	return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, taskID)
+}
+
+func BuildImageProxyURL(taskID string, index int) string {
+	return fmt.Sprintf("%s/v1/images/async/%s/content/%d", system_setting.ServerAddress, taskID, index)
+}
+
+func WriteImageAsyncSubmitResponse(c *gin.Context, info *relaycommon.RelayInfo) {
+	c.JSON(http.StatusOK, gin.H{
+		"task_id": info.PublicTaskID,
+		"status":  "queued",
+		"created": common.GetTimestamp(),
+	})
 }
 
 // Status-to-progress mapping constants for polling updates.
