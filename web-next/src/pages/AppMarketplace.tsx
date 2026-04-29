@@ -9,6 +9,30 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { usePublicApps, useGetSessionToken, useGetGuestToken, type AiApp } from '@/hooks/useAiApps';
 
+function launchApp(app: AiApp, key: string) {
+  const targetUrl = new URL(app.target_url, window.location.origin);
+  const loginUrl = new URL('/api/auth/token-login', targetUrl);
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = loginUrl.toString();
+  form.style.display = 'none';
+
+  const tokenInput = document.createElement('input');
+  tokenInput.type = 'hidden';
+  tokenInput.name = 'token';
+  tokenInput.value = key;
+  form.append(tokenInput);
+
+  const callbackInput = document.createElement('input');
+  callbackInput.type = 'hidden';
+  callbackInput.name = 'callbackUrl';
+  callbackInput.value = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+  form.append(callbackInput);
+
+  document.body.append(form);
+  form.submit();
+}
+
 function AppCard({ app }: { app: AiApp }) {
   const { t } = useTranslation('apps');
   const { user } = useAuth();
@@ -31,20 +55,7 @@ function AppCard({ app }: { app: AiApp }) {
         return;
       }
 
-      const loginUrl = new URL('/api/auth/token-login', app.target_url);
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = loginUrl.toString();
-      form.style.display = 'none';
-
-      const tokenInput = document.createElement('input');
-      tokenInput.type = 'hidden';
-      tokenInput.name = 'token';
-      tokenInput.value = key;
-      form.append(tokenInput);
-
-      document.body.append(form);
-      form.submit();
+      launchApp(app, key);
     } catch {
       toast.error(t('token_error'));
     }
