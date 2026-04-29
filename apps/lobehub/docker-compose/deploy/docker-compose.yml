@@ -62,11 +62,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: lobe-redis
-    # Optional: Remove or change these ports if:
-    # - You don't need external access
-    # - The ports conflict with other services on your host
-    ports:
-      - '6379:6379'
+    # 不向宿主机暴露端口：lobe 通过容器网络 redis://redis:6379 连接，
+    # 避免和宿主机已有的 redis（如 keyapi 的 6379）冲突。
+    # 如需外部调试，临时打开：ports: ['16379:6379']
+    expose:
+      - '6379'
     command: redis-server --save 60 1000 --appendonly yes
     volumes:
       - 'redis_data:/data'
