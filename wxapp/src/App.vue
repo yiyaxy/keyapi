@@ -61,9 +61,9 @@ export default {
 @import 'uview-plus/index.scss';
 
 page {
-  background-color: #050a10;
+  background-color: #faf7f0;
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
-  color: #e5e7eb;
+  color: #1a1a2e;
 }
 
 /* 通用工具类 */
@@ -73,18 +73,17 @@ page {
   white-space: nowrap;
 }
 
-/* 暗色玻璃卡片 */
+/* 浅色卡片 */
 .glass-card {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(20rpx);
-  border: 1rpx solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0, 0, 0, 0.05);
   border-radius: 24rpx;
+  box-shadow: 0 4rpx 16rpx rgba(20, 16, 8, 0.04);
 }
 .glass-card-glow {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(24rpx);
-  border: 1rpx solid rgba(0, 245, 255, 0.18);
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 184, 74, 0.3);
   border-radius: 24rpx;
-  box-shadow: 0 0 24rpx rgba(0, 245, 255, 0.05);
+  box-shadow: 0 8rpx 28rpx rgba(255, 184, 74, 0.12);
 }
 </style>

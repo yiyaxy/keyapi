@@ -21,8 +21,8 @@
         </template>
 
         <template v-else>
-          <!-- 头部 -->
-          <view class="hero">
+          <!-- 头部白卡：标题 + 标语 + chip + 主按钮 -->
+          <view class="hero-card">
             <text class="hero-title">全球大模型算力超市</text>
             <text class="hero-sub">{{ heroSub }}</text>
             <view class="chips">
@@ -31,15 +31,14 @@
               <text class="chip">API 接入</text>
               <text class="chip">应用直用</text>
             </view>
-          </view>
 
-          <!-- 主要按钮 -->
-          <view class="actions">
-            <view class="btn btn-primary" @click="onRecharge">
-              <text class="btn-txt">立即充值</text>
-            </view>
-            <view class="btn btn-ghost" @click="onCreateKey">
-              <text class="btn-ghost-txt">创建 API Key</text>
+            <view class="actions">
+              <view class="btn btn-primary" @click="onRecharge">
+                <text class="btn-txt">立即充值</text>
+              </view>
+              <view class="btn btn-ghost" @click="onCreateKey">
+                <text class="btn-ghost-txt">创建 API Key</text>
+              </view>
             </view>
           </view>
 
@@ -65,7 +64,7 @@
               </view>
               <view class="bg-item">
                 <text class="bg-label">今日消耗</text>
-                <text class="bg-val gold-dim">{{ cny(todayQuota) }}</text>
+                <text class="bg-val gold">{{ cny(todayQuota) }}</text>
                 <text class="bg-sub">{{ tokenStr(todayQuota) }} Token</text>
               </view>
               <view class="bg-item">
@@ -159,13 +158,13 @@ const heroSub = '一份 Token，调用 GPT / Claude / Gemini /\nDeepSeek / Qwen 
 
 const apps = [
   { id: 'diagnose', title: '形象诊断', desc: '多维度分析气质与着装建议', cost: '50K / 次', icon: 'star',
-    bg: 'linear-gradient(135deg, #5B21B6 0%, #1E3A8A 100%)' },
+    bg: 'linear-gradient(135deg, #2a2a2a 0%, #4a3f3a 100%)' },
   { id: 'hair',     title: '发型设计', desc: '基于脸型的 AI 虚拟发型预览', cost: '80K / 次', icon: 'scissor',
-    bg: 'linear-gradient(135deg, #7C2D12 0%, #831843 100%)' },
+    bg: 'linear-gradient(135deg, #5a4a3a 0%, #2a1f15 100%)' },
   { id: 'face',     title: '面相手相', desc: '传统玄学与大模型图像识别', cost: '120K / 次', icon: 'eye',
-    bg: 'linear-gradient(135deg, #064E3B 0%, #312E81 100%)' },
+    bg: 'linear-gradient(135deg, #1f2937 0%, #4a3a2f 100%)' },
   { id: 'xhs',      title: '小红书文案', desc: '爆款模版，快速生成种草笔记', cost: '15K / 篇', icon: 'edit-pen',
-    bg: 'linear-gradient(135deg, #9F1239 0%, #831843 100%)' },
+    bg: 'linear-gradient(135deg, #6b3a3a 0%, #2a1818 100%)' },
 ]
 
 const checkinStats = computed(() => checkinInfo.value?.stats || {})
@@ -268,7 +267,7 @@ onShow(() => {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #050a10;
+  background: #faf7f0;
   position: relative;
   overflow: hidden;
 }
@@ -284,12 +283,12 @@ onShow(() => {
 .bg-glow-1 {
   top: -20%; left: -20%;
   width: 600rpx; height: 600rpx;
-  background: rgba(35, 150, 237, 0.18);
+  background: rgba(255, 184, 74, 0.16);
 }
 .bg-glow-2 {
   top: 30%; right: -25%;
   width: 500rpx; height: 500rpx;
-  background: rgba(157, 78, 221, 0.15);
+  background: rgba(157, 78, 221, 0.08);
 }
 
 .scroll { position: relative; z-index: 1; height: 100vh; }
@@ -298,7 +297,7 @@ onShow(() => {
 /* 骨架 */
 .skeleton {
   margin-top: 32rpx;
-  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background: linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.07) 50%, rgba(0,0,0,0.04) 75%);
   background-size: 200% 100%;
   border-radius: 20rpx;
   animation: shimmer 1.4s infinite;
@@ -311,24 +310,24 @@ onShow(() => {
   100% { background-position: -200% 0; }
 }
 
-/* Hero */
-.hero {
-  padding: 60rpx 0 16rpx;
+/* Hero 区域（无卡，直接铺背景） */
+.hero-card {
+  padding: 56rpx 12rpx 16rpx;
   text-align: center;
 }
 .hero-title {
   display: block;
-  font-size: 48rpx;
+  font-size: 52rpx;
   font-weight: 800;
-  color: #ffffff;
+  color: #1a1a2e;
   letter-spacing: -1rpx;
   line-height: 1.2;
-  margin-bottom: 16rpx;
+  margin-bottom: 20rpx;
 }
 .hero-sub {
   display: block;
-  font-size: 24rpx;
-  color: rgba(255,255,255,0.55);
+  font-size: 26rpx;
+  color: #1a1a2e;
   line-height: 1.7;
   margin-bottom: 32rpx;
   white-space: pre-line;
@@ -337,52 +336,65 @@ onShow(() => {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 12rpx;
+  gap: 14rpx 12rpx;
 }
 .chip {
-  font-size: 22rpx;
-  color: #FFB84A;
-  border: 1rpx solid rgba(255,184,74,0.4);
-  background: rgba(255,184,74,0.05);
-  padding: 8rpx 22rpx;
+  font-size: 24rpx;
+  color: #1a1a2e;
+  border: 2rpx solid #FFB84A;
+  background: #ffffff;
+  padding: 10rpx 26rpx;
   border-radius: 999rpx;
+  font-weight: 500;
 }
 
 /* 主按钮 */
 .actions {
   display: flex;
-  gap: 20rpx;
-  margin: 36rpx 0;
+  gap: 24rpx;
+  margin-top: 40rpx;
 }
 .btn {
   flex: 1;
-  height: 88rpx;
-  border-radius: 18rpx;
+  min-height: 96rpx;
+  padding: 18rpx 12rpx;
+  border-radius: 999rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 .btn-primary {
-  background: linear-gradient(90deg, #2396ED 0%, #9D4EDD 100%);
-  box-shadow: 0 8rpx 24rpx rgba(35,150,237,0.25);
+  background: #FFB84A;
+  box-shadow: 0 8rpx 20rpx rgba(255,184,74,0.4);
 }
-.btn-txt { color: #ffffff; font-size: 28rpx; font-weight: 600; }
+.btn-txt { color: #1a1a2e; font-size: 30rpx; font-weight: 700; }
 .btn-ghost {
-  background: rgba(0,245,255,0.05);
-  border: 1rpx solid rgba(0,245,255,0.4);
+  background: #ffffff;
+  border: 2rpx solid #FFB84A;
 }
-.btn-ghost-txt { color: #00F5FF; font-size: 28rpx; font-weight: 600; }
+.btn-ghost-txt {
+  color: #1a1a2e;
+  font-size: 28rpx;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.3;
+}
 
 /* 余额卡 */
 .balance-card {
-  background: rgba(255,255,255,0.04);
-  backdrop-filter: blur(20rpx);
-  border: 1rpx solid rgba(255,255,255,0.08);
-  border-radius: 28rpx;
-  padding: 36rpx 32rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.04);
+  border-radius: 48rpx;
+  padding: 44rpx 40rpx 36rpx;
+  margin-top: 32rpx;
   margin-bottom: 40rpx;
   position: relative;
   overflow: hidden;
+  box-shadow:
+    0 24rpx 56rpx rgba(20, 16, 8, 0.08),
+    0 8rpx 20rpx rgba(20, 16, 8, 0.04),
+    0 1rpx 2rpx rgba(255, 255, 255, 0.6) inset;
 }
 .balance-header {
   display: flex;
@@ -390,51 +402,54 @@ onShow(() => {
   margin-bottom: 32rpx;
 }
 .balance-icon {
-  width: 44rpx; height: 44rpx;
-  border-radius: 12rpx;
-  background: rgba(255,184,74,0.18);
+  width: 40rpx; height: 40rpx;
+  border-radius: 10rpx;
+  background: rgba(255,184,74,0.15);
+  border: 1rpx solid rgba(255,184,74,0.4);
   display: flex; align-items: center; justify-content: center;
-  margin-right: 16rpx;
+  margin-right: 14rpx;
 }
 .balance-title {
-  font-size: 32rpx;
-  color: #ffffff;
-  font-weight: 700;
+  font-size: 36rpx;
+  color: #1a1a2e;
+  font-weight: 800;
+  letter-spacing: -0.5rpx;
 }
 .balance-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 36rpx 24rpx;
+  gap: 32rpx 24rpx;
 }
 .bg-item { display: flex; flex-direction: column; }
 .bg-label {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.5);
+  color: #1a1a2e;
+  font-weight: 600;
   margin-bottom: 8rpx;
 }
 .bg-val {
-  font-size: 38rpx;
-  color: #ffffff;
-  font-weight: 600;
+  font-size: 40rpx;
+  color: #1a1a2e;
+  font-weight: 800;
   letter-spacing: -0.5rpx;
   margin-bottom: 4rpx;
 }
 .bg-val.gold { color: #FFB84A; }
-.bg-val.gold-dim { color: rgba(255,184,74,0.75); }
+.bg-val.gold-dim { color: #FFB84A; }
 .bg-sub {
-  font-size: 20rpx;
-  color: rgba(255,255,255,0.32);
+  font-size: 18rpx;
+  color: #9ca3af;
 }
 .balance-link {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  margin-top: 32rpx;
+  margin-top: 24rpx;
 }
 .link-txt {
   font-size: 24rpx;
   color: #FFB84A;
-  font-weight: 500;
+  font-weight: 600;
   margin-right: 6rpx;
 }
 
@@ -443,34 +458,35 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255,255,255,0.04);
-  border: 1rpx solid rgba(255,255,255,0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(0,0,0,0.05);
   border-radius: 24rpx;
   padding: 24rpx 28rpx;
   margin-bottom: 32rpx;
+  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
 .checkin-left { display: flex; align-items: center; flex: 1; min-width: 0; }
 .checkin-icon {
   width: 64rpx; height: 64rpx;
   border-radius: 16rpx;
-  background: rgba(255,184,74,0.15);
+  background: rgba(255,184,74,0.18);
   display: flex; align-items: center; justify-content: center;
   margin-right: 18rpx;
   flex-shrink: 0;
 }
-.checkin-icon.done { background: rgba(0,245,255,0.12); }
+.checkin-icon.done { background: rgba(24,160,88,0.12); }
 .checkin-text { min-width: 0; flex: 1; }
 .checkin-title {
   display: block;
   font-size: 28rpx;
-  color: #ffffff;
+  color: #1a1a2e;
   font-weight: 600;
   margin-bottom: 4rpx;
 }
 .checkin-sub {
   display: block;
   font-size: 22rpx;
-  color: rgba(255,255,255,0.5);
+  color: #6b7280;
 }
 .checkin-btn {
   min-width: 130rpx;
@@ -485,8 +501,8 @@ onShow(() => {
   padding: 0 24rpx;
 }
 .checkin-btn.disabled {
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.5);
+  background: #f3f4f6;
+  color: #9ca3af;
 }
 
 /* 分组标题 */
@@ -505,7 +521,7 @@ onShow(() => {
 .section-title {
   font-size: 32rpx;
   font-weight: 700;
-  color: #ffffff;
+  color: #1a1a2e;
 }
 
 /* AI 应用网格 */
@@ -517,9 +533,10 @@ onShow(() => {
 .app-card {
   position: relative;
   border-radius: 28rpx;
-  border: 1rpx solid rgba(255,255,255,0.06);
+  border: 1rpx solid rgba(0,0,0,0.05);
   aspect-ratio: 1 / 1;
   overflow: hidden;
+  box-shadow: 0 6rpx 20rpx rgba(20,16,8,0.08);
 }
 .app-shade {
   position: absolute;

@@ -76,8 +76,8 @@
 	},
 	"globalStyle": {
 		"navigationBarTitleText": "ALl Models",
-		"navigationBarBackgroundColor": "#050a10",
-		"navigationBarTextStyle": "white",
-		"backgroundColor": "#050a10"
+		"navigationBarBackgroundColor": "#faf7f0",
+		"navigationBarTextStyle": "black",
+		"backgroundColor": "#faf7f0"
 	}
 }
