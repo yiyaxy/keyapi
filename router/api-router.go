@@ -746,10 +746,10 @@ func SetApiRouter(router *gin.Engine) {
 		appPublicRoute := apiRouter.Group("/app")
 		{
 			appPublicRoute.GET("", app.ListApps)
+			appPublicRoute.GET("/whoami", middleware.TokenAuth(), app.WhoAmI)
 			appPublicRoute.GET("/:slug", app.GetApp)
 			appPublicRoute.POST("/:slug/guest-session", middleware.CriticalRateLimit(), app.GetGuestToken)
 			appPublicRoute.POST("/:slug/session", middleware.UserAuth(), app.GetSessionToken)
-			appPublicRoute.GET("/whoami", middleware.TokenAuth(), app.WhoAmI)
 		}
 
 		// AI App Marketplace — admin management
