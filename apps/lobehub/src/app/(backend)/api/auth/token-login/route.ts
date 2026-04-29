@@ -232,5 +232,5 @@ function buildRedirect(request: NextRequest, callbackUrl?: null | string) {
   target.searchParams.delete('token');
   target.searchParams.delete('settings');
 
-  return NextResponse.redirect(target);
+  return NextResponse.redirect(target, { status: 303 });
 }
