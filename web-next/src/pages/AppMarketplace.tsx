@@ -9,6 +9,36 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { usePublicApps, useGetSessionToken, useGetGuestToken, type AiApp } from '@/hooks/useAiApps';
 
+const internalAppRoutes: Record<string, string> = {
+  [import.meta.env.VITE_IMAGE_DIAGNOSIS_APP_SLUG || 'image-diagnosis']: '/apps/image-diagnosis',
+};
+
+function launchApp(app: AiApp, key: string) {
+  const targetUrl = new URL(app.target_url, window.location.origin);
+  const internalPath = internalAppRoutes[app.slug];
+  if (targetUrl.origin === window.location.origin && internalPath) {
+    targetUrl.pathname = internalPath;
+    targetUrl.searchParams.set('token', key);
+    window.location.href = targetUrl.toString();
+    return;
+  }
+
+  const loginUrl = new URL('/api/auth/token-login', targetUrl);
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = loginUrl.toString();
+  form.style.display = 'none';
+
+  const tokenInput = document.createElement('input');
+  tokenInput.type = 'hidden';
+  tokenInput.name = 'token';
+  tokenInput.value = key;
+  form.append(tokenInput);
+
+  document.body.append(form);
+  form.submit();
+}
+
 function AppCard({ app }: { app: AiApp }) {
   const { t } = useTranslation('apps');
   const { user } = useAuth();
@@ -31,20 +61,7 @@ function AppCard({ app }: { app: AiApp }) {
         return;
       }
 
-      const loginUrl = new URL('/api/auth/token-login', app.target_url);
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = loginUrl.toString();
-      form.style.display = 'none';
-
-      const tokenInput = document.createElement('input');
-      tokenInput.type = 'hidden';
-      tokenInput.name = 'token';
-      tokenInput.value = key;
-      form.append(tokenInput);
-
-      document.body.append(form);
-      form.submit();
+      launchApp(app, key);
     } catch {
       toast.error(t('token_error'));
     }
