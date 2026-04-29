@@ -104,25 +104,33 @@
 
           <view class="app-grid">
             <view
-              v-for="app in apps"
-              :key="app.id"
+              v-for="(app, index) in appList"
+              :key="app.id || app.slug"
               class="app-card"
-              :style="{ background: app.bg }"
-              @click="onAppTap(app)"
+              :style="{ background: cardBackground(app, index) }"
+              @click="useApp(app)"
             >
               <view class="app-shade" />
               <view class="app-bottom">
                 <view class="app-head-row">
                   <view class="app-mini-icon">
-                    <u-icon :name="app.icon" size="12" color="#FFB84A" />
+                    <image
+                      v-if="app.icon_url"
+                      class="app-mini-img"
+                      :src="assetUrl(app.icon_url)"
+                      mode="aspectFill"
+                    />
+                    <text v-else class="app-mini-letter">{{ firstLetter(app.name) }}</text>
                   </view>
-                  <text class="app-title">{{ app.title }}</text>
+                  <text class="app-title">{{ app.name }}</text>
                 </view>
-                <text class="app-desc">{{ app.desc }}</text>
+                <text class="app-desc">{{ app.description || '这个应用暂未填写介绍' }}</text>
+                <!-- 应用消耗记录先隐藏，后续有明确计费展示规则后再打开。
                 <view class="app-foot">
                   <text class="app-foot-label">Token 消耗</text>
                   <text class="app-foot-cost">{{ app.cost }}</text>
                 </view>
+                -->
               </view>
             </view>
           </view>
@@ -142,7 +150,8 @@
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { doCheckin, getCheckinStatus, getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
+import { doCheckin, getAppGuestToken, getAppSessionToken, getCheckinStatus, getPublicApps, getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
+import env from '@/config/env.js'
 import { renderQuota } from '@/utils/quota.js'
 
 const statusBarH = ref(0)
@@ -167,6 +176,18 @@ const apps = [
     bg: 'linear-gradient(135deg, #6b3a3a 0%, #2a1818 100%)' },
 ]
 
+const appList = ref([])
+const activeSlug = ref('')
+
+const cardGradients = [
+  'linear-gradient(135deg, #2a2a2a 0%, #4a3f3a 100%)',
+  'linear-gradient(135deg, #5a4a3a 0%, #2a1f15 100%)',
+  'linear-gradient(135deg, #1f2937 0%, #4a3a2f 100%)',
+  'linear-gradient(135deg, #6b3a3a 0%, #2a1818 100%)',
+  'linear-gradient(135deg, #22322c 0%, #141c18 100%)',
+  'linear-gradient(135deg, #2e3140 0%, #161822 100%)',
+]
+
 const checkinStats = computed(() => checkinInfo.value?.stats || {})
 const checkedInToday = computed(() => checkinStats.value?.checked_in_today === true)
 
@@ -179,6 +200,84 @@ function cny(q) {
   const perUnit = Number(userStore.quotaPerUnit) || 500000
   const rate = Number(userStore.usdExchangeRate) || 1
   return '¥' + (n / perUnit * rate).toFixed(2)
+}
+
+function firstLetter(name) {
+  return String(name || 'A').slice(0, 1).toUpperCase()
+}
+
+function cardBackground(app, index) {
+  const seed = String(app?.slug || app?.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  return cardGradients[(seed + index) % cardGradients.length]
+}
+
+function assetUrl(url) {
+  const value = String(url || '').trim()
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  return `${env.basePath.replace(/\/$/, '')}/${value.replace(/^\//, '')}`
+}
+
+function toAbsoluteTarget(rawUrl) {
+  const value = String(rawUrl || '').trim()
+  const base = env.basePath.replace(/\/$/, '')
+  if (!value) return `${base}/`
+  if (/^https?:\/\//i.test(value)) return value
+  return value.startsWith('/') ? `${base}${value}` : `${base}/${value}`
+}
+
+function setQueryParam(url, key, value) {
+  const hashIndex = url.indexOf('#')
+  const beforeHash = hashIndex >= 0 ? url.slice(0, hashIndex) : url
+  const hash = hashIndex >= 0 ? url.slice(hashIndex) : ''
+  const queryIndex = beforeHash.indexOf('?')
+  const path = queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash
+  const query = queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : ''
+  const encodedKey = encodeURIComponent(key)
+  const nextQuery = query
+    .split('&')
+    .filter(Boolean)
+    .filter((item) => decodeURIComponent(item.split('=')[0] || '') !== key)
+  nextQuery.push(`${encodedKey}=${encodeURIComponent(value)}`)
+  return `${path}?${nextQuery.join('&')}${hash}`
+}
+
+function openWebView(targetUrl, title = '') {
+  if (!/^https?:\/\//i.test(targetUrl)) {
+    uni.showToast({ title: '应用地址必须是 http 或 https', icon: 'none' })
+    return
+  }
+  const query = encodeURIComponent(targetUrl)
+  const pageTitle = encodeURIComponent(title || 'AI 应用')
+  uni.navigateTo({ url: `/pages/webview/index?url=${query}&title=${pageTitle}` })
+}
+
+async function useApp(app) {
+  if (!app?.slug || activeSlug.value) return
+
+  activeSlug.value = app.slug
+  try {
+    let token = ''
+    if (userStore.isLoggedIn) {
+      const data = await getAppSessionToken(app.slug)
+      token = data?.key || ''
+    } else if (Number(app.guest_quota || 0) > 0) {
+      const data = await getAppGuestToken(app.slug)
+      token = data?.key || ''
+    } else {
+      uni.showToast({ title: '请先登录后使用该应用', icon: 'none' })
+      setTimeout(() => uni.navigateTo({ url: '/pages/login/index' }), 600)
+      return
+    }
+
+    if (!token) throw new Error('未获取到应用访问令牌')
+    const targetUrl = setQueryParam(toAbsoluteTarget(app.target_url), 'token', token)
+    openWebView(targetUrl, app.name)
+  } catch (err) {
+    uni.showToast({ title: err?.message || '应用启动失败，请稍后重试', icon: 'none' })
+  } finally {
+    activeSlug.value = ''
+  }
 }
 
 function onRecharge() {
@@ -232,6 +331,9 @@ async function refresh() {
   try {
     const statusRes = await Promise.resolve(getStatus()).catch(() => null)
     if (statusRes) userStore.applyStatus(statusRes)
+
+    const appRes = await Promise.resolve(getPublicApps()).catch(() => null)
+    if (Array.isArray(appRes)) appList.value = appRes.slice(0, 4)
 
     if (userStore.isLoggedIn) {
       const [selfRes, todayRes, monthRes] = await Promise.allSettled([
@@ -558,6 +660,16 @@ onShow(() => {
   background: rgba(255,184,74,0.2);
   display: flex; align-items: center; justify-content: center;
   margin-right: 10rpx;
+  overflow: hidden;
+}
+.app-mini-img {
+  width: 100%;
+  height: 100%;
+}
+.app-mini-letter {
+  font-size: 18rpx;
+  color: #FFB84A;
+  font-weight: 800;
 }
 .app-title {
   font-size: 28rpx;

@@ -89,12 +89,14 @@
               </view>
               <text class="q-label">财务明细</text>
             </view>
+            <!-- 客服入口暂时隐藏
             <view class="q-item" @click="onContactCS">
               <view class="q-icon-bare">
                 <u-icon name="server-man" size="28" color="#1a1a2e" />
               </view>
               <text class="q-label">在线客服</text>
             </view>
+            -->
           </view>
 
           <!-- 菜单列表（合并为一张白卡） -->
