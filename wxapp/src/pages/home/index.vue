@@ -1,14 +1,8 @@
 <template>
   <view class="page">
-    <!-- 自定义导航栏 -->
-    <view class="nav" :style="{ paddingTop: statusBarH + 'px' }">
-      <view class="nav-inner">
-        <text class="nav-title">首页</text>
-        <view class="nav-btn" @click="refresh">
-          <u-icon name="reload" size="42" :color="refreshing ? '#9ca3af' : '#4F6EF7'" />
-        </view>
-      </view>
-    </view>
+    <!-- 背景辉光 -->
+    <view class="bg-glow bg-glow-1" />
+    <view class="bg-glow bg-glow-2" />
 
     <scroll-view
       scroll-y
@@ -17,176 +11,137 @@
       :refresher-triggered="refreshing"
       @refresherrefresh="onPullDown"
     >
-      <!-- 骨架屏 -->
-      <template v-if="firstLoading">
-        <view class="skeleton-hero" />
-        <view class="skeleton-grid" />
-      </template>
+      <view class="content" :style="{ paddingTop: statusBarH + 'px' }">
 
-      <!-- 未登录：访客引导页 -->
-      <template v-else-if="!userStore.isLoggedIn">
-        <view class="guest-hero">
-          <view class="guest-logo">
-            <u-icon name="server" size="80" color="#4F6EF7" />
-          </view>
-          <text class="guest-title">ALl Models</text>
-          <text class="guest-sub">专业的 AI 模型接入服务</text>
-          <text class="guest-desc">支持 OpenAI、Claude、Gemini 等 40+ 主流模型，统一接口，按量计费</text>
-          <view class="guest-login-btn" @click="goLogin">立即登录</view>
-        </view>
+        <!-- 骨架屏 -->
+        <template v-if="firstLoading">
+          <view class="skeleton skeleton-hero" />
+          <view class="skeleton skeleton-card" />
+          <view class="skeleton skeleton-grid" />
+        </template>
 
-        <!-- 功能介绍 -->
-        <text class="section-title">平台功能</text>
-        <view class="grid">
-          <view class="grid-item" @click="nav('/pages/redeem/index')">
-            <view class="grid-icon" style="background:#eef1ff;">
-              <u-icon name="coupon" size="52" color="#4F6EF7" />
-            </view>
-            <text class="grid-label">充值</text>
-          </view>
-          <view class="grid-item" @click="goLogin">
-            <view class="grid-icon" style="background:#e8faf0;">
-              <u-icon name="setting" size="52" color="#18A058" />
-            </view>
-            <text class="grid-label">API Key</text>
-          </view>
-          <view class="grid-item" @click="goLogin">
-            <view class="grid-icon" style="background:#fff7e8;">
-              <u-icon name="clock" size="52" color="#f59e0b" />
-            </view>
-            <text class="grid-label">消费记录</text>
-          </view>
-          <view class="grid-item" @click="goLogin">
-            <view class="grid-icon" style="background:#ffeef2;">
-              <u-icon name="share" size="52" color="#ef4444" />
-            </view>
-            <text class="grid-label">分享拉新</text>
-          </view>
-        </view>
-
-        <view style="height:48rpx;" />
-      </template>
-
-      <!-- 已登录：正常内容 -->
-      <template v-else>
-        <!-- 余额英雄卡片 -->
-        <view class="hero">
-          <view class="hero-top">
-            <view>
-              <text class="greeting">你好，{{ displayName }}</text>
-              <text class="greeting-sub">等级：{{ levelName }}</text>
-            </view>
-            <view class="balance-box">
-              <text class="balance-label">账户余额</text>
-              <text class="balance-val">{{ q2cny(userInfo?.quota) }}</text>
+        <template v-else>
+          <!-- 头部 -->
+          <view class="hero">
+            <text class="hero-title">全球大模型算力超市</text>
+            <text class="hero-sub">{{ heroSub }}</text>
+            <view class="chips">
+              <text class="chip">统一结算</text>
+              <text class="chip">按量消耗</text>
+              <text class="chip">API 接入</text>
+              <text class="chip">应用直用</text>
             </view>
           </view>
 
-          <!-- 今日 / 本月消费 -->
-          <view class="stats-row">
-            <view class="stat-item">
-              <text class="stat-val">{{ q2cny(todayQuota) }}</text>
-              <text class="stat-label">今日消费</text>
+          <!-- 主要按钮 -->
+          <view class="actions">
+            <view class="btn btn-primary" @click="onRecharge">
+              <text class="btn-txt">立即充值</text>
             </view>
-            <view class="stat-sep" />
-            <view class="stat-item">
-              <text class="stat-val">{{ q2cny(monthQuota) }}</text>
-              <text class="stat-label">本月消费</text>
-            </view>
-            <view class="stat-sep" />
-            <view class="stat-item">
-              <text class="stat-val">{{ userInfo?.request_count || 0 }}</text>
-              <text class="stat-label">累计请求</text>
+            <view class="btn btn-ghost" @click="onCreateKey">
+              <text class="btn-ghost-txt">创建 API Key</text>
             </view>
           </view>
-        </view>
 
-        <!-- 签到 -->
-        <view v-if="userStore.checkinEnabled" class="checkin-card">
-          <view class="checkin-main">
-            <view class="checkin-icon" :class="{ done: checkedInToday }">
-              <u-icon :name="checkedInToday ? 'checkmark' : 'gift'" size="24" :color="checkedInToday ? '#18A058' : '#4F6EF7'" />
+          <!-- 余额玻璃卡 -->
+          <view class="balance-card">
+            <view class="balance-header">
+              <view class="balance-icon">
+                <u-icon name="rmb" size="14" color="#FFB84A" />
+              </view>
+              <text class="balance-title">我的算力余额</text>
             </view>
-            <view class="checkin-copy">
-              <text class="checkin-title">{{ checkedInToday ? '今日已签到' : '每日签到' }}</text>
-              <text class="checkin-sub">
-                本月 {{ checkinStats.checkin_count || 0 }} 次 · 累计获得 {{ q2cny(checkinStats.total_quota || 0) }}
-              </text>
-            </view>
-          </view>
-          <view class="checkin-action" :class="{ disabled: checkedInToday || checkinLoading }" @click="handleCheckin">
-            {{ checkedInToday ? '已完成' : (checkinLoading ? '签到中' : '立即签到') }}
-          </view>
-        </view>
 
-        <!-- 快捷入口 -->
-        <text class="section-title">快捷功能</text>
-        <view class="grid">
-          <view class="grid-item" @click="nav('/pages/redeem/index')">
-            <view class="grid-icon" style="background:#e8faf0;">
-              <u-icon name="rmb-circle-fill" size="26" color="#09BB07" />
+            <view class="balance-grid">
+              <view class="bg-item">
+                <text class="bg-label">可用余额</text>
+                <text class="bg-val gold">{{ cny(userInfo?.quota) }}</text>
+                <text class="bg-sub">{{ tokenStr(userInfo?.quota) }} Token</text>
+              </view>
+              <view class="bg-item">
+                <text class="bg-label">累计消耗</text>
+                <text class="bg-val">{{ cny(userInfo?.used_quota) }}</text>
+                <text class="bg-sub">{{ tokenStr(userInfo?.used_quota) }} Token</text>
+              </view>
+              <view class="bg-item">
+                <text class="bg-label">今日消耗</text>
+                <text class="bg-val gold-dim">{{ cny(todayQuota) }}</text>
+                <text class="bg-sub">{{ tokenStr(todayQuota) }} Token</text>
+              </view>
+              <view class="bg-item">
+                <text class="bg-label">本月消耗</text>
+                <text class="bg-val">{{ cny(monthQuota) }}</text>
+                <text class="bg-sub">{{ tokenStr(monthQuota) }} Token</text>
+              </view>
             </view>
-            <text class="grid-label">充值</text>
-          </view>
-          <view class="grid-item" @click="nav('/pages/apikey/index')">
-            <view class="grid-icon" style="background:#e8faf0;">
-              <u-icon name="setting" size="26" color="#18A058" />
-            </view>
-            <text class="grid-label">API Key</text>
-          </view>
-          <view class="grid-item" @click="nav('/pages/usage-records/index')">
-            <view class="grid-icon" style="background:#fff7e8;">
-              <u-icon name="clock" size="26" color="#f59e0b" />
-            </view>
-            <text class="grid-label">消费记录</text>
-          </view>
-          <view class="grid-item" @click="nav('/pages/invite/index')">
-            <view class="grid-icon" style="background:#ffeef2;">
-              <u-icon name="share" size="26" color="#ef4444" />
-            </view>
-            <text class="grid-label">我的下级</text>
-          </view>
-        </view>
 
-        <!-- 邀请摘要卡片 -->
-        <text class="section-title">拉新信息</text>
-        <view class="invite-card">
-          <view class="invite-top">
-            <view>
-              <text class="invite-key-label">分享小程序拉新</text>
-              <text class="invite-desc">新用户通过你的分享登录后自动成为下级</text>
-            </view>
-            <button class="share-mini-btn" open-type="share">
-              <u-icon name="weixin-fill" size="17" color="#fff" />
-              <text class="share-mini-text">分享</text>
-            </button>
-          </view>
-          <view class="invite-div" />
-          <view class="invite-stats">
-            <view class="inv-stat">
-              <text class="inv-val">{{ userInfo?.aff_count || 0 }}</text>
-              <text class="inv-label">已邀请人数</text>
-            </view>
-            <view class="inv-stat">
-              <text class="inv-val">{{ q2cny(userInfo?.aff_quota) }}</text>
-              <text class="inv-label">待转换奖励</text>
-            </view>
-            <view class="inv-stat">
-              <text class="inv-val">{{ q2cny(userInfo?.aff_history_quota) }}</text>
-              <text class="inv-label">累计奖励</text>
+            <view class="balance-link" @click="onViewLogs">
+              <text class="link-txt">查看明细</text>
+              <u-icon name="arrow-right" size="13" color="#FFB84A" />
             </view>
           </view>
-        </view>
 
-        <view style="height:48rpx;" />
-      </template>
+          <!-- 签到 -->
+          <view v-if="userStore.checkinEnabled && userStore.isLoggedIn" class="checkin">
+            <view class="checkin-left">
+              <view class="checkin-icon" :class="{ done: checkedInToday }">
+                <u-icon :name="checkedInToday ? 'checkmark' : 'gift'" size="20" :color="checkedInToday ? '#00F5FF' : '#FFB84A'" />
+              </view>
+              <view class="checkin-text">
+                <text class="checkin-title">{{ checkedInToday ? '今日已签到' : '每日签到' }}</text>
+                <text class="checkin-sub">本月 {{ checkinStats.checkin_count || 0 }} 次 · 累计 {{ q2cny(checkinStats.total_quota || 0) }}</text>
+              </view>
+            </view>
+            <view class="checkin-btn" :class="{ disabled: checkedInToday || checkinLoading }" @click="handleCheckin">
+              <text>{{ checkedInToday ? '已完成' : (checkinLoading ? '签到中' : '立即签到') }}</text>
+            </view>
+          </view>
+
+          <!-- AI 应用推荐 -->
+          <view class="section-head">
+            <view class="section-dot" />
+            <text class="section-title">AI 应用推荐</text>
+          </view>
+
+          <view class="app-grid">
+            <view
+              v-for="app in apps"
+              :key="app.id"
+              class="app-card"
+              :style="{ background: app.bg }"
+              @click="onAppTap(app)"
+            >
+              <view class="app-shade" />
+              <view class="app-bottom">
+                <view class="app-head-row">
+                  <view class="app-mini-icon">
+                    <u-icon :name="app.icon" size="12" color="#FFB84A" />
+                  </view>
+                  <text class="app-title">{{ app.title }}</text>
+                </view>
+                <text class="app-desc">{{ app.desc }}</text>
+                <view class="app-foot">
+                  <text class="app-foot-label">Token 消耗</text>
+                  <text class="app-foot-cost">{{ app.cost }}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </template>
+
+        <!-- 占位防止被底部 nav 遮挡 -->
+        <view style="height: 200rpx;" />
+      </view>
     </scroll-view>
+
+    <!-- 底部导航 -->
+    <tab-bar active="home" />
   </view>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
 import { doCheckin, getCheckinStatus, getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
@@ -200,18 +155,49 @@ const monthQuota = ref(0)
 const checkinLoading = ref(false)
 const checkinInfo = ref(null)
 
-const displayName = computed(() => {
-  const u = userInfo.value
-  return u?.display_name || u?.username || '用户'
-})
+const heroSub = '一份 Token，调用 GPT / Claude / Gemini /\nDeepSeek / Qwen / Kimi'
 
-const levelName = computed(() => userInfo.value?.level_name || (userInfo.value?.level_id ? `等级 #${userInfo.value.level_id}` : '普通用户'))
+const apps = [
+  { id: 'diagnose', title: '形象诊断', desc: '多维度分析气质与着装建议', cost: '50K / 次', icon: 'star',
+    bg: 'linear-gradient(135deg, #5B21B6 0%, #1E3A8A 100%)' },
+  { id: 'hair',     title: '发型设计', desc: '基于脸型的 AI 虚拟发型预览', cost: '80K / 次', icon: 'scissor',
+    bg: 'linear-gradient(135deg, #7C2D12 0%, #831843 100%)' },
+  { id: 'face',     title: '面相手相', desc: '传统玄学与大模型图像识别', cost: '120K / 次', icon: 'eye',
+    bg: 'linear-gradient(135deg, #064E3B 0%, #312E81 100%)' },
+  { id: 'xhs',      title: '小红书文案', desc: '爆款模版，快速生成种草笔记', cost: '15K / 篇', icon: 'edit-pen',
+    bg: 'linear-gradient(135deg, #9F1239 0%, #831843 100%)' },
+]
+
 const checkinStats = computed(() => checkinInfo.value?.stats || {})
 const checkedInToday = computed(() => checkinStats.value?.checked_in_today === true)
 
-function q2cny(quota) { return renderQuota(quota) }
+function tokenStr(q) {
+  return Number(q || 0).toLocaleString()
+}
+function q2cny(q) { return renderQuota(q) }
+function cny(q) {
+  const n = Number(q) || 0
+  const perUnit = Number(userStore.quotaPerUnit) || 500000
+  const rate = Number(userStore.usdExchangeRate) || 1
+  return '¥' + (n / perUnit * rate).toFixed(2)
+}
 
-function nav(url) { uni.navigateTo({ url }) }
+function onRecharge() {
+  if (!userStore.isLoggedIn) return goLogin()
+  uni.navigateTo({ url: '/pages/redeem/index' })
+}
+function onCreateKey() {
+  if (!userStore.isLoggedIn) return goLogin()
+  uni.navigateTo({ url: '/pages/apikey/index' })
+}
+function onViewLogs() {
+  if (!userStore.isLoggedIn) return goLogin()
+  uni.navigateTo({ url: '/pages/usage-records/index' })
+}
+function onAppTap() {
+  uni.showToast({ title: '即将上线，敬请期待', icon: 'none' })
+}
+
 function goLogin() { uni.navigateTo({ url: '/pages/login/index' }) }
 
 async function loadCheckinStatus() {
@@ -219,11 +205,7 @@ async function loadCheckinStatus() {
     checkinInfo.value = null
     return
   }
-  try {
-    checkinInfo.value = await getCheckinStatus()
-  } catch {
-    checkinInfo.value = null
-  }
+  try { checkinInfo.value = await getCheckinStatus() } catch { checkinInfo.value = null }
 }
 
 async function handleCheckin() {
@@ -236,7 +218,7 @@ async function handleCheckin() {
       userInfo.value = { ...userInfo.value, quota: Number(userInfo.value.quota || 0) + awarded }
       userStore.setUserInfo(userInfo.value)
     }
-    uni.showToast({ title: `签到成功 +${q2cny(awarded)}`, icon: 'none', duration: 2200 })
+    uni.showToast({ title: `签到成功 +${q2cny(awarded)}`, icon: 'none' })
     await refresh()
   } catch {
     await loadCheckinStatus()
@@ -249,27 +231,19 @@ async function refresh() {
   if (refreshing.value) return
   refreshing.value = true
   try {
-    // getStatus 无需登录态，用于获取服务器真实 quota_per_unit
     const statusRes = await Promise.resolve(getStatus()).catch(() => null)
     if (statusRes) userStore.applyStatus(statusRes)
 
-    // 需要登录的接口仅在已登录时调用
     if (userStore.isLoggedIn) {
       const [selfRes, todayRes, monthRes] = await Promise.allSettled([
-        getSelf(),
-        getTodayStat(),
-        getMonthStat(),
+        getSelf(), getTodayStat(), getMonthStat(),
       ])
       if (selfRes.status === 'fulfilled') {
         userInfo.value = selfRes.value
         userStore.setUserInfo(selfRes.value)
       }
-      if (todayRes.status === 'fulfilled') {
-        todayQuota.value = todayRes.value?.quota || 0
-      }
-      if (monthRes.status === 'fulfilled') {
-        monthQuota.value = monthRes.value?.quota || 0
-      }
+      if (todayRes.status === 'fulfilled') todayQuota.value = todayRes.value?.quota || 0
+      if (monthRes.status === 'fulfilled') monthQuota.value = monthRes.value?.quota || 0
       await loadCheckinStatus()
     }
   } finally {
@@ -279,336 +253,322 @@ async function refresh() {
   }
 }
 
-async function onPullDown() {
-  await refresh()
-}
+async function onPullDown() { await refresh() }
 
 onLoad(() => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
   refresh()
 })
 
+onShow(() => {
+  if (!firstLoading.value) refresh()
+})
 </script>
 
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #f5f5f7;
-  display: flex;
-  flex-direction: column;
+  background: #050a10;
+  position: relative;
+  overflow: hidden;
 }
 
-/* 导航栏 */
-.nav {
-  background: #fff;
-  box-shadow: 0 1rpx 0 #f0f0f0;
-  position: sticky;
-  top: 0;
-  z-index: 100;
+/* 背景辉光 */
+.bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120rpx);
+  pointer-events: none;
+  z-index: 0;
 }
-.nav-inner {
-  height: 88rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 32rpx;
+.bg-glow-1 {
+  top: -20%; left: -20%;
+  width: 600rpx; height: 600rpx;
+  background: rgba(35, 150, 237, 0.18);
 }
-.nav-title { font-size: 34rpx; font-weight: 600; color: #1a1a2e; }
-.nav-btn { padding: 10rpx; }
+.bg-glow-2 {
+  top: 30%; right: -25%;
+  width: 500rpx; height: 500rpx;
+  background: rgba(157, 78, 221, 0.15);
+}
 
-/* 滚动容器 */
-.scroll { flex: 1; }
+.scroll { position: relative; z-index: 1; height: 100vh; }
+.content { padding: 0 32rpx; }
 
-/* 骨架屏 */
-.skeleton-hero {
-  margin: 24rpx;
-  height: 320rpx;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  border-radius: 24rpx;
-  animation: shimmer 1.4s infinite;
-}
-.skeleton-grid {
-  margin: 0 24rpx;
-  height: 220rpx;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+/* 骨架 */
+.skeleton {
+  margin-top: 32rpx;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
   background-size: 200% 100%;
   border-radius: 20rpx;
   animation: shimmer 1.4s infinite;
 }
+.skeleton-hero { height: 280rpx; }
+.skeleton-card { height: 360rpx; }
+.skeleton-grid { height: 600rpx; }
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
-/* 访客引导页 */
-.guest-hero {
-  margin: 40rpx 24rpx 0;
-  background: linear-gradient(135deg, #4F6EF7 0%, #7B9BFF 100%);
-  border-radius: 28rpx;
-  padding: 60rpx 40rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 0 16rpx 48rpx rgba(79, 110, 247, 0.3);
-}
-.guest-logo {
-  width: 120rpx; height: 120rpx;
-  background: rgba(255,255,255,0.2);
-  border-radius: 32rpx;
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 28rpx;
-}
-.guest-title {
-  font-size: 44rpx; font-weight: 700; color: #fff; margin-bottom: 12rpx;
-}
-.guest-sub {
-  font-size: 26rpx; color: rgba(255,255,255,0.85); margin-bottom: 20rpx;
-}
-.guest-desc {
-  font-size: 24rpx; color: rgba(255,255,255,0.7);
-  text-align: center; line-height: 1.7; margin-bottom: 48rpx;
-  padding: 0 8rpx;
-}
-.guest-login-btn {
-  width: 100%;
-  height: 88rpx;
-  background: #fff;
-  border-radius: 14rpx;
-  display: flex; align-items: center; justify-content: center;
-  color: #4F6EF7; font-size: 32rpx; font-weight: 600;
-}
-
-/* 英雄卡片 */
+/* Hero */
 .hero {
-  margin: 24rpx 24rpx 0;
-  background: linear-gradient(135deg, #4F6EF7 0%, #7B9BFF 100%);
-  border-radius: 24rpx;
-  padding: 36rpx;
-  box-shadow: 0 12rpx 40rpx rgba(79, 110, 247, 0.28);
+  padding: 60rpx 0 16rpx;
+  text-align: center;
 }
-.hero-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 32rpx;
-}
-.greeting {
+.hero-title {
   display: block;
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #fff;
-  margin-bottom: 8rpx;
+  font-size: 48rpx;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -1rpx;
+  line-height: 1.2;
+  margin-bottom: 16rpx;
 }
-.greeting-sub {
+.hero-sub {
   display: block;
   font-size: 24rpx;
-  color: rgba(255,255,255,0.72);
+  color: rgba(255,255,255,0.55);
+  line-height: 1.7;
+  margin-bottom: 32rpx;
+  white-space: pre-line;
 }
-.balance-box { text-align: right; }
-.balance-label {
-  display: block;
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12rpx;
+}
+.chip {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.72);
-  margin-bottom: 6rpx;
-}
-.balance-val {
-  display: block;
-  font-size: 44rpx;
-  font-weight: 700;
-  color: #fff;
+  color: #FFB84A;
+  border: 1rpx solid rgba(255,184,74,0.4);
+  background: rgba(255,184,74,0.05);
+  padding: 8rpx 22rpx;
+  border-radius: 999rpx;
 }
 
-/* 统计行 */
-.stats-row {
+/* 主按钮 */
+.actions {
   display: flex;
-  align-items: center;
-  background: rgba(255,255,255,0.15);
-  border-radius: 14rpx;
-  padding: 20rpx 0;
+  gap: 20rpx;
+  margin: 36rpx 0;
 }
-.stat-item {
+.btn {
   flex: 1;
+  height: 88rpx;
+  border-radius: 18rpx;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
-.stat-val {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #fff;
-  margin-bottom: 6rpx;
+.btn-primary {
+  background: linear-gradient(90deg, #2396ED 0%, #9D4EDD 100%);
+  box-shadow: 0 8rpx 24rpx rgba(35,150,237,0.25);
 }
-.stat-label {
+.btn-txt { color: #ffffff; font-size: 28rpx; font-weight: 600; }
+.btn-ghost {
+  background: rgba(0,245,255,0.05);
+  border: 1rpx solid rgba(0,245,255,0.4);
+}
+.btn-ghost-txt { color: #00F5FF; font-size: 28rpx; font-weight: 600; }
+
+/* 余额卡 */
+.balance-card {
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(20rpx);
+  border: 1rpx solid rgba(255,255,255,0.08);
+  border-radius: 28rpx;
+  padding: 36rpx 32rpx;
+  margin-bottom: 40rpx;
+  position: relative;
+  overflow: hidden;
+}
+.balance-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 32rpx;
+}
+.balance-icon {
+  width: 44rpx; height: 44rpx;
+  border-radius: 12rpx;
+  background: rgba(255,184,74,0.18);
+  display: flex; align-items: center; justify-content: center;
+  margin-right: 16rpx;
+}
+.balance-title {
+  font-size: 32rpx;
+  color: #ffffff;
+  font-weight: 700;
+}
+.balance-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 36rpx 24rpx;
+}
+.bg-item { display: flex; flex-direction: column; }
+.bg-label {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.72);
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 8rpx;
 }
-.stat-sep {
-  width: 1rpx;
-  height: 48rpx;
-  background: rgba(255,255,255,0.3);
+.bg-val {
+  font-size: 38rpx;
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: -0.5rpx;
+  margin-bottom: 4rpx;
+}
+.bg-val.gold { color: #FFB84A; }
+.bg-val.gold-dim { color: rgba(255,184,74,0.75); }
+.bg-sub {
+  font-size: 20rpx;
+  color: rgba(255,255,255,0.32);
+}
+.balance-link {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 32rpx;
+}
+.link-txt {
+  font-size: 24rpx;
+  color: #FFB84A;
+  font-weight: 500;
+  margin-right: 6rpx;
 }
 
 /* 签到 */
-.checkin-card {
-  margin: 24rpx 24rpx 0;
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 28rpx 32rpx;
+.checkin {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
+  background: rgba(255,255,255,0.04);
+  border: 1rpx solid rgba(255,255,255,0.08);
+  border-radius: 24rpx;
+  padding: 24rpx 28rpx;
+  margin-bottom: 32rpx;
 }
-.checkin-main { display: flex; align-items: center; min-width: 0; flex: 1; }
+.checkin-left { display: flex; align-items: center; flex: 1; min-width: 0; }
 .checkin-icon {
-  width: 76rpx;
-  height: 76rpx;
-  border-radius: 18rpx;
-  background: #eef1ff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 20rpx;
+  width: 64rpx; height: 64rpx;
+  border-radius: 16rpx;
+  background: rgba(255,184,74,0.15);
+  display: flex; align-items: center; justify-content: center;
+  margin-right: 18rpx;
   flex-shrink: 0;
 }
-.checkin-icon.done { background: #e8faf0; }
-.checkin-copy { min-width: 0; flex: 1; }
+.checkin-icon.done { background: rgba(0,245,255,0.12); }
+.checkin-text { min-width: 0; flex: 1; }
 .checkin-title {
   display: block;
-  font-size: 30rpx;
+  font-size: 28rpx;
+  color: #ffffff;
   font-weight: 600;
-  color: #1a1a2e;
-  margin-bottom: 8rpx;
+  margin-bottom: 4rpx;
 }
 .checkin-sub {
   display: block;
-  font-size: 23rpx;
-  color: #6b7280;
-  line-height: 1.45;
+  font-size: 22rpx;
+  color: rgba(255,255,255,0.5);
 }
-.checkin-action {
-  min-width: 144rpx;
-  height: 68rpx;
+.checkin-btn {
+  min-width: 130rpx;
+  height: 60rpx;
   border-radius: 999rpx;
-  background: #4F6EF7;
-  color: #fff;
-  font-size: 26rpx;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 20rpx;
+  background: linear-gradient(90deg, #FFB84A 0%, #ff9c1f 100%);
+  display: flex; align-items: center; justify-content: center;
+  color: #050a10;
+  font-size: 24rpx;
+  font-weight: 700;
+  margin-left: 18rpx;
+  padding: 0 24rpx;
 }
-.checkin-action.disabled { background: #e5e7eb; color: #6b7280; }
+.checkin-btn.disabled {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.5);
+}
 
 /* 分组标题 */
+.section-head {
+  display: flex;
+  align-items: center;
+  margin: 16rpx 0 24rpx;
+}
+.section-dot {
+  width: 12rpx; height: 12rpx;
+  border-radius: 50%;
+  background: #FFB84A;
+  box-shadow: 0 0 12rpx #FFB84A;
+  margin-right: 14rpx;
+}
 .section-title {
-  display: block;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #6b7280;
-  padding: 32rpx 32rpx 16rpx;
-  letter-spacing: 1rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #ffffff;
 }
 
-/* 快捷入口网格 */
-.grid {
+/* AI 应用网格 */
+.app-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20rpx;
-  padding: 0 24rpx;
 }
-.grid-item {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 32rpx 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
+.app-card {
+  position: relative;
+  border-radius: 28rpx;
+  border: 1rpx solid rgba(255,255,255,0.06);
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
 }
-.grid-icon {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 24rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16rpx;
+.app-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.65) 100%);
 }
-.grid-label {
-  font-size: 26rpx;
-  color: #1a1a2e;
-  font-weight: 500;
+.app-bottom {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 20rpx;
 }
-
-/* 邀请卡片 */
-.invite-card {
-  margin: 0 24rpx;
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 32rpx;
-  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
+.app-head-row {
+  display: flex; align-items: center;
+  margin-bottom: 6rpx;
 }
-.invite-top {
+.app-mini-icon {
+  width: 32rpx; height: 32rpx;
+  border-radius: 8rpx;
+  background: rgba(255,184,74,0.2);
+  display: flex; align-items: center; justify-content: center;
+  margin-right: 10rpx;
+}
+.app-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #ffffff;
+}
+.app-desc {
+  display: block;
+  font-size: 20rpx;
+  color: rgba(255,255,255,0.55);
+  line-height: 1.4;
+  margin-bottom: 12rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.invite-key-label {
-  display: block;
-  font-size: 24rpx;
-  color: #6b7280;
-  margin-bottom: 8rpx;
+.app-foot-label {
+  font-size: 18rpx;
+  color: rgba(255,255,255,0.4);
 }
-.invite-desc {
-  display: block;
-  font-size: 26rpx;
-  color: #1a1a2e;
-  font-weight: 600;
-  line-height: 1.45;
-}
-.share-mini-btn {
-  width: 148rpx;
-  height: 64rpx;
-  border-radius: 999rpx;
-  border: 0;
-  padding: 0;
-  background: #09bb07;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.share-mini-btn::after { border: 0; }
-.share-mini-text {
-  font-size: 26rpx;
-  color: #fff;
-  margin-left: 8rpx;
-}
-.invite-div {
-  height: 1rpx;
-  background: #f5f5f7;
-  margin: 24rpx 0;
-}
-.invite-stats {
-  display: flex;
-  justify-content: space-around;
-}
-.inv-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.inv-val {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #1a1a2e;
-  margin-bottom: 6rpx;
-}
-.inv-label {
+.app-foot-cost {
   font-size: 22rpx;
-  color: #6b7280;
+  color: #FFB84A;
+  font-weight: 700;
 }
 </style>

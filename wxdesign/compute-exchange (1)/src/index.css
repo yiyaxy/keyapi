@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Source Han Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-surface: #101419;
+  --color-surface-dim: #050a10;
+  --color-surface-bright: #35393f;
+  --color-primary-glow: #2396ed;
+  --color-secondary-glow: #9D4EDD;
+  --color-accent-glow: #00F5FF;
+  --color-gold: #FFB84A;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-gray-200 font-sans selection:bg-primary-glow/30 min-h-screen overflow-x-hidden;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/3 backdrop-blur-xl border border-white/10 rounded-2xl;
+  }
+  
+  .glass-card-glow {
+    @apply bg-white/5 backdrop-blur-2xl border border-accent-glow/20 rounded-2xl shadow-[0_0_20px_rgba(0,245,255,0.05)];
+  }
+
+  .btn-primary {
+    @apply bg-linear-to-r from-primary-glow to-secondary-glow text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-primary-glow/20 transition-all active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply border border-accent-glow/40 text-accent-glow font-medium py-3 px-6 rounded-xl backdrop-blur-sm transition-all hover:bg-accent-glow/5 active:scale-95;
+  }
+
+  .chip {
+    @apply border border-gold/40 text-gold text-xs px-3 py-1 rounded-full bg-gold/5;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full;
+}
