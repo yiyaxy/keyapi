@@ -17,8 +17,10 @@ services:
     environment:
       - 'KEY_VAULTS_SECRET=${KEY_VAULTS_SECRET}'
       - 'AUTH_SECRET=${AUTH_SECRET}'
-      - 'DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgresql:5432/${LOBE_DB_NAME}'
-      - 'INTERNAL_APP_URL=http://localhost:3210'
+      - 'APP_URL=${APP_URL}'
+      - 'DATABASE_URL=${DATABASE_URL}'
+      - 'NEW_API_BASE_URL=${NEW_API_BASE_URL}'
+      - 'INTERNAL_APP_URL=${INTERNAL_APP_URL}'
       - 'S3_ENDPOINT=${S3_ENDPOINT}'
       - 'S3_BUCKET=${RUSTFS_LOBE_BUCKET}'
       - 'S3_ENABLE_PATH_STYLE=1'
@@ -40,11 +42,11 @@ services:
   postgresql:
     image: paradedb/paradedb:latest-pg17
     container_name: lobe-postgres
-    # Optional: Remove or change these ports if:
-    # - You don't need external database access
-    # - The ports conflict with other services on your host
+    # 仅绑定 127.0.0.1:15432，外网访问不到 —— 必须通过 SSH 隧道才能连
+    # 隧道命令：ssh -L 15432:127.0.0.1:15432 root@<server-ip>
+    # 然后 DBeaver / Navicat 连 localhost:15432
     ports:
-      - '5432:5432'
+      - '127.0.0.1:15432:5432'
     volumes:
       - './data:/var/lib/postgresql/data'
     environment:
@@ -62,11 +64,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: lobe-redis
-    # Optional: Remove or change these ports if:
-    # - You don't need external access
-    # - The ports conflict with other services on your host
-    ports:
-      - '6379:6379'
+    # 不向宿主机暴露端口：lobe 通过容器网络 redis://redis:6379 连接，
+    # 避免和宿主机已有的 redis（如 keyapi 的 6379）冲突。
+    # 如需外部调试，临时打开：ports: ['16379:6379']
+    expose:
+      - '6379'
     command: redis-server --save 60 1000 --appendonly yes
     volumes:
       - 'redis_data:/data'
