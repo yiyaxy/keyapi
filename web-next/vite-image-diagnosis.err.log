@@ -1,2 +1,74 @@
 [2m19:03:44[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to load url /src/lib/imageDiagnosis.ts (resolved id: C:/Users/16234/Desktop/study/new-api/web-next/src/lib/imageDiagnosis.ts) in C:/Users/16234/Desktop/study/new-api/web-next/src/index.css. Does the file exist?
 [2m20:19:11[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to load url /src/lib/imageDiagnosis.ts (resolved id: C:/Users/16234/Desktop/study/new-api/web-next/src/lib/imageDiagnosis.ts) in C:/Users/16234/Desktop/study/new-api/web-next/src/pages/ImageDiagnosis.tsx. Does the file exist?
+[2m23:20:55[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:20:56[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:20:57[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:20:58[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:03[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:06[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:07[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:08[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:10[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:11[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:12[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:13[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:14[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m23:21:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/image-diagnosis/results?ownerKey=user%3A1%3A1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)

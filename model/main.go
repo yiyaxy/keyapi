@@ -297,9 +297,13 @@ func migrateDB() error {
 		// 避免因漏 bump 版本导致新表缺失，同时不触发全列元数据扫描。
 		if err := ensureMissingTables(
 			&AiApp{},
+			&ImageDiagnosisResult{},
 			&UserLevel{},
 		); err != nil {
 			log.Printf("Warning: ensureMissingTables: %v", err)
+		}
+		if err := DB.AutoMigrate(&ImageDiagnosisResult{}); err != nil {
+			log.Printf("Warning: migrate ImageDiagnosisResult: %v", err)
 		}
 		LoadIpBanCache()
 		LoadPromptRuleCache()
@@ -548,6 +552,7 @@ func migrateDBFast() error {
 		{&TenantPlatformChannelMarkup{}, "TenantPlatformChannelMarkup"},
 		{&UserMergeLog{}, "UserMergeLog"},
 		{&AiApp{}, "AiApp"},
+		{&ImageDiagnosisResult{}, "ImageDiagnosisResult"},
 	}
 
 	for _, m := range migrations {

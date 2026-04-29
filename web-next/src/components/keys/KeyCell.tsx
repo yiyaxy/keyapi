@@ -30,8 +30,9 @@ export function KeyCell({ tokenId, masked }: { tokenId: number; masked: string }
   }
 
   async function onCopy() {
-    const value = revealed ?? masked;
     try {
+      const value = revealed ?? (await reveal.mutateAsync());
+      if (!revealed) setRevealed(value);
       await navigator.clipboard.writeText(value);
       toast.success(t('reveal.copied'));
     } catch {
