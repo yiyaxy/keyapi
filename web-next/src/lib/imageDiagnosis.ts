@@ -11,7 +11,7 @@ export type ImageDiagnosisAppType =
   | 'style_vs';
 
 export type ImageDiagnosisStatus = 'pending' | 'running' | 'succeeded' | 'failed';
-export type ImageDiagnosisResolution = 'standard' | 'high' | 'ultra' | 'auto';
+export type ImageDiagnosisResolution = 'standard' | 'high' | 'auto';
 export type ImageDiagnosisGenerationMode = 'async';
 
 export interface ImageDiagnosisGenerationSettings {
@@ -115,7 +115,6 @@ let remoteRecords: ImageDiagnosisRecord[] = [];
 const appSlug = import.meta.env.VITE_IMAGE_DIAGNOSIS_APP_SLUG ?? 'image-diagnosis';
 const imageModel = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_MODEL ?? 'gpt-image-2';
 const imageSize = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_SIZE ?? '1536x2048';
-const imageUltraSize = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_ULTRA_SIZE ?? '2160x3840';
 const imageFallbackSize = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_FALLBACK_SIZE ?? '1024x1536';
 const imageQuality = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_QUALITY ?? 'high';
 const imageOutputFormat = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_OUTPUT_FORMAT ?? 'png';
@@ -144,13 +143,6 @@ const resolutionPresets: Record<
     desc: '1536x2048，细节更好，但生成更慢',
     size: imageSize,
     fallbackSize: imageFallbackSize,
-    quality: imageQuality,
-  },
-  ultra: {
-    label: '4K 超清',
-    desc: '2160x3840，适合正式交付，生成最慢',
-    size: imageUltraSize,
-    fallbackSize: imageSize,
     quality: imageQuality,
   },
   auto: {
