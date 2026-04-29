@@ -58,5 +58,5 @@ func TestTokenLoginRejectsExternalCallback(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusSeeOther, w.Code)
-	require.Equal(t, "https://token.cymoon.cn/?token=sk-test", w.Header().Get("Location"))
+	require.Equal(t, "https://token.cymoon.cn/", w.Header().Get("Location"))
 }

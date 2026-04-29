@@ -22,10 +22,10 @@ func TokenLogin(c *gin.Context) {
 		callbackUrl = c.Query("callbackUrl")
 	}
 
-	target := buildTokenLoginRedirectTarget(c, callbackUrl)
+	target, validCallback := buildTokenLoginRedirectTarget(c, callbackUrl)
 	query := target.Query()
 	query.Del("token")
-	if token != "" {
+	if validCallback && token != "" {
 		query.Set("token", token)
 	}
 	target.RawQuery = query.Encode()
@@ -33,26 +33,26 @@ func TokenLogin(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, target.String())
 }
 
-func buildTokenLoginRedirectTarget(c *gin.Context, callbackUrl string) *url.URL {
+func buildTokenLoginRedirectTarget(c *gin.Context, callbackUrl string) (*url.URL, bool) {
 	origin := requestOrigin(c)
 	target, _ := url.Parse(origin + "/")
 
 	if callbackUrl == "" {
-		return target
+		return target, false
 	}
 
 	parsed, err := url.Parse(callbackUrl)
 	if err != nil {
-		return target
+		return target, false
 	}
 	if !parsed.IsAbs() {
 		parsed = target.ResolveReference(parsed)
 	}
 	if parsed.Scheme != target.Scheme || parsed.Host != target.Host {
-		return target
+		return target, false
 	}
 
-	return parsed
+	return parsed, true
 }
 
 func requestOrigin(c *gin.Context) string {
