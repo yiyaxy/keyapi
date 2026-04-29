@@ -23,6 +23,7 @@ import { ChannelsAdminPage } from '@/pages/ChannelsAdmin';
 import { DashboardPage } from '@/pages/Dashboard';
 import { Forgot } from '@/pages/Forgot';
 import { HomePage } from '@/pages/Home';
+import { ImageDiagnosisPage } from '@/pages/ImageDiagnosis';
 import { InboxPage } from '@/pages/Inbox';
 import { InvoicesAdminPage } from '@/pages/InvoicesAdmin';
 import { InvoicesPage } from '@/pages/Invoices';
@@ -81,6 +82,8 @@ export const router = createBrowserRouter([
       { path: '/user/reset', element: <Reset /> },
       { path: '/forbidden', element: <Forbidden /> },
       { path: '/setup', element: <SetupPage /> },
+      { path: '/apps/image-diagnosis', element: <ImageDiagnosisPage /> },
+      { path: '/apps/image-diagnosis/report', element: <ImageDiagnosisPage /> },
       {
         element: <PublicLayout />,
         children: [
