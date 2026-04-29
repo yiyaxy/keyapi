@@ -23,9 +23,6 @@ import (
 func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 	helper.ApplyChannelBillingOverrides(info)
-	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
-		return apiErr
-	}
 
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
@@ -40,6 +37,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
+	}
+	if apiErr := applyImagePerCallBillingIfNeeded(c, info); apiErr != nil {
+		return apiErr
+	}
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return apiErr
 	}
 
 	adaptor := GetAdaptor(info.ApiType)
@@ -126,7 +129,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	// calculation (both price-based and ratio-based paths).
 	// Adaptors may have already set a more accurate count from the
 	// upstream response; only set the default when they haven't.
-	if _, hasN := info.PriceData.OtherRatios["n"]; !hasN {
+	if _, hasN := info.PriceData.OtherRatios["n"]; !hasN && !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
 		info.PriceData.AddOtherRatio("n", float64(imageN))
 	}
 
@@ -150,6 +153,34 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
+	return nil
+}
+
+func applyImagePerCallBillingIfNeeded(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if info == nil || !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+		return nil
+	}
+
+	prevPreConsumed := 0
+	if info.Billing != nil {
+		prevPreConsumed = info.Billing.GetPreConsumedQuota()
+	}
+	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeModelPriceError)
+	}
+	if !priceData.UsePrice {
+		priceData.UsePrice = true
+		priceData.ModelPrice = priceData.ModelRatio / 2
+		priceData.PlatformCostModelPrice = priceData.PlatformCostModelRatio / 2
+	}
+	info.PriceData = priceData
+	if info.Billing != nil && priceData.Quota > prevPreConsumed {
+		delta := priceData.Quota - prevPreConsumed
+		if err := info.Billing.PreConsumeAdditional(c, delta); err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+	}
 	return nil
 }
 
