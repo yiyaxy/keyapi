@@ -31,13 +31,24 @@ async function fetchNewApiUser(token: string): Promise<NewApiUserInfo | null> {
       headers: { Authorization: `Bearer ${token}` },
       redirect: 'error',
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // 排查时看得见为什么验证失败（403 撞租户 slug / 401 token 过期 / 502 keyapi 挂了）
+      const bodyText = await res.text().catch(() => '<unreadable>');
+      console.error(
+        `[token-login] whoami HTTP ${res.status} from ${baseUrl}: ${bodyText.slice(0, 200)}`,
+      );
+      return null;
+    }
 
     const body = await res.json();
-    if (!body.success || !body.data) return null;
+    if (!body.success || !body.data) {
+      console.error('[token-login] whoami returned non-success body:', body);
+      return null;
+    }
 
     return body.data as NewApiUserInfo;
-  } catch {
+  } catch (err) {
+    console.error(`[token-login] whoami fetch failed (baseUrl=${baseUrl}):`, err);
     return null;
   }
 }
