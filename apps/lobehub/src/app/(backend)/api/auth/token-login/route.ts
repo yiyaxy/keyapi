@@ -1,9 +1,10 @@
 import { createNanoId } from '@lobechat/database';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 
 import { session as sessions } from '@/database/schemas/betterAuth';
-import { userSettings, users } from '@/database/schemas/user';
+import { aiProviders } from '@/database/schemas/aiInfra';
+import { users } from '@/database/schemas/user';
 import { serverDB } from '@/database/server';
 import { setBetterAuthSessionCookie } from '@/libs/better-auth/sessionCookie';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
@@ -20,7 +21,7 @@ interface NewApiUserInfo {
   username: string;
 }
 
-type ProviderKeyVaults = Record<string, Record<string, unknown>>;
+type ProviderKeyVaults = Record<string, unknown>;
 
 function getOpenAIProxyUrl(): string | undefined {
   const explicitProxyUrl = process.env.OPENAI_PROXY_URL?.trim();
@@ -82,40 +83,39 @@ async function decryptKeyVaults(
   }
 }
 
-async function saveOpenAIKeyVault(userId: string, apiKey: string) {
+async function saveOpenAIProviderConfig(userId: string, apiKey: string) {
   const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
   const baseURL = getOpenAIProxyUrl();
-  const existingSettings = await serverDB
-    .select({ keyVaults: userSettings.keyVaults })
-    .from(userSettings)
-    .where(eq(userSettings.id, userId))
+  const existingProviders = await serverDB
+    .select({ keyVaults: aiProviders.keyVaults })
+    .from(aiProviders)
+    .where(and(eq(aiProviders.id, 'openai'), eq(aiProviders.userId, userId)))
     .limit(1);
 
-  const currentKeyVaults = await decryptKeyVaults(
-    existingSettings[0]?.keyVaults ?? null,
+  const currentProviderKeyVaults = await decryptKeyVaults(
+    existingProviders[0]?.keyVaults ?? null,
     gateKeeper
   );
-  const currentOpenAIVault =
-    currentKeyVaults.openai && typeof currentKeyVaults.openai === 'object'
-      ? currentKeyVaults.openai
-      : {};
 
-  const nextKeyVaults = {
-    ...currentKeyVaults,
-    openai: {
-      ...currentOpenAIVault,
-      apiKey,
-      ...(baseURL ? { baseURL } : {}),
-    },
+  const nextProviderKeyVaults = {
+    ...currentProviderKeyVaults,
+    apiKey,
+    ...(baseURL ? { baseURL } : {}),
   };
-  const encryptedKeyVaults = await gateKeeper.encrypt(JSON.stringify(nextKeyVaults));
+  const encryptedKeyVaults = await gateKeeper.encrypt(JSON.stringify(nextProviderKeyVaults));
 
   await serverDB
-    .insert(userSettings)
-    .values({ id: userId, keyVaults: encryptedKeyVaults })
+    .insert(aiProviders)
+    .values({
+      enabled: true,
+      id: 'openai',
+      keyVaults: encryptedKeyVaults,
+      source: 'builtin',
+      userId,
+    })
     .onConflictDoUpdate({
-      set: { keyVaults: encryptedKeyVaults },
-      target: userSettings.id,
+      set: { enabled: true, keyVaults: encryptedKeyVaults, source: 'builtin' },
+      target: [aiProviders.id, aiProviders.userId],
     });
 }
 
@@ -166,7 +166,7 @@ async function handleTokenLogin(
         .where(eq(users.id, lobeUserId));
     }
 
-    await saveOpenAIKeyVault(lobeUserId, token);
+    await saveOpenAIProviderConfig(lobeUserId, token);
 
     const sessionToken = nanoid();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
