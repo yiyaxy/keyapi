@@ -1,7 +1,18 @@
 name: lobehub
 services:
   lobe:
-    image: lobehub/lobehub
+    # 从本地源码构建，包含定制的 token-login SSO 路由。
+    # 不能用官方镜像 lobehub/lobehub —— 它没有我们 apps/lobehub/ 下的修改。
+    #
+    # build context 指向 apps/lobehub/（pnpm workspace 根，含 pnpm-workspace.yaml）
+    # 从 apps/lobehub/docker-compose/deploy/ 往上两级。
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        # 国内构建建议启用：加速 apt + pnpm 下载
+        USE_CN_MIRROR: "true"
+    image: keyapi/lobehub:latest
     container_name: lobehub
     ports:
       - '${LOBE_PORT}:3210'
