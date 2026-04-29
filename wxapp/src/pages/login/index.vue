@@ -1,10 +1,14 @@
 <template>
   <view class="page">
+    <view class="bg-glow bg-glow-1" />
+    <view class="bg-glow bg-glow-2" />
+    <view class="bg-glow bg-glow-3" />
+
     <view :style="{ height: statusBarH + 'px' }" />
 
     <view v-if="canGoBack" class="back-bar">
       <view class="back-btn" @click="goBack">
-        <u-icon name="arrow-left" size="20" color="#1a1a2e" />
+        <u-icon name="arrow-left" size="18" color="rgba(255,255,255,0.7)" />
         <text class="back-txt">返回</text>
       </view>
     </view>
@@ -14,7 +18,13 @@
         <text class="logo-letter">A</text>
       </view>
       <text class="logo-title">ALl Models</text>
-      <text class="logo-sub">AI 接口管理平台</text>
+      <text class="logo-sub">全球大模型算力超市</text>
+
+      <view class="chips">
+        <text class="chip">统一结算</text>
+        <text class="chip">按量消耗</text>
+        <text class="chip">API 接入</text>
+      </view>
     </view>
 
     <view class="login-card">
@@ -22,9 +32,12 @@
       <text class="card-desc">使用微信账号快速登录平台</text>
 
       <view class="privacy-notice">
-        <text class="notice-title">登录授权说明</text>
+        <view class="notice-head">
+          <view class="notice-dot" />
+          <text class="notice-title">登录授权说明</text>
+        </view>
         <text class="notice-text">
-          为完成账号登录、创建平台账号、维护登录状态、展示余额订单与提供 API Key 服务，我们将在你同意后调用微信登录能力，获取微信登录凭证（code），并由服务端换取 openid/unionid 等账号标识。
+          为完成账号登录、维护登录状态、展示余额订单与提供 API Key 服务，我们将在你同意后调用微信登录能力，获取登录凭证（code），并由服务端换取 openid/unionid 等账号标识。
         </text>
         <text class="notice-text">
           我们不会在未取得你同意前调用微信登录，也不会将你的账号信息用于本服务以外的用途。
@@ -33,7 +46,7 @@
 
       <view class="agreement-row" @click="toggleAgreement">
         <view class="check-box" :class="{ checked: agreed }">
-          <u-icon v-if="agreed" name="checkbox-mark" size="14" color="#fff" />
+          <u-icon v-if="agreed" name="checkbox-mark" size="14" color="#050a10" />
         </view>
         <view class="agreement-text">
           <text>我已阅读并同意</text>
@@ -47,14 +60,12 @@
         <u-icon
           v-if="!loading"
           name="weixin-fill"
-          size="20"
+          size="18"
           color="#fff"
-          style="margin-right: 14rpx;"
+          style="margin-right: 12rpx;"
         />
         <u-loading-icon v-else color="#fff" size="32" />
-        <text style="margin-left: 12rpx;">
-          {{ loading ? '登录中...' : '微信一键登录' }}
-        </text>
+        <text class="btn-txt">{{ loading ? '登录中...' : '微信一键登录' }}</text>
       </view>
     </view>
 
@@ -65,7 +76,7 @@
         <view class="doc-header">
           <text class="doc-title">{{ activeDoc.title }}</text>
           <view class="doc-close" @click="closeDoc">
-            <u-icon name="close" size="18" color="#6b7280" />
+            <u-icon name="close" size="18" color="rgba(255,255,255,0.6)" />
           </view>
         </view>
         <scroll-view scroll-y class="doc-body">
@@ -274,29 +285,55 @@ async function doWechatLogin() {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #f5f7fb;
+  background: #050a10;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 0 48rpx 80rpx;
   box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景辉光 */
+.bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120rpx);
+  pointer-events: none;
+  z-index: 0;
+}
+.bg-glow-1 {
+  top: -15%; left: -25%;
+  width: 600rpx; height: 600rpx;
+  background: rgba(35, 150, 237, 0.22);
+}
+.bg-glow-2 {
+  top: 25%; right: -25%;
+  width: 500rpx; height: 500rpx;
+  background: rgba(157, 78, 221, 0.18);
+}
+.bg-glow-3 {
+  bottom: -10%; left: 0;
+  width: 600rpx; height: 600rpx;
+  background: rgba(255, 184, 74, 0.08);
 }
 
 .back-bar {
   width: 100%;
-  padding: 16rpx 24rpx 0;
+  padding: 16rpx 0 0;
   box-sizing: border-box;
+  position: relative;
+  z-index: 1;
 }
-
 .back-btn {
   display: inline-flex;
   align-items: center;
   padding: 12rpx 20rpx;
 }
-
 .back-txt {
-  font-size: 28rpx;
-  color: #1a1a2e;
+  font-size: 26rpx;
+  color: rgba(255,255,255,0.7);
   margin-left: 8rpx;
 }
 
@@ -304,88 +341,119 @@ async function doWechatLogin() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 96rpx;
+  margin-top: 80rpx;
   margin-bottom: 56rpx;
+  position: relative;
+  z-index: 1;
 }
-
 .logo-icon {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 30rpx;
-  background: #4f6ef7;
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 36rpx;
+  background: linear-gradient(135deg, #2396ED 0%, #9D4EDD 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12rpx 32rpx rgba(79, 110, 247, 0.24);
-  margin-bottom: 24rpx;
+  box-shadow: 0 16rpx 40rpx rgba(35, 150, 237, 0.35);
+  margin-bottom: 28rpx;
+  position: relative;
 }
-
+.logo-icon::after {
+  content: '';
+  position: absolute;
+  inset: -2rpx;
+  border-radius: 36rpx;
+  border: 2rpx solid rgba(0, 245, 255, 0.3);
+}
 .logo-letter {
-  font-size: 60rpx;
-  font-weight: 700;
+  font-size: 68rpx;
+  font-weight: 800;
   color: #fff;
 }
-
 .logo-title {
-  font-size: 46rpx;
-  font-weight: 700;
-  color: #1a1a2e;
-  letter-spacing: 1rpx;
+  font-size: 52rpx;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.5rpx;
+  margin-bottom: 10rpx;
 }
-
 .logo-sub {
   font-size: 26rpx;
-  color: #6b7280;
-  margin-top: 12rpx;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 24rpx;
+}
+.chips {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.chip {
+  font-size: 22rpx;
+  color: #FFB84A;
+  border: 1rpx solid rgba(255,184,74,0.4);
+  background: rgba(255,184,74,0.05);
+  padding: 6rpx 20rpx;
+  border-radius: 999rpx;
 }
 
+/* 登录卡 */
 .login-card {
   width: 100%;
-  background: #fff;
-  border-radius: 24rpx;
-  padding: 48rpx 40rpx 42rpx;
-  box-shadow: 0 8rpx 40rpx rgba(31, 41, 55, 0.08);
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(24rpx);
+  border: 1rpx solid rgba(255,255,255,0.08);
+  border-radius: 32rpx;
+  padding: 48rpx 40rpx 40rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
+  z-index: 1;
 }
-
 .card-title {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #1a1a2e;
-  margin-bottom: 16rpx;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 12rpx;
 }
-
 .card-desc {
-  font-size: 26rpx;
-  color: #6b7280;
+  font-size: 24rpx;
+  color: rgba(255,255,255,0.5);
   margin-bottom: 32rpx;
 }
 
 .privacy-notice {
   width: 100%;
-  background: #f8fafc;
-  border: 1rpx solid #e5e7eb;
-  border-radius: 18rpx;
+  background: rgba(255,255,255,0.03);
+  border: 1rpx solid rgba(255,255,255,0.06);
+  border-radius: 20rpx;
   padding: 24rpx;
   box-sizing: border-box;
   margin-bottom: 28rpx;
 }
-
-.notice-title {
-  display: block;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12rpx;
+.notice-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14rpx;
 }
-
+.notice-dot {
+  width: 10rpx; height: 10rpx;
+  background: #FFB84A;
+  border-radius: 50%;
+  margin-right: 12rpx;
+  box-shadow: 0 0 10rpx #FFB84A;
+}
+.notice-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #ffffff;
+}
 .notice-text {
   display: block;
-  font-size: 23rpx;
-  line-height: 1.65;
-  color: #4b5563;
+  font-size: 22rpx;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.5);
   margin-top: 8rpx;
 }
 
@@ -395,12 +463,11 @@ async function doWechatLogin() {
   align-items: flex-start;
   margin-bottom: 28rpx;
 }
-
 .check-box {
   width: 34rpx;
   height: 34rpx;
   border-radius: 8rpx;
-  border: 2rpx solid #cbd5e1;
+  border: 2rpx solid rgba(255,255,255,0.25);
   margin-top: 2rpx;
   margin-right: 14rpx;
   display: flex;
@@ -408,55 +475,56 @@ async function doWechatLogin() {
   justify-content: center;
   box-sizing: border-box;
   flex-shrink: 0;
+  background: rgba(255,255,255,0.04);
 }
-
 .check-box.checked {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #FFB84A;
+  border-color: #FFB84A;
+  box-shadow: 0 0 12rpx rgba(255,184,74,0.4);
 }
-
 .agreement-text {
   flex: 1;
-  font-size: 24rpx;
-  line-height: 1.5;
-  color: #4b5563;
+  font-size: 23rpx;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.6);
 }
-
 .link {
-  color: #2563eb;
+  color: #00F5FF;
 }
 
+/* 按钮 */
 .btn-wechat {
   width: 100%;
   height: 96rpx;
-  background: #09bb07;
-  border-radius: 14rpx;
+  background: linear-gradient(90deg, #2396ED 0%, #9D4EDD 100%);
+  border-radius: 18rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 32rpx;
-  font-weight: 600;
-  box-shadow: 0 8rpx 24rpx rgba(9, 187, 7, 0.28);
+  font-size: 30rpx;
+  font-weight: 700;
+  box-shadow: 0 12rpx 32rpx rgba(35, 150, 237, 0.3);
   letter-spacing: 1rpx;
 }
-
-.btn-loading {
-  opacity: 0.8;
-}
-
+.btn-txt { color: #fff; }
+.btn-loading { opacity: 0.85; }
 .btn-wechat.disabled {
-  background: #9ca3af;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.35);
   box-shadow: none;
 }
 
 .footer-tip {
   font-size: 22rpx;
-  color: #9ca3af;
+  color: rgba(255,255,255,0.3);
   margin-top: 40rpx;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
+/* 协议弹窗 */
 .doc-mask {
   position: fixed;
   left: 0;
@@ -464,36 +532,34 @@ async function doWechatLogin() {
   top: 0;
   bottom: 0;
   z-index: 300;
-  background: rgba(17, 24, 39, 0.48);
+  background: rgba(5, 10, 16, 0.7);
+  backdrop-filter: blur(8rpx);
   display: flex;
   align-items: flex-end;
 }
-
 .doc-panel {
   width: 100%;
   max-height: 82vh;
-  background: #fff;
-  border-radius: 28rpx 28rpx 0 0;
+  background: #101419;
+  border-top: 1rpx solid rgba(255,255,255,0.08);
+  border-radius: 32rpx 32rpx 0 0;
   display: flex;
   flex-direction: column;
 }
-
 .doc-header {
   height: 104rpx;
   padding: 0 32rpx;
-  border-bottom: 1rpx solid #eef2f7;
+  border-bottom: 1rpx solid rgba(255,255,255,0.06);
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
 }
-
 .doc-title {
   font-size: 32rpx;
   font-weight: 700;
-  color: #111827;
+  color: #ffffff;
 }
-
 .doc-close {
   width: 64rpx;
   height: 64rpx;
@@ -501,47 +567,42 @@ async function doWechatLogin() {
   align-items: center;
   justify-content: center;
 }
-
 .doc-body {
   max-height: 58vh;
   padding: 12rpx 32rpx 24rpx;
   box-sizing: border-box;
 }
-
 .doc-section {
   padding: 20rpx 0;
 }
-
 .doc-section-title {
   display: block;
   font-size: 28rpx;
   font-weight: 600;
-  color: #111827;
+  color: #ffffff;
   margin-bottom: 10rpx;
 }
-
 .doc-section-text {
   display: block;
-  font-size: 25rpx;
+  font-size: 24rpx;
   line-height: 1.75;
-  color: #4b5563;
+  color: rgba(255,255,255,0.6);
 }
-
 .doc-footer {
   padding: 20rpx 32rpx 40rpx;
-  border-top: 1rpx solid #eef2f7;
+  border-top: 1rpx solid rgba(255,255,255,0.06);
   flex-shrink: 0;
 }
-
 .doc-confirm {
   height: 88rpx;
   border-radius: 16rpx;
-  background: #2563eb;
+  background: linear-gradient(90deg, #2396ED 0%, #9D4EDD 100%);
   color: #fff;
-  font-size: 30rpx;
-  font-weight: 600;
+  font-size: 28rpx;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  letter-spacing: 1rpx;
 }
 </style>
