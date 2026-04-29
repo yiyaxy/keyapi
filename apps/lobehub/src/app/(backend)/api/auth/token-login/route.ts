@@ -117,8 +117,18 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// 反代后 request.url 是容器内监听地址（http://0.0.0.0:3210/...），
+// 直接拿来跳转浏览器会进 0.0.0.0。优先用 APP_URL 拿公网 origin，
+// 没设置时（典型是 next dev）才退回 request.url。
+function getPublicOrigin(request: NextRequest): string {
+  if (process.env.APP_URL) {
+    return new URL(process.env.APP_URL).origin;
+  }
+  return new URL(request.url).origin;
+}
+
 function buildRedirect(request: NextRequest, settings: string | null, callbackUrl?: null | string) {
-  const origin = new URL(request.url).origin;
+  const origin = getPublicOrigin(request);
   let target = new URL('/', origin);
 
   if (callbackUrl) {
