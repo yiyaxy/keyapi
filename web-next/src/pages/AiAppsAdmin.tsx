@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LogsPagination } from '@/components/logs/LogsPagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ import {
 } from '@/hooks/useAiApps';
 
 const PAGE_SIZE = 20;
+const PLATFORM_ROLE_ROOT = 100;
 
 const EMPTY: AiAppInput = {
   name: '',
@@ -45,6 +47,7 @@ const EMPTY: AiAppInput = {
   description: '',
   icon_url: '',
   target_url: '',
+  scope: 'tenant',
   status: AI_APP_STATUS.DRAFT,
   sort_order: 0,
   vendor_user_id: 0,
@@ -61,6 +64,7 @@ function fromRecord(r: AiApp): AiAppInput {
     description: r.description,
     icon_url: r.icon_url,
     target_url: r.target_url,
+    scope: r.scope,
     status: r.status,
     sort_order: r.sort_order,
     vendor_user_id: r.vendor_user_id,
@@ -103,6 +107,8 @@ function AppFormDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { t } = useTranslation('apps');
+  const { user } = useAuth();
+  const isPlatformRoot = (user?.platform_role ?? 0) >= PLATFORM_ROLE_ROOT;
   const create = useCreateAiApp();
   const update = useUpdateAiApp();
   const isEdit = Boolean(record);
@@ -170,6 +176,29 @@ function AppFormDialog({
             <Label htmlFor='app-tags'>{t('form.tags')}</Label>
             <Input id='app-tags' placeholder={t('form.tags_placeholder')} {...form.register('tags')} />
           </div>
+          {(isPlatformRoot || isEdit) && (
+            <div className='space-y-1.5'>
+              <Label>{t('form.scope')}</Label>
+              <Select
+                value={form.watch('scope')}
+                onValueChange={(v) => form.setValue('scope', v as 'platform' | 'tenant')}
+                disabled={isEdit || !isPlatformRoot}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='tenant'>{t('form.scope.tenant')}</SelectItem>
+                  <SelectItem value='platform' disabled={!isPlatformRoot}>
+                    {t('form.scope.platform')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className='text-12 text-fg-2'>
+                {isEdit ? t('form.scope.locked') : t('form.scope.help')}
+              </p>
+            </div>
+          )}
           <div className='grid grid-cols-2 gap-3'>
             <div className='space-y-1.5'>
               <Label>{t('form.status')}</Label>
@@ -311,6 +340,7 @@ export function AiAppsAdminPage() {
                   <th className='px-3 py-2 font-medium'>ID</th>
                   <th className='px-3 py-2 font-medium'>{t('col.name')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.slug')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('col.scope')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.status')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.tags')}</th>
                   <th className='px-3 py-2 font-medium'>{t('col.guest_quota')}</th>
@@ -327,6 +357,11 @@ export function AiAppsAdminPage() {
                     <td className='px-3 py-2 text-fg-2'>{app.id}</td>
                     <td className='px-3 py-2 font-medium'>{app.name}</td>
                     <td className='px-3 py-2 text-fg-2 font-mono text-12'>{app.slug}</td>
+                    <td className='px-3 py-2'>
+                      <Badge variant={app.scope === 'platform' ? 'default' : 'secondary'}>
+                        {t(`scope.${app.scope}`)}
+                      </Badge>
+                    </td>
                     <td className='px-3 py-2'>
                       <Badge variant={statusVariant(app.status)}>
                         {statusLabel(app.status, t)}

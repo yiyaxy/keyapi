@@ -97,6 +97,9 @@ func TaskPollingLoop() {
 		allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
 		platformTask := make(map[constant.TaskPlatform][]*model.Task)
 		for _, t := range allTasks {
+			if t.Platform == constant.TaskPlatformImageSyncWrap {
+				continue
+			}
 			platformTask[t.Platform] = append(platformTask[t.Platform], t)
 		}
 		for platform, tasks := range platformTask {
@@ -439,7 +442,15 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		if task.FinishTime == 0 {
 			task.FinishTime = now
 		}
-		if strings.HasPrefix(taskResult.Url, "data:") {
+		if len(taskResult.Urls) > 0 {
+			imageData := make([]dto.ImageData, 0, len(taskResult.Urls))
+			for _, url := range taskResult.Urls {
+				imageData = append(imageData, dto.ImageData{Url: url})
+			}
+			if data, err := common.Marshal(imageData); err == nil {
+				task.PrivateData.ImageData = data
+			}
+		} else if strings.HasPrefix(taskResult.Url, "data:") {
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		} else if taskResult.Url != "" {

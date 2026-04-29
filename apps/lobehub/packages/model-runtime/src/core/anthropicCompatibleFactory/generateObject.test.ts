@@ -55,7 +55,7 @@ describe('Anthropic generateObject', () => {
 
       expect(mockClient.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          max_tokens: 64_000,
+          max_tokens: 128_000,
           messages: [{ content: 'Generate a person object', role: 'user' }],
           model: 'claude-3-5-sonnet-20241022',
           tool_choice: {

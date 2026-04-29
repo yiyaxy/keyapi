@@ -87,7 +87,17 @@ const CreateGenerationPage = memo<CreateGenerationPageProps>(({ path, Workspace,
               key="bottom-input"
               transition={{ delay: 0.04, duration: 0.2, ease: 'easeOut' }}
             >
-              <WideScreenContainer style={{ marginTop: -8, paddingBlockEnd: 12 }}>
+              <WideScreenContainer
+                style={{
+                  marginTop: -8,
+                  paddingBlockEnd: 12,
+                }}
+                wrapperStyle={{
+                  alignItems: 'center',
+                  display: 'flex',
+                  justifyContent: 'center',
+                }}
+              >
                 <PromptInput disableAnimation showTitle={false} />
               </WideScreenContainer>
             </motion.div>

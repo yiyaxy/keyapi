@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"context"
 	"io"
 	"net/http"
 
@@ -76,6 +77,18 @@ type TaskAdaptor interface {
 
 	FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error)
 	ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error)
+}
+
+type TaskPostInsert interface {
+	OnTaskInserted(ctx context.Context, task *model.Task, info *relaycommon.RelayInfo)
+}
+
+type ImageRequestBuilder interface {
+	BuildImageHTTPRequest(ctx context.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*http.Request, error)
+}
+
+type ImageResponseExtractor interface {
+	ExtractImageResponse(resp *http.Response, info *relaycommon.RelayInfo) (*dto.ImageResponse, *dto.Usage, error)
 }
 
 type OpenAIVideoConverter interface {

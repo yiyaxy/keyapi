@@ -671,6 +671,80 @@ describe('createOpenAICompatibleImage', () => {
       expect(mockClient.images.generate).toHaveBeenCalled();
     });
 
+    it('should handle image_url object response from OpenAI-compatible providers', async () => {
+      const mockImageUrl = 'https://example.com/generated.png';
+      const mockImageResponse = {
+        data: [
+          {
+            image_url: {
+              url: mockImageUrl,
+            },
+          },
+        ],
+      };
+
+      vi.mocked(mockClient.images.generate).mockResolvedValue(mockImageResponse as any);
+
+      const payload: CreateImagePayload = {
+        model: 'gpt-image-2',
+        params: {
+          prompt: 'Generate image with nested URL response',
+        },
+      };
+
+      const result = await createOpenAICompatibleImage(mockClient, payload, 'openai');
+
+      expect(result.imageUrl).toBe(mockImageUrl);
+    });
+
+    it('should handle result base64 response from Responses API-compatible proxies', async () => {
+      const mockImageResponse = {
+        data: [
+          {
+            result: 'responseApiBase64Result',
+            revised_prompt: 'some prompt',
+            type: 'image_generation_call',
+          },
+        ],
+      };
+
+      vi.mocked(mockClient.images.generate).mockResolvedValue(mockImageResponse as any);
+
+      const payload: CreateImagePayload = {
+        model: 'gpt-image-2',
+        params: {
+          prompt: 'Generate image with result response',
+        },
+      };
+
+      const result = await createOpenAICompatibleImage(mockClient, payload, 'openai');
+
+      expect(result.imageUrl).toBe('data:image/png;base64,responseApiBase64Result');
+    });
+
+    it('should pass through data URI result responses', async () => {
+      const mockImageResponse = {
+        data: [
+          {
+            result: 'data:image/webp;base64,responseApiDataUriResult',
+          },
+        ],
+      };
+
+      vi.mocked(mockClient.images.generate).mockResolvedValue(mockImageResponse as any);
+
+      const payload: CreateImagePayload = {
+        model: 'gpt-image-2',
+        params: {
+          prompt: 'Generate image with result data URI response',
+        },
+      };
+
+      const result = await createOpenAICompatibleImage(mockClient, payload, 'openai');
+
+      expect(result.imageUrl).toBe('data:image/webp;base64,responseApiDataUriResult');
+    });
+
     it('should throw error when imageData has neither url nor b64_json', async () => {
       const mockImageResponse = {
         data: [

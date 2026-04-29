@@ -1,21 +1,36 @@
-import { eq } from 'drizzle-orm';
+import { createNanoId } from '@lobechat/database';
+import { and, eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 
 import { session as sessions } from '@/database/schemas/betterAuth';
+import { aiProviders } from '@/database/schemas/aiInfra';
 import { users } from '@/database/schemas/user';
 import { serverDB } from '@/database/server';
-import { createNanoId } from '@lobechat/database';
+import { setBetterAuthSessionCookie } from '@/libs/better-auth/sessionCookie';
+import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { UserService } from '@/server/services/user';
 
 const nanoid = createNanoId(32);
 const idGen = createNanoId(16);
 
 interface NewApiUserInfo {
-  id: number;
-  username: string;
-  email: string;
   display_name: string;
+  email: string;
+  id: number;
   tenant_id: number;
+  username: string;
+}
+
+type ProviderKeyVaults = Record<string, unknown>;
+
+function getOpenAIProxyUrl(): string | undefined {
+  const explicitProxyUrl = process.env.OPENAI_PROXY_URL?.trim();
+  if (explicitProxyUrl) return explicitProxyUrl;
+
+  const baseUrl = process.env.NEW_API_BASE_URL?.trim();
+  if (!baseUrl) return undefined;
+
+  return `${baseUrl.replace(/\/+$/, '')}/v1`;
 }
 
 async function fetchNewApiUser(token: string): Promise<NewApiUserInfo | null> {
@@ -28,41 +43,97 @@ async function fetchNewApiUser(token: string): Promise<NewApiUserInfo | null> {
   try {
     const res = await fetch(`${baseUrl}/api/app/whoami`, {
       headers: { Authorization: `Bearer ${token}` },
-      // 不跟踪重定向，快速失败
       redirect: 'error',
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '<unreadable>');
+      console.error(
+        `[token-login] whoami HTTP ${res.status} from ${baseUrl}: ${bodyText.slice(0, 200)}`
+      );
+      return null;
+    }
+
     const body = await res.json();
-    if (!body.success || !body.data) return null;
+    if (!body.success || !body.data) {
+      console.error('[token-login] whoami returned non-success body:', body);
+      return null;
+    }
+
     return body.data as NewApiUserInfo;
-  } catch {
+  } catch (err) {
+    console.error(`[token-login] whoami fetch failed (baseUrl=${baseUrl}):`, err);
     return null;
   }
 }
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const token = searchParams.get('token');
-  const settings = searchParams.get('settings');
+async function decryptKeyVaults(
+  encryptedKeyVaults: null | string,
+  gateKeeper: KeyVaultsGateKeeper
+): Promise<ProviderKeyVaults> {
+  if (!encryptedKeyVaults) return {};
 
-  // token 缺失 → 直接跳首页（无感降级）
-  if (!token) {
-    return buildRedirect(request, settings);
-  }
-
-  // 1. 向 new-api 验证 token 并获取用户信息
-  const apiUser = await fetchNewApiUser(token);
-  if (!apiUser) {
-    return buildRedirect(request, settings);
-  }
-
-  // 2. 构建 LobeHub 用户的稳定 ID（前缀防止与 BetterAuth 内置 ID 冲突）
-  const lobeUserId = `newapi_${apiUser.id}`;
-  const email = apiUser.email?.trim() || `newapi_${apiUser.id}@internal.local`;
-  const displayName = apiUser.display_name?.trim() || apiUser.username || `用户${apiUser.id}`;
+  const { plaintext, wasAuthentic } = await gateKeeper.decrypt(encryptedKeyVaults);
+  if (!wasAuthentic || !plaintext) return {};
 
   try {
-    // 3. Upsert 用户（首次自动创建，后续只更新活跃时间）
+    return JSON.parse(plaintext) as ProviderKeyVaults;
+  } catch (err) {
+    console.error('[token-login] failed to parse existing keyVaults:', err);
+    return {};
+  }
+}
+
+async function saveOpenAIProviderConfig(userId: string, apiKey: string) {
+  const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
+  const baseURL = getOpenAIProxyUrl();
+  const existingProviders = await serverDB
+    .select({ keyVaults: aiProviders.keyVaults })
+    .from(aiProviders)
+    .where(and(eq(aiProviders.id, 'openai'), eq(aiProviders.userId, userId)))
+    .limit(1);
+
+  const currentProviderKeyVaults = await decryptKeyVaults(
+    existingProviders[0]?.keyVaults ?? null,
+    gateKeeper
+  );
+
+  const nextProviderKeyVaults = {
+    ...currentProviderKeyVaults,
+    apiKey,
+    ...(baseURL ? { baseURL } : {}),
+  };
+  const encryptedKeyVaults = await gateKeeper.encrypt(JSON.stringify(nextProviderKeyVaults));
+
+  await serverDB
+    .insert(aiProviders)
+    .values({
+      enabled: true,
+      id: 'openai',
+      keyVaults: encryptedKeyVaults,
+      source: 'builtin',
+      userId,
+    })
+    .onConflictDoUpdate({
+      set: { enabled: true, keyVaults: encryptedKeyVaults, source: 'builtin' },
+      target: [aiProviders.id, aiProviders.userId],
+    });
+}
+
+async function handleTokenLogin(
+  request: NextRequest,
+  token: null | string,
+  callbackUrl?: null | string
+) {
+  if (!token) return buildRedirect(request, callbackUrl);
+
+  const apiUser = await fetchNewApiUser(token);
+  if (!apiUser) return buildRedirect(request, callbackUrl);
+
+  const lobeUserId = `newapi_${apiUser.id}`;
+  const email = apiUser.email?.trim() || `newapi_${apiUser.id}@internal.local`;
+  const displayName = apiUser.display_name?.trim() || apiUser.username || `user${apiUser.id}`;
+
+  try {
     const existingUsers = await serverDB
       .select({ id: users.id })
       .from(users)
@@ -75,19 +146,18 @@ export async function GET(request: NextRequest) {
       await serverDB.insert(users).values({
         id: lobeUserId,
         email,
-        fullName: displayName,
-        username: `newapi_${apiUser.id}`,
         emailVerified: true,
+        fullName: displayName,
         lastActiveAt: new Date(),
+        username: `newapi_${apiUser.id}`,
       });
 
-      // 触发 initUser（分析上报等），与 BetterAuth OAuth 登录一致
       const userService = new UserService(serverDB);
       await userService.initUser({
-        id: lobeUserId,
-        email,
-        username: `newapi_${apiUser.id}`,
         createdAt: new Date(),
+        email,
+        id: lobeUserId,
+        username: `newapi_${apiUser.id}`,
       });
     } else {
       await serverDB
@@ -96,43 +166,71 @@ export async function GET(request: NextRequest) {
         .where(eq(users.id, lobeUserId));
     }
 
-    // 4. 创建 BetterAuth 会话
+    await saveOpenAIProviderConfig(lobeUserId, token);
+
     const sessionToken = nanoid();
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30天
-
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await serverDB.insert(sessions).values({
-      id: idGen(),
-      userId: lobeUserId,
-      token: sessionToken,
-      expiresAt,
       createdAt: new Date(),
-      updatedAt: new Date(),
+      expiresAt,
+      id: idGen(),
       ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '',
+      token: sessionToken,
+      updatedAt: new Date(),
       userAgent: request.headers.get('user-agent') || '',
+      userId: lobeUserId,
     });
 
-    // 5. 设置 session cookie 并跳转
-    const response = buildRedirect(request, settings);
-    response.cookies.set('better-auth.session_token', sessionToken, {
-      httpOnly: true,
-      path: '/',
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      expires: expiresAt,
-    });
+    const response = buildRedirect(request, callbackUrl);
+    setBetterAuthSessionCookie({ expiresAt, request, response, sessionToken });
+
     return response;
   } catch (err) {
     console.error('[token-login] error:', err);
-    // 出错时降级：不带 session 跳转，用户仍可匿名使用（settings 里的 key 仍有效）
-    return buildRedirect(request, settings);
+    return buildRedirect(request, callbackUrl);
   }
 }
 
-function buildRedirect(request: NextRequest, settings: string | null) {
-  const origin = new URL(request.url).origin;
-  const target = new URL('/', origin);
-  if (settings) {
-    target.searchParams.set('settings', settings);
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+
+  return handleTokenLogin(request, searchParams.get('token'), searchParams.get('callbackUrl'));
+}
+
+export async function POST(request: NextRequest) {
+  const form = await request.formData();
+
+  return handleTokenLogin(
+    request,
+    form.get('token')?.toString() || null,
+    form.get('callbackUrl')?.toString() || null
+  );
+}
+
+function getPublicOrigin(request: NextRequest): string {
+  if (process.env.APP_URL) {
+    return new URL(process.env.APP_URL).origin;
   }
-  return NextResponse.redirect(target);
+  return new URL(request.url).origin;
+}
+
+function buildRedirect(request: NextRequest, callbackUrl?: null | string) {
+  const origin = getPublicOrigin(request);
+  let target = new URL('/', origin);
+
+  if (callbackUrl) {
+    try {
+      const parsedCallbackUrl = new URL(callbackUrl, origin);
+      if (parsedCallbackUrl.origin === origin) {
+        target = parsedCallbackUrl;
+      }
+    } catch {
+      // Ignore invalid callback URLs.
+    }
+  }
+
+  target.searchParams.delete('token');
+  target.searchParams.delete('settings');
+
+  return NextResponse.redirect(target, { status: 303 });
 }

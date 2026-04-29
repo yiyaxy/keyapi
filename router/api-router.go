@@ -50,6 +50,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), platform.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), platform.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), platform.ResetPassword)
+		apiRouter.GET("/auth/token-login", auth.TokenLogin)
+		apiRouter.POST("/auth/token-login", auth.TokenLogin)
 		// OAuth routes - specific routes must come before :provider wildcard
 		apiRouter.GET("/oauth/state", middleware.CriticalRateLimit(), auth.GenerateOAuthCode)
 		apiRouter.POST("/oauth/email/bind", middleware.CriticalRateLimit(), user.EmailBind)
@@ -746,10 +748,13 @@ func SetApiRouter(router *gin.Engine) {
 		appPublicRoute := apiRouter.Group("/app")
 		{
 			appPublicRoute.GET("", app.ListApps)
+			appPublicRoute.GET("/whoami", middleware.TokenAuth(), app.WhoAmI)
+			appPublicRoute.GET("/image-diagnosis/results", app.ListImageDiagnosisResults)
+			appPublicRoute.GET("/image-diagnosis/results/:result_id", app.GetImageDiagnosisResult)
+			appPublicRoute.POST("/image-diagnosis/results", app.SaveImageDiagnosisResult)
 			appPublicRoute.GET("/:slug", app.GetApp)
 			appPublicRoute.POST("/:slug/guest-session", middleware.CriticalRateLimit(), app.GetGuestToken)
 			appPublicRoute.POST("/:slug/session", middleware.UserAuth(), app.GetSessionToken)
-			appPublicRoute.GET("/whoami", middleware.TokenAuth(), app.WhoAmI)
 		}
 
 		// AI App Marketplace — admin management

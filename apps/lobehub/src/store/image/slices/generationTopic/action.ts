@@ -149,6 +149,14 @@ export class GenerationTopicActionImpl {
     // 2. Call backend service
     const topicId = await generationTopicService.createTopic('image');
     this.#get().internal_updateGenerationTopicLoading(tmpId, false);
+    this.#get().internal_dispatchGenerationTopic(
+      { type: 'addTopic', value: { id: topicId, title: '' } },
+      'internal_createGenerationTopic/addCreatedTopic',
+    );
+    this.#get().internal_dispatchGenerationTopic(
+      { type: 'deleteTopic', id: tmpId },
+      'internal_createGenerationTopic/removeTemporaryTopic',
+    );
 
     // 3. Refresh data to ensure consistency
     this.#get().internal_updateGenerationTopicLoading(topicId, true);

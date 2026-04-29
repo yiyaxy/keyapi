@@ -9,6 +9,7 @@ import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { getServerGlobalConfig } from '@/server/globalConfig';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
+import { applyPricingModelsToRuntimeState } from '@/server/services/pricingModels';
 import { type AiProviderDetailItem, type AiProviderRuntimeState } from '@/types/aiProvider';
 import {
   CreateAiProviderSchema,
@@ -76,11 +77,12 @@ export const aiProviderRouter = router({
         return { error: errorBody, model, ok: false, status: response.status };
       } catch (error: any) {
         const errorType = error.errorType || error.type;
-        const msg = errorType
-          ? errorType
-          : typeof error === 'string'
+        const msg =
+          errorType ||
+          (typeof error === 'string'
             ? error
-            : error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+            : error.message ||
+              (typeof error === 'object' ? JSON.stringify(error) : String(error)));
         return { error: msg, model, ok: false };
       }
     }),
@@ -117,7 +119,11 @@ export const aiProviderRouter = router({
   getAiProviderRuntimeState: aiProviderProcedure
     .input(z.object({ isLogin: z.boolean().optional() }))
     .query(async ({ ctx }): Promise<AiProviderRuntimeState> => {
-      return ctx.aiInfraRepos.getAiProviderRuntimeState(KeyVaultsGateKeeper.getUserKeyVaults);
+      const runtimeState = await ctx.aiInfraRepos.getAiProviderRuntimeState(
+        KeyVaultsGateKeeper.getUserKeyVaults,
+      );
+
+      return applyPricingModelsToRuntimeState(runtimeState);
     }),
 
   removeAiProvider: aiProviderProcedure

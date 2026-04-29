@@ -607,6 +607,14 @@ describe('GenerationTopicAction', () => {
       });
 
       expect(dispatchSpy).toHaveBeenCalled();
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        { type: 'addTopic', value: { id: newTopicId, title: '' } },
+        'internal_createGenerationTopic/addCreatedTopic',
+      );
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        { type: 'deleteTopic', id: expect.any(String) },
+        'internal_createGenerationTopic/removeTemporaryTopic',
+      );
       expect(loadingSpy).toHaveBeenCalledWith(expect.any(String), true);
       expect(loadingSpy).toHaveBeenCalledWith(newTopicId, false);
       expect(generationTopicService.createTopic).toHaveBeenCalled();

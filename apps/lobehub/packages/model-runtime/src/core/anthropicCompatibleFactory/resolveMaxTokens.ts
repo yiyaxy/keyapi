@@ -6,6 +6,8 @@ const smallContextWindowPatterns = [
   /claude-v2(:1)?$/,
 ];
 
+const ANTHROPIC_MAX_OUTPUT_TOKENS = 128_000;
+
 /**
  * Resolve the max_tokens value to align Anthropic and Bedrock behavior.
  * Priority: user input > model-bank default maxOutput > hardcoded fallback (context-window aware).
@@ -28,9 +30,9 @@ export const resolveMaxTokens = async ({
   if (preferredMaxTokens) return preferredMaxTokens;
 
   if (thinking?.type === 'enabled') return 32_000;
-  if (thinking?.type === 'adaptive') return 64_000;
+  if (thinking?.type === 'adaptive') return ANTHROPIC_MAX_OUTPUT_TOKENS;
 
   const hasSmallContextWindow = smallContextWindowPatterns.some((pattern) => pattern.test(model));
 
-  return hasSmallContextWindow ? 4096 : 64_000;
+  return hasSmallContextWindow ? 4096 : ANTHROPIC_MAX_OUTPUT_TOKENS;
 };

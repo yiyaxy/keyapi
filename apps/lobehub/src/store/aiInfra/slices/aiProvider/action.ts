@@ -89,23 +89,48 @@ export const normalizeChatModel = async (model: EnabledAiModel): Promise<Provide
 export const normalizeImageModel = async (
   model: EnabledAiModel,
 ): Promise<ProviderModelListItem> => {
+  const imageModelId = model.id.endsWith(':image') ? model.id : `${model.id}:image`;
   const fallbackParametersPromise = model.parameters
     ? Promise.resolve<ModelParamsSchema | undefined>(model.parameters)
     : getModelPropertyWithFallback<ModelParamsSchema | undefined>(
-        model.id,
+        imageModelId,
         'parameters',
         model.providerId,
+      ).then(
+        (parameters) =>
+          parameters ||
+          getModelPropertyWithFallback<ModelParamsSchema | undefined>(
+            model.id,
+            'parameters',
+            model.providerId,
+          ),
       );
 
   const modelWithPricing = model as AIImageModelCard;
   const fallbackPricingPromise = modelWithPricing.pricing
     ? Promise.resolve<Pricing | undefined>(modelWithPricing.pricing)
-    : getModelPropertyWithFallback<Pricing | undefined>(model.id, 'pricing', model.providerId);
+    : getModelPropertyWithFallback<Pricing | undefined>(
+        imageModelId,
+        'pricing',
+        model.providerId,
+      ).then(
+        (pricing) =>
+          pricing ||
+          getModelPropertyWithFallback<Pricing | undefined>(
+            model.id,
+            'pricing',
+            model.providerId,
+          ),
+      );
 
   const fallbackDescriptionPromise = getModelPropertyWithFallback<string | undefined>(
-    model.id,
+    imageModelId,
     'description',
     model.providerId,
+  ).then(
+    (description) =>
+      description ||
+      getModelPropertyWithFallback<string | undefined>(model.id, 'description', model.providerId),
   );
 
   const [fallbackParameters, fallbackPricing, fallbackDescription] = await Promise.all([
@@ -476,74 +501,21 @@ export class AiProviderActionImpl {
     return useClientDataSWR<AiProviderRuntimeStateWithBuiltinModels | undefined>(
       shouldFetch ? [AiProviderSwrKey.fetchAiProviderRuntimeState, isLogin] : null,
       async ([, isLogin]) => {
-        const [{ LOBE_DEFAULT_MODEL_LIST: builtinAiModelList }, { DEFAULT_MODEL_PROVIDER_LIST }] =
-          await Promise.all([import('model-bank'), import('model-bank/modelProviders')]);
-
-        if (isLogin) {
-          const data = await aiProviderService.getAiProviderRuntimeState();
-          // Build model lists with proper async handling
-          const [enabledChatModelList, enabledImageModelList, enabledVideoModelList] =
-            await Promise.all([
-              buildChatProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels),
-              buildImageProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels),
-              buildVideoProviderModelLists(data.enabledVideoAiProviders, data.enabledAiModels),
-            ]);
-
-          return {
-            ...data,
-            builtinAiModelList,
-            enabledChatModelList,
-            enabledImageModelList,
-            enabledVideoModelList,
-          };
-        }
-
-        const enabledAiProviders: EnabledProvider[] = DEFAULT_MODEL_PROVIDER_LIST.filter(
-          (provider) => provider.enabled,
-        ).map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
-
-        const enabledChatAiProviders = enabledAiProviders.filter((provider) => {
-          return builtinAiModelList.some(
-            (model) => model.providerId === provider.id && model.type === 'chat',
-          );
-        });
-
-        const enabledImageAiProviders = enabledAiProviders
-          .filter((provider) => {
-            return builtinAiModelList.some(
-              (model) => model.providerId === provider.id && model.type === 'image',
-            );
-          })
-          .map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
-
-        const enabledVideoAiProviders = enabledAiProviders
-          .filter((provider) => {
-            return builtinAiModelList.some(
-              (model) => model.providerId === provider.id && model.type === 'video',
-            );
-          })
-          .map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
-
-        // Build model lists for non-login state as well
-        const enabledAiModels = builtinAiModelList.filter((m) => m.enabled);
+        const { LOBE_DEFAULT_MODEL_LIST: builtinAiModelList } = await import('model-bank');
+        const data = await aiProviderService.getAiProviderRuntimeState(Boolean(isLogin));
         const [enabledChatModelList, enabledImageModelList, enabledVideoModelList] =
           await Promise.all([
-            buildChatProviderModelLists(enabledChatAiProviders, enabledAiModels),
-            buildImageProviderModelLists(enabledImageAiProviders, enabledAiModels),
-            buildVideoProviderModelLists(enabledVideoAiProviders, enabledAiModels),
+            buildChatProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels),
+            buildImageProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels),
+            buildVideoProviderModelLists(data.enabledVideoAiProviders, data.enabledAiModels),
           ]);
 
         return {
+          ...data,
           builtinAiModelList,
-          enabledAiModels,
-          enabledAiProviders,
-          enabledChatAiProviders,
           enabledChatModelList,
-          enabledImageAiProviders,
           enabledImageModelList,
-          enabledVideoAiProviders,
           enabledVideoModelList,
-          runtimeConfig: {},
         };
       },
       {

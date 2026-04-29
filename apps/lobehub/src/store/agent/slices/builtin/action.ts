@@ -11,7 +11,8 @@ import { type AgentStore } from '../../store';
 interface UseInitBuiltinAgentContext {
   /**
    * Whether the user is logged in.
-   * When false or undefined, the hook will not fetch the agent.
+   * In local mock/auth-disabled mode this can be false while server APIs still
+   * resolve a user, so builtin agents should still be initialized.
    */
   isLogin?: boolean;
 }
@@ -47,7 +48,7 @@ export class BuiltinAgentSliceActionImpl {
     context?: UseInitBuiltinAgentContext,
   ): SWRResponse<AgentItem | null> => {
     return useOnlyFetchOnceSWR(
-      context?.isLogin === false ? null : `initBuiltinAgent:${slug}`,
+      `initBuiltinAgent:${slug}:${context?.isLogin ?? 'unknown'}`,
       async () => {
         const data = await agentService.getBuiltinAgent(slug);
 

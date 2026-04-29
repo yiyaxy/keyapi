@@ -301,15 +301,17 @@ func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float6
 }
 
 var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){
-	relayconstant.RelayModeSunoFetchByID:  sunoFetchByIDRespBodyBuilder,
-	relayconstant.RelayModeSunoFetch:      sunoFetchRespBodyBuilder,
-	relayconstant.RelayModeVideoFetchByID: videoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeSunoFetchByID:        sunoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeSunoFetch:            sunoFetchRespBodyBuilder,
+	relayconstant.RelayModeVideoFetchByID:       videoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeImagesAsyncFetchByID: imageAsyncFetchByIDRespBodyBuilder,
 }
 
 func RelayTaskFetch(c *gin.Context, relayMode int) (taskResp *dto.TaskError) {
 	respBuilder, ok := fetchRespBuilders[relayMode]
 	if !ok {
 		taskResp = service.TaskErrorWrapperLocal(errors.New("invalid_relay_mode"), "invalid_relay_mode", http.StatusBadRequest)
+		return taskResp
 	}
 
 	respBody, taskErr := respBuilder(c)
@@ -325,6 +327,125 @@ func RelayTaskFetch(c *gin.Context, relayMode int) (taskResp *dto.TaskError) {
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError)
 		return
+	}
+	return
+}
+
+type imageAsyncFetchResponse struct {
+	TaskID    string                `json:"task_id"`
+	Status    string                `json:"status"`
+	Progress  int                   `json:"progress,omitempty"`
+	Created   int64                 `json:"created"`
+	Completed int64                 `json:"completed,omitempty"`
+	Result    *dto.ImageResponse    `json:"result"`
+	Error     *imageAsyncFetchError `json:"error"`
+}
+
+type imageAsyncFetchError struct {
+	Message string `json:"message"`
+	Code    string `json:"code"`
+}
+
+func imageAsyncStatus(status model.TaskStatus) string {
+	switch status {
+	case model.TaskStatusNotStart, model.TaskStatusSubmitted, model.TaskStatusQueued:
+		return "queued"
+	case model.TaskStatusInProgress:
+		return "processing"
+	case model.TaskStatusSuccess:
+		return "succeeded"
+	case model.TaskStatusFailure:
+		return "failed"
+	default:
+		return "queued"
+	}
+}
+
+func imageAsyncProgress(task *model.Task) int {
+	if task == nil {
+		return 0
+	}
+	progress := strings.TrimSuffix(task.Progress, "%")
+	if progress == "" {
+		if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
+			return 100
+		}
+		return 0
+	}
+	v, err := strconv.Atoi(progress)
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+func imageAsyncFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
+	userID := c.GetInt("id")
+	taskID := c.Param("task_id")
+	originTask, exists, err := model.GetByTaskId(userID, taskID)
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+		return
+	}
+	if !exists || originTask == nil {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task not found"), "task_not_found", http.StatusNotFound)
+		return
+	}
+
+	resp := imageAsyncFetchResponse{
+		TaskID:   originTask.TaskID,
+		Status:   imageAsyncStatus(originTask.Status),
+		Progress: imageAsyncProgress(originTask),
+		Created:  originTask.SubmitTime,
+		Result:   nil,
+		Error:    nil,
+	}
+
+	switch originTask.Status {
+	case model.TaskStatusSuccess:
+		resp.Progress = 100
+		resp.Completed = originTask.FinishTime
+		var data []dto.ImageData
+		if len(originTask.PrivateData.ImageData) > 0 {
+			if err := common.Unmarshal(originTask.PrivateData.ImageData, &data); err != nil {
+				taskResp = service.TaskErrorWrapper(err, "invalid_image_data", http.StatusInternalServerError)
+				return
+			}
+		}
+		tenantID := 0
+		if tid, ok := c.Get(string(constant.ContextKeyTenantId)); ok {
+			if id, ok := tid.(int); ok {
+				tenantID = id
+			}
+		}
+		for i := range data {
+			if data[i].Url != "" {
+				data[i].Url = taskcommon.BuildImageProxyURL(originTask.TaskID, i, tenantID)
+			}
+		}
+		completed := originTask.FinishTime
+		if completed == 0 {
+			completed = common.GetTimestamp()
+		}
+		resp.Result = &dto.ImageResponse{
+			Created: completed,
+			Data:    data,
+		}
+	case model.TaskStatusFailure:
+		resp.Progress = 100
+		resp.Completed = originTask.FinishTime
+		resp.Error = &imageAsyncFetchError{
+			Message: originTask.FailReason,
+			Code:    "task_failed",
+		}
+		if resp.Error.Message == "" {
+			resp.Error.Message = "task failed"
+		}
+	}
+
+	respBody, err = common.Marshal(resp)
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
 	return
 }

@@ -15,6 +15,7 @@ func SetVideoRouter(router *gin.Engine) {
 	videoProxyRouter.Use(middleware.TokenOrUserAuth())
 	{
 		videoProxyRouter.GET("/videos/:task_id/content", media.VideoProxy)
+		videoProxyRouter.GET("/images/async/:task_id/content/:index", media.ImageProxy)
 	}
 
 	videoV1Router := router.Group("/v1")

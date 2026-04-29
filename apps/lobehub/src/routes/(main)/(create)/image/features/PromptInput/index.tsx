@@ -7,7 +7,6 @@ import { Images } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { loginRequired } from '@/components/Error/loginRequiredNotification';
 import Action from '@/features/ChatInput/ActionBar/components/Action';
 import ModelSwitchPanel from '@/features/ModelSwitchPanel';
 import PromptTransformAction from '@/features/PromptTransform/PromptTransformAction';
@@ -126,7 +125,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   const isSupportPromptExtend = useImageStore(isSupportedParamSelector('promptExtend'));
   const isSupportWatermark = useImageStore(isSupportedParamSelector('watermark'));
   const isSupportWebSearch = useImageStore(isSupportedParamSelector('webSearch'));
-  const isLogin = useUserStore(authSelectors.isLogin);
+  const isAuthLoaded = useUserStore(authSelectors.isLoaded);
   const enabledImageModelList = useAiInfraStore(aiProviderSelectors.enabledImageModelList);
   const { showDimensionControl } = useDimensionControl();
   const { autoSetDimensions, extractUrlAndDimensions } = useAutoDimensions();
@@ -139,11 +138,6 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   const hasProcessedModel = useRef(false);
 
   const handleGenerate = async () => {
-    if (!isLogin) {
-      loginRequired.redirect({ timeout: 2000 });
-      return;
-    }
-
     await createImage();
   };
 
@@ -165,7 +159,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   }, [modelParam, isInit, enabledImageModelList, setModelAndProviderOnSelect, setModelParam]);
 
   useEffect(() => {
-    if (promptParam && !hasProcessedPrompt.current && isLogin) {
+    if (promptParam && !hasProcessedPrompt.current && isAuthLoaded) {
       const decodedPrompt = decodeURIComponent(promptParam);
       setValue(decodedPrompt);
       hasProcessedPrompt.current = true;
@@ -179,7 +173,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
         window.clearTimeout(timeoutId);
       };
     }
-  }, [promptParam, isLogin, setValue, setPromptParam, createImage]);
+  }, [promptParam, isAuthLoaded, setValue, setPromptParam, createImage]);
 
   const imagePreviewUrls = useMemo(
     () => [imageUrl, ...(imageUrls ?? [])].filter(Boolean) as string[],
@@ -237,7 +231,14 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   }, [isSupportImageUrl, isSupportImageUrls, imageUrlsMaxCount]);
 
   return (
-    <Flexbox gap={32} width={'100%'}>
+    <Flexbox
+      gap={28}
+      style={{
+        marginInline: 'auto',
+        maxWidth: 760,
+        width: '100%',
+      }}
+    >
       {showTitle && <PromptTitle />}
       <GenerationPromptInput
         disableGenerate={!isInit}

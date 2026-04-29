@@ -153,6 +153,38 @@ describe('CreateImageAction', () => {
       expect(result.current.parameters?.prompt).toBe('');
     });
 
+    it('should create a real topic when active topic is a temporary optimistic id', async () => {
+      const mockCreateGenerationTopic = vi.fn().mockResolvedValue('real-topic-id');
+      const mockSwitchGenerationTopic = vi.fn();
+      const mockSetTopicBatchLoaded = vi.fn();
+
+      const { result } = renderHook(() => useImageStore());
+
+      act(() => {
+        useImageStore.setState({
+          activeGenerationTopicId: '1777442848608',
+          createGenerationTopic: mockCreateGenerationTopic,
+          switchGenerationTopic: mockSwitchGenerationTopic,
+          setTopicBatchLoaded: mockSetTopicBatchLoaded,
+        });
+      });
+
+      await act(async () => {
+        await result.current.createImage();
+      });
+
+      expect(mockCreateGenerationTopic).toHaveBeenCalledWith(['test prompt']);
+      expect(mockSetTopicBatchLoaded).toHaveBeenCalledWith('real-topic-id');
+      expect(mockSwitchGenerationTopic).toHaveBeenCalledWith('real-topic-id');
+      expect(mockImageService.createImage).toHaveBeenCalledWith({
+        generationTopicId: 'real-topic-id',
+        provider: 'test-provider',
+        model: 'test-model',
+        imageNum: 4,
+        params: { prompt: 'test prompt', width: 1024, height: 1024 },
+      });
+    });
+
     it('should throw error when parameters is not initialized', async () => {
       const { result } = renderHook(() => useImageStore());
 
@@ -187,6 +219,30 @@ describe('CreateImageAction', () => {
           await result.current.createImage();
         }),
       ).rejects.toThrow('prompt is empty');
+    });
+
+    it('should reset creating state when creating a new topic fails', async () => {
+      const error = new Error('Topic error');
+      const mockCreateGenerationTopic = vi.fn().mockRejectedValueOnce(error);
+
+      const { result } = renderHook(() => useImageStore());
+
+      act(() => {
+        useImageStore.setState({
+          activeGenerationTopicId: '',
+          createGenerationTopic: mockCreateGenerationTopic,
+        });
+      });
+
+      await expect(
+        act(async () => {
+          await result.current.createImage();
+        }),
+      ).rejects.toThrow('Topic error');
+
+      expect(useImageStore.getState().isCreating).toBe(false);
+      expect(useImageStore.getState().isCreatingWithNewTopic).toBe(false);
+      expect(mockImageService.createImage).not.toHaveBeenCalled();
     });
 
     it('should handle service error', async () => {

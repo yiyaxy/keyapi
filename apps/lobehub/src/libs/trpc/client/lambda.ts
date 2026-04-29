@@ -65,14 +65,16 @@ const errorHandlingLink: TRPCLink<LambdaRouter> = () => {
                     if (!isDesktop) {
                       const { getUserStoreState } = await import('@/store/user/store');
                       const { isSignedIn, logout } = getUserStoreState();
-                      // If user is still marked as signed in but got 401,
-                      // session is invalid - clear client state first
+                      // Only redirect to sign-in when the user HAD a valid session that
+                      // has since expired or been invalidated. If the user was never
+                      // signed in (token-based access via ?settings=), silently drop
+                      // the 401 so they can still use the app with the injected key.
                       if (isSignedIn) {
                         await logout();
+                        const { loginRequired } =
+                          await import('@/components/Error/loginRequiredNotification');
+                        loginRequired.redirect();
                       }
-                      const { loginRequired } =
-                        await import('@/components/Error/loginRequiredNotification');
-                      loginRequired.redirect();
                     }
                   }
                 }

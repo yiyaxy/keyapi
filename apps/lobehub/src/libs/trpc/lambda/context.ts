@@ -115,7 +115,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
 
   if (process.env.NODE_ENV === 'development' && (isDebugApi || isMockUser)) {
     return createContextInner({
-      userId: process.env.MOCK_DEV_USER_ID,
+      userId: process.env.MOCK_DEV_USER_ID || 'DEV_USER',
     });
   }
 

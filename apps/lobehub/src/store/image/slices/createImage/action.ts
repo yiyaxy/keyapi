@@ -14,6 +14,8 @@ import { generationTopicSelectors } from '../generationTopic';
 
 // ====== helper functions ====== //
 
+const isOptimisticGenerationTopicId = (id?: null | string) => !!id && /^\d{13,}$/.test(id);
+
 // ====== action implementation ====== //
 
 type Setter = StoreSetter<ImageStore>;
@@ -34,43 +36,46 @@ export class CreateImageActionImpl {
   async createImage() {
     this.#set({ isCreating: true }, false, 'createImage/startCreateImage');
 
-    const store = this.#get();
-    const imageNum = imageGenerationConfigSelectors.imageNum(store);
-    const parameters = imageGenerationConfigSelectors.parameters(store);
-    const provider = imageGenerationConfigSelectors.provider(store);
-    const model = imageGenerationConfigSelectors.model(store);
-    const activeGenerationTopicId = generationTopicSelectors.activeGenerationTopicId(store);
-    const { createGenerationTopic, switchGenerationTopic, setTopicBatchLoaded } = store;
-
-    if (!parameters) {
-      throw new TypeError('parameters is not initialized');
-    }
-
-    if (!parameters.prompt) {
-      throw new TypeError('prompt is empty');
-    }
-
-    // Track the final topic ID to use for image creation
-    let finalTopicId = activeGenerationTopicId;
-
-    // 1. Create generation topic if not exists
-    const generationTopicId = activeGenerationTopicId;
     let isNewTopic = false;
 
-    if (!generationTopicId) {
-      isNewTopic = true;
-      const prompts = [parameters.prompt];
-      const newGenerationTopicId = await createGenerationTopic(prompts);
-      finalTopicId = newGenerationTopicId;
-
-      // 2. Initialize empty batch array to avoid skeleton screen
-      setTopicBatchLoaded(newGenerationTopicId);
-
-      // 3. Switch to the new topic (now it has empty data, so no skeleton screen)
-      switchGenerationTopic(newGenerationTopicId);
-    }
-
     try {
+      const store = this.#get();
+      const imageNum = imageGenerationConfigSelectors.imageNum(store);
+      const parameters = imageGenerationConfigSelectors.parameters(store);
+      const provider = imageGenerationConfigSelectors.provider(store);
+      const model = imageGenerationConfigSelectors.model(store);
+      const activeGenerationTopicId = generationTopicSelectors.activeGenerationTopicId(store);
+      const { createGenerationTopic, switchGenerationTopic, setTopicBatchLoaded } = store;
+
+      if (!parameters) {
+        throw new TypeError('parameters is not initialized');
+      }
+
+      if (!parameters.prompt) {
+        throw new TypeError('prompt is empty');
+      }
+
+      // Track the final topic ID to use for image creation
+      const generationTopicId = isOptimisticGenerationTopicId(activeGenerationTopicId)
+        ? null
+        : activeGenerationTopicId;
+
+      let finalTopicId = generationTopicId;
+
+      // 1. Create generation topic if not exists
+      if (!generationTopicId) {
+        isNewTopic = true;
+        const prompts = [parameters.prompt];
+        const newGenerationTopicId = await createGenerationTopic(prompts);
+        finalTopicId = newGenerationTopicId;
+
+        // 2. Initialize empty batch array to avoid skeleton screen
+        setTopicBatchLoaded(newGenerationTopicId);
+
+        // 3. Switch to the new topic (now it has empty data, so no skeleton screen)
+        switchGenerationTopic(newGenerationTopicId);
+      }
+
       // 4. If it's a new topic, set the creating state after topic creation
       if (isNewTopic) {
         this.#set(

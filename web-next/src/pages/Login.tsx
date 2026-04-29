@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -31,7 +31,9 @@ export function Login() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [wechatOpen, setWechatOpen] = useState(false);
+  const wechatInitializedRef = useRef(false);
   const redirect = params.get('redirect') || '/';
+  const loginMode = params.get('mode');
   const registerEnabled = cfg.register_enabled !== false;
   const passwordLoginEnabled = cfg.password_login_enabled !== false;
   const wechatLoginEnabled = cfg.wechat_login === true || cfg.wx_mini_login === true;
@@ -42,10 +44,17 @@ export function Login() {
   });
 
   useEffect(() => {
-    if (passwordLoginEnabled) {
+    if (passwordLoginEnabled && (!wechatLoginEnabled || loginMode === 'password')) {
       form.setFocus('username');
     }
-  }, [form, passwordLoginEnabled]);
+  }, [form, loginMode, passwordLoginEnabled, wechatLoginEnabled]);
+
+  useEffect(() => {
+    if (!wechatLoginEnabled || wechatInitializedRef.current || loginMode === 'password') return;
+    wechatInitializedRef.current = true;
+    const id = window.setTimeout(() => setWechatOpen(true), 0);
+    return () => window.clearTimeout(id);
+  }, [loginMode, wechatLoginEnabled]);
 
   if (status === 'authenticated') {
     return <Navigate to={redirect} replace />;

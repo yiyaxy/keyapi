@@ -79,6 +79,12 @@ COPY apps/desktop/src/main/package.json ./apps/desktop/src/main/package.json
 RUN set -e && \
     if [ "${USE_CN_MIRROR:-false}" = "true" ]; then \
         export SENTRYCLI_CDNURL="https://npmmirror.com/mirrors/sentry-cli"; \
+        export FFMPEG_BINARIES_URL="https://registry.npmmirror.com/-/binary/ffmpeg-static"; \
+        export SHARP_BINARY_HOST="https://npmmirror.com/mirrors/sharp"; \
+        export SHARP_LIBVIPS_BINARY_HOST="https://npmmirror.com/mirrors/sharp-libvips"; \
+        export PUPPETEER_DOWNLOAD_BASE_URL="https://registry.npmmirror.com/-/binary/chromium-browser-snapshots"; \
+        export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"; \
+        export NODEJS_ORG_MIRROR="https://npmmirror.com/mirrors/node"; \
         npm config set registry "https://registry.npmmirror.com/"; \
         echo 'canvas_binary_host_mirror=https://npmmirror.com/mirrors/canvas' >> .npmrc; \
     fi && \

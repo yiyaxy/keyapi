@@ -158,6 +158,7 @@ describe('createContextInner', () => {
 describe('createLambdaContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     mockExtractTraceContext.mockReturnValue(undefined);
     mockGetSession.mockResolvedValue({ user: { id: 'session-user' } });
     mockValidateOIDCJWT.mockResolvedValue({
@@ -221,5 +222,30 @@ describe('createLambdaContext', () => {
 
     expect(context.userId).toBe('session-user');
     expect(mockGetSession).toHaveBeenCalledOnce();
+  });
+
+  it('should use mocked dev user when ENABLE_MOCK_DEV_USER is enabled', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('ENABLE_MOCK_DEV_USER', '1');
+    vi.stubEnv('MOCK_DEV_USER_ID', 'mock-user-123');
+
+    const request = new NextRequest('https://example.com/trpc/lambda');
+
+    const context = await createLambdaContext(request);
+
+    expect(context.userId).toBe('mock-user-123');
+    expect(mockGetSession).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to DEV_USER when dev mock user id is not set', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('ENABLE_MOCK_DEV_USER', '1');
+
+    const request = new NextRequest('https://example.com/trpc/lambda');
+
+    const context = await createLambdaContext(request);
+
+    expect(context.userId).toBe('DEV_USER');
+    expect(mockGetSession).not.toHaveBeenCalled();
   });
 });

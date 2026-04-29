@@ -85,10 +85,10 @@ const InputArea = () => {
   );
 
   return (
-    <Flexbox gap={16} style={{ marginBottom: 16 }}>
+    <Flexbox gap={16} style={{ marginBottom: 16, maxWidth: 760, width: '100%' }}>
       <Flexbox
         ref={chatInputRef}
-        style={{ paddingBottom: showSkillBanner ? 32 : 0, position: 'relative' }}
+        style={{ paddingBottom: showSkillBanner ? 32 : 0, position: 'relative', width: '100%' }}
       >
         {showSkillBanner && <SkillInstallBanner />}
         <DragUploadZone

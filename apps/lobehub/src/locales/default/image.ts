@@ -50,6 +50,7 @@ export default {
   'generation.metadata.count': '{{count}} Images',
   'generation.status.failed': 'Generation Failed',
   'generation.status.generating': 'Generating...',
+  'generation.status.problem': '生成图片遇到问题',
   'notSupportGuide.desc':
     'The current deployment mode does not support AI image generation. Switch to the <1>server database deployment mode</1>, or use <3>LobeHub Cloud</3>.',
   'notSupportGuide.features.fileIntegration.desc':

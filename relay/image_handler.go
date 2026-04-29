@@ -23,9 +23,6 @@ import (
 func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 	helper.ApplyChannelBillingOverrides(info)
-	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
-		return apiErr
-	}
 
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
@@ -40,6 +37,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
+	}
+	if apiErr := applyImagePerCallBillingIfNeeded(c, info); apiErr != nil {
+		return apiErr
+	}
+	if apiErr := helper.EnforcePlatformChannelQuota(c, info); apiErr != nil {
+		return apiErr
 	}
 
 	adaptor := GetAdaptor(info.ApiType)
@@ -126,16 +129,11 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	// calculation (both price-based and ratio-based paths).
 	// Adaptors may have already set a more accurate count from the
 	// upstream response; only set the default when they haven't.
-	if _, hasN := info.PriceData.OtherRatios["n"]; !hasN {
+	if _, hasN := info.PriceData.OtherRatios["n"]; !hasN && !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
 		info.PriceData.AddOtherRatio("n", float64(imageN))
 	}
 
-	if usage.(*dto.Usage).TotalTokens == 0 {
-		usage.(*dto.Usage).TotalTokens = 1
-	}
-	if usage.(*dto.Usage).PromptTokens == 0 {
-		usage.(*dto.Usage).PromptTokens = 1
-	}
+	normalizeImageGenerationUsage(usage.(*dto.Usage), info, request)
 
 	quality := "standard"
 	if request.Quality == "hd" {
@@ -156,4 +154,70 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
 	return nil
+}
+
+func applyImagePerCallBillingIfNeeded(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if info == nil || !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+		return nil
+	}
+
+	prevPreConsumed := 0
+	if info.Billing != nil {
+		prevPreConsumed = info.Billing.GetPreConsumedQuota()
+	}
+	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeModelPriceError)
+	}
+	if !priceData.UsePrice {
+		priceData.UsePrice = true
+		priceData.ModelPrice = priceData.ModelRatio / 2
+		priceData.PlatformCostModelPrice = priceData.PlatformCostModelRatio / 2
+	}
+	info.PriceData = priceData
+	if info.Billing != nil && priceData.Quota > prevPreConsumed {
+		delta := priceData.Quota - prevPreConsumed
+		if err := info.Billing.PreConsumeAdditional(c, delta); err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+	}
+	return nil
+}
+
+func normalizeImageGenerationUsage(usage *dto.Usage, info *relaycommon.RelayInfo, request *dto.ImageRequest) {
+	if usage == nil {
+		return
+	}
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.TotalTokens > 0 {
+		usage.PromptTokens = usage.TotalTokens
+	}
+	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	if usage.PromptTokens+usage.CompletionTokens > 0 {
+		return
+	}
+
+	promptTokens := 0
+	if info != nil {
+		promptTokens = info.GetEstimatePromptTokens()
+	}
+	imageTokens := 0
+	if request != nil {
+		if meta := request.GetTokenCountMeta(); meta != nil && meta.MaxTokens > 0 {
+			imageTokens = meta.MaxTokens
+		}
+	}
+	if imageTokens > 0 {
+		usage.PromptTokens = promptTokens + imageTokens
+		usage.PromptTokensDetails.ImageTokens = imageTokens
+		usage.TotalTokens = usage.PromptTokens
+		return
+	}
+
+	if promptTokens <= 0 {
+		promptTokens = 1
+	}
+	usage.PromptTokens = promptTokens
+	usage.TotalTokens = promptTokens
 }

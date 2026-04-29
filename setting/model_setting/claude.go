@@ -26,7 +26,7 @@ var defaultClaudeSettings = ClaudeSettings{
 	HeadersSettings:        map[string]map[string][]string{},
 	ThinkingAdapterEnabled: true,
 	DefaultMaxTokens: map[string]int{
-		"default": 8192,
+		"default": 128000,
 	},
 	ThinkingAdapterBudgetTokensPercentage: 0.8,
 }
@@ -43,7 +43,7 @@ func init() {
 func GetClaudeSettings() *ClaudeSettings {
 	// check default max tokens must have default key
 	if _, ok := claudeSettings.DefaultMaxTokens["default"]; !ok {
-		claudeSettings.DefaultMaxTokens["default"] = 8192
+		claudeSettings.DefaultMaxTokens["default"] = 128000
 	}
 	return &claudeSettings
 }
