@@ -89,23 +89,48 @@ export const normalizeChatModel = async (model: EnabledAiModel): Promise<Provide
 export const normalizeImageModel = async (
   model: EnabledAiModel,
 ): Promise<ProviderModelListItem> => {
+  const imageModelId = model.id.endsWith(':image') ? model.id : `${model.id}:image`;
   const fallbackParametersPromise = model.parameters
     ? Promise.resolve<ModelParamsSchema | undefined>(model.parameters)
     : getModelPropertyWithFallback<ModelParamsSchema | undefined>(
-        model.id,
+        imageModelId,
         'parameters',
         model.providerId,
+      ).then(
+        (parameters) =>
+          parameters ||
+          getModelPropertyWithFallback<ModelParamsSchema | undefined>(
+            model.id,
+            'parameters',
+            model.providerId,
+          ),
       );
 
   const modelWithPricing = model as AIImageModelCard;
   const fallbackPricingPromise = modelWithPricing.pricing
     ? Promise.resolve<Pricing | undefined>(modelWithPricing.pricing)
-    : getModelPropertyWithFallback<Pricing | undefined>(model.id, 'pricing', model.providerId);
+    : getModelPropertyWithFallback<Pricing | undefined>(
+        imageModelId,
+        'pricing',
+        model.providerId,
+      ).then(
+        (pricing) =>
+          pricing ||
+          getModelPropertyWithFallback<Pricing | undefined>(
+            model.id,
+            'pricing',
+            model.providerId,
+          ),
+      );
 
   const fallbackDescriptionPromise = getModelPropertyWithFallback<string | undefined>(
-    model.id,
+    imageModelId,
     'description',
     model.providerId,
+  ).then(
+    (description) =>
+      description ||
+      getModelPropertyWithFallback<string | undefined>(model.id, 'description', model.providerId),
   );
 
   const [fallbackParameters, fallbackPricing, fallbackDescription] = await Promise.all([

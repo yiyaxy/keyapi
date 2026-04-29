@@ -352,7 +352,14 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   );
 
   return (
-    <Flexbox gap={32} width={'100%'}>
+    <Flexbox
+      gap={28}
+      style={{
+        marginInline: 'auto',
+        maxWidth: 760,
+        width: '100%',
+      }}
+    >
       {showTitle && <PromptTitle />}
       <Flexbox gap={8}>
         <GenerationPromptInput

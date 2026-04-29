@@ -237,7 +237,14 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
   }, [isSupportImageUrl, isSupportImageUrls, imageUrlsMaxCount]);
 
   return (
-    <Flexbox gap={32} width={'100%'}>
+    <Flexbox
+      gap={28}
+      style={{
+        marginInline: 'auto',
+        maxWidth: 760,
+        width: '100%',
+      }}
+    >
       {showTitle && <PromptTitle />}
       <GenerationPromptInput
         disableGenerate={!isInit}
