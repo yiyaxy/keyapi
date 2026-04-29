@@ -476,74 +476,21 @@ export class AiProviderActionImpl {
     return useClientDataSWR<AiProviderRuntimeStateWithBuiltinModels | undefined>(
       shouldFetch ? [AiProviderSwrKey.fetchAiProviderRuntimeState, isLogin] : null,
       async ([, isLogin]) => {
-        const [{ LOBE_DEFAULT_MODEL_LIST: builtinAiModelList }, { DEFAULT_MODEL_PROVIDER_LIST }] =
-          await Promise.all([import('model-bank'), import('model-bank/modelProviders')]);
-
-        if (isLogin) {
-          const data = await aiProviderService.getAiProviderRuntimeState();
-          // Build model lists with proper async handling
-          const [enabledChatModelList, enabledImageModelList, enabledVideoModelList] =
-            await Promise.all([
-              buildChatProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels),
-              buildImageProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels),
-              buildVideoProviderModelLists(data.enabledVideoAiProviders, data.enabledAiModels),
-            ]);
-
-          return {
-            ...data,
-            builtinAiModelList,
-            enabledChatModelList,
-            enabledImageModelList,
-            enabledVideoModelList,
-          };
-        }
-
-        const enabledAiProviders: EnabledProvider[] = DEFAULT_MODEL_PROVIDER_LIST.filter(
-          (provider) => provider.enabled,
-        ).map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
-
-        const enabledChatAiProviders = enabledAiProviders.filter((provider) => {
-          return builtinAiModelList.some(
-            (model) => model.providerId === provider.id && model.type === 'chat',
-          );
-        });
-
-        const enabledImageAiProviders = enabledAiProviders
-          .filter((provider) => {
-            return builtinAiModelList.some(
-              (model) => model.providerId === provider.id && model.type === 'image',
-            );
-          })
-          .map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
-
-        const enabledVideoAiProviders = enabledAiProviders
-          .filter((provider) => {
-            return builtinAiModelList.some(
-              (model) => model.providerId === provider.id && model.type === 'video',
-            );
-          })
-          .map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
-
-        // Build model lists for non-login state as well
-        const enabledAiModels = builtinAiModelList.filter((m) => m.enabled);
+        const { LOBE_DEFAULT_MODEL_LIST: builtinAiModelList } = await import('model-bank');
+        const data = await aiProviderService.getAiProviderRuntimeState(Boolean(isLogin));
         const [enabledChatModelList, enabledImageModelList, enabledVideoModelList] =
           await Promise.all([
-            buildChatProviderModelLists(enabledChatAiProviders, enabledAiModels),
-            buildImageProviderModelLists(enabledImageAiProviders, enabledAiModels),
-            buildVideoProviderModelLists(enabledVideoAiProviders, enabledAiModels),
+            buildChatProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels),
+            buildImageProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels),
+            buildVideoProviderModelLists(data.enabledVideoAiProviders, data.enabledAiModels),
           ]);
 
         return {
+          ...data,
           builtinAiModelList,
-          enabledAiModels,
-          enabledAiProviders,
-          enabledChatAiProviders,
           enabledChatModelList,
-          enabledImageAiProviders,
           enabledImageModelList,
-          enabledVideoAiProviders,
           enabledVideoModelList,
-          runtimeConfig: {},
         };
       },
       {
