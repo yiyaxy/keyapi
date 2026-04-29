@@ -445,60 +445,147 @@ if insertErr := task.Insert(); insertErr != nil {
 
 #### 5.3.3 goroutine 内部:`runSyncUpstream(snapshot)`
 
-`snapshot` 至少包含:`taskPublicID`、`channelID`、`apiKey`、`baseURL`、`channelType`、`apiType`、`originModelName`、`upstreamModelName`、`imageRequestJSON`(序列化的 `dto.ImageRequest`)、`tenantID`、`userID`、`tokenID`、`priceData`(用于 settle)。
-
-执行步骤:
-1. `ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)`
-2. `defer recover()` 兜底 panic,标记 task `Failure`
-3. 构造合成的 `relayInfo`(从 snapshot 字段重建)
-4. 重新 load task: `task, _, _ := model.GetByOnlyTaskId(snapshot.taskPublicID)` —— 因为 hook 拿到的 `task` 指针的 `Status` 字段在 controller 那一刻还是 NOT_START,goroutine 中要用最新的快照做 CAS
-5. 调 `relay.ExecImageUpstream(ctx, syntheticInfo, imageRequest) → (*dto.ImageResponse, *dto.Usage, error)`
-6. 成功:
-   - 保存旧状态:`oldStatus := task.Status`(应该是 `NOT_START`,polling 还没动它)
-   - 序列化 `dto.ImageResponse.Data` 到 `task.PrivateData.ImageData`
-   - `task.Status = Success`、`task.FinishTime = now`、`task.Progress = "100%"`
-   - `ok, err := task.UpdateWithStatus(oldStatus)` ← **关键:CAS 必须用 oldStatus 而非 Success,否则 0 row affected**
-   - 若 `!ok`(被并发更新过,例如 polling stuck 检测把它改成 Failure 了),记日志放弃,不重复 settle
-   - 否则 `service.SettleTaskBilling(taskID, actualUsage)` — 走 task 框架的统一结算
-7. 失败:
-   - `oldStatus := task.Status`
-   - `task.FailReason = err.Error()`、`task.Status = Failure`、`task.Progress = "100%"`
-   - `task.UpdateWithStatus(oldStatus)` ← 同样的 CAS 模式
-   - 走 task 框架的统一退款
-
-> **CAS 模式说明**:`Task.UpdateWithStatus(fromStatus)` 内部生成 `WHERE status = fromStatus` 条件更新(`model/task.go:415-421`)。`InitTask` 默认 status = `TaskStatusNotStart`(`model/task.go:205`)。所以 syncwrap 整个生命周期里 task 状态从 `NotStart` 直接跳到 `Success/Failure`,中间没有 `Submitted/InProgress` 中间态(因为没有上游可"提交")。
-
-#### 5.3.4 引入 `ImageResponseExtractor`(P2 #3 修法)
-
-**问题**:现有图片 adaptor 的 `DoResponse`(如 `relay/channel/openai/relay-openai.go:677 OpenaiHandlerWithUsage`)在解析的同时**直接写 gin Writer**(line 692 `IOCopyBytesGracefully(c, resp, responseBody)`)。后台 goroutine 没有 client 可写,也不应该假装写一个虚假的 Writer。
-
-**方案**:引入新接口,所有支持图片生成的 adaptor 实现"只解析不写"版本:
-
+`SyncWrapSnapshot` 结构定义(`relay/channel/task/syncwrap/snapshot.go` 新):
 ```go
-// relay/channel/adapter.go
-type ImageResponseExtractor interface {
-    ExtractImageResponse(resp *http.Response, info *relaycommon.RelayInfo) (
-        imageResp *dto.ImageResponse,
-        usage *dto.Usage,
-        err *types.NewAPIError,
-    )
+type SyncWrapSnapshot struct {
+    // 任务标识
+    TaskPublicID string
+    TaskID       int64  // model.Task.ID,用于 CAS / load
+    // 上游连接
+    ChannelID    int
+    ChannelType  int
+    ApiType      int
+    ApiKey       string
+    BaseURL      string
+    Proxy        string
+    ChannelMeta  *relaycommon.ChannelMeta  // 上游所需元数据
+    // 模型 / 请求
+    OriginModelName   string
+    UpstreamModelName string
+    ImageRequest      dto.ImageRequest  // 反序列化好的请求,goroutine 直接用
+    // 用户/租户(用于失败退款时定位钱包)
+    UserID    int
+    TenantID  int
+    TokenID   int
+    // 计费快照(失败退款用)
+    Quota          int
+    BillingSource  string
+    SubscriptionId int
+    PriceData      *relaycommon.PriceData
+}
+
+func (s *SyncWrapSnapshot) ToRelayInfo() *relaycommon.RelayInfo {
+    // 重建一个完全自包含的 RelayInfo,不引用任何 gin 字段
+    // 用于 ExecImageUpstream 内部的 adaptor.Init
 }
 ```
 
-各图片 adaptor(OpenAI / Ali / Jimeng / Zhipu / Wenxin / xAI / Gemini 等)实现 `ExtractImageResponse`,内部只读 body + 解析,**不**触碰 gin context。
+> **关键**:整个 snapshot 是值拷贝,绝不持有 `*gin.Context` / `*model.Task` 指针 —— task 行通过 TaskID 在 goroutine 内 reload。
 
-`relay/image_handler.go ImageHelper` 改为:
-1. 调 `adaptor.DoRequest` 拿 raw `*http.Response`
-2. 调 `adaptor.ExtractImageResponse(resp, info)` 拿 `(*dto.ImageResponse, *dto.Usage, error)`
-3. **由 ImageHelper 自己**把 imageResp 序列化后写 gin Writer + 触发计费
+执行步骤:
+1. `ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)`
+2. `defer recover()` 兜底 panic,标记 task `Failure`(走步骤 8 失败路径)
+3. 重新 load task: `task, ok, _ := model.GetByOnlyTaskId(snapshot.taskPublicID)`
+4. **终态检查**(防 sweepTimedOutTasks 抢先):
+   ```go
+   if !ok || task == nil {
+       logger.LogWarn("syncwrap: task not found, abort")
+       return
+   }
+   if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
+       logger.LogWarn(fmt.Sprintf("syncwrap: task %s already terminal (%s), abort to avoid double settlement",
+           task.TaskID, task.Status))
+       return
+   }
+   ```
+   这一步必须有 —— 否则下一步保存的 `oldStatus` 可能是 `Failure`,后续 CAS `UpdateWithStatus(Failure)` 会成功覆盖,把已退款的失败任务改回成功。
+5. `oldStatus := task.Status` —— 此时已确认是非终态(`NotStart` / `Submitted` / `Queued` / `InProgress` 之一)
+6. 调 `relay.ExecImageUpstream(ctx, snapshot, imageRequest) → (*dto.ImageResponse, *dto.Usage, error)`
+7. **成功路径**:
+   - 序列化 `dto.ImageResponse.Data` 到 `task.PrivateData.ImageData`
+   - `task.Status = Success`、`task.FinishTime = now`、`task.Progress = "100%"`
+   - `updated, err := task.UpdateWithStatus(oldStatus)` ← CAS 用 oldStatus
+   - 若 `!updated`(被并发改写)→ 仅记日志,**不重复结算/退款**;sweepTimedOutTasks 已经把它退款了
+   - 若 `updated == true`:**不调用任何 settle 函数**。`controller/relay.go:1205 SettleBilling(c, relayInfo, result.Quota)` 在 submit 时已经把预扣 quota 转成实际记账;图片任务 quota 由 `n + size + model price` 决定,这些参数提交时已知,**不需要差额结算**(本期 `AdjustBillingOnComplete` 永远返 0,见第 8 节)。
+8. **失败路径**:
+   - `task.FailReason = err.Error()`、`task.Status = Failure`、`task.Progress = "100%"`、`task.FinishTime = now`
+   - `updated, err := task.UpdateWithStatus(oldStatus)` ← CAS 用 oldStatus
+   - 若 `!updated` → 仅记日志,**不重复退款**;sweepTimedOutTasks 已经处理
+   - 若 `updated == true`:`service.RefundTaskQuota(ctx, task, task.FailReason)` —— **调用现有导出函数**(`service/task_polling.go:81` 等多处使用)
 
-`syncwrap.runSyncUpstream` 调:
-1. `adaptor.DoRequest`
-2. `adaptor.ExtractImageResponse` —— **不写 gin**,直接拿 `*dto.ImageResponse` 写到 `task.PrivateData.ImageData`
+> **结算/退款 API 列表**(spec 必须用现有的,不可虚构):
+> - `service.RefundTaskQuota(ctx, task, reason)` —— 失败退款,导出
+> - `service.RecalculateTaskQuota(ctx, task, actualQuota, reason)` —— 差额结算,导出(本期不用)
+> - `service.RecalculateTaskQuotaByTokens(ctx, task, totalTokens)` —— 按 token 差额结算,导出(本期不用)
+> - `service.settleTaskBillingOnComplete(...)` —— **未导出**,仅 `task_polling.go` 内部使用
+> - 提交时的 `service.SettleBilling(c, relayInfo, quota)` 已在 `controller/relay.go:1205` 调用,**syncwrap 成功路径不再 settle**
 
-新增 `relay.ExecImageUpstream(ctx, info, request) → (*dto.ImageResponse, *dto.Usage, error)` 封装步骤 1+2,两边复用。
+> **CAS 模式说明**:`Task.UpdateWithStatus(fromStatus)` 内部生成 `WHERE status = fromStatus` 条件更新(`model/task.go:415-421`)。`InitTask` 默认 status = `TaskStatusNotStart`(`model/task.go:205`)。syncwrap 整个生命周期 task 状态从 `NotStart` 直接跳到 `Success/Failure`,中间没有 `Submitted/InProgress` 中间态(因为没有上游可"提交")。
 
-> 迁移成本:每家现有图片渠道 adaptor 都要新增 `ExtractImageResponse` 方法。可以渐进迁移:第一期只覆盖 OpenAI / Ali / Jimeng / Wenxin 等用得上的;未实现的 adaptor `relay.ExecImageUpstream` 返 `errors.New("image extractor not implemented")`,syncwrap 失败标记任务,客户端查询会看到 failed,触发退款,不会数据错乱。
+#### 5.3.4 引入无 gin 的图片执行路径(P2 #3 + 修订:解决 ConvertImageRequest/DoRequest 也要 gin 的问题)
+
+**问题 1**:现有图片 adaptor 的 `DoResponse`(如 `relay/channel/openai/relay-openai.go:677 OpenaiHandlerWithUsage`)在解析时直接写 gin Writer(line 692)。后台 goroutine 没 client 可写。
+
+**问题 2**(本轮修订):现有 `ConvertImageRequest(c, info, request)`、`DoRequest(c, info, body)` 也都要 `*gin.Context`。`relay/channel/api_request.go:293 DoApiRequest` 内部用 `c.Request.Method`、`SetupRequestHeader(c, ...)`、`processHeaderOverride(info, c)`、`doRequest(c, ...)`。后台 goroutine 没法安全使用,伪造 gin 也会 panic(`c.Request` 为 nil 时所有 header 读取都崩)。
+
+**方案**:引入**两个**新接口,完全脱离 gin:
+
+```go
+// relay/channel/adapter.go
+
+// ImageRequestBuilder 给定 ctx + relayInfo + request,返回一个完全配好的 *http.Request
+// 可由后台 goroutine 直接 client.Do() 执行。实现内部不能触碰 *gin.Context。
+type ImageRequestBuilder interface {
+    BuildImageHTTPRequest(
+        ctx context.Context,
+        info *relaycommon.RelayInfo,
+        request dto.ImageRequest,
+    ) (*http.Request, error)
+}
+
+// ImageResponseExtractor 解析上游响应,返回标准化结构,不写 gin。
+type ImageResponseExtractor interface {
+    ExtractImageResponse(
+        resp *http.Response,
+        info *relaycommon.RelayInfo,
+    ) (*dto.ImageResponse, *dto.Usage, error)
+}
+```
+
+实现要点:
+- `BuildImageHTTPRequest` 负责所有原本散在 `ConvertImageRequest + GetRequestURL + SetupRequestHeader + processHeaderOverride` 里、**且不依赖 gin** 的逻辑:URL 拼接、API key 注入、Authorization 头、Content-Type、provider 特定的 body 转换(如 dall-e-3 不传 `n`、gemini 转 generateContent 等)
+- HeaderOverride / DebugLog / IP 转发等**确实只在 gin 路径有意义**的功能,在异步路径里直接跳过(异步任务没有客户端 IP / 自定义请求头转发的概念)
+- ctx 的 cancel 语义:`http.NewRequestWithContext(ctx, ...)`,goroutine 的 5 分钟 timeout ctx 自动控制 HTTP 请求 cancel
+
+`relay.ExecImageUpstream` 签名改为:
+
+```go
+// relay/exec_image_upstream.go (新文件)
+func ExecImageUpstream(
+    ctx context.Context,
+    snapshot *SyncWrapSnapshot,
+    request dto.ImageRequest,
+) (*dto.ImageResponse, *dto.Usage, error)
+```
+
+内部步骤:
+1. `info := snapshot.ToRelayInfo()` —— 从快照重建一个**完全自包含**的 `RelayInfo`(不引用任何 gin 字段);所需字段:`ChannelType`、`ApiType`、`ChannelId`、`ApiKey`、`BaseUrl`、`OriginModelName`、`UpstreamModelName`、`PriceData`、`ChannelMeta`、`Proxy`
+2. `adaptor := GetAdaptor(snapshot.ApiType)`
+3. `adaptor.Init(info)`
+4. 类型断言 `builder, ok := adaptor.(channel.ImageRequestBuilder)` —— 不实现则返 not-implemented 错误
+5. 类型断言 `extractor, ok := adaptor.(channel.ImageResponseExtractor)` —— 不实现则返 not-implemented 错误
+6. `req, err := builder.BuildImageHTTPRequest(ctx, info, request)`
+7. `client, _ := service.GetHttpClientWithProxy(snapshot.Proxy)`
+8. `resp, err := client.Do(req)` —— ctx 控制 timeout/cancel
+9. `defer resp.Body.Close()`
+10. 检查 `resp.StatusCode != 200` → 读 body、构造 error 返回
+11. `return extractor.ExtractImageResponse(resp, info)`
+
+`relay/image_handler.go ImageHelper`(同步路径)**保持不变**,继续走现有 gin-based `adaptor.DoRequest + DoResponse` 路径——不强行迁移,降低对 `/v1/images/generations` 行为的回归风险。
+
+`syncwrap.runSyncUpstream` 只调 `relay.ExecImageUpstream(ctx, snapshot, request)`,完全脱离 gin。
+
+> 迁移成本:每家图片渠道 adaptor 实现两个新方法。第一期覆盖主用渠道(OpenAI / Ali / Jimeng / Wenxin / xAI / Gemini),其余按用量优先级补;未实现的 adaptor `ExecImageUpstream` 返 not-implemented 错误,syncwrap 标记任务 Failure + 退款,不会数据错乱。
 
 #### 5.3.5 `FetchTask` / `ParseTaskResult` 实现策略
 
@@ -648,28 +735,34 @@ type TaskInfo struct {
 . . . goroutine 在后台 . . .
 
 [runSyncUpstream(snapshot)]
-   1. 用 detached context (5 分钟 timeout)
-   2. defer recover() 兜底 panic
-   3. 重新 load task: model.GetByOnlyTaskId(snapshot.taskPublicID)
-   4. oldStatus := task.Status (= NotStart)
-   5. 通过 ApiType 获取上游 sync adaptor (OpenAI / Stability / ...)
-   6. 调用 relay.ExecImageUpstream(ctx, syntheticInfo, imageRequest)
+   1. ctx, cancel := context.WithTimeout(Background, 5min)
+   2. defer recover() 兜底 panic → 走步骤 8 失败路径
+   3. 重新 load task: model.GetByOnlyTaskId(snapshot.TaskPublicID)
+   4. ★终态检查: 若 task.Status ∈ {Success, Failure} → log + 立刻 return
+        (sweepTimedOutTasks 已先动手,不可覆盖)
+   5. oldStatus := task.Status (此时确认是非终态)
+   6. 调 relay.ExecImageUpstream(ctx, snapshot, snapshot.ImageRequest)
       内部:
-        - adaptor.Init(syntheticInfo)
-        - adaptor.ConvertImageRequest (复用现有逻辑)
-        - adaptor.DoRequest (HTTP 调上游)
-        - adaptor.ExtractImageResponse(resp, info)  ← 不写 gin
+        - GetAdaptor(snapshot.ApiType)
+        - adaptor.Init(snapshot.ToRelayInfo())  ← 完全无 gin 的 RelayInfo
+        - 类型断言 channel.ImageRequestBuilder
+            builder.BuildImageHTTPRequest(ctx, info, request) → *http.Request
+        - service.GetHttpClientWithProxy(snapshot.Proxy).Do(req)
+        - 类型断言 channel.ImageResponseExtractor
+            extractor.ExtractImageResponse(resp, info)
         返回 (*dto.ImageResponse, *dto.Usage, error)
    7. 成功:
-      - 序列化 dto.ImageResponse.Data 到 task.PrivateData.ImageData
+      - task.PrivateData.ImageData = JSON marshal(imageResp.Data)
       - task.Status = Success, task.FinishTime = now, task.Progress = "100%"
-      - task.UpdateWithStatus(oldStatus)  ← CAS 用 oldStatus(NotStart)
-      - service.SettleTaskBilling(taskID, actualUsage)
+      - updated, _ := task.UpdateWithStatus(oldStatus)  ← CAS 用 oldStatus
+      - 若 !updated → log,return(并发被抢)
+      - 若 updated → 不再 settle(submit 时 SettleBilling 已记账)
    8. 失败:
       - task.FailReason = err.Error()
-      - task.Status = Failure, task.Progress = "100%"
-      - task.UpdateWithStatus(oldStatus)  ← CAS 用 oldStatus(NotStart)
-      - service 触发退款
+      - task.Status = Failure, task.Progress = "100%", task.FinishTime = now
+      - updated, _ := task.UpdateWithStatus(oldStatus)  ← CAS 用 oldStatus
+      - 若 !updated → log,return
+      - 若 updated → service.RefundTaskQuota(ctx, task, task.FailReason)
    │
    ▼
 [service/task_polling.go]
@@ -757,24 +850,33 @@ type TaskInfo struct {
 
 ## 8. 计费时序
 
-完全沿用现有 task 框架,不做新机制。关键检查点:
+完全沿用现有 task 框架,不做新机制,不引入新函数。关键检查点:
 
 ```
                               ┌────────────────────────┐
-[T0 提交]                     │ 用户钱包                │
-   PreConsumeBilling   ────▶  │ -quota_estimate        │
+[T0 提交进 RelayTaskSubmit]   │ 用户钱包                │
+   service.PreConsumeBilling ────▶ -quota_estimate     │
                               │                        │
-[T1 上游成功(异步)/goroutine成功(同步)]                  │
-   AdjustBillingOnComplete    │                        │
-   = 0 (本期无 actual_seconds  │ (不变)                 │
-   等动态参数差异)              │                        │
+[T0+ 提交后 controller/relay.go:1205]                   │
+   service.SettleBilling       │ (把预扣转成实际记账,    │
+   (一次性,不可重做)           │  log 行写入)            │
                               │                        │
-[T1' 失败]                    │                        │
-   TaskFailRefund      ────▶  │ +quota_estimate        │
+[T1 完成(异步上游 polling /                              │
+    syncwrap goroutine)]        │                        │
+   ─ 成功 ──────────────────▶  │ (不变,T0+ 已结算)      │
+   ─ 失败 ──────────────────▶  │ +quota_estimate        │
+       service.RefundTaskQuota │                        │
                               └────────────────────────┘
 ```
 
-> **不做差额结算**(本期):图片任务 quota 与 `n` 和 `size` 直接关联,这两个参数提交时已知,无视频那种"上游返回实际秒数"的差异。AdjustBillingOnComplete 永远返 0。后期若上游开始返回实际生成数量(如 apimart 的 `actual_time` 是耗时不影响价),再按需扩展。
+> **关键认知**(避免重复结算):
+>
+> 1. `service.SettleBilling` 已经在 `controller/relay.go:1205` 提交成功后立刻调用,把预扣 quota 转成实际记账。**syncwrap 成功路径不再 settle**。
+> 2. 图片任务的 quota 完全由 `n + size + model price` 决定,提交时已知,**无差额可结算**。`AdjustBillingOnComplete` 永远返 0(本期)。
+> 3. polling 路径的 `settleTaskBillingOnComplete`(`task_polling.go:543`)是**未导出函数**,只在 polling 内部用,**syncwrap 不调它**。
+> 4. 失败路径**只用** `service.RefundTaskQuota(ctx, task, reason)`(导出),与现有 polling 失败退款共用同一函数。
+>
+> 后期若上游开始返回实际 token 用量(图片模型如 gpt-image 已经支持),想做差额结算,再调用现有导出函数 `service.RecalculateTaskQuotaByTokens(ctx, task, totalTokens)`,无需新增 API。
 
 ---
 
@@ -790,6 +892,11 @@ type TaskInfo struct {
 | `syncwrap.OnTaskInserted` 只在 `task.Insert()` 成功之后触发 goroutine(用 mock controller / hook 调用顺序断言) | 同上 |
 | `syncwrap.DoResponse` 写出标准 `{task_id, status:"queued", created}` body | 同上 |
 | `syncwrap.runSyncUpstream` 用 oldStatus 做 CAS — 验证 `UpdateWithStatus(NotStart)` 实际命中 1 行;若 polling 已抢先把 task 改成 Failure,verify CAS 返 false 时不触发 settle 双扣 | 同上 |
+| `syncwrap.runSyncUpstream` **终态检查** — mock task 已是 Success 时 reload 后立即 return,不调 ExecImageUpstream,不修改 status,不触发结算/退款(防 P1 #2 sweepTimedOutTasks 竞态) | 同上 |
+| `syncwrap.runSyncUpstream` 成功路径**不调** `RefundTaskQuota` 也**不调任何 Settle*** 函数(submit 时 SettleBilling 已记账) | 同上 |
+| `syncwrap.runSyncUpstream` 失败路径调 `service.RefundTaskQuota(ctx, task, reason)`,断言钱包余额回滚 | 同上 |
+| `relay.ExecImageUpstream` 无 gin 路径:用 `httptest.NewServer` 当上游,verify 整条链路完全不引用 `*gin.Context`(如有 nil deref 立刻 panic) | `relay/exec_image_upstream_test.go` |
+| 各家图片 adaptor 的 `BuildImageHTTPRequest` 输出 URL/Header/Body 与原 `ConvertImageRequest+DoRequest` 一致 | 各 channel 包内 `_test.go` |
 | `media.ImageProxy` 索引越界 / task 不属当前用户 / 状态未完成 / **SSRF URL 命中过滤被 403** | `controller/media/image_proxy_test.go` |
 | `imageAsyncFetchByIDRespBodyBuilder` 各状态(NotStart/Submitted/Queued → queued、InProgress → processing、Success → succeeded、Failure → failed)输出 OpenAI 风格 wrap;url entry 替换代理域;**b64_json entry 原样保留** | `relay/relay_task_test.go` |
 | `controller.RelayTask` 在 task.Insert 成功后用 `relay.GetTaskAdaptor(result.Platform)` 重新拿 adaptor 并触发 hook | `controller/relay_test.go` |
@@ -847,29 +954,38 @@ curl -o image_0.png ${BASE}/v1/images/async/$TASK_ID/content/0 -H "Authorization
    - `RelayModeImagesAsyncSubmit` / `RelayModeImagesAsyncFetchByID` 常量
 
 2. **新接口定义**(在 `relay/channel/adapter.go`)
-   - `TaskPostInsert` 接口(P1 #2 race 修法依赖)
-   - `ImageResponseExtractor` 接口(P2 #3 修法依赖)
+   - `TaskPostInsert` 接口(P1 race 修法依赖)
+   - `ImageRequestBuilder` 接口(无 gin 的 *http.Request 构造)
+   - `ImageResponseExtractor` 接口(无 gin 的响应解析)
 
-3. **现有图片 adaptor 实现 ExtractImageResponse**(P2 #3)
+3. **现有图片 adaptor 实现两个新接口**
    - 至少覆盖 OpenAI / Ali / Jimeng / Wenxin / xAI / Gemini
-   - 现有 `DoResponse` 中的解析逻辑抽出来,DoResponse 改为 caller(走 ImageHelper 路径)
-   - 未实现的 adaptor 不阻塞,运行时 ExecImageUpstream 返 not-implemented 错误
+   - `BuildImageHTTPRequest`:从 `info` + `request` 派生 URL / Header / body,不触碰 gin
+   - `ExtractImageResponse`:解析上游响应为 `*dto.ImageResponse`,不写 gin
+   - 未实现的 adaptor 不阻塞;`ExecImageUpstream` 类型断言失败时返 not-implemented 错误,syncwrap 标记 Failure + 退款
 
-4. **抽 `relay.ExecImageUpstream`**(P2 #3)
-   - 在 `relay/image_handler.go` 边上新建函数
-   - 内部:`adaptor.Init → ConvertImageRequest → DoRequest → ExtractImageResponse`
-   - 不写 gin context
+4. **新建 `relay/exec_image_upstream.go`**
+   - `func ExecImageUpstream(ctx, snapshot, request) (*dto.ImageResponse, *dto.Usage, error)`
+   - 内部:`GetAdaptor → Init(snapshot.ToRelayInfo) → builder.BuildImageHTTPRequest → http client.Do → extractor.ExtractImageResponse`
+   - 完全脱离 gin
 
-5. **重构 `ImageHelper`**(同步路径,**保持外部行为不变**)
-   - 改为调用 `ExecImageUpstream` 拿 `*dto.ImageResponse`
-   - 自己负责 marshal + 写 gin Writer + 触发计费
-   - 跑回归确认 `/v1/images/generations` 同步行为完全一致
+5. **`ImageHelper` 不动**
+   - 同步路径继续走现有 `adaptor.DoRequest + DoResponse` 链,保留所有 header override / debug log / IP 转发等 gin 特性
+   - **不强行迁移**,降低 `/v1/images/generations` 回归风险
 
-6. **`syncwrap.TaskAdaptor`**(P1 #2)
+6. **`syncwrap.TaskAdaptor`**(P1)
    - 占位方法(BuildRequestURL/Header/Body 全空,DoRequest 返伪 200)
-   - **DoResponse 必须 `c.JSON` 写 `{task_id, status:"queued", created}` 给客户端**(对齐其他 TaskAdaptor 行为,否则空 body)
-   - 实现 `TaskPostInsert.OnTaskInserted`:构造 snapshot + `go runSyncUpstream`
-   - `runSyncUpstream`:detached ctx + 5min timeout + panic recover + **重新 load task + 保存 oldStatus + CAS UpdateWithStatus(oldStatus)** + 调 `ExecImageUpstream` + 写结果
+   - **DoResponse 必须 `c.JSON` 写 `{task_id, status:"queued", created}` 给客户端**(对齐其他 TaskAdaptor)
+   - 实现 `TaskPostInsert.OnTaskInserted`:构造 `SyncWrapSnapshot` + `go runSyncUpstream`
+   - `runSyncUpstream` 顺序:
+     1. detached ctx + 5min timeout
+     2. defer recover()
+     3. reload task by TaskPublicID
+     4. **终态检查**:Status ∈ {Success, Failure} → return(防 sweepTimedOutTasks 抢先后被覆盖)
+     5. oldStatus 锚定
+     6. ExecImageUpstream(无 gin)
+     7. 成功 CAS + **不再 settle**;失败 CAS + `service.RefundTaskQuota`
+   - `SyncWrapSnapshot` 结构定义在 `snapshot.go`,完全值类型,无 `*gin.Context` / `*model.Task` 指针
    - 公共 helper `writeImageAsyncSubmitResponse(c, info)` 给 syncwrap 与 apimart 共用
 
 7. **`apimart.TaskAdaptor`**:实现完整接口
@@ -925,6 +1041,9 @@ curl -o image_0.png ${BASE}/v1/images/async/$TASK_ID/content/0 -H "Authorization
 | `TaskPostInsert` hook 是同步调用,如果实现不慎 block 会拖慢 controller 主流程 | 接口注释明确 `MUST NOT block`;syncwrap 实现里只做 snapshot 构造然后 `go runSyncUpstream`,本身耗时 <1ms |
 | syncwrap goroutine 与 sweepTimedOutTasks 可能竞争同一 task | 用 `Task.UpdateWithStatus(oldStatus)` CAS 保护:任一方先改成功,另一方拿到 0 row affected,放弃后续 settle/refund;统一防 双扣/双退 |
 | goroutine 用 `model.GetByOnlyTaskId` 重新 load task 而非用 hook 传进来的 `*Task`,因为 hook 拿到的指针 `Status` 字段可能在网络往返中已被 sweepTimedOutTasks 改写 | 设计明确要求 reload;不依赖 hook 传入的 Status |
+| reload 后的 task 已是终态(Success/Failure)时,如果不检查直接 oldStatus 锚定 + CAS,会成功覆盖已退款的失败任务,造成数据错乱 | 5.3.3 步骤 4 强制终态检查,Status ∈ {Success, Failure} 立刻 return |
+| `ImageRequestBuilder` / `ImageResponseExtractor` 渐进迁移期未实现的渠道走 syncwrap 会失败 | `ExecImageUpstream` 类型断言失败返 not-implemented;syncwrap 走失败路径标记 + 退款,不会数据错乱;一期覆盖主用渠道 |
+| 现有同步 `/v1/images/generations` 不迁移到新 builder/extractor 接口,有功能/行为差异 | 接受同步路径双轨:gin-based DoResponse 路径用于同步,builder/extractor 路径用于异步;同一渠道 adaptor 实现两套方法。代价是单家 adaptor 多两个方法,收益是同步路径零回归风险 |
 
 ### 11.2 未决项(本期不阻塞,后期讨论)
 
