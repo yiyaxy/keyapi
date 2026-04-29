@@ -130,12 +130,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		info.PriceData.AddOtherRatio("n", float64(imageN))
 	}
 
-	if usage.(*dto.Usage).TotalTokens == 0 {
-		usage.(*dto.Usage).TotalTokens = 1
-	}
-	if usage.(*dto.Usage).PromptTokens == 0 {
-		usage.(*dto.Usage).PromptTokens = 1
-	}
+	normalizeImageGenerationUsage(usage.(*dto.Usage), info, request)
 
 	quality := "standard"
 	if request.Quality == "hd" {
@@ -156,4 +151,42 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
 	return nil
+}
+
+func normalizeImageGenerationUsage(usage *dto.Usage, info *relaycommon.RelayInfo, request *dto.ImageRequest) {
+	if usage == nil {
+		return
+	}
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.TotalTokens > 0 {
+		usage.PromptTokens = usage.TotalTokens
+	}
+	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	if usage.PromptTokens+usage.CompletionTokens > 0 {
+		return
+	}
+
+	promptTokens := 0
+	if info != nil {
+		promptTokens = info.GetEstimatePromptTokens()
+	}
+	imageTokens := 0
+	if request != nil {
+		if meta := request.GetTokenCountMeta(); meta != nil && meta.MaxTokens > 0 {
+			imageTokens = meta.MaxTokens
+		}
+	}
+	if imageTokens > 0 {
+		usage.PromptTokens = promptTokens + imageTokens
+		usage.PromptTokensDetails.ImageTokens = imageTokens
+		usage.TotalTokens = usage.PromptTokens
+		return
+	}
+
+	if promptTokens <= 0 {
+		promptTokens = 1
+	}
+	usage.PromptTokens = promptTokens
+	usage.TotalTokens = promptTokens
 }

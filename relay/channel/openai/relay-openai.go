@@ -778,7 +778,7 @@ func handleApimartAsyncImageGeneration(c *gin.Context, info *relaycommon.RelayIn
 				return nil, true, types.NewError(err, types.ErrorCodeBadResponseBody)
 			}
 			service.IOCopyBytesGracefully(c, resp, jsonResponse)
-			return &dto.Usage{TotalTokens: 1}, true, nil
+			return &dto.Usage{}, true, nil
 		case "FAILURE":
 			reason := taskInfo.Reason
 			if reason == "" {
