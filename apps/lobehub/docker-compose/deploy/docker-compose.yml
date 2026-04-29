@@ -6,8 +6,6 @@ services:
     ports:
       - '${LOBE_PORT}:3210'
     depends_on:
-      postgresql:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rustfs:
@@ -17,8 +15,10 @@ services:
     environment:
       - 'KEY_VAULTS_SECRET=${KEY_VAULTS_SECRET}'
       - 'AUTH_SECRET=${AUTH_SECRET}'
-      - 'DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgresql:5432/${LOBE_DB_NAME}'
-      - 'INTERNAL_APP_URL=http://localhost:3210'
+      - 'APP_URL=${APP_URL}'
+      - 'DATABASE_URL=${DATABASE_URL}'
+      - 'NEW_API_BASE_URL=${NEW_API_BASE_URL}'
+      - 'INTERNAL_APP_URL=${INTERNAL_APP_URL}'
       - 'S3_ENDPOINT=${S3_ENDPOINT}'
       - 'S3_BUCKET=${RUSTFS_LOBE_BUCKET}'
       - 'S3_ENABLE_PATH_STYLE=1'
@@ -37,27 +37,27 @@ services:
     networks:
       - lobe-network
 
-  postgresql:
-    image: paradedb/paradedb:latest-pg17
-    container_name: lobe-postgres
-    # Optional: Remove or change these ports if:
-    # - You don't need external database access
-    # - The ports conflict with other services on your host
-    ports:
-      - '5432:5432'
-    volumes:
-      - './data:/var/lib/postgresql/data'
-    environment:
-      - 'POSTGRES_DB=${LOBE_DB_NAME}'
-      - 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD}'
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: always
-    networks:
-      - lobe-network
+  # postgresql 服务已禁用：改用线上数据库（DATABASE_URL 在 .env 中配置）
+  # 如需切回内置 DB，恢复以下块并把 .env 里 DATABASE_URL 删掉，
+  # 同时在 lobe.environment 里把 DATABASE_URL 换回 postgresql://postgres:${POSTGRES_PASSWORD}@postgresql:5432/${LOBE_DB_NAME}
+  # postgresql:
+  #   image: paradedb/paradedb:latest-pg17
+  #   container_name: lobe-postgres
+  #   ports:
+  #     - '5432:5432'
+  #   volumes:
+  #     - './data:/var/lib/postgresql/data'
+  #   environment:
+  #     - 'POSTGRES_DB=${LOBE_DB_NAME}'
+  #     - 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD}'
+  #   healthcheck:
+  #     test: ['CMD-SHELL', 'pg_isready -U postgres']
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: always
+  #   networks:
+  #     - lobe-network
 
   redis:
     image: redis:7-alpine
