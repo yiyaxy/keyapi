@@ -83,6 +83,9 @@ export const router = createBrowserRouter([
       { path: '/forbidden', element: <Forbidden /> },
       { path: '/setup', element: <SetupPage /> },
       { path: '/apps/image-diagnosis', element: <ImageDiagnosisPage /> },
+      { path: '/apps/image-diagnosis/run', element: <ImageDiagnosisPage /> },
+      { path: '/apps/image-diagnosis/loading', element: <ImageDiagnosisPage /> },
+      { path: '/apps/image-diagnosis/result', element: <ImageDiagnosisPage /> },
       { path: '/apps/image-diagnosis/report', element: <ImageDiagnosisPage /> },
       {
         element: <PublicLayout />,
