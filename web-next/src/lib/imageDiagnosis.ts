@@ -121,6 +121,9 @@ const imageQuality = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_QUALITY ?? 'high
 const imageOutputFormat = import.meta.env.VITE_IMAGE_DIAGNOSIS_IMAGE_OUTPUT_FORMAT ?? 'png';
 const historyStorageKey = 'image-diagnosis-history';
 const historyRetentionMs = 72 * 60 * 60 * 1000;
+const urlTokenStorageKey = `image-diagnosis-url-token:${appSlug}`;
+const urlTokenParamStorageKey = `image-diagnosis-url-token-param:${appSlug}`;
+const urlTokenTransportStorageKey = `image-diagnosis-url-token-transport:${appSlug}`;
 // Local debug only. Paste a real sk- key here temporarily, or set
 // localStorage.setItem('image-diagnosis-debug-token', 'sk-...')
 const localDebugToken = '';
@@ -687,6 +690,41 @@ export async function refreshImageDiagnosisRecords(): Promise<ImageDiagnosisReco
   return listImageDiagnosisRecords();
 }
 
+export function captureImageDiagnosisUrlToken() {
+  const params = new URLSearchParams(window.location.search);
+  const tokenParam = params.get('token') ? 'token' : params.get('key') ? 'key' : '';
+  const token = tokenParam ? params.get(tokenParam) : '';
+  if (token) {
+    window.sessionStorage.setItem(urlTokenStorageKey, token);
+    window.sessionStorage.setItem(urlTokenParamStorageKey, tokenParam);
+    const transport = isSameOriginEntry() ? 'hidden' : 'query';
+    window.sessionStorage.setItem(urlTokenTransportStorageKey, transport);
+    if (transport === 'hidden') {
+      params.delete('token');
+      params.delete('key');
+      const search = params.toString();
+      const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`;
+      window.history.replaceState(window.history.state, '', nextUrl);
+    }
+  }
+  return Boolean(token || getStoredUrlToken());
+}
+
+export function hasImageDiagnosisDirectToken() {
+  const params = new URLSearchParams(window.location.search);
+  return Boolean(params.get('token') || params.get('key') || getStoredUrlToken());
+}
+
+export function getImageDiagnosisNavigationTokenParam() {
+  if (getTokenTransport() !== 'query') return null;
+  const token = getUrlRelayToken();
+  if (!token) return null;
+  return {
+    name: getStoredUrlTokenParam(),
+    value: token,
+  };
+}
+
 function normalizeSettings(
   settings?: Partial<ImageDiagnosisGenerationSettings>
 ): ImageDiagnosisGenerationSettings {
@@ -844,8 +882,7 @@ function updateTask(taskId: string, progress: number, message: string) {
 }
 
 async function resolveRelayToken(): Promise<string> {
-  const params = new URLSearchParams(window.location.search);
-  const urlToken = params.get('token') || params.get('key');
+  const urlToken = getUrlRelayToken();
   if (urlToken?.startsWith('sk-') && urlToken !== 'sk-preview') return urlToken;
 
   const debugToken = getLocalDebugToken();
@@ -881,6 +918,45 @@ function getLocalDebugToken() {
   return token.startsWith('sk-') ? token : `sk-${token}`;
 }
 
+function getUrlRelayToken() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('token') || params.get('key') || getStoredUrlToken();
+}
+
+function getStoredUrlToken() {
+  try {
+    return window.sessionStorage.getItem(urlTokenStorageKey)?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
+function getStoredUrlTokenParam() {
+  try {
+    const param = window.sessionStorage.getItem(urlTokenParamStorageKey);
+    return param === 'key' ? 'key' : 'token';
+  } catch {
+    return 'token';
+  }
+}
+
+function getTokenTransport() {
+  try {
+    return window.sessionStorage.getItem(urlTokenTransportStorageKey) === 'query' ? 'query' : 'hidden';
+  } catch {
+    return 'hidden';
+  }
+}
+
+function isSameOriginEntry() {
+  if (!document.referrer) return false;
+  try {
+    return new URL(document.referrer).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function getAppHeaders() {
   const boot = loadBootstrap();
   const headers = new Headers({ 'Content-Type': 'application/json' });
@@ -897,8 +973,7 @@ function getHistoryOwnerKey() {
   const boot = loadBootstrap();
   if (boot) return `user:${boot.tenant_id}:${boot.id}`;
 
-  const params = new URLSearchParams(window.location.search);
-  const urlToken = params.get('token') || params.get('key');
+  const urlToken = getUrlRelayToken();
   if (import.meta.env.DEV && urlToken === 'sk-preview') return 'debug:sk-preview';
   if (urlToken) return `token:${hashText(urlToken)}`;
 

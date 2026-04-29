@@ -23,14 +23,17 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import {
+  captureImageDiagnosisUrlToken,
   createImageDiagnosisTask,
   defaultImageDiagnosisSettings,
   findImageDiagnosisReport,
   getImageDiagnosisApp,
+  getImageDiagnosisNavigationTokenParam,
   getImageDiagnosisOptionLabel,
   getImageDiagnosisReport,
   getImageDiagnosisResolutionLabel,
   getImageDiagnosisTask,
+  hasImageDiagnosisDirectToken,
   imageDiagnosisResolutionOptions,
   imageDiagnosisApps,
   listImageDiagnosisRecords,
@@ -62,6 +65,7 @@ export function ImageDiagnosisPage() {
   const location = useLocation();
   const { status } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const returningHomeRef = useRef(false);
   const initialAppType = getAppTypeFromSearch(location.search);
   const initialReport = useMemo(() => {
     const reportId = new URLSearchParams(location.search).get('resultId');
@@ -95,9 +99,10 @@ export function ImageDiagnosisPage() {
     return fallbackSteps[index];
   }, [progress]);
 
-  const hasDirectToken = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return Boolean(params.get('token') || params.get('key'));
+  const hasDirectToken = hasImageDiagnosisDirectToken();
+
+  useEffect(() => {
+    captureImageDiagnosisUrlToken();
   }, [location.search]);
 
   useEffect(() => {
@@ -125,7 +130,11 @@ export function ImageDiagnosisPage() {
 
   useEffect(() => {
     const reportId = new URLSearchParams(location.search).get('resultId');
-    if (!reportId || report?.id === reportId) return;
+    if (!reportId) {
+      returningHomeRef.current = false;
+      return;
+    }
+    if (returningHomeRef.current || report?.id === reportId) return;
     let stopped = false;
     void getImageDiagnosisReport(reportId)
       .then((nextReport) => {
@@ -169,10 +178,15 @@ export function ImageDiagnosisPage() {
             setReport(nextReport);
             setPhase('report');
             setRecords(listImageDiagnosisRecords());
-            navigateWithToken(navigate, '/apps/image-diagnosis/result', {
-              appType: nextReport.appType,
-              resultId: nextReport.id,
-            });
+            navigateWithToken(
+              navigate,
+              '/apps/image-diagnosis/result',
+              {
+                appType: nextReport.appType,
+                resultId: nextReport.id,
+              },
+              { replace: true }
+            );
           }
         }
       } catch (error) {
@@ -212,10 +226,15 @@ export function ImageDiagnosisPage() {
         const nextReport = await getImageDiagnosisReport(record.reportId);
         setReport(nextReport);
         setPhase('report');
-        navigateWithToken(navigate, '/apps/image-diagnosis/result', {
-          appType: nextReport.appType,
-          resultId: nextReport.id,
-        });
+        navigateWithToken(
+          navigate,
+          '/apps/image-diagnosis/result',
+          {
+            appType: nextReport.appType,
+            resultId: nextReport.id,
+          },
+          { replace: true }
+        );
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '报告不存在，请重新生成');
       }
@@ -226,19 +245,25 @@ export function ImageDiagnosisPage() {
     setProgress(record.progress);
     setAnalysisMessage(record.message);
     setPhase('analyzing');
-    navigateWithToken(navigate, '/apps/image-diagnosis/loading', {
-      appType: record.appType,
-      taskId: record.taskId,
-    });
+    navigateWithToken(
+      navigate,
+      '/apps/image-diagnosis/loading',
+      {
+        appType: record.appType,
+        taskId: record.taskId,
+      },
+      { replace: true }
+    );
   }
 
   function handleBackHome() {
+    returningHomeRef.current = true;
     setSelectedAppType(null);
     setPhase('upload');
     setProgress(0);
     setTaskId('');
     setReport(null);
-    navigateWithToken(navigate, '/apps/image-diagnosis');
+    navigateWithToken(navigate, '/apps/image-diagnosis', {}, { replace: true });
   }
 
   function handlePickImage(event: ChangeEvent<HTMLInputElement>) {
@@ -433,11 +458,11 @@ function HomeView({
                 key={record.taskId}
                 type='button'
                 onClick={() => onOpenRecord(record)}
-                className='flex items-center justify-between gap-3 rounded-lg border border-[#eee3d7] bg-[#fbf8f3] px-3 py-3 text-left'
+                className='flex w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-[#eee3d7] bg-[#fbf8f3] px-3 py-3 text-left'
               >
-                <span className='min-w-0'>
-                  <span className='block truncate text-sm font-semibold'>{record.appTitle}</span>
-                  <span className='mt-1 block truncate text-xs text-[#7a7368]'>
+                <span className='min-w-0 flex-1 overflow-hidden'>
+                  <span className='block max-w-full truncate text-sm font-semibold'>{record.appTitle}</span>
+                  <span className='mt-1 line-clamp-2 max-w-full break-words text-xs leading-5 text-[#7a7368]'>
                     {record.optionLabel} · {record.message}
                   </span>
                 </span>
@@ -812,17 +837,15 @@ function getAppTypeFromSearch(search: string): ImageDiagnosisAppType | null {
 function navigateWithToken(
   navigate: ReturnType<typeof useNavigate>,
   pathname: string,
-  params: Record<string, string | undefined> = {}
+  params: Record<string, string | undefined> = {},
+  options: { replace?: boolean } = {}
 ) {
   const nextParams = new URLSearchParams();
-  const currentParams = new URLSearchParams(window.location.search);
-  const token = currentParams.get('token');
-  const key = currentParams.get('key');
-  if (token) nextParams.set('token', token);
-  if (key) nextParams.set('key', key);
+  const navigationToken = getImageDiagnosisNavigationTokenParam();
+  if (navigationToken) nextParams.set(navigationToken.name, navigationToken.value);
   Object.entries(params).forEach(([name, value]) => {
     if (value) nextParams.set(name, value);
   });
   const search = nextParams.toString();
-  navigate(`${pathname}${search ? `?${search}` : ''}`, { replace: false });
+  navigate(`${pathname}${search ? `?${search}` : ''}`, { replace: options.replace ?? false });
 }
