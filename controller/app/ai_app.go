@@ -15,6 +15,9 @@ import (
 
 // WhoAmI GET /api/app/whoami — 用 sk-token 换取对应用户信息，供 LobeHub 自动登录使用。
 // 使用 TokenAuth 中间件，sk- token 必须有效且未过期。
+//
+// 注意：用 GetUserByIdWithContext 而不是 GetUserById ——
+// 后者是已废弃的 stub，永远返回 ErrTenantRequired（见 model/user.go:358）。
 func WhoAmI(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId <= 0 {
@@ -22,7 +25,7 @@ func WhoAmI(c *gin.Context) {
 		return
 	}
 
-	user, err := model.GetUserById(userId, false)
+	user, err := model.GetUserByIdWithContext(c.Request.Context(), userId, false)
 	if err != nil || user == nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "user not found"})
 		return
