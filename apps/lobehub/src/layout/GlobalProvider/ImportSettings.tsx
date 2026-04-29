@@ -3,9 +3,11 @@
 import { memo, useEffect, useState } from 'react';
 
 import { LOBE_URL_IMPORT_NAME } from '@/const/url';
+import { useAiInfraStore } from '@/store/aiInfra';
 import { useUserStore } from '@/store/user';
 
 const ImportSettings = memo(() => {
+  const refreshAiProviderRuntimeState = useAiInfraStore((s) => s.refreshAiProviderRuntimeState);
   const [importUrlShareSettings, isUserStateInit] = useUserStore((s) => [
     s.importUrlShareSettings,
     s.isUserStateInit,
@@ -33,9 +35,12 @@ const ImportSettings = memo(() => {
     // Why use `usUserStateInit`,
     // see: https://github.com/lobehub/lobe-chat/pull/4072
     if (searchParam && isUserStateInit) {
-      importUrlShareSettings(searchParam);
+      void (async () => {
+        await importUrlShareSettings(searchParam);
+        await refreshAiProviderRuntimeState();
+      })();
     }
-  }, [searchParam, isUserStateInit, importUrlShareSettings]);
+  }, [searchParam, isUserStateInit, importUrlShareSettings, refreshAiProviderRuntimeState]);
 
   return null;
 });

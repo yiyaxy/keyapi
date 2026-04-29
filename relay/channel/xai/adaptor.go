@@ -1,6 +1,7 @@
 package xai
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -45,6 +46,34 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		ResponseFormat: request.ResponseFormat,
 	}
 	return xaiRequest, nil
+}
+
+func (a *Adaptor) BuildImageHTTPRequest(ctx context.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*http.Request, error) {
+	if info.UpstreamModelName != "" {
+		request.Model = info.UpstreamModelName
+	}
+	convertedRequest, err := a.ConvertImageRequest(nil, info, request)
+	if err != nil {
+		return nil, err
+	}
+	requestBody, err := channel.MarshalImageRequestBody(info, convertedRequest)
+	if err != nil {
+		return nil, err
+	}
+	fullRequestURL, err := a.GetRequestURL(info)
+	if err != nil {
+		return nil, err
+	}
+	req, err := channel.NewJSONImageRequest(ctx, http.MethodPost, fullRequestURL, requestBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+info.ApiKey)
+	return req, nil
+}
+
+func (a *Adaptor) ExtractImageResponse(resp *http.Response, info *relaycommon.RelayInfo) (*dto.ImageResponse, *dto.Usage, error) {
+	return channel.ExtractOpenAIImageResponse(resp, info)
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {

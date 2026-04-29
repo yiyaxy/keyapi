@@ -7,12 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  usePublicApps,
-  useGetSessionToken,
-  useGetGuestToken,
-  type AiApp,
-} from '@/hooks/useAiApps';
+import { usePublicApps, useGetSessionToken, useGetGuestToken, type AiApp } from '@/hooks/useAiApps';
 
 function AppCard({ app }: { app: AiApp }) {
   const { t } = useTranslation('apps');
@@ -35,14 +30,21 @@ function AppCard({ app }: { app: AiApp }) {
         window.location.href = '/login';
         return;
       }
-      // 将 session key 同时用于：
-      // 1. LobeHub 自动登录（token-login 端点创建 session）
-      // 2. 注入 keyVaults，让 LobeHub 用此 key 调用 new-api
-      const settings = { keyVaults: { openai: { apiKey: key } } };
+
       const loginUrl = new URL('/api/auth/token-login', app.target_url);
-      loginUrl.searchParams.set('token', key);
-      loginUrl.searchParams.set('settings', JSON.stringify(settings));
-      window.location.href = loginUrl.toString();
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = loginUrl.toString();
+      form.style.display = 'none';
+
+      const tokenInput = document.createElement('input');
+      tokenInput.type = 'hidden';
+      tokenInput.name = 'token';
+      tokenInput.value = key;
+      form.append(tokenInput);
+
+      document.body.append(form);
+      form.submit();
     } catch {
       toast.error(t('token_error'));
     }
@@ -85,11 +87,7 @@ function AppCard({ app }: { app: AiApp }) {
           <span className='text-12 text-success'>{t('free_trial')}</span>
         )}
         <div className='ml-auto flex gap-2'>
-          <Button
-            size='sm'
-            variant='secondary'
-            asChild
-          >
+          <Button size='sm' variant='secondary' asChild>
             <a href={app.target_url} rel='noopener noreferrer'>
               <ExternalLink className='mr-1 h-3.5 w-3.5' />
               {t('preview')}

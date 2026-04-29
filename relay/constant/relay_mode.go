@@ -52,6 +52,9 @@ const (
 	RelayModeGemini
 
 	RelayModeResponsesCompact
+
+	RelayModeImagesAsyncSubmit
+	RelayModeImagesAsyncFetchByID
 )
 
 func Path2RelayMode(path string) int {
