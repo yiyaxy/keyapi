@@ -73,6 +73,8 @@ export const CHAT_MODELS_BLOCK_LIST = [
   'dall-e',
 ];
 
+const OPENAI_MAX_OUTPUT_TOKENS = 128_000;
+
 type ConstructorOptions<T extends Record<string, any> = any> = ClientOptions & T;
 export type CreateImageOptions = Omit<ClientOptions, 'apiKey'> & {
   apiKey: string;
@@ -250,6 +252,16 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
       this.logPrefix = `lobe-model-runtime:${this.id}`;
     }
 
+    private async resolveOpenAIMaxTokens(model: string, maxTokens?: number | null) {
+      if (maxTokens !== undefined && maxTokens !== null) return maxTokens;
+      if (this.id !== 'openai') return undefined;
+
+      const maxOutput = await getModelPropertyWithFallback<number>(model, 'maxOutput', 'openai');
+      return typeof maxOutput === 'number' && maxOutput > 0
+        ? maxOutput
+        : OPENAI_MAX_OUTPUT_TOKENS;
+    }
+
     /**
      * Determine if should use Responses API based on various configuration options
      * @param params - Configuration parameters
@@ -393,9 +405,17 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
 
         // Sanitize temperature/top_p conflict for Claude 4+ models routed via OpenAI-compatible API.
         // normalizeTemperature is false here because OpenAI-compatible providers use the raw range.
-        const postPayload = {
+        const resolvedMaxTokens = await this.resolveOpenAIMaxTokens(
+          handledPayload.model,
+          handledPayload.max_tokens,
+        );
+        const payloadWithMaxTokens = {
           ...handledPayload,
-          ...resolveModelSamplingParameters(handledPayload.model, handledPayload, {
+          ...(resolvedMaxTokens !== undefined ? { max_tokens: resolvedMaxTokens } : {}),
+        };
+        const postPayload = {
+          ...payloadWithMaxTokens,
+          ...resolveModelSamplingParameters(payloadWithMaxTokens.model, payloadWithMaxTokens, {
             normalizeTemperature: false,
             preferTemperature: true,
           }),
@@ -1074,6 +1094,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         responses?.handlePayload
           ? (responses?.handlePayload(payload, this._options) as ChatStreamPayload)
           : payload;
+      const resolvedMaxTokens = await this.resolveOpenAIMaxTokens(res.model, max_tokens);
 
       // remove penalty params and chat completion specific params
       delete res.apiMode;
@@ -1105,7 +1126,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
             }
           : {}),
         input,
-        ...(max_tokens && { max_output_tokens: max_tokens }),
+        ...(resolvedMaxTokens && { max_output_tokens: resolvedMaxTokens }),
         store: false,
         stream: !isStreaming ? undefined : isStreaming,
         tools: tools?.map((tool) => this.convertChatCompletionToolToResponseTool(tool)),

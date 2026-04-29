@@ -8,6 +8,7 @@ import { buildAnthropicInitialUsage } from '../usageConverters/anthropic';
 import { withUsageCost } from '../usageConverters/utils/withUsageCost';
 
 const log = debug('lobe-model-runtime:anthropic:generate-object');
+const ANTHROPIC_MAX_OUTPUT_TOKENS = 128_000;
 
 /**
  * Generate structured output using Anthropic Claude API with Function Calling
@@ -65,11 +66,11 @@ export const createAnthropicGenerateObject = async (
   }
 
   try {
-    log('calling Anthropic API with max_tokens: %d', 64_000);
+    log('calling Anthropic API with max_tokens: %d', ANTHROPIC_MAX_OUTPUT_TOKENS);
 
     const response = await client.messages.create(
       {
-        max_tokens: 64_000,
+        max_tokens: ANTHROPIC_MAX_OUTPUT_TOKENS,
         messages: anthropicMessages,
         model,
         system: systemPrompts,
