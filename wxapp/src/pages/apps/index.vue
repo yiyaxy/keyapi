@@ -3,159 +3,105 @@
     <view class="bg-glow bg-glow-1" />
     <view class="bg-glow bg-glow-2" />
 
-    <scroll-view scroll-y class="scroll">
+    <scroll-view scroll-y class="scroll" refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="refresh">
       <view class="content" :style="{ paddingTop: (statusBarH + 24) + 'px' }">
-
-        <!-- Header -->
         <view class="head">
-          <view>
+          <view class="head-main">
+            <text class="eyebrow">APP CENTER</text>
             <text class="head-title">AI 应用中心</text>
-            <text class="head-sub">使用 Token，直接体验热门 AI 能力</text>
+            <text class="head-sub">使用平台 Token，直接体验已接入的 AI 应用</text>
           </view>
-          <view class="head-chip">
-            <view class="head-chip-icon">
-              <text class="head-chip-emoji">∞</text>
-            </view>
-            <view class="head-chip-text">
-              <text class="head-chip-num">{{ tokenStr(userInfo?.quota) }}</text>
-              <text class="head-chip-label">Tokens</text>
+          <view class="quota-pill">
+            <u-icon name="server-fill" size="17" color="#111827" />
+            <view class="quota-text">
+              <text class="quota-num">{{ tokenStr(userInfo?.quota) }}</text>
+              <text class="quota-label">Tokens</text>
             </view>
           </view>
         </view>
 
-        <!-- 双列瀑布流 -->
-        <view class="masonry">
-          <!-- 左列 -->
-          <view class="col">
-            <!-- AI 形象诊断 大卡 -->
-            <view class="img-card big-card" :style="{ background: 'linear-gradient(160deg,#1f2024 0%,#2a2826 60%,#3a3833 100%)' }" @click="onAppTap">
-              <view class="card-shade" />
-              <view class="card-overlay">
-                <view class="card-title-row">
-                  <text class="card-title-lg">AI 形象诊断</text>
-                  <view class="badge-tk">
-                    <text class="badge-tk-txt">∞ 50</text>
-                  </view>
-                </view>
-                <text class="card-desc-lg">上传照片，获取多维度面部结构与风格深度解析报告。</text>
-                <view class="tag-row">
-                  <text class="tag-pill">面部比例</text>
-                  <text class="tag-pill">风格建议</text>
-                  <text class="tag-pill">高清输出</text>
-                </view>
-                <view class="btn-yellow">
-                  <text class="btn-yellow-txt">立即体验</text>
-                </view>
-              </view>
-            </view>
-
-            <!-- 最近使用 -->
-            <view class="recent-card">
-              <view class="recent-head">
-                <view class="recent-head-left">
-                  <u-icon name="clock" size="16" color="#1a1a2e" />
-                  <text class="recent-head-title">最近使用</text>
-                </view>
-                <text class="recent-link">查看全部</text>
-              </view>
-              <view class="recent-list">
-                <view v-for="i in 3" :key="i" class="recent-item">
-                  <view class="recent-mini">
-                    <u-icon name="star" size="12" color="#1a1a2e" />
-                  </view>
-                  <text class="recent-text">AI 形象诊断</text>
-                </view>
-              </view>
-            </view>
-
-            <!-- 我的生成记录 -->
-            <view class="folder-card" @click="onAppTap">
-              <view class="folder-icon">
-                <u-icon name="folder" size="22" color="#6b7280" />
-              </view>
-              <text class="folder-title">我的生成记录</text>
-              <text class="folder-sub">查看所有历史分析报告与生成的资产</text>
-              <view class="folder-arrow">
-                <u-icon name="arrow-right" size="14" color="#9ca3af" />
-              </view>
-            </view>
+        <view class="search-box">
+          <u-icon name="search" size="18" color="#9ca3af" />
+          <input
+            v-model="search"
+            class="search-input"
+            confirm-type="search"
+            placeholder="搜索应用名称或标签"
+            placeholder-class="search-placeholder"
+          />
+          <view v-if="search" class="search-clear" @click="search = ''">
+            <u-icon name="close" size="14" color="#9ca3af" />
           </view>
+        </view>
 
-          <!-- 右列 -->
-          <view class="col">
-            <!-- AI 手相分享 -->
-            <view class="img-card med-card" :style="{ background: 'linear-gradient(160deg,#3d2b1f 0%,#4a3120 50%,#1f1410 100%)' }" @click="onAppTap">
-              <view class="card-shade" />
-              <view class="card-overlay">
-                <view class="card-title-row">
-                  <text class="card-title-md">AI 手相分享</text>
-                  <view class="badge-share">
-                    <text class="badge-share-txt">分享免 Token</text>
+        <view v-if="loading" class="state-list">
+          <view v-for="i in 4" :key="i" class="skeleton-card">
+            <view class="skeleton-icon" />
+            <view class="skeleton-line w1" />
+            <view class="skeleton-line w2" />
+            <view class="skeleton-line w3" />
+          </view>
+        </view>
+
+        <view v-else-if="loadError" class="empty-card">
+          <u-icon name="warning" size="28" color="#ef4444" />
+          <text class="empty-title">应用列表加载失败</text>
+          <text class="empty-desc">请检查网络或后台 /api/app 接口</text>
+          <view class="retry-btn" @click="loadApps">
+            <text class="retry-text">重新加载</text>
+          </view>
+        </view>
+
+        <view v-else-if="filteredApps.length === 0" class="empty-card">
+          <u-icon name="grid" size="30" color="#9ca3af" />
+          <text class="empty-title">{{ search ? '没有找到匹配应用' : '暂无可用应用' }}</text>
+          <text class="empty-desc">{{ search ? '换个关键词试试' : '上线后的应用会展示在这里' }}</text>
+        </view>
+
+        <view v-else class="app-list">
+          <view
+            v-for="(app, index) in filteredApps"
+            :key="app.id || app.slug"
+            class="app-card"
+            :style="{ background: cardBackground(app, index) }"
+            @click="useApp(app)"
+          >
+            <view class="app-top">
+              <image v-if="app.icon_url" class="app-icon-img" :src="assetUrl(app.icon_url)" mode="aspectFill" />
+              <view v-else class="app-icon-fallback">
+                <text class="app-icon-letter">{{ firstLetter(app.name) }}</text>
+              </view>
+
+              <view class="app-info">
+                <view class="app-title-row">
+                  <text class="app-title">{{ app.name }}</text>
+                  <view v-if="app.guest_quota > 0 && !userStore.isLoggedIn" class="trial-badge">
+                    <text class="trial-badge-text">可试用</text>
                   </view>
                 </view>
-                <text class="card-desc-md">扫描掌纹，解读运势密码，分享可获取额外 Tokens。</text>
-                <view class="tag-row">
-                  <text class="tag-pill">面部比例</text>
-                  <text class="tag-pill">风格建议</text>
-                  <text class="tag-pill">高清输出</text>
-                </view>
-                <view class="btn-dark">
-                  <text class="btn-dark-txt">去测试</text>
+                <view v-if="tagsOf(app).length" class="tag-row">
+                  <text v-for="tag in tagsOf(app)" :key="tag" class="tag">{{ tag }}</text>
                 </view>
               </view>
             </view>
 
-            <!-- 小红书内容诊断 -->
-            <view class="img-card med-card" :style="{ background: 'linear-gradient(160deg,#2c2c2c 0%,#1f1f1f 60%,#0f0f0f 100%)' }" @click="onAppTap">
-              <view class="card-shade" />
-              <view class="card-overlay">
-                <view class="card-title-row">
-                  <text class="card-title-md">小红书内容诊断</text>
-                  <view class="badge-tk">
-                    <text class="badge-tk-txt">∞ 20</text>
-                  </view>
-                </view>
-                <text class="card-desc-md">爆款逻辑拆解，文案优化建议，提升笔记流量。</text>
-                <view class="tag-row">
-                  <text class="tag-pill">面部比例</text>
-                  <text class="tag-pill">风格建议</text>
-                  <text class="tag-pill">高清输出</text>
-                </view>
-                <view class="btn-dark">
-                  <text class="btn-dark-txt">开始诊断</text>
-                </view>
-              </view>
-            </view>
+            <text class="app-desc">{{ app.description || '这个应用暂未填写介绍' }}</text>
 
-            <!-- 最近使用 - 副 -->
-            <view class="recent-card mini">
-              <view class="recent-head">
-                <view class="recent-head-left">
-                  <u-icon name="clock" size="14" color="#1a1a2e" />
-                  <text class="recent-head-title">最近使用</text>
-                </view>
-                <text class="recent-link">查看全部</text>
+            <view class="app-actions">
+              <view class="preview-btn" @click.stop="previewApp(app)">
+                <u-icon name="eye" size="15" color="#374151" />
+                <text class="preview-text">预览</text>
               </view>
-              <view class="folder-icon mini-folder">
-                <u-icon name="folder" size="20" color="#6b7280" />
-              </view>
-            </view>
-
-            <!-- 我的生成记录 - 副 -->
-            <view class="folder-card" @click="onAppTap">
-              <view class="folder-icon">
-                <u-icon name="folder" size="22" color="#6b7280" />
-              </view>
-              <text class="folder-title">我的生成记录</text>
-              <text class="folder-sub">查看所有历史分析报告与生成的资产</text>
-              <view class="folder-arrow">
-                <u-icon name="arrow-right" size="14" color="#9ca3af" />
+              <view class="use-btn" :class="{ disabled: activeSlug === app.slug }" @click.stop="useApp(app)">
+                <u-loading-icon v-if="activeSlug === app.slug" size="28" color="#111827" />
+                <u-icon v-else name="arrow-rightward" size="16" color="#111827" />
+                <text class="use-text">{{ activeSlug === app.slug ? '准备中' : '立即使用' }}</text>
               </view>
             </view>
           </view>
         </view>
 
-        <view style="height: 200rpx;" />
+        <view style="height: 180rpx;" />
       </view>
     </scroll-view>
 
@@ -164,350 +110,701 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { getAppGuestToken, getAppSessionToken, getPublicApps, getSelf } from '@/services/api.js'
+import env from '@/config/env.js'
 import { userStore } from '@/store/user.js'
 
 const statusBarH = ref(0)
+const apps = ref([])
+const loading = ref(false)
+const refreshing = ref(false)
+const loadError = ref(false)
+const search = ref('')
+const activeSlug = ref('')
 const userInfo = ref(null)
 
-function tokenStr(q) { return Number(q || 0).toLocaleString() }
+const filteredApps = computed(() => {
+  const keyword = search.value.trim().toLowerCase()
+  if (!keyword) return apps.value
+  return apps.value.filter((app) => {
+    const haystack = `${app.name || ''} ${app.description || ''} ${app.tags || ''}`.toLowerCase()
+    return haystack.includes(keyword)
+  })
+})
 
-function onAppTap() {
-  uni.showToast({ title: '即将上线，敬请期待', icon: 'none' })
+const cardGradients = [
+  'linear-gradient(135deg, #2a2a2a 0%, #4a3f3a 100%)',
+  'linear-gradient(135deg, #5a4a3a 0%, #2a1f15 100%)',
+  'linear-gradient(135deg, #1f2937 0%, #4a3a2f 100%)',
+  'linear-gradient(135deg, #6b3a3a 0%, #2a1818 100%)',
+  'linear-gradient(135deg, #22322c 0%, #141c18 100%)',
+  'linear-gradient(135deg, #2e3140 0%, #161822 100%)',
+]
+
+function tokenStr(q) {
+  return Number(q || 0).toLocaleString()
+}
+
+function firstLetter(name) {
+  return String(name || 'A').slice(0, 1).toUpperCase()
+}
+
+function tagsOf(app) {
+  return String(app.tags || '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 4)
+}
+
+function cardBackground(app, index) {
+  const seed = String(app?.slug || app?.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  return cardGradients[(seed + index) % cardGradients.length]
+}
+
+function assetUrl(url) {
+  const value = String(url || '').trim()
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  return `${env.basePath.replace(/\/$/, '')}/${value.replace(/^\//, '')}`
+}
+
+function toAbsoluteTarget(rawUrl) {
+  const value = String(rawUrl || '').trim()
+  const base = env.basePath.replace(/\/$/, '')
+  if (!value) return `${base}/`
+  if (/^https?:\/\//i.test(value)) return value
+  return value.startsWith('/') ? `${base}${value}` : `${base}/${value}`
+}
+
+function setQueryParam(url, key, value) {
+  const hashIndex = url.indexOf('#')
+  const beforeHash = hashIndex >= 0 ? url.slice(0, hashIndex) : url
+  const hash = hashIndex >= 0 ? url.slice(hashIndex) : ''
+  const queryIndex = beforeHash.indexOf('?')
+  const path = queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash
+  const query = queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : ''
+  const encodedKey = encodeURIComponent(key)
+  const nextQuery = query
+    .split('&')
+    .filter(Boolean)
+    .filter((item) => decodeURIComponent(item.split('=')[0] || '') !== key)
+  nextQuery.push(`${encodedKey}=${encodeURIComponent(value)}`)
+  return `${path}?${nextQuery.join('&')}${hash}`
+}
+
+function openWebView(targetUrl, title = '') {
+  if (!/^https?:\/\//i.test(targetUrl)) {
+    uni.showToast({ title: '应用地址必须是 http 或 https', icon: 'none' })
+    return
+  }
+  const query = encodeURIComponent(targetUrl)
+  const pageTitle = encodeURIComponent(title || 'AI 应用')
+  uni.navigateTo({ url: `/pages/webview/index?url=${query}&title=${pageTitle}` })
+}
+
+function previewApp(app) {
+  openWebView(toAbsoluteTarget(app.target_url), app.name)
+}
+
+async function useApp(app) {
+  if (!app?.slug || activeSlug.value) return
+
+  activeSlug.value = app.slug
+  try {
+    let token = ''
+    if (userStore.isLoggedIn) {
+      const data = await getAppSessionToken(app.slug)
+      token = data?.key || ''
+    } else if (Number(app.guest_quota || 0) > 0) {
+      const data = await getAppGuestToken(app.slug)
+      token = data?.key || ''
+    } else {
+      uni.showToast({ title: '请先登录后使用该应用', icon: 'none' })
+      setTimeout(() => uni.navigateTo({ url: '/pages/login/index' }), 600)
+      return
+    }
+
+    if (!token) throw new Error('未获取到应用访问令牌')
+    const targetUrl = setQueryParam(toAbsoluteTarget(app.target_url), 'token', token)
+    openWebView(targetUrl, app.name)
+  } catch (err) {
+    uni.showToast({ title: err?.message || '应用启动失败，请稍后重试', icon: 'none' })
+  } finally {
+    activeSlug.value = ''
+  }
+}
+
+async function loadApps() {
+  loading.value = true
+  loadError.value = false
+  try {
+    const data = await getPublicApps()
+    apps.value = Array.isArray(data) ? data : []
+  } catch {
+    loadError.value = true
+  } finally {
+    loading.value = false
+    refreshing.value = false
+  }
+}
+
+async function refresh() {
+  refreshing.value = true
+  await loadApps()
+}
+
+async function syncUser() {
+  userInfo.value = userStore.userInfo
+  if (!userStore.isLoggedIn) return
+  try {
+    const data = await getSelf()
+    if (data) {
+      userStore.setUserInfo(data)
+      userInfo.value = data
+    }
+  } catch {
+    userInfo.value = userStore.userInfo
+  }
 }
 
 onLoad(() => {
-  statusBarH.value = uni.getSystemInfoSync().statusBarHeight
-  if (userStore.userInfo) userInfo.value = userStore.userInfo
+  statusBarH.value = uni.getSystemInfoSync().statusBarHeight || 0
+  loadApps()
+})
+
+onShow(() => {
+  syncUser()
 })
 </script>
 
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #faf7f0;
+  background: #f7f3ea;
   position: relative;
   overflow: hidden;
 }
+
 .bg-glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(120rpx);
+  filter: blur(110rpx);
   pointer-events: none;
   z-index: 0;
 }
+
 .bg-glow-1 {
-  top: -10%; right: -20%;
-  width: 500rpx; height: 500rpx;
-  background: rgba(157, 78, 221, 0.08);
+  top: -120rpx;
+  right: -180rpx;
+  width: 520rpx;
+  height: 520rpx;
+  background: rgba(35, 150, 237, 0.12);
 }
+
 .bg-glow-2 {
-  bottom: 10%; left: -25%;
-  width: 500rpx; height: 500rpx;
-  background: rgba(255, 184, 74, 0.12);
+  left: -220rpx;
+  bottom: 160rpx;
+  width: 560rpx;
+  height: 560rpx;
+  background: rgba(255, 184, 74, 0.16);
 }
 
-.scroll { position: relative; z-index: 1; height: 100vh; }
-.content { padding: 0 32rpx; }
+.scroll {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+}
 
-/* 顶部 */
+.content {
+  padding: 0 32rpx;
+  box-sizing: border-box;
+}
+
 .head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 36rpx;
-}
-.head-title {
-  display: block;
-  font-size: 40rpx;
-  color: #1a1a2e;
-  font-weight: 800;
-  margin-bottom: 6rpx;
-  letter-spacing: -0.5rpx;
-}
-.head-sub {
-  display: block;
-  font-size: 22rpx;
-  color: #6b7280;
-}
-.head-chip {
-  display: flex;
-  align-items: center;
-  background: #ffffff;
-  border: 1rpx solid rgba(0,0,0,0.06);
-  border-radius: 999rpx;
-  padding: 12rpx 20rpx;
-  box-shadow: 0 4rpx 12rpx rgba(20,16,8,0.04);
-}
-.head-chip-icon {
-  width: 36rpx; height: 36rpx;
-  border-radius: 50%;
-  background: #1a1a2e;
-  display: flex; align-items: center; justify-content: center;
-  margin-right: 10rpx;
-}
-.head-chip-emoji {
-  font-size: 20rpx;
-  color: #ffffff;
-  font-weight: 800;
-}
-.head-chip-text { display: flex; flex-direction: column; align-items: flex-start; }
-.head-chip-num {
-  font-size: 22rpx;
-  color: #1a1a2e;
-  font-weight: 700;
-  line-height: 1.2;
-}
-.head-chip-label {
-  font-size: 18rpx;
-  color: #6b7280;
-  line-height: 1.2;
+  gap: 24rpx;
+  margin-bottom: 28rpx;
 }
 
-/* 双列瀑布流 */
-.masonry {
+.head-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 20rpx;
+  color: #b8780c;
+  font-weight: 800;
+  margin-bottom: 8rpx;
+}
+
+.head-title {
+  display: block;
+  font-size: 44rpx;
+  line-height: 1.18;
+  color: #111827;
+  font-weight: 900;
+}
+
+.head-sub {
+  display: block;
+  font-size: 24rpx;
+  color: #6b7280;
+  margin-top: 10rpx;
+  line-height: 1.5;
+}
+
+.quota-pill {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 18rpx;
+  background: #fff;
+  border: 1rpx solid rgba(17, 24, 39, 0.08);
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 24rpx rgba(20, 16, 8, 0.05);
+  max-width: 240rpx;
+  flex-shrink: 0;
+}
+
+.quota-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.quota-num {
+  font-size: 22rpx;
+  color: #111827;
+  font-weight: 800;
+  max-width: 150rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quota-label {
+  font-size: 18rpx;
+  color: #9ca3af;
+}
+
+.search-box {
+  height: 88rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  border: 1rpx solid rgba(17, 24, 39, 0.08);
+  padding: 0 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  box-shadow: 0 8rpx 24rpx rgba(20, 16, 8, 0.04);
+  margin-bottom: 24rpx;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  font-size: 28rpx;
+  color: #111827;
+}
+
+.search-placeholder {
+  color: #9ca3af;
+}
+
+.search-clear {
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.state-list,
+.app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+}
+
+.app-card,
+.skeleton-card,
+.empty-card {
+  background: #fff;
+  border: 1rpx solid rgba(17, 24, 39, 0.08);
+  border-radius: 24rpx;
+  box-shadow: 0 8rpx 28rpx rgba(20, 16, 8, 0.05);
+}
+
+.app-card {
+  padding: 26rpx;
+}
+
+.app-top {
+  display: flex;
+  gap: 20rpx;
+  align-items: flex-start;
+}
+
+.app-icon-img,
+.app-icon-fallback {
+  width: 92rpx;
+  height: 92rpx;
+  border-radius: 20rpx;
+  flex-shrink: 0;
+}
+
+.app-icon-img {
+  background: #f3f4f6;
+}
+
+.app-icon-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #111827 0%, #334155 100%);
+}
+
+.app-icon-letter {
+  color: #ffb84a;
+  font-size: 42rpx;
+  font-weight: 900;
+}
+
+.app-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-width: 0;
+}
+
+.app-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 32rpx;
+  color: #111827;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trial-badge {
+  flex-shrink: 0;
+  padding: 5rpx 12rpx;
+  border-radius: 999rpx;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1rpx solid rgba(34, 197, 94, 0.2);
+}
+
+.trial-badge-text {
+  font-size: 20rpx;
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 12rpx;
+}
+
+.tag {
+  font-size: 20rpx;
+  color: #6b7280;
+  padding: 5rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f3f4f6;
+}
+
+.app-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 22rpx;
+  min-height: 100rpx;
+  font-size: 25rpx;
+  line-height: 1.55;
+  color: #4b5563;
+}
+
+.app-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.preview-btn,
+.use-btn,
+.retry-btn {
+  height: 72rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.preview-btn {
+  min-width: 142rpx;
+  background: #f3f4f6;
+}
+
+.preview-text {
+  font-size: 25rpx;
+  color: #374151;
+  font-weight: 700;
+}
+
+.use-btn {
+  min-width: 184rpx;
+  background: #ffb84a;
+  box-shadow: 0 8rpx 20rpx rgba(255, 184, 74, 0.28);
+}
+
+.use-btn.disabled {
+  opacity: 0.76;
+}
+
+.use-text {
+  font-size: 26rpx;
+  color: #111827;
+  font-weight: 800;
+}
+
+.empty-card {
+  min-height: 420rpx;
+  padding: 48rpx 36rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.empty-title {
+  margin-top: 18rpx;
+  font-size: 30rpx;
+  color: #111827;
+  font-weight: 800;
+}
+
+.empty-desc {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #6b7280;
+}
+
+.retry-btn {
+  margin-top: 28rpx;
+  min-width: 180rpx;
+  background: #111827;
+}
+
+.retry-text {
+  color: #fff;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.skeleton-card {
+  padding: 28rpx;
+}
+
+.skeleton-icon,
+.skeleton-line {
+  background: linear-gradient(90deg, #f1f5f9 0%, #e5e7eb 50%, #f1f5f9 100%);
+  border-radius: 16rpx;
+}
+
+.skeleton-icon {
+  width: 92rpx;
+  height: 92rpx;
+  margin-bottom: 22rpx;
+}
+
+.skeleton-line {
+  height: 26rpx;
+  margin-top: 16rpx;
+}
+
+.skeleton-line.w1 {
+  width: 60%;
+}
+
+.skeleton-line.w2 {
+  width: 92%;
+}
+
+.skeleton-line.w3 {
+  width: 74%;
+}
+
+/* Home-style AI recommendation cards */
+.app-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20rpx;
-  align-items: start;
-}
-.col {
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
 }
 
-/* 图片卡（形象诊断/手相/小红书）共用 */
-.img-card {
+.app-card {
   position: relative;
-  border-radius: 32rpx;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  padding: 0;
   overflow: hidden;
-  border: 1rpx solid rgba(0,0,0,0.05);
-  box-shadow: 0 8rpx 24rpx rgba(20,16,8,0.1);
+  border-radius: 28rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 6rpx 20rpx rgba(20, 16, 8, 0.08);
 }
-.big-card { aspect-ratio: 3 / 6.3; }
-.med-card { aspect-ratio: 3 / 4; }
-.card-shade {
-  position: absolute; inset: 0;
-  background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.5) 100%);
-}
-.card-overlay {
+
+.app-card::after {
+  content: '';
   position: absolute;
-  left: 14rpx; right: 14rpx;
-  top: 66.67%;
-  bottom: 14rpx;
-  background: rgba(255, 247, 240, 0.94);
-  border: 1rpx solid rgba(255,255,255,0.4);
-  border-radius: 22rpx;
-  padding: 18rpx;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  overflow: hidden;
-}
-.big-card .card-overlay { padding: 24rpx; }
-.med-card .card-overlay { padding: 14rpx; }
-.card-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8rpx;
-}
-.med-card .card-title-row { margin-bottom: 4rpx; }
-.big-card .card-title-row { margin-bottom: 8rpx; }
-.card-title-lg {
-  font-size: 32rpx;
-  color: #1a1a2e;
-  font-weight: 800;
-  letter-spacing: -0.5rpx;
-}
-.card-title-md {
-  font-size: 24rpx;
-  color: #1a1a2e;
-  font-weight: 800;
-  letter-spacing: -0.3rpx;
-}
-.badge-tk {
-  background: rgba(0,0,0,0.06);
-  border-radius: 999rpx;
-  padding: 3rpx 10rpx;
-  flex-shrink: 0;
-}
-.badge-tk-txt {
-  font-size: 16rpx;
-  color: #1a1a2e;
-  font-weight: 700;
-}
-.badge-share {
-  background: #FFB84A;
-  border-radius: 6rpx;
-  padding: 3rpx 8rpx;
-  flex-shrink: 0;
-}
-.badge-share-txt {
-  font-size: 14rpx;
-  color: #1a1a2e;
-  font-weight: 700;
-}
-.card-desc-lg {
-  display: block;
-  font-size: 22rpx;
-  color: #4b5563;
-  line-height: 1.55;
-  margin-bottom: 12rpx;
-}
-.card-desc-md {
-  display: block;
-  font-size: 18rpx;
-  color: #4b5563;
-  line-height: 1.4;
-  margin-bottom: 6rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-.tag-row {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 6rpx;
-  overflow: hidden;
-}
-.big-card .tag-row { margin-bottom: 14rpx; gap: 8rpx; }
-.med-card .tag-row { margin-bottom: 6rpx; }
-.tag-pill {
-  font-size: 14rpx;
-  color: #6b7280;
-  background: rgba(255,255,255,0.7);
-  border: 1rpx solid rgba(0,0,0,0.06);
-  padding: 2rpx 8rpx;
-  border-radius: 6rpx;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.big-card .tag-pill {
-  font-size: 18rpx;
-  padding: 4rpx 12rpx;
-  border-radius: 8rpx;
-}
-.btn-yellow {
-  height: 64rpx;
-  border-radius: 16rpx;
-  background: #FFB84A;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(255,184,74,0.3);
-}
-.btn-yellow-txt {
-  font-size: 24rpx;
-  color: #1a1a2e;
-  font-weight: 700;
-}
-.btn-dark {
-  height: 44rpx;
-  border-radius: 12rpx;
-  background: #1a1a2e;
-  display: flex; align-items: center; justify-content: center;
-}
-.btn-dark-txt {
-  font-size: 18rpx;
-  color: #FFB84A;
-  font-weight: 700;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.72) 100%);
+  pointer-events: none;
 }
 
-/* 最近使用 卡 */
-.recent-card {
-  background: #ffffff;
-  border: 1rpx solid rgba(0,0,0,0.05);
-  border-radius: 28rpx;
-  padding: 22rpx;
-  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
+.app-top {
+  position: absolute;
+  left: 20rpx;
+  right: 20rpx;
+  bottom: 126rpx;
+  z-index: 1;
+  display: block;
 }
-.recent-card.mini { padding: 18rpx; }
-.recent-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18rpx;
+
+.app-icon-img,
+.app-icon-fallback {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 9rpx;
+  background: rgba(255, 184, 74, 0.2);
+  border: 1rpx solid rgba(255, 184, 74, 0.24);
 }
-.recent-head-left {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-}
-.recent-head-title {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #1a1a2e;
-}
-.recent-link {
+
+.app-icon-letter {
+  color: #ffb84a;
   font-size: 20rpx;
-  color: #9ca3af;
-}
-.recent-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-}
-.recent-item {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 12rpx 14rpx;
-  border: 1rpx solid rgba(0,0,0,0.06);
-  border-radius: 999rpx;
-}
-.recent-mini {
-  width: 32rpx; height: 32rpx;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.05);
-  display: flex; align-items: center; justify-content: center;
-}
-.recent-text {
-  font-size: 22rpx;
-  color: #1a1a2e;
-  font-weight: 500;
 }
 
-.mini-folder {
-  margin: 0 auto !important;
-  width: 56rpx; height: 56rpx;
+.app-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 8rpx;
 }
 
-/* 我的生成记录卡 */
-.folder-card {
-  background: #ffffff;
-  border: 1rpx solid rgba(0,0,0,0.05);
-  border-radius: 28rpx;
-  padding: 28rpx 22rpx 22rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
-}
-.folder-icon {
-  width: 64rpx; height: 64rpx;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.05);
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 16rpx;
-}
-.folder-title {
+.app-title {
+  color: #ffffff;
   font-size: 28rpx;
   font-weight: 800;
-  color: #1a1a2e;
-  margin-bottom: 8rpx;
 }
-.folder-sub {
+
+.trial-badge {
+  position: absolute;
+  top: -108rpx;
+  right: 0;
+  background: rgba(255, 184, 74, 0.18);
+  border-color: rgba(255, 184, 74, 0.35);
+  backdrop-filter: blur(16rpx);
+}
+
+.trial-badge-text {
+  color: #ffda93;
+}
+
+.tag-row {
+  flex-wrap: nowrap;
+  gap: 6rpx;
+  margin-top: 8rpx;
+  overflow: hidden;
+}
+
+.tag {
+  flex-shrink: 0;
+  max-width: 120rpx;
+  padding: 3rpx 8rpx;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 18rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-desc {
+  position: absolute;
+  left: 20rpx;
+  right: 20rpx;
+  bottom: 74rpx;
+  z-index: 1;
+  display: block;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.58);
   font-size: 20rpx;
-  color: #9ca3af;
-  line-height: 1.5;
-  margin-bottom: 14rpx;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.folder-arrow {
-  width: 40rpx; height: 40rpx;
-  display: flex; align-items: center; justify-content: center;
+
+.app-actions {
+  position: absolute;
+  left: 20rpx;
+  right: 20rpx;
+  bottom: 18rpx;
+  z-index: 1;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin: 0;
+}
+
+.preview-btn,
+.use-btn {
+  height: 48rpx;
+  border-radius: 999rpx;
+  backdrop-filter: blur(18rpx);
+}
+
+.preview-btn {
+  min-width: 112rpx;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
+}
+
+.preview-text {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 20rpx;
+}
+
+.use-btn {
+  min-width: 128rpx;
+  background: #ffb84a;
+  box-shadow: 0 6rpx 16rpx rgba(255, 184, 74, 0.28);
+}
+
+.use-text {
+  color: #111827;
+  font-size: 21rpx;
 }
 </style>

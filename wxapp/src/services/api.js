@@ -188,3 +188,12 @@ export const getMyOrders = (page = 1, pageSize = 20, orderType = '') => {
   if (orderType) params.order_type = orderType
   return request.get('/api/payment/orders', params)
 }
+
+// AI 应用广场
+export const getPublicApps = () => request.get('/api/app', null, false)
+
+export const getAppSessionToken = (slug) =>
+  request.post(`/api/app/${encodeURIComponent(slug)}/session`, {})
+
+export const getAppGuestToken = (slug) =>
+  request.post(`/api/app/${encodeURIComponent(slug)}/guest-session`, {}, false)

@@ -79,7 +79,6 @@ export function ImageDiagnosisPage() {
   );
   const [previewUrl, setPreviewUrl] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [fileName, setFileName] = useState('');
   const [option, setOption] = useState(
     () => initialReport?.option ?? getImageDiagnosisApp(initialAppType ?? 'season_color').options[0].value
   );
@@ -281,7 +280,6 @@ export function ImageDiagnosisPage() {
     if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(file));
     setImageFile(file);
-    setFileName(file.name);
     setReport(null);
   }
 
@@ -353,7 +351,6 @@ export function ImageDiagnosisPage() {
               <UploadView
                 app={selectedApp}
                 previewUrl={previewUrl}
-                fileName={fileName}
                 option={option}
                 settings={settings}
                 isCreating={isCreating}
@@ -549,7 +546,6 @@ function TopBar({ app, onBack }: { app: ImageDiagnosisAppConfig; onBack: () => v
 function UploadView({
   app,
   previewUrl,
-  fileName,
   option,
   settings,
   isCreating,
@@ -560,7 +556,6 @@ function UploadView({
 }: {
   app: ImageDiagnosisAppConfig;
   previewUrl: string;
-  fileName: string;
   option: string;
   settings: ImageDiagnosisGenerationSettings;
   isCreating: boolean;
@@ -626,8 +621,7 @@ function UploadView({
               className='absolute inset-0 h-full w-full object-cover'
             />
             <div className='absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#1f2421]/85 to-transparent p-4 text-white'>
-              <p className='truncate text-sm font-medium'>{fileName}</p>
-              <p className='mt-1 text-xs text-white/75'>点击更换照片</p>
+              <p className='text-sm font-medium'>点击更换照片</p>
             </div>
           </>
         ) : (

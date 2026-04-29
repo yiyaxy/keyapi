@@ -14,6 +14,12 @@
 			}
 		},
 		{
+			"path": "pages/webview/index",
+			"style": {
+				"navigationBarTitleText": "AI 应用"
+			}
+		},
+		{
 			"path": "pages/invite/index",
 			"style": {
 				"navigationStyle": "custom"
