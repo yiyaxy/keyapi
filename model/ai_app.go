@@ -229,15 +229,14 @@ func ListAiAppsForAdmin(tenantId int, offset, limit int) ([]*AiApp, int64, error
 
 // ─── Session Token 生成 ──────────────────────────────────────────────────────
 
-// sessionTokenReuseMinRemaining 表示复用现有 token 的最小剩余有效期。
-// 剩余 < 这个阈值就当作"快过期"，重新生成一把，避免 LobeHub 那边刚拿到就过期。
-const sessionTokenReuseMinRemaining = 5 * 60 // 5 分钟
-
 // GenerateSessionTokenForApp 为已登录用户生成一个与应用绑定的临时 Session Token。
 // 这个 Token 有效期、额度均受应用配置控制，且在日志里会记录 AppId，方便后续结算。
 //
-// 去重：先查 (tenant_id, user_id, app_id) 维度下"未禁用 + 剩余有效期 ≥ 5 分钟"的
-// token，存在就直接复用。避免用户每点一次"立即使用"就在 DB 里堆一条。
+// 单行模型：(tenant_id, user_id, app_id) 维度下只保留一条 status=enabled 的 token。
+//   - 已存在：刷新 expired_time 和 accessed_time，复用同一把 key（用户每次拿到的 sk-xxx 不变）
+//   - 不存在：才创建新的
+//
+// 已禁用 / 已删除的 token 不参与复用（被管理员手动关停过），重新建新的。
 func GenerateSessionTokenForApp(app *AiApp, userId int, tenantId int) (*Token, error) {
 	if app == nil {
 		return nil, errors.New("app is nil")
@@ -247,18 +246,31 @@ func GenerateSessionTokenForApp(app *AiApp, userId int, tenantId int) (*Token, e
 	}
 
 	now := common.GetTimestamp()
+	ttl := int64(app.SessionTokenTTL)
+	if ttl <= 0 {
+		ttl = 86400 // 默认 24h
+	}
+	expiredTime := now + ttl
+
+	// 先看有没有可复用的（status=enabled 的，无论是否过期）
 	var existing Token
 	err := DB.Where(
-		"tenant_id = ? AND user_id = ? AND app_id = ? AND status = ? AND expired_time > ?",
-		tenantId, userId, app.Id, common.TokenStatusEnabled, now+sessionTokenReuseMinRemaining,
-	).Order("expired_time DESC").First(&existing).Error
+		"tenant_id = ? AND user_id = ? AND app_id = ? AND status = ?",
+		tenantId, userId, app.Id, common.TokenStatusEnabled,
+	).Order("id DESC").First(&existing).Error
 	if err == nil {
+		// 存在 —— 刷新过期时间和访问时间后返回；key 保持不变
+		if err := DB.Model(&existing).
+			Where("id = ?", existing.Id).
+			Updates(map[string]interface{}{
+				"expired_time":  expiredTime,
+				"accessed_time": now,
+			}).Error; err != nil {
+			return nil, errors.New("failed to refresh session token: " + err.Error())
+		}
+		existing.ExpiredTime = expiredTime
+		existing.AccessedTime = now
 		return &existing, nil
-	}
-
-	expiredTime := now + int64(app.SessionTokenTTL)
-	if app.SessionTokenTTL <= 0 {
-		expiredTime = now + 86400 // 默认 24h
 	}
 
 	// 生成随机密钥
