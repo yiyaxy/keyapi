@@ -21,13 +21,41 @@ const logBetterAuth = debug('middleware:better-auth');
 
 // Dev-only debug proxy route should bypass all middleware rewrites.
 const dangerousLocalDevProxyRoute = '/_dangerous_local_dev_proxy';
+const tokenLoginRoute = '/api/auth/token-login';
 
 export function defineConfig() {
   const backendApiEndpoints = ['/api', '/trpc', '/webapi', '/oidc'];
 
+  const createTokenLoginRedirect = (request: NextRequest) => {
+    const url = new URL(request.url);
+    const token = url.searchParams.get('token');
+
+    if (!token || backendApiEndpoints.some((path) => url.pathname.startsWith(path))) return;
+
+    const loginUrl = new URL(tokenLoginRoute, url.origin);
+    loginUrl.searchParams.set('token', token);
+
+    const callbackUrl = new URL(url);
+    callbackUrl.searchParams.delete('token');
+    loginUrl.searchParams.set(
+      'callbackUrl',
+      `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`,
+    );
+
+    const settings = url.searchParams.get('settings');
+    if (settings) loginUrl.searchParams.set('settings', settings);
+
+    logDefault('Redirecting token login request: %s', callbackUrl.pathname);
+
+    return NextResponse.redirect(loginUrl);
+  };
+
   const defaultMiddleware = (request: NextRequest) => {
     const url = new URL(request.url);
     logDefault('Processing request: %s %s', request.method, request.url);
+
+    const tokenLoginRedirect = createTokenLoginRedirect(request);
+    if (tokenLoginRedirect) return tokenLoginRedirect;
 
     // skip all api requests
     if (backendApiEndpoints.some((path) => url.pathname.startsWith(path))) {
@@ -245,6 +273,11 @@ export function defineConfig() {
 
   logDefault('Middleware configuration: %O', { enableOIDC: authEnv.ENABLE_OIDC });
 
-  // 不启用账号体系时直接使用无认证的路由重写中间件
-  return { middleware: defaultMiddleware };
+  const shouldUseMockDevUser =
+    process.env.NODE_ENV === 'development' && process.env.ENABLE_MOCK_DEV_USER === '1';
+
+  return {
+    middleware:
+      authEnv.ENABLE_OIDC && !shouldUseMockDevUser ? betterAuthMiddleware : defaultMiddleware,
+  };
 }

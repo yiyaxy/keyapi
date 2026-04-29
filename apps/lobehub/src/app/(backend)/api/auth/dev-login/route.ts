@@ -1,15 +1,11 @@
-/**
- * 仅开发环境可用的一键登录接口。
- * 访问 http://localhost:3010/api/auth/dev-login 即可自动创建并登录测试账号。
- * 生产环境直接返回 404，不会暴露。
- */
+import { createNanoId } from '@lobechat/database';
 import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 
 import { session as sessions } from '@/database/schemas/betterAuth';
 import { users } from '@/database/schemas/user';
 import { serverDB } from '@/database/server';
-import { createNanoId } from '@lobechat/database';
+import { setBetterAuthSessionCookie } from '@/libs/better-auth/sessionCookie';
 import { UserService } from '@/server/services/user';
 
 const nanoid = createNanoId(32);
@@ -24,7 +20,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 1. Upsert 开发测试用户
     const existing = await serverDB
       .select({ id: users.id })
       .from(users)
@@ -35,18 +30,18 @@ export async function GET(request: NextRequest) {
       await serverDB.insert(users).values({
         id: DEV_USER_ID,
         email: DEV_USER_EMAIL,
-        fullName: '本地开发账号',
-        username: 'dev_local',
         emailVerified: true,
+        fullName: 'Local Dev User',
         lastActiveAt: new Date(),
+        username: 'dev_local',
       });
 
       const userService = new UserService(serverDB);
       await userService.initUser({
-        id: DEV_USER_ID,
-        email: DEV_USER_EMAIL,
-        username: 'dev_local',
         createdAt: new Date(),
+        email: DEV_USER_EMAIL,
+        id: DEV_USER_ID,
+        username: 'dev_local',
       });
     } else {
       await serverDB
@@ -55,34 +50,41 @@ export async function GET(request: NextRequest) {
         .where(eq(users.id, DEV_USER_ID));
     }
 
-    // 2. 创建新 session（30天有效期）
     const sessionToken = nanoid();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await serverDB.insert(sessions).values({
-      id: idGen(),
-      userId: DEV_USER_ID,
-      token: sessionToken,
-      expiresAt,
       createdAt: new Date(),
+      expiresAt,
+      id: idGen(),
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1',
+      token: sessionToken,
       updatedAt: new Date(),
-      ipAddress: '127.0.0.1',
       userAgent: request.headers.get('user-agent') || '',
+      userId: DEV_USER_ID,
     });
 
-    // 3. 写 cookie 并跳转首页
-    const response = NextResponse.redirect(new URL('/', request.url));
-    response.cookies.set('better-auth.session_token', sessionToken, {
-      httpOnly: true,
-      path: '/',
-      sameSite: 'lax',
-      secure: false, // 本地开发不用 https
-      expires: expiresAt,
-    });
+    const response = NextResponse.redirect(getCallbackUrl(request));
+    setBetterAuthSessionCookie({ expiresAt, request, response, sessionToken });
 
     return response;
   } catch (err) {
     console.error('[dev-login] error:', err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+function getCallbackUrl(request: NextRequest) {
+  const url = new URL(request.url);
+  const callbackUrl = url.searchParams.get('callbackUrl');
+  const fallbackUrl = new URL('/', url.origin);
+
+  if (!callbackUrl) return fallbackUrl;
+
+  try {
+    const parsedCallbackUrl = new URL(callbackUrl, url.origin);
+    return parsedCallbackUrl.origin === url.origin ? parsedCallbackUrl : fallbackUrl;
+  } catch {
+    return fallbackUrl;
   }
 }
