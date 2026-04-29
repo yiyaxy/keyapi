@@ -149,8 +149,8 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			Error    string `json:"error"`
 			Result   struct {
 				Images []struct {
-					URL       any    `json:"url"`
-					ExpiresAt string `json:"expires_at"`
+					URL       any `json:"url"`
+					ExpiresAt any `json:"expires_at"`
 				} `json:"images"`
 			} `json:"result"`
 		} `json:"data"`
