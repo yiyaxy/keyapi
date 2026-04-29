@@ -40,9 +40,7 @@ services:
       - lobe-network
 
   postgresql:
-    # 钉死具体版本：避免 latest-pg17 浮动标签 attestation 拉取失败问题
-    # 查看可用版本：https://hub.docker.com/r/paradedb/paradedb/tags
-    image: paradedb/paradedb:0.15.18-pg17
+    image: paradedb/paradedb:latest-pg17
     container_name: lobe-postgres
     # 仅绑定 127.0.0.1:15432，外网访问不到 —— 必须通过 SSH 隧道才能连
     # 隧道命令：ssh -L 15432:127.0.0.1:15432 root@<server-ip>
