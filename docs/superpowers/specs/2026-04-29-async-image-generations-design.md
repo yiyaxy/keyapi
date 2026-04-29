@@ -30,7 +30,7 @@
   - 上游异步（apimart 等）：本期落地一个具体适配器 `apimart.TaskAdaptor`。
   - 上游同步（标准 OpenAI、Stability、xAI、Gemini、即梦、阿里万相等所有现有图片渠道）：通过通用 `syncwrap.TaskAdaptor`，提交时立即在后台 goroutine 内调用上游同步接口，结果落任务表。
 - **响应格式**：OpenAI 风格 `result` 包装，客户端把 `result` 字段直接喂给现有 OpenAI SDK 即可。
-- **结果代理**：返回的图片 URL 是 keyapi 自家域，客户端 GET 时反代上游，避免上游 URL 过期/泄露。
+- **结果代理**：返回的图片 URL 是 keyapi 自家域，客户端 GET 时反代上游——**用途是隐藏上游 URL、集中访问控制（鉴权/SSRF/限流/日志）、隔离上游凭据**。注意：本期不解决上游 URL 过期问题（上游 URL 过期后 keyapi 反代也会拿到 410/404，照常透传给客户端）；后期若需要永久持有，再升级到对象存储方案。
 - **计费**：完全沿用现有 task 框架（提交时预扣，完成时结算/退款）。
 - **不破坏**：`/v1/images/generations` 同步端点保持原行为不动，所有现有客户端无感。
 
@@ -52,7 +52,7 @@
 | **上游分类** | D：硬编码已知异步适配器 + 通用 SyncWrap 兜底 | apimart 类响应格式各家不同，硬编码必要；其他全部走 SyncWrap，零配置 |
 | **响应格式** | A：OpenAI 风格 `result` 包装 | 客户端拿 `result` 字段直接复用 OpenAI 同步代码 |
 | **计费时机** | A：提交时预扣，完成时结算/退款 | 与项目所有现有任务一致；提交时余额不足立刻 402 |
-| **结果 URL** | C：keyapi 反代上游 | 客户端 URL 永远是 keyapi 自家域；不引入存储/带宽预付成本 |
+| **结果 URL** | C：keyapi 反代上游 | 隐藏上游 URL；集中鉴权/SSRF/限流/日志；隔离上游凭据。**不**用来解决过期(过期问题留待对象存储方案) |
 | **覆盖端点** | A：仅 `images/generations` | YAGNI；JSON 形式图生图天然支持（gpt-image-2、Gemini Imagen、即梦、万相等模型把图放 body） |
 | **架构方案** | A：复用现有 TaskAdaptor 框架 | 计费 / 退款 / 轮询 / tenant 隔离 / 敏感词全部现成 |
 
@@ -252,28 +252,62 @@ const TaskPlatformImageSyncWrap TaskPlatform = "image_sync_wrap" // 通用兜底
 
 ## 5. 派发与适配器
 
-### 5.1 路由层判定 platform
+### 5.1 路由层 / Distributor / Fetch Builder 注册
 
-`POST /v1/images/async` 进入 `controller.RelayTask`，需要在中间件 `middleware.Distribute` 之后、调用 `RelayTaskSubmit` 之前确定 `platform`。逻辑：
+新端点的请求要在 distributor、relay_mode、fetch builder 三处都做注册才能 work。**不能只声明路由就完事**——现有 `httpRouter.Use(middleware.Distribute())` 会对所有 httpRouter 子路由生效,distributor 内部按 path 分发到不同处理逻辑,如果不加分支,GET fetch 会走通用 body/model 解析路径报错。
+
+#### 5.1.1 路由声明（`router/relay-router.go`）
 
 ```go
-// router/relay-router.go 注册前用一个中间件设置 task_endpoint
-imagesAsyncGroup := httpRouter.Group("/images/async")
-imagesAsyncGroup.Use(func(c *gin.Context) {
-    c.Set("task_endpoint", "image_generations")
-    c.Next()
-})
-{
-    imagesAsyncGroup.POST("", controller.RelayTask)
-    imagesAsyncGroup.GET("/:task_id", controller.RelayTaskFetch)
+// /v1/images/async 走 controller.RelayTask；fetch 走 controller.RelayTaskFetch
+httpRouter.POST("/images/async", controller.RelayTask)
+httpRouter.GET("/images/async/:task_id", controller.RelayTaskFetch)
+```
+
+> 注意:不加额外 group 或中间件——distributor 已挂在 httpRouter 上,需要 distributor 内部识别这个 path。
+
+#### 5.1.2 新增 relay_mode 常量（`relay/constant/relay_mode.go`）
+
+```go
+const (
+    RelayModeImagesAsyncSubmit     = 56xx  // 找一个未占用的整数
+    RelayModeImagesAsyncFetchByID  = 56xx  // 找一个未占用的整数
+)
+```
+
+#### 5.1.3 Distributor 加分支（`middleware/distributor.go: getModelRequest`）
+
+仿照现有 `/v1/videos`、`/v1/video/generations` 的写法（参见同文件 line 264-300）:
+
+```go
+} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/async") {
+    var relayMode int
+    if c.Request.Method == http.MethodPost {
+        relayMode = relayconstant.RelayModeImagesAsyncSubmit
+        req, err := getModelFromRequest(c)
+        if err != nil {
+            return nil, false, err
+        }
+        if req != nil {
+            modelRequest.Model = req.Model
+        }
+    } else if c.Request.Method == http.MethodGet {
+        relayMode = relayconstant.RelayModeImagesAsyncFetchByID
+        shouldSelectChannel = false  // ← 关键:fetch 不需要重选渠道
+    }
+    c.Set("relay_mode", relayMode)
 }
 ```
 
-`relay/relay_adaptor.go:120 GetTaskPlatform` 加分支：
+#### 5.1.4 GetTaskPlatform / GetTaskAdaptor 派发（`relay/relay_adaptor.go`）
+
+`GetTaskPlatform`(`relay/relay_adaptor.go:120`)加分支,**按 relay_mode 而非自定义 task_endpoint**(后者更易出错):
 
 ```go
 func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
-    if c.GetString("task_endpoint") == "image_generations" {
+    relayMode := c.GetInt("relay_mode")
+    if relayMode == relayconstant.RelayModeImagesAsyncSubmit ||
+       relayMode == relayconstant.RelayModeImagesAsyncFetchByID {
         channelType := c.GetInt("channel_type")
         switch channelType {
         case constant.ChannelTypeApimart:
@@ -287,7 +321,7 @@ func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
 }
 ```
 
-`relay/relay_adaptor.go:135 GetTaskAdaptor` 加分支：
+`GetTaskAdaptor`(`relay/relay_adaptor.go:135`)加分支:
 
 ```go
 case constant.TaskPlatformApimart:
@@ -295,6 +329,32 @@ case constant.TaskPlatformApimart:
 case constant.TaskPlatformImageSyncWrap:
     return &syncwrap.TaskAdaptor{}
 ```
+
+#### 5.1.5 注册 Fetch Response Builder（`relay/relay_task.go:303 fetchRespBuilders`）
+
+现有 map 只有 3 个 entry:
+
+```go
+var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){
+    relayconstant.RelayModeSunoFetchByID:    sunoFetchByIDRespBodyBuilder,
+    relayconstant.RelayModeSunoFetch:        sunoFetchRespBodyBuilder,
+    relayconstant.RelayModeVideoFetchByID:   videoFetchByIDRespBodyBuilder,
+}
+```
+
+新增图片任务的 builder:
+
+```go
+relayconstant.RelayModeImagesAsyncFetchByID: imageAsyncFetchByIDRespBodyBuilder,
+```
+
+`imageAsyncFetchByIDRespBodyBuilder` 实现:
+1. 从 `c.Param("task_id")` 取出 PublicTaskID
+2. 校验 user 拥有 task,查 `model.GetByTaskId(userID, taskID)`
+3. 按 task.Status 渲染 OpenAI 风格响应(详见 3.2):
+   - `Submitted/Queued/InProgress` → `{status, progress, result:null, error:null}`
+   - `Success` → 反序列化 `task.PrivateData.ImageData`,把每条 entry 的 url 替换为 keyapi 代理 URL（`/v1/images/async/<task_id>/content/<index>`),wrap 进 `{result:{created,data:[...]}}`
+   - `Failure` → `{status:"failed", error:{message,code}, result:null}`
 
 ### 5.2 `apimart.TaskAdaptor`（上游异步范例）
 
@@ -323,34 +383,100 @@ case constant.TaskPlatformImageSyncWrap:
 
 文件位置：`relay/channel/task/syncwrap/{adaptor.go, constants.go}`
 
-**关键差异**：syncwrap 重新定义了 TaskAdaptor 接口里"提交"动作的语义——不向上游真发提交请求，而是直接把"调上游 + 写结果"的工作 fork 到后台 goroutine：
+#### 5.3.1 任务持久化前不能启动 goroutine（race 防护）
 
-| 接口方法 | 同步上游适配器中的语义 |
+**反模式**:在 `DoResponse` 内 `go runSyncUpstream(...)` 直接启动 goroutine。
+
+**问题**:`controller/relay.go:1175 RelayTaskSubmit` 返回后到 `1230 task.Insert()` 之间还有结算、日志等步骤,且 1175 之后任何路径出错都会跳过 1230。如果 DoResponse 已经 spawn 了 goroutine:
+- 快速成功:goroutine 可能在 `task.Insert()` 之前就尝试 update task 行 → 找不到行
+- 提交后路径出错:task 永远不会 Insert,但 goroutine 还在跑 → 后续 update 永远找不到行 + 没有任务记录可被客户端查询
+
+**选定方案**:引入可选的 `TaskPostInsert` 接口,controller 在 **`task.Insert()` 成功之后**才调用 hook,hook 内部启动 goroutine。
+
+新接口(`relay/channel/adapter.go`):
+```go
+// TaskPostInsert is an optional hook for adaptors that need to perform
+// background work AFTER the task row is persisted.
+// Implementations MUST NOT block — they should fork a goroutine and return.
+type TaskPostInsert interface {
+    OnTaskInserted(ctx context.Context, task *model.Task, info *relaycommon.RelayInfo)
+}
+```
+
+`controller/relay.go` 在 `task.Insert()` 成功后(line 1230 附近)加:
+```go
+if insertErr := task.Insert(); insertErr != nil {
+    common.SysError("insert task error: " + insertErr.Error())
+} else if hook, ok := adaptor.(channel.TaskPostInsert); ok {
+    hook.OnTaskInserted(context.Background(), task, relayInfo)
+}
+```
+
+#### 5.3.2 syncwrap 各方法的语义
+
+| 接口方法 | 语义 |
 |---|---|
-| `BuildRequestURL` | 返回空字符串（不会被调用） |
-| `BuildRequestHeader` | 返回 nil（不会被调用） |
-| `BuildRequestBody` | 返回 `bytes.NewReader(nil)`（不会被调用） |
-| `DoRequest` | 不真发 HTTP，返回一个伪 200 `*http.Response`（body 为空），仅为满足 `RelayTaskSubmit` 流程对返回值的检查 |
-| `DoResponse` | 1) 返回 `taskID = info.PublicTaskID`、`taskData = nil`、`err = nil`<br>2) 同时 fork 后台 goroutine 走真实上游调用<br>3) 后续 `RelayTaskSubmit` 会按正常流程落库 task 记录（Status=Submitted） |
+| `BuildRequestURL` | 返回空字符串(不会真发请求) |
+| `BuildRequestHeader` | 返回 nil |
+| `BuildRequestBody` | 返回 `bytes.NewReader(nil)` |
+| `DoRequest` | 返回伪 200 `*http.Response`(body 空),satisfy `RelayTaskSubmit` 对返回值的检查 |
+| `DoResponse` | 仅返回 `(taskID = info.PublicTaskID, taskData = nil, err = nil)`,**不**启动 goroutine |
+| `OnTaskInserted` *(新接口)* | 构造 detached snapshot,`go runSyncUpstream(snapshot)` |
 
-> 注：之所以保留 `BuildRequestURL/Header/Body` 方法签名而不直接走另一条 controller 路径，是因为复用现有 `RelayTaskSubmit` 流程（预扣 / 落库 / 派发 / 错误处理）成本最低；这些方法相当于"占位"满足接口要求。
+#### 5.3.3 goroutine 内部:`runSyncUpstream(snapshot)`
 
-goroutine 启动时机：在 `DoResponse` 内部启动，但**捕获本次提交所需的最小上下文**（user_id、tenant_id、channel_id、key、relayInfo 副本、本地 task ID）到 detached struct 后传给 goroutine，避免 goroutine 持有 gin context。
+`snapshot` 至少包含:`taskPublicID`、`channelID`、`apiKey`、`baseURL`、`channelType`、`apiType`、`originModelName`、`upstreamModelName`、`imageRequestJSON`(序列化的 `dto.ImageRequest`)、`tenantID`、`userID`、`tokenID`、`priceData`(用于 settle)。
 
-`runSyncUpstream` 内部：
-1. 用 detached context（**不继承 gin context** —— 因为客户端 HTTP 已断开）
-2. 调用 `relay.GetAdaptor(info.ApiType).DoRequest` + `DoResponse` —— 复用同步图片的整套上游适配（OpenAI / Stability / Gemini / xAI / 即梦 / 万相 / Zhipu / 文心 等所有现有 ChannelType 全免费支持）
-3. 解析响应：
-   - 成功：把 `{data:[{url}, ...]}` 序列化进 `task.PrivateData.ImageData`，状态置 `Success`，触发结算
-   - 失败：`task.FailReason` 写入错误信息，状态置 `Failure`，触发退款
-4. **关键**：调用上游同步适配器的 `DoResponse` 时**禁用其内置计费写入**——通过传一个特殊 flag 或抽出 `ImageHelper` 的"调上游"核心步骤为不带计费的版本。
+执行步骤:
+1. `ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)`
+2. `defer recover()` 兜底 panic,标记 task `Failure`
+3. 构造合成的 `relayInfo`(从 snapshot 字段重建)
+4. 调 `relay.ExecImageUpstream(ctx, syntheticInfo, imageRequest) → (*dto.ImageResponse, *dto.Usage, error)`
+5. 成功:
+   - 序列化 `dto.ImageResponse.Data` 到 `task.PrivateData.ImageData`
+   - `task.Status = Success`、`task.FinishTime = now`
+   - `task.UpdateWithStatus(Success)`
+   - `service.SettleTaskBilling(taskID, actualUsage)` — 走 task 框架的统一结算
+6. 失败:
+   - `task.FailReason = err.Error()`、`task.Status = Failure`
+   - 走 task 框架的统一退款
 
-> 实现细节：抽 `relay/image_handler.go` 里 `adaptor.DoRequest → DoResponse` 的核心调用为一个新函数 `relay.ExecImageUpstream(ctx, info) (responseBody []byte, usage *dto.Usage, error)`。原 `ImageHelper` 也调用它，加上前后的预扣/扣费逻辑；`syncwrap.runSyncUpstream` 调用同一个 `ExecImageUpstream`，扣费走 task 框架的 `AdjustBillingOnComplete`。
+#### 5.3.4 引入 `ImageResponseExtractor`(P2 #3 修法)
 
-`FetchTask` / `ParseTaskResult` 实现策略（**选定方案**）：
+**问题**:现有图片 adaptor 的 `DoResponse`(如 `relay/channel/openai/relay-openai.go:677 OpenaiHandlerWithUsage`)在解析的同时**直接写 gin Writer**(line 692 `IOCopyBytesGracefully(c, resp, responseBody)`)。后台 goroutine 没有 client 可写,也不应该假装写一个虚假的 Writer。
 
-- 在 `service/task_polling.go` 里加判断，`task.Platform == TaskPlatformImageSyncWrap` 时**跳过远程 fetch**——这类任务没有上游 task ID 可问，状态全靠后台 goroutine 自己写。
-- `FetchTask` 与 `ParseTaskResult` 仍要实现以满足接口（返回错误如 `errors.New("not applicable for sync wrap")`），但永远不会被调用。这种"显式不支持"比返回伪响应更安全——一旦未来重构忘了跳过分支，会立刻 panic 而非默默错乱。
+**方案**:引入新接口,所有支持图片生成的 adaptor 实现"只解析不写"版本:
+
+```go
+// relay/channel/adapter.go
+type ImageResponseExtractor interface {
+    ExtractImageResponse(resp *http.Response, info *relaycommon.RelayInfo) (
+        imageResp *dto.ImageResponse,
+        usage *dto.Usage,
+        err *types.NewAPIError,
+    )
+}
+```
+
+各图片 adaptor(OpenAI / Ali / Jimeng / Zhipu / Wenxin / xAI / Gemini 等)实现 `ExtractImageResponse`,内部只读 body + 解析,**不**触碰 gin context。
+
+`relay/image_handler.go ImageHelper` 改为:
+1. 调 `adaptor.DoRequest` 拿 raw `*http.Response`
+2. 调 `adaptor.ExtractImageResponse(resp, info)` 拿 `(*dto.ImageResponse, *dto.Usage, error)`
+3. **由 ImageHelper 自己**把 imageResp 序列化后写 gin Writer + 触发计费
+
+`syncwrap.runSyncUpstream` 调:
+1. `adaptor.DoRequest`
+2. `adaptor.ExtractImageResponse` —— **不写 gin**,直接拿 `*dto.ImageResponse` 写到 `task.PrivateData.ImageData`
+
+新增 `relay.ExecImageUpstream(ctx, info, request) → (*dto.ImageResponse, *dto.Usage, error)` 封装步骤 1+2,两边复用。
+
+> 迁移成本:每家现有图片渠道 adaptor 都要新增 `ExtractImageResponse` 方法。可以渐进迁移:第一期只覆盖 OpenAI / Ali / Jimeng / Wenxin 等用得上的;未实现的 adaptor `relay.ExecImageUpstream` 返 `errors.New("image extractor not implemented")`,syncwrap 失败标记任务,客户端查询会看到 failed,触发退款,不会数据错乱。
+
+#### 5.3.5 `FetchTask` / `ParseTaskResult` 实现策略
+
+- 在 `service/task_polling.go` 里加判断,`task.Platform == TaskPlatformImageSyncWrap` 时**跳过远程 fetch**——这类任务没有上游 task ID 可问,状态全靠后台 goroutine 自己写。
+- `FetchTask` 与 `ParseTaskResult` 仍要实现以满足接口(返回错误如 `errors.New("not applicable for sync wrap")`),但永远不会被调用。这种"显式不支持"比返回伪响应更安全——一旦未来重构忘了跳过分支,会立刻 panic 而非默默错乱。
 
 ### 5.4 修改 `service/task_polling.go`
 
@@ -461,12 +587,17 @@ type TaskInfo struct {
    3-6. 同上,EstimateBilling/PreConsumeBilling 一致
    7. BuildRequestBody → 返回空 reader (占位)
    8. DoRequest → 返回伪 200 响应 (占位)
-   9. DoResponse →
-        a. 构造 detached snapshot {userID, tenantID, channelID, apiKey,
-           imageRequest, modelName, publicTaskID, baseURL}
-        b. go runSyncUpstream(snapshot)  ← 后台启动
-        c. 返回 (info.PublicTaskID, nil, nil) — taskData 为空,
-           RelayTaskSubmit 会照常落库 model.Task: Status=Submitted
+   9. DoResponse → 仅返回 (info.PublicTaskID, nil, nil)
+       ← 此时不启动 goroutine!
+   │
+   ▼
+[controller/relay.go RelayTask 主流程]
+   - SettleBilling
+   - LogTaskConsumption
+   - task.Insert() ← 关键持久化点 (line 1230)
+   - 检测 adaptor 实现了 TaskPostInsert 接口
+   - hook.OnTaskInserted(ctx, task, info)
+        └── go runSyncUpstream(snapshot)  ← 此时才启动 goroutine
    │
    ▼
 [客户端拿到] {task_id:"task_yyy", status:"queued", created:...}
@@ -477,15 +608,18 @@ type TaskInfo struct {
    1. 用 detached context (5 分钟 timeout)
    2. defer recover() 兜底 panic
    3. 通过 ApiType 获取上游 sync adaptor (OpenAI / Stability / ...)
-   4. 调用 ExecImageUpstream(ctx, snapshot)
-        - adaptor.Init(synthetic relayInfo)
+   4. 调用 relay.ExecImageUpstream(ctx, syntheticInfo, imageRequest)
+      内部:
+        - adaptor.Init(syntheticInfo)
         - adaptor.ConvertImageRequest (复用现有逻辑)
         - adaptor.DoRequest (HTTP 调上游)
-        - adaptor.DoResponse → 解出 dto.ImageResponse
+        - adaptor.ExtractImageResponse(resp, info)  ← 不写 gin
+        返回 (*dto.ImageResponse, *dto.Usage, error)
    5. 成功:
       - 序列化 dto.ImageResponse.Data 到 task.PrivateData.ImageData
       - task.Status = Success, task.FinishTime = now
-      - service.settleTaskBillingOnComplete (统一结算)
+      - task.UpdateWithStatus(Success)
+      - service.SettleTaskBilling(taskID, actualUsage)
    6. 失败:
       - task.FailReason = err.Error()
       - task.Status = Failure
@@ -505,19 +639,39 @@ type TaskInfo struct {
 
 文件：`controller/media/image_proxy.go`（新）
 
-逻辑（参考 `controller/media/video_proxy.go:33`）：
+逻辑（**严格参考 `controller/media/video_proxy.go:33`,特别是它的 SSRF 校验顺序**）：
 
 1. 鉴权：`c.GetInt("id")` 拿 userID（中间件已填）
-2. 查任务：`model.GetByTaskId(userID, taskID)`，404 if 不存在 / 不属于此用户
-3. 校验：`task.Status == Success`，否则 400 `task not completed yet`
-4. 解析 `task.PrivateData.ImageData`，按 `:index` 取出对应 URL（越界 404）
-5. 如果该 entry 是 `b64_json` 而非 `url`：返回 400 `inline base64 not proxyable, fetch full task`
+2. 查任务：`model.GetByTaskId(userID, taskID)`,404 if 不存在 / 不属于此用户(防 IDOR)
+3. 校验:`task.Status == Success`,否则 400 `task not completed yet`
+4. 解析 `task.PrivateData.ImageData`,按 `:index` 取出对应 entry(越界 404)
+5. 如果该 entry 是 `b64_json` 而非 `url`:返回 400 `inline base64 not proxyable, fetch full task`
 6. 拿 `task.ChannelId` → `model.CacheGetChannel` → 渠道 proxy 设置
-7. `service.GetHttpClientWithProxy` → `client.Get(upstreamUrl)`
-8. 透传上游 `Content-Type` 头,流式 `io.Copy(c.Writer, resp.Body)`
-9. 上游 4xx/5xx 时透传状态码 + 简化错误体
+7. **SSRF 校验**(必须,与 video_proxy.go:132-137 一致):
+   ```go
+   fetchSetting := system_setting.GetFetchSetting()
+   if err := common.ValidateURLWithFetchSetting(
+       upstreamURL,
+       fetchSetting.EnableSSRFProtection,
+       fetchSetting.AllowPrivateIp,
+       fetchSetting.DomainFilterMode,
+       fetchSetting.IpFilterMode,
+       fetchSetting.DomainList,
+       fetchSetting.IpList,
+       fetchSetting.AllowedPorts,
+       fetchSetting.ApplyIPFilterForDomain,
+   ); err != nil {
+       imageProxyError(c, http.StatusForbidden, "server_error",
+           fmt.Sprintf("request blocked: %v", err))
+       return
+   }
+   ```
+   理由:`task.PrivateData.ImageData` 里存的 URL 来自上游 / channel admin,虽然源头可信,但若 channel 被攻击者控制可写入 internal IP / 文件协议 URL,经此 endpoint 转发就成 SSRF 跳板。视频代理已经有这层防护,图片必须对齐。
+8. `service.GetHttpClientWithProxy(channel.GetSetting().Proxy)` → `client.Do(req)`,超时 60s(与 video proxy 一致)
+9. 透传上游 `Content-Type` 头,流式 `io.Copy(c.Writer, resp.Body)`
+10. 上游 4xx/5xx 时透传状态码 + 简化错误体(走 `imageProxyError`)
 
-超时设置：60 秒（与 video proxy 一致）。
+> **注意:不解决上游 URL 过期问题。** apimart `expires_at` 过期后,这一步 `client.Do` 会拿到 404/410,我们透传给客户端。客户端拿到 410 后应当重新生成。本期接受这一行为。
 
 ---
 
@@ -586,10 +740,14 @@ type TaskInfo struct {
 |---|---|
 | `apimart.TaskAdaptor.DoResponse` 解析提交响应 | `relay/channel/task/apimart/adaptor_test.go` |
 | `apimart.TaskAdaptor.ParseTaskResult` 状态映射(submitted/processing/completed/failed) | 同上 |
-| `syncwrap.TaskAdaptor.runSyncUpstream` 用 mock upstream + memory task store 验证成功/失败/panic 三路径 | `relay/channel/task/syncwrap/adaptor_test.go` |
-| `media.ImageProxy` 索引越界 / task 不属当前用户 / 状态未完成 | `controller/media/image_proxy_test.go` |
-| `relay/relay_task.go` 图片任务的 `TaskInfo.Urls` 序列化进 `PrivateData.ImageData` | `relay/relay_task_test.go` |
-| `controller.RelayTaskFetch` 输出 OpenAI 风格 wrap | `controller/relay_test.go` 或 `relay/relay_task_test.go` |
+| `syncwrap.TaskAdaptor.runSyncUpstream` 用 mock upstream + memory task store 验证成功/失败/panic/timeout 4 路径 | `relay/channel/task/syncwrap/adaptor_test.go` |
+| `syncwrap.OnTaskInserted` 只在 `task.Insert()` 成功之后触发 goroutine(用 mock controller / hook 调用顺序断言) | 同上 |
+| `media.ImageProxy` 索引越界 / task 不属当前用户 / 状态未完成 / **SSRF URL 命中过滤被 403** | `controller/media/image_proxy_test.go` |
+| `imageAsyncFetchByIDRespBodyBuilder` 各状态(queued/processing/succeeded/failed)输出 OpenAI 风格 wrap;URL 被替换为代理域 | `relay/relay_task_test.go` |
+| `middleware/distributor.go` 对 `/v1/images/async` POST/GET 分别设置正确 relay_mode + `shouldSelectChannel` 行为 | `middleware/distributor_test.go` |
+| `relay.ExecImageUpstream` 不写 gin context,纯返回值 | `relay/image_handler_test.go` |
+| 各家图片 adaptor 的 `ExtractImageResponse` 解析正确性(OpenAI/Ali/Jimeng/...) | 各 channel 包内 `_test.go` |
+| `/v1/images/generations` 同步行为回归(refactor 后行为不变) | `relay/image_handler_test.go` |
 
 ### 9.2 集成测试(可选,本期不强求)
 
@@ -628,18 +786,68 @@ curl -o image_0.png ${BASE}/v1/images/async/$TASK_ID/content/0 -H "Authorization
 
 ## 10. 实施步骤(实施计划交给 writing-plans)
 
-骨架:
+骨架(按依赖顺序):
 
-1. **基础设施**:`TaskPrivateData.ImageData` 字段、`TaskInfo.Urls` 字段、`TaskPlatformApimart` / `TaskPlatformImageSyncWrap` 常量、`ChannelTypeApimart` 常量
-2. **抽离 sync 上游核心调用**:从 `ImageHelper` 拆出 `ExecImageUpstream(ctx, info)`,原 ImageHelper 改为它的 caller
-3. **`syncwrap.TaskAdaptor`**:实现接口 + 后台 goroutine + detached ctx + panic recover
-4. **`apimart.TaskAdaptor`**:实现接口 + 提交/查询/解析
-5. **`GetTaskAdaptor` / `GetTaskPlatform` 派发**
-6. **路由注册**:POST/GET 到 `/v1/images/async`、内容代理路由
-7. **`media.ImageProxy` 实现**
-8. **`task_polling.go` 加 SyncWrap 跳过远程 fetch 分支 + stuck 检测兜底**
-9. **`RelayTaskFetch` 渲染**:图片任务时 wrap 成 OpenAI `result` 格式(可能要在 `fetchRespBuilders` 里加新 builder)
-10. **单元测试**(每步随实现)
+1. **基础设施常量与 schema**
+   - `TaskPrivateData.ImageData json.RawMessage` 字段
+   - `TaskInfo.Urls []string` 字段
+   - `TaskPlatformApimart` / `TaskPlatformImageSyncWrap` 常量
+   - `ChannelTypeApimart` 常量
+   - `RelayModeImagesAsyncSubmit` / `RelayModeImagesAsyncFetchByID` 常量
+
+2. **新接口定义**(在 `relay/channel/adapter.go`)
+   - `TaskPostInsert` 接口(P1 #2 race 修法依赖)
+   - `ImageResponseExtractor` 接口(P2 #3 修法依赖)
+
+3. **现有图片 adaptor 实现 ExtractImageResponse**(P2 #3)
+   - 至少覆盖 OpenAI / Ali / Jimeng / Wenxin / xAI / Gemini
+   - 现有 `DoResponse` 中的解析逻辑抽出来,DoResponse 改为 caller(走 ImageHelper 路径)
+   - 未实现的 adaptor 不阻塞,运行时 ExecImageUpstream 返 not-implemented 错误
+
+4. **抽 `relay.ExecImageUpstream`**(P2 #3)
+   - 在 `relay/image_handler.go` 边上新建函数
+   - 内部:`adaptor.Init → ConvertImageRequest → DoRequest → ExtractImageResponse`
+   - 不写 gin context
+
+5. **重构 `ImageHelper`**(同步路径,**保持外部行为不变**)
+   - 改为调用 `ExecImageUpstream` 拿 `*dto.ImageResponse`
+   - 自己负责 marshal + 写 gin Writer + 触发计费
+   - 跑回归确认 `/v1/images/generations` 同步行为完全一致
+
+6. **`syncwrap.TaskAdaptor`**(P1 #2)
+   - 实现 `TaskAdaptor` 接口的占位方法(BuildRequestURL/Header/Body 全空,DoRequest 返伪 200,DoResponse 直接返 publicTaskID)
+   - 实现 `TaskPostInsert.OnTaskInserted`:构造 snapshot + `go runSyncUpstream`
+   - `runSyncUpstream`:detached ctx + 5min timeout + panic recover + 调 `ExecImageUpstream` + 写 task
+
+7. **`apimart.TaskAdaptor`**:实现完整接口(提交 / 查询 / 解析)
+
+8. **`controller/relay.go RelayTask` 加 hook 调用**(P1 #2)
+   - `task.Insert()` 成功后,检测 adaptor 实现 `TaskPostInsert` 接口则调用
+
+9. **派发**:`GetTaskAdaptor` / `GetTaskPlatform` 加分支(按 relay_mode 判断图片任务)
+
+10. **Distributor 加图片 async 分支**(P1 #1)
+    - `middleware/distributor.go: getModelRequest` 加 `/v1/images/async` 处理
+    - POST 取 model + 设置 RelayModeImagesAsyncSubmit
+    - GET 设置 RelayModeImagesAsyncFetchByID + `shouldSelectChannel = false`
+
+11. **Fetch builder 注册**(P1 #1)
+    - `relay/relay_task.go: fetchRespBuilders` 注册 `imageAsyncFetchByIDRespBodyBuilder`
+    - 实现 builder:按 task.Status 渲染 OpenAI `result` 包装,URL 替换为代理地址
+
+12. **路由声明**:`router/relay-router.go` 加 POST/GET `/v1/images/async`、内容代理路由
+
+13. **`media.ImageProxy` 实现**(P2 #4)
+    - 严格参照 `video_proxy.go`:user 隔离、status 校验、SSRF 校验、proxy client、流式回传
+
+14. **`task_polling.go` 跳过 syncwrap fetch + stuck 兜底**
+
+15. **单元测试**(每步随实现):
+    - extractor 接口的几家 adaptor parse 正确性
+    - syncwrap OnTaskInserted hook 在 task.Insert 之前不被调用(用 mock controller)
+    - syncwrap goroutine 成功/失败/panic/超时 4 路径
+    - apimart adaptor parse 正确性
+    - image proxy 各错误路径 + SSRF 命中
 
 ---
 
@@ -653,6 +861,9 @@ curl -o image_0.png ${BASE}/v1/images/async/$TASK_ID/content/0 -H "Authorization
 | syncwrap goroutine 进程重启会丢失 | stuck 检测兜底标记 Failure,前端轮询会看到 failed,触发退款 |
 | 与现有 `controller.Relay` 的 `recordRelayErrorForTrace` 风格不同 | 任务路径已有自己的日志体系(`relay_task.go`),按 task 风格走 |
 | apimart 后续可能改 URL 路径 | 用 channel 表的 base_url 做基准,不写死 |
+| `ImageResponseExtractor` 渐进迁移期间未实现的 adaptor 用 syncwrap 会失败 | `ExecImageUpstream` 返显式 not-implemented 错误;syncwrap 标记任务 Failure + 退款,客户端看到 failed 不会数据错乱;一期先覆盖主要图片 channel(OpenAI / Ali / Jimeng / Wenxin / xAI / Gemini),其余按用量优先级补 |
+| 上游 URL 已过期(apimart `expires_at` 过) | 客户端访问 content endpoint 时拿到 410/404 透传,客户端应重新生成。**本期接受**;若不可接受需走对象存储方案(11.2 未决项) |
+| `TaskPostInsert` hook 是同步调用,如果实现不慎 block 会拖慢 controller 主流程 | 接口注释明确 `MUST NOT block`;syncwrap 实现里只做 snapshot 构造然后 `go runSyncUpstream`,本身耗时 <1ms |
 
 ### 11.2 未决项(本期不阻塞,后期讨论)
 
