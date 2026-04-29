@@ -229,8 +229,15 @@ func ListAiAppsForAdmin(tenantId int, offset, limit int) ([]*AiApp, int64, error
 
 // ─── Session Token 生成 ──────────────────────────────────────────────────────
 
+// sessionTokenReuseMinRemaining 表示复用现有 token 的最小剩余有效期。
+// 剩余 < 这个阈值就当作"快过期"，重新生成一把，避免 LobeHub 那边刚拿到就过期。
+const sessionTokenReuseMinRemaining = 5 * 60 // 5 分钟
+
 // GenerateSessionTokenForApp 为已登录用户生成一个与应用绑定的临时 Session Token。
 // 这个 Token 有效期、额度均受应用配置控制，且在日志里会记录 AppId，方便后续结算。
+//
+// 去重：先查 (tenant_id, user_id, app_id) 维度下"未禁用 + 剩余有效期 ≥ 5 分钟"的
+// token，存在就直接复用。避免用户每点一次"立即使用"就在 DB 里堆一条。
 func GenerateSessionTokenForApp(app *AiApp, userId int, tenantId int) (*Token, error) {
 	if app == nil {
 		return nil, errors.New("app is nil")
@@ -239,9 +246,19 @@ func GenerateSessionTokenForApp(app *AiApp, userId int, tenantId int) (*Token, e
 		return nil, errors.New("invalid user id")
 	}
 
-	expiredTime := common.GetTimestamp() + int64(app.SessionTokenTTL)
+	now := common.GetTimestamp()
+	var existing Token
+	err := DB.Where(
+		"tenant_id = ? AND user_id = ? AND app_id = ? AND status = ? AND expired_time > ?",
+		tenantId, userId, app.Id, common.TokenStatusEnabled, now+sessionTokenReuseMinRemaining,
+	).Order("expired_time DESC").First(&existing).Error
+	if err == nil {
+		return &existing, nil
+	}
+
+	expiredTime := now + int64(app.SessionTokenTTL)
 	if app.SessionTokenTTL <= 0 {
-		expiredTime = common.GetTimestamp() + 86400 // 默认 24h
+		expiredTime = now + 86400 // 默认 24h
 	}
 
 	// 生成随机密钥
@@ -252,9 +269,10 @@ func GenerateSessionTokenForApp(app *AiApp, userId int, tenantId int) (*Token, e
 
 	group := app.DefaultGroup
 	if group == "" {
-		// 继承用户默认分组
-		user, err := GetUserById(userId, false)
-		if err == nil && user.Group != "" {
+		// 继承用户默认分组（用 Global 查，因为这里 tenant 已经显式传入，
+		// 且不能用废弃的 GetUserById stub）
+		user, err := GetUserByIdGlobal(userId, false)
+		if err == nil && user != nil && user.Group != "" {
 			group = user.Group
 		}
 	}
@@ -265,8 +283,8 @@ func GenerateSessionTokenForApp(app *AiApp, userId int, tenantId int) (*Token, e
 		Key:            key,
 		Status:         common.TokenStatusEnabled,
 		Name:           "app-session:" + app.Slug,
-		CreatedTime:    common.GetTimestamp(),
-		AccessedTime:   common.GetTimestamp(),
+		CreatedTime:    now,
+		AccessedTime:   now,
 		ExpiredTime:    expiredTime,
 		RemainQuota:    0,
 		UnlimitedQuota: true, // 继承用户额度
