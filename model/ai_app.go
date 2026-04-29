@@ -72,6 +72,8 @@ type AiApp struct {
 	Description string `json:"description" gorm:"type:text"`
 	IconUrl     string `json:"icon_url" gorm:"type:varchar(512);default:''"`
 	TargetUrl   string `json:"target_url" gorm:"type:varchar(512);not null"` // 应用的前端部署地址
+	// Scope: "platform" 表示平台官方应用，对所有租户可见；"tenant" 表示仅本租户可见
+	Scope string `json:"scope" gorm:"type:varchar(16);not null;default:'tenant';index"`
 	// Status: 0=下架, 1=上架, 2=草稿
 	Status int `json:"status" gorm:"default:0;index"`
 	// SortOrder: 排序权重，越大越靠前
@@ -99,44 +101,93 @@ const (
 	AiAppStatusArchive = 2 // 已归档（软删除替代）
 )
 
+// ─── Scope 常量 ─────────────────────────────────────────────────────────────
+//
+// AiAppScopePlatform：平台官方应用，所有租户都能看见
+// AiAppScopeTenant：租户私有应用，仅本租户可见
+const (
+	AiAppScopePlatform = "platform"
+	AiAppScopeTenant   = "tenant"
+)
+
 // ─── 基础 CRUD ───────────────────────────────────────────────────────────────
 
 func (app *AiApp) Insert() error {
+	if app.Scope == "" {
+		app.Scope = AiAppScopeTenant
+	}
+	if app.Scope == AiAppScopePlatform {
+		// 平台应用 tenant_id 固定为 0。
+		// 注意：TenantId 字段带 `default:1`，GORM 会把 zero-value 0 当作"未设置"
+		// 替换成默认值 1（参考 channel_cache_merge_test.go 的同款 workaround）。
+		// 这里先正常 Create，再用一条显式 UPDATE 把 tenant_id 修正为 0。
+		app.TenantId = 0
+		if err := WithTenantBypass(DB).Create(app).Error; err != nil {
+			return err
+		}
+		return WithTenantBypass(DB).Model(app).Where("id = ?", app.Id).
+			Update("tenant_id", 0).Error
+	}
 	return DB.Create(app).Error
 }
 
+// Update 按 (Id, Scope) 定位行：
+//   - 平台 scope：忽略 tenant_id，使用 bypass 才能命中 tenant_id=0 的行
+//   - 租户 scope：仍按 (id, tenant_id) 隔离
 func (app *AiApp) Update() error {
-	return DB.Model(app).Where("id = ? AND tenant_id = ?", app.Id, app.TenantId).
-		Select("name", "slug", "description", "icon_url", "target_url", "status",
-			"sort_order", "vendor_user_id", "guest_quota", "default_group",
-			"session_token_ttl", "tags").
+	cols := []string{"name", "slug", "description", "icon_url", "target_url", "status",
+		"sort_order", "vendor_user_id", "guest_quota", "default_group",
+		"session_token_ttl", "tags"}
+	if app.Scope == AiAppScopePlatform {
+		return WithTenantBypass(DB).Model(app).
+			Where("id = ? AND scope = ?", app.Id, AiAppScopePlatform).
+			Select(cols).
+			Updates(app).Error
+	}
+	return DB.Model(app).
+		Where("id = ? AND tenant_id = ? AND scope = ?", app.Id, app.TenantId, AiAppScopeTenant).
+		Select(cols).
 		Updates(app).Error
 }
 
 func (app *AiApp) Delete() error {
-	return DB.Where("id = ? AND tenant_id = ?", app.Id, app.TenantId).
-		Delete(app).Error
+	if app.Scope == AiAppScopePlatform {
+		return WithTenantBypass(DB).
+			Where("id = ? AND scope = ?", app.Id, AiAppScopePlatform).
+			Delete(&AiApp{}).Error
+	}
+	return DB.Where("id = ? AND tenant_id = ? AND scope = ?", app.Id, app.TenantId, AiAppScopeTenant).
+		Delete(&AiApp{}).Error
 }
 
 // ─── 查询 ────────────────────────────────────────────────────────────────────
 
-// GetAllOnlineAiApps 返回指定租户上架的所有应用，按 sort_order DESC, id DESC 排序。
-// tenantId = 0 时跨租户返回所有上架应用（仅用于平台管理）。
+// GetAllOnlineAiApps 返回当前租户可见的所有上架应用：
+//   - tenantId > 0：返回 (scope='platform' 的所有平台应用) ∪ (tenant_id = tenantId 的本租户应用)
+//   - tenantId <= 0：仅平台运维使用，返回全部上架应用
+//
+// 排序：sort_order DESC, id DESC。
 func GetAllOnlineAiApps(tenantId int) ([]*AiApp, error) {
 	var apps []*AiApp
 	q := WithTenantBypass(DB).Where("status = ?", AiAppStatusOnline)
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
+		q = q.Where("scope = ? OR tenant_id = ?", AiAppScopePlatform, tenantId)
 	}
 	err := q.Order("sort_order desc, id desc").Find(&apps).Error
 	return apps, err
 }
 
-// GetAiAppBySlug 通过 slug 查找应用（用于详情页，无需鉴权）。
-func GetAiAppBySlug(slug string) (*AiApp, error) {
+// GetAiAppBySlug 通过 slug 查找应用（用于详情页 / 换 token）。
+// 必须传入当前租户上下文，避免子租户访问到其他租户的私有应用。
+//
+// 命中条件：status = 上架 AND (scope='platform' OR tenant_id=tenantId)。
+func GetAiAppBySlug(slug string, tenantId int) (*AiApp, error) {
 	var app AiApp
-	err := WithTenantBypass(DB).Where("slug = ? AND status = ?", slug, AiAppStatusOnline).
-		First(&app).Error
+	q := WithTenantBypass(DB).Where("slug = ? AND status = ?", slug, AiAppStatusOnline)
+	if tenantId > 0 {
+		q = q.Where("scope = ? OR tenant_id = ?", AiAppScopePlatform, tenantId)
+	}
+	err := q.First(&app).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("应用不存在或已下架")
@@ -147,6 +198,7 @@ func GetAiAppBySlug(slug string) (*AiApp, error) {
 }
 
 // GetAiAppById 通过 ID 查找应用（管理端使用，不限状态）。
+// 调用方必须自己做租户/scope 鉴权（参考 controller 层）。
 func GetAiAppById(id int) (*AiApp, error) {
 	var app AiApp
 	err := WithTenantBypass(DB).Where("id = ?", id).First(&app).Error
@@ -156,15 +208,17 @@ func GetAiAppById(id int) (*AiApp, error) {
 	return &app, nil
 }
 
-// ListAiAppsForAdmin 返回管理员可见的所有应用（分页），包含各种状态。
+// ListAiAppsForAdmin 返回管理员可见的应用（分页），包含各种状态。
+//
+// 语义：
+//   - tenantId > 0：返回 (本租户全部 scope='tenant' 应用) ∪ (全部 scope='platform' 平台应用)
+//   - tenantId <= 0：bypass，列出所有应用（仅供平台超管 / 跨租户视图）
 func ListAiAppsForAdmin(tenantId int, offset, limit int) ([]*AiApp, int64, error) {
 	var apps []*AiApp
 	var total int64
-	q := DB.Model(&AiApp{})
+	q := WithTenantBypass(DB).Model(&AiApp{})
 	if tenantId > 0 {
-		q = q.Where("tenant_id = ?", tenantId)
-	} else {
-		q = WithTenantBypass(q)
+		q = q.Where("scope = ? OR tenant_id = ?", AiAppScopePlatform, tenantId)
 	}
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err

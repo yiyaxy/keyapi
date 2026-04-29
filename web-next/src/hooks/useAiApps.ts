@@ -7,9 +7,12 @@ import {
 
 import { api } from '@/lib/api';
 
+export type AiAppScope = 'platform' | 'tenant';
+
 export type AiApp = {
   id: number;
   tenant_id: number;
+  scope: AiAppScope;
   name: string;
   slug: string;
   description: string;
@@ -28,6 +31,7 @@ export type AiApp = {
 
 export type AiAppInput = {
   id?: number;
+  scope: AiAppScope;
   name: string;
   slug: string;
   description: string;
