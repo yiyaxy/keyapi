@@ -23,7 +23,6 @@
           <view class="user-row">
             <view class="avatar">
               <text class="avatar-letter">{{ avatarLetter }}</text>
-              <view class="avatar-badge"><text>PRO</text></view>
             </view>
             <view class="user-meta">
               <text class="user-name">{{ displayName }}</text>
@@ -40,86 +39,85 @@
           <view class="assets-card">
             <view class="assets-head">
               <view class="assets-icon">
-                <u-icon name="rmb" size="14" color="#FFB84A" />
+                <u-icon name="rmb" size="14" color="#1a1a2e" />
               </view>
               <text class="assets-label">总算力资产</text>
             </view>
 
             <view class="assets-main">
-              <text class="assets-num">{{ tokenStr(userInfo?.quota) }}</text>
+              <text class="assets-num">{{ tokenStr(totalAssets) }}</text>
               <text class="assets-unit">代币</text>
             </view>
-            <text class="assets-sub">≈ {{ q2cny(userInfo?.quota) }}</text>
 
             <view class="assets-grid">
-              <view>
-                <text class="ag-label">累计消耗</text>
+              <view class="ag-cell">
+                <text class="ag-label">已用算力</text>
                 <text class="ag-val">{{ tokenStr(userInfo?.used_quota) }}</text>
               </view>
-              <view>
-                <text class="ag-label">请求次数</text>
-                <text class="ag-val">{{ userInfo?.request_count || 0 }}</text>
+              <view class="ag-cell">
+                <text class="ag-label">可用算力</text>
+                <text class="ag-val">{{ tokenStr(userInfo?.quota) }}</text>
               </view>
             </view>
 
             <view class="progress-block">
-              <text class="progress-label">累积消耗占比</text>
-              <view class="progress-row">
-                <view class="progress-bar">
-                  <view class="progress-fill" :style="{ width: usedPct + '%' }" />
-                </view>
-                <text class="progress-text">{{ usedPct }}%</text>
+              <text class="progress-label">累积消耗</text>
+              <view class="progress-bar">
+                <view class="progress-fill" :style="{ width: usedPct + '%' }" />
               </view>
+              <text class="progress-text">{{ tokenStr(userInfo?.used_quota) }} 代币</text>
             </view>
           </view>
 
           <!-- 快捷入口 -->
           <view class="quick-grid">
             <view class="q-item" @click="nav('/pages/redeem/index')">
-              <view class="q-icon">
-                <u-icon name="rmb-circle-fill" size="22" color="#2396ED" />
+              <view class="q-icon-bare">
+                <u-icon name="rmb-circle" size="28" color="#1a1a2e" />
               </view>
               <text class="q-label">充值</text>
             </view>
             <view class="q-item" @click="nav('/pages/apikey/index')">
-              <view class="q-icon">
-                <u-icon name="setting-fill" size="22" color="#9D4EDD" />
+              <view class="q-icon-bare">
+                <u-icon name="setting" size="28" color="#1a1a2e" />
               </view>
               <text class="q-label">API 密钥</text>
             </view>
             <view class="q-item" @click="nav('/pages/usage-records/index')">
-              <view class="q-icon">
-                <u-icon name="file-text-fill" size="22" color="#FFB84A" />
+              <view class="q-icon-bare">
+                <u-icon name="file-text" size="28" color="#1a1a2e" />
               </view>
               <text class="q-label">财务明细</text>
             </view>
             <view class="q-item" @click="onContactCS">
-              <view class="q-icon">
-                <u-icon name="server-man" size="22" color="#18A058" />
+              <view class="q-icon-bare">
+                <u-icon name="server-man" size="28" color="#1a1a2e" />
               </view>
               <text class="q-label">在线客服</text>
             </view>
           </view>
 
-          <!-- 菜单列表 -->
-          <view class="menu-list">
-            <view class="menu-item" @click="nav('/pages/orders/index')">
+          <!-- 菜单列表（合并为一张白卡） -->
+          <view class="menu-card">
+            <view class="menu-row" @click="nav('/pages/orders/index')">
               <view class="menu-left">
-                <u-icon name="clock" size="18" color="#6b7280" />
-                <text class="menu-text">订单 / 充值记录</text>
+                <u-icon name="server" size="20" color="#1a1a2e" />
+                <text class="menu-text">充值记录</text>
               </view>
               <u-icon name="arrow-right" size="14" color="#9ca3af" />
             </view>
-            <view class="menu-item" @click="nav('/pages/usage-records/index')">
+            <view class="menu-divider" />
+            <view class="menu-row" @click="nav('/pages/usage-records/index')">
               <view class="menu-left">
-                <u-icon name="more-circle" size="18" color="#6b7280" />
+                <u-icon name="more-circle" size="20" color="#1a1a2e" />
                 <text class="menu-text">API 调用日志</text>
               </view>
               <u-icon name="arrow-right" size="14" color="#9ca3af" />
             </view>
-            <view class="menu-item" @click="onAppTap">
+            <view class="menu-divider" />
+            <view class="menu-row" @click="onAppTap">
               <view class="menu-left">
-                <u-icon name="grid" size="18" color="#6b7280" />
+                <u-icon name="grid" size="20" color="#1a1a2e" />
                 <text class="menu-text">应用消耗记录</text>
               </view>
               <u-icon name="arrow-right" size="14" color="#9ca3af" />
@@ -168,6 +166,10 @@ const usedPct = computed(() => {
   const total = used + Number(userInfo.value?.quota || 0)
   if (!total) return 0
   return Math.min(100, Math.round(used * 100 / total))
+})
+
+const totalAssets = computed(() => {
+  return Number(userInfo.value?.used_quota || 0) + Number(userInfo.value?.quota || 0)
 })
 
 function tokenStr(q) { return Number(q || 0).toLocaleString() }
@@ -240,12 +242,12 @@ onLoad(() => {
 
 .head {
   display: flex; justify-content: center;
-  margin-bottom: 36rpx;
+  margin-bottom: 40rpx;
 }
 .head-title {
-  font-size: 30rpx;
+  font-size: 34rpx;
   color: #1a1a2e;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .login-prompt {
@@ -281,37 +283,21 @@ onLoad(() => {
 .user-row {
   display: flex;
   align-items: center;
-  margin-bottom: 40rpx;
+  margin-bottom: 36rpx;
+  padding: 0 8rpx;
 }
 .avatar {
-  position: relative;
-  width: 132rpx; height: 132rpx;
+  width: 124rpx; height: 124rpx;
   border-radius: 50%;
-  border: 2rpx solid rgba(255,184,74,0.4);
-  padding: 6rpx;
-  background: linear-gradient(135deg, #2396ED 0%, #9D4EDD 100%);
+  background: linear-gradient(135deg, #1a1a2e 0%, #4a4a6a 100%);
   display: flex; align-items: center; justify-content: center;
   margin-right: 28rpx;
   flex-shrink: 0;
-  box-shadow: 0 8rpx 24rpx rgba(35,150,237,0.2);
 }
 .avatar-letter {
   font-size: 56rpx;
   color: #ffffff;
   font-weight: 800;
-}
-.avatar-badge {
-  position: absolute;
-  right: -6rpx; bottom: -2rpx;
-  background: #FFB84A;
-  border-radius: 999rpx;
-  padding: 2rpx 12rpx;
-}
-.avatar-badge text {
-  font-size: 16rpx;
-  color: #050a10;
-  font-weight: 800;
-  letter-spacing: 1rpx;
 }
 .user-meta { flex: 1; min-width: 0; }
 .user-name {
@@ -319,182 +305,175 @@ onLoad(() => {
   font-size: 44rpx;
   color: #1a1a2e;
   font-weight: 800;
-  margin-bottom: 8rpx;
+  margin-bottom: 12rpx;
   letter-spacing: -0.5rpx;
 }
 .user-tags {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: 14rpx;
+  flex-wrap: wrap;
 }
 .user-id {
-  font-size: 22rpx;
-  color: #9ca3af;
+  font-size: 24rpx;
+  color: #1a1a2e;
+  font-weight: 500;
 }
 .user-level {
-  border: 1rpx solid rgba(0,0,0,0.1);
+  border: 1rpx solid rgba(0,0,0,0.2);
   border-radius: 999rpx;
-  padding: 4rpx 16rpx;
-  background: #ffffff;
+  padding: 4rpx 18rpx;
+  background: transparent;
 }
 .user-level text {
-  font-size: 20rpx;
-  color: #6b7280;
+  font-size: 22rpx;
+  color: #1a1a2e;
 }
 
 /* Assets card */
 .assets-card {
   background: #ffffff;
-  border: 1rpx solid rgba(255,184,74,0.4);
-  border-radius: 32rpx;
-  padding: 36rpx 32rpx;
+  border-radius: 48rpx;
+  padding: 36rpx 36rpx 32rpx;
   margin-bottom: 36rpx;
-  box-shadow: 0 8rpx 32rpx rgba(255,184,74,0.15);
+  box-shadow:
+    0 24rpx 56rpx rgba(20, 16, 8, 0.08),
+    0 8rpx 20rpx rgba(20, 16, 8, 0.04),
+    0 1rpx 2rpx rgba(255, 255, 255, 0.6) inset;
 }
 .assets-head {
   display: flex; align-items: center;
-  margin-bottom: 24rpx;
+  margin-bottom: 16rpx;
 }
 .assets-icon {
-  width: 44rpx; height: 44rpx;
-  border-radius: 12rpx;
-  background: rgba(255,184,74,0.18);
+  width: 36rpx; height: 36rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid rgba(0,0,0,0.15);
   display: flex; align-items: center; justify-content: center;
-  margin-right: 14rpx;
+  margin-right: 12rpx;
 }
 .assets-label {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #1a1a2e;
-  font-weight: 700;
+  font-weight: 600;
 }
 .assets-main {
   display: flex;
   align-items: baseline;
-  gap: 12rpx;
-  margin-bottom: 6rpx;
+  gap: 10rpx;
+  margin-bottom: 28rpx;
 }
 .assets-num {
-  font-size: 64rpx;
+  font-size: 72rpx;
   color: #1a1a2e;
   font-weight: 800;
-  letter-spacing: -1rpx;
+  letter-spacing: -2rpx;
+  line-height: 1.1;
 }
 .assets-unit {
-  font-size: 24rpx;
-  color: rgba(217,119,6,0.7);
-  font-weight: 600;
-}
-.assets-sub {
-  display: block;
   font-size: 22rpx;
-  color: #9ca3af;
-  margin-bottom: 24rpx;
+  color: #FFB84A;
+  font-weight: 700;
 }
 .assets-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16rpx;
-  border-top: 1rpx solid rgba(0,0,0,0.06);
-  padding-top: 24rpx;
-  margin-bottom: 24rpx;
+  border-top: 1rpx solid rgba(0,0,0,0.08);
+  padding-top: 22rpx;
+  margin-bottom: 22rpx;
 }
+.ag-cell { display: flex; flex-direction: column; }
 .ag-label {
-  display: block;
-  font-size: 20rpx;
-  color: #9ca3af;
-  margin-bottom: 6rpx;
+  font-size: 22rpx;
+  color: #1a1a2e;
+  margin-bottom: 4rpx;
 }
 .ag-val {
-  display: block;
-  font-size: 28rpx;
+  font-size: 30rpx;
   color: #1a1a2e;
   font-weight: 700;
 }
 .progress-block {
-  border-top: 1rpx solid rgba(0,0,0,0.06);
-  padding-top: 24rpx;
+  border-top: 1rpx solid rgba(0,0,0,0.08);
+  padding-top: 22rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
 }
 .progress-label {
   display: block;
-  font-size: 18rpx;
-  color: #9ca3af;
-  letter-spacing: 2rpx;
-  margin-bottom: 16rpx;
-  text-transform: uppercase;
-}
-.progress-row {
-  display: flex;
-  align-items: center;
-  gap: 18rpx;
+  font-size: 22rpx;
+  color: #1a1a2e;
 }
 .progress-bar {
-  flex: 1;
-  height: 8rpx;
-  background: rgba(0,0,0,0.05);
+  width: 100%;
+  height: 12rpx;
+  background: rgba(255,184,74,0.18);
   border-radius: 999rpx;
   overflow: hidden;
 }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #2396ED 0%, #FFB84A 100%);
+  background: linear-gradient(90deg, #FFB84A 0%, #ffd685 100%);
   border-radius: 999rpx;
   transition: width 0.4s;
 }
 .progress-text {
-  font-size: 22rpx;
-  color: #4b5563;
-  font-family: monospace;
+  font-size: 26rpx;
+  color: #1a1a2e;
+  font-weight: 700;
 }
 
-/* Quick grid */
+/* Quick grid（无背景） */
 .quick-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16rpx;
-  margin-bottom: 36rpx;
+  margin-bottom: 32rpx;
   padding: 0 8rpx;
 }
 .q-item {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 12rpx;
 }
-.q-icon {
-  width: 96rpx; height: 96rpx;
-  border-radius: 24rpx;
-  background: #ffffff;
-  border: 1rpx solid rgba(0,0,0,0.05);
-  box-shadow: 0 4rpx 12rpx rgba(20,16,8,0.04);
+.q-icon-bare {
+  width: 56rpx; height: 56rpx;
   display: flex; align-items: center; justify-content: center;
-  margin-bottom: 12rpx;
 }
 .q-label {
-  font-size: 22rpx;
-  color: #4b5563;
+  font-size: 24rpx;
+  color: #1a1a2e;
   font-weight: 500;
 }
 
-/* Menu list */
-.menu-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-.menu-item {
+/* Menu 单卡（带分隔） */
+.menu-card {
   background: #ffffff;
-  border: 1rpx solid rgba(0,0,0,0.05);
-  border-radius: 24rpx;
-  padding: 24rpx 28rpx;
+  border-radius: 32rpx;
+  padding: 8rpx 0;
+  box-shadow:
+    0 16rpx 40rpx rgba(20, 16, 8, 0.06),
+    0 4rpx 12rpx rgba(20, 16, 8, 0.03);
+}
+.menu-row {
+  padding: 28rpx 32rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
 }
 .menu-left { display: flex; align-items: center; gap: 18rpx; }
 .menu-text {
-  font-size: 26rpx;
+  font-size: 28rpx;
   color: #1a1a2e;
   font-weight: 500;
+}
+.menu-divider {
+  height: 1rpx;
+  background: rgba(0,0,0,0.06);
+  margin: 0 32rpx;
 }
 
 /* Logout */
