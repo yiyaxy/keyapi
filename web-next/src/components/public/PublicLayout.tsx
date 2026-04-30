@@ -42,16 +42,9 @@ export function PublicLayout() {
                 <Button size='sm'>{t('nav.dashboard')}</Button>
               </Link>
             ) : (
-              <>
-                <Link to='/login'>
-                  <Button variant='ghost' size='sm'>
-                    {t('nav.login')}
-                  </Button>
-                </Link>
-                <Link to='/register'>
-                  <Button size='sm'>{t('nav.register')}</Button>
-                </Link>
-              </>
+              <Link to='/login'>
+                <Button size='sm'>{t('nav.login')}</Button>
+              </Link>
             )}
           </div>
         </div>

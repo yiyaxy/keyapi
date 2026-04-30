@@ -113,3 +113,39 @@
 [2m01:24:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/ImageDiagnosis.tsx, /src/index.css[22m
 [2m01:24:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/ImageDiagnosis.tsx, /src/index.css[22m
 [2m01:24:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/ImageDiagnosis.tsx, /src/index.css[22m
+[2m21:52:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/layout/AppShell.tsx, /src/index.css[22m
+[2m21:53:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m21:53:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m21:53:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AppMarketplace.tsx, /src/index.css[22m
+[2m22:09:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:09:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:09:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/Login.tsx, /src/index.css[22m
+[2m22:09:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/Register.tsx, /src/index.css[22m
+[2m22:10:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/Register.tsx[22m
+[2m22:10:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/public/PublicLayout.tsx, /src/index.css[22m
+[2m22:10:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/Home.tsx, /src/index.css[22m
+[2m22:20:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:22:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx[22m
+[2m22:22:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/components/mobile/MobileAppPortal.tsx[22m Could not Fast Refresh (export removed)
+[2m22:22:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/layout/AppShell.tsx, /src/index.css, /src/App.tsx[22m
+[2m22:22:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/layout/AppShell.tsx, /src/index.css[22m
+[2m22:22:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m22:28:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:28:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:28:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:29:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:29:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:29:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:34:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:34:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:38:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:38:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:40:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:42:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:45:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:50:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:52:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m22:54:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m23:00:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m23:01:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m
+[2m23:01:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/mobile/MobileAppPortal.tsx, /src/index.css[22m

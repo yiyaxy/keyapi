@@ -34,7 +34,6 @@ export function Login() {
   const wechatInitializedRef = useRef(false);
   const redirect = params.get('redirect') || '/';
   const loginMode = params.get('mode');
-  const registerEnabled = cfg.register_enabled !== false;
   const passwordLoginEnabled = cfg.password_login_enabled !== false;
   const wechatLoginEnabled = cfg.wechat_login === true || cfg.wx_mini_login === true;
 
@@ -78,19 +77,7 @@ export function Login() {
     <AuthLayout
       eyebrow={t('login.eyebrow')}
       title={t('login.title')}
-      footer={
-        registerEnabled ? (() => {
-          const [prefix, cta] = t('login.to_register').split(/(?<=[?？])\s*/);
-          return (
-            <>
-              {prefix}
-              <Link to='/register' className='ml-1 text-accent hover:underline'>
-                {cta ?? t('login.to_register')}
-              </Link>
-            </>
-          );
-        })() : undefined
-      }
+      footer={undefined}
     >
       {!passwordLoginEnabled && !wechatLoginEnabled ? (
         <InlineBanner level='info' message='当前租户未开放可用的登录方式' />
@@ -133,14 +120,19 @@ export function Login() {
           )}
 
           {wechatLoginEnabled && (
-            <Button
-              type='button'
-              variant='secondary'
-              className='w-full'
-              onClick={() => setWechatOpen(true)}
-            >
-              {t('login.wechat')}
-            </Button>
+            <div className='space-y-2'>
+              <Button
+                type='button'
+                variant='secondary'
+                className='w-full'
+                onClick={() => setWechatOpen(true)}
+              >
+                {t('login.wechat')}
+              </Button>
+              <p className='text-center text-12 leading-5 text-fg-2'>
+                新用户使用微信小程序扫码登录会自动注册，并领取赠送积分。
+              </p>
+            </div>
           )}
         </>
       )}

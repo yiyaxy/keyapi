@@ -90,7 +90,7 @@ function HeroDefault() {
           </button>
         </div>
         <div className='flex gap-3'>
-          <Link to='/register'>
+          <Link to='/login'>
             <Button size='lg'>{t('home.cta.primary')}</Button>
           </Link>
           <Link to='/pricing'>

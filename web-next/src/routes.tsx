@@ -8,6 +8,7 @@ import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { RootLayout } from '@/components/common/RootLayout';
 import { RouteErrorFallback } from '@/components/common/RouteErrorFallback';
 import { AppShell } from '@/components/layout/AppShell';
+import { MobileRoutePage } from '@/components/mobile/MobileAppPortal';
 import { PublicLayout } from '@/components/public/PublicLayout';
 import { AboutPage } from '@/pages/About';
 import { AccountPage } from '@/pages/Account';
@@ -102,6 +103,9 @@ export const router = createBrowserRouter([
       {
         element: <ProtectedRoute />,
         children: [
+          { path: '/m', element: <MobileRoutePage route='home' /> },
+          { path: '/m/apps', element: <MobileRoutePage route='apps' /> },
+          { path: '/m/topup', element: <MobileRoutePage route='topup' /> },
           {
             element: <AppShell />,
             children: [

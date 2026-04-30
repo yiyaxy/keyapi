@@ -752,6 +752,8 @@ func SetApiRouter(router *gin.Engine) {
 			appPublicRoute.GET("/image-diagnosis/results", app.ListImageDiagnosisResults)
 			appPublicRoute.GET("/image-diagnosis/results/:result_id", app.GetImageDiagnosisResult)
 			appPublicRoute.POST("/image-diagnosis/results", app.SaveImageDiagnosisResult)
+			appPublicRoute.GET("/mobile-chat/messages", middleware.UserAuth(), app.ListMobileChatMessages)
+			appPublicRoute.POST("/mobile-chat/messages", middleware.UserAuth(), app.SaveMobileChatMessage)
 			appPublicRoute.GET("/:slug", app.GetApp)
 			appPublicRoute.POST("/:slug/guest-session", middleware.CriticalRateLimit(), app.GetGuestToken)
 			appPublicRoute.POST("/:slug/session", middleware.UserAuth(), app.GetSessionToken)

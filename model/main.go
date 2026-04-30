@@ -298,6 +298,7 @@ func migrateDB() error {
 		if err := ensureMissingTables(
 			&AiApp{},
 			&ImageDiagnosisResult{},
+			&MobileChatMessage{},
 			&UserLevel{},
 		); err != nil {
 			log.Printf("Warning: ensureMissingTables: %v", err)
@@ -553,6 +554,7 @@ func migrateDBFast() error {
 		{&UserMergeLog{}, "UserMergeLog"},
 		{&AiApp{}, "AiApp"},
 		{&ImageDiagnosisResult{}, "ImageDiagnosisResult"},
+		{&MobileChatMessage{}, "MobileChatMessage"},
 	}
 
 	for _, m := range migrations {

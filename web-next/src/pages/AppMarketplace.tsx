@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ExternalLink, Loader2, Tag } from 'lucide-react';
 import { toast } from 'sonner';
@@ -124,6 +124,13 @@ export function AppMarketplacePage() {
   const { t } = useTranslation('apps');
   const [search, setSearch] = useState('');
   const list = usePublicApps();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      window.location.replace('/m/apps');
+    }
+  }, []);
 
   const apps = (list.data ?? []).filter(
     (a) =>

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useLocation } from 'react-router-dom';
 
+import { MobileRoutePage } from '@/components/mobile/MobileAppPortal';
+
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 
@@ -67,11 +69,9 @@ export function AppShell() {
   }, []);
 
   if (!wide) {
-    return (
-      <div className='flex h-screen items-center justify-center bg-bg-0 p-6 text-center'>
-        <p className='text-13 text-fg-1'>{t('viewport.too_narrow', { ns: 'common' })}</p>
-      </div>
-    );
+    if (location.pathname.includes('/topup')) return <MobileRoutePage route='topup' />;
+    if (location.pathname.includes('/apps')) return <MobileRoutePage route='apps' />;
+    return <MobileRoutePage route='home' />;
   }
 
   const key = Object.keys(TITLES).find((k) => location.pathname.startsWith(k));
