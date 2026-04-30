@@ -44,7 +44,7 @@
             </view>
             <text class="token-meta">
               创建：{{ formatDate(token.created_at) }}
-              <text v-if="token.remain_quota >= 0">
+              <text v-if="userStore.wxPayEnabled && token.remain_quota >= 0">
                 · 剩余：{{ q2cny(token.remain_quota) }}
               </text>
             </text>

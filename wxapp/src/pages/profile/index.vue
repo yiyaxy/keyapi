@@ -36,7 +36,7 @@
           </view>
 
           <!-- 总资产卡 -->
-          <view class="assets-card">
+          <view v-if="userStore.wxPayEnabled" class="assets-card">
             <view class="assets-head">
               <view class="assets-icon">
                 <u-icon name="rmb" size="14" color="#1a1a2e" />
@@ -70,8 +70,8 @@
           </view>
 
           <!-- 快捷入口 -->
-          <view class="quick-grid">
-            <view class="q-item" @click="nav('/pages/redeem/index')">
+          <view class="quick-grid" :class="{ compact: !userStore.wxPayEnabled }">
+            <view v-if="userStore.wxPayEnabled" class="q-item" @click="nav('/pages/redeem/index')">
               <view class="q-icon-bare">
                 <u-icon name="rmb-circle" size="28" color="#1a1a2e" />
               </view>
@@ -83,7 +83,7 @@
               </view>
               <text class="q-label">API 密钥</text>
             </view>
-            <view class="q-item" @click="nav('/pages/usage-records/index')">
+            <view v-if="userStore.wxPayEnabled" class="q-item" @click="nav('/pages/usage-records/index')">
               <view class="q-icon-bare">
                 <u-icon name="file-text" size="28" color="#1a1a2e" />
               </view>
@@ -100,24 +100,24 @@
           </view>
 
           <!-- 菜单列表（合并为一张白卡） -->
-          <view class="menu-card">
-            <view class="menu-row" @click="nav('/pages/orders/index')">
+          <view v-if="userStore.wxPayEnabled" class="menu-card">
+            <view v-if="userStore.wxPayEnabled" class="menu-row" @click="nav('/pages/orders/index')">
               <view class="menu-left">
                 <u-icon name="server" size="20" color="#1a1a2e" />
                 <text class="menu-text">充值记录</text>
               </view>
               <u-icon name="arrow-right" size="14" color="#9ca3af" />
             </view>
-            <view class="menu-divider" />
-            <view class="menu-row" @click="nav('/pages/usage-records/index')">
+            <view v-if="userStore.wxPayEnabled" class="menu-divider" />
+            <view v-if="userStore.wxPayEnabled" class="menu-row" @click="nav('/pages/usage-records/index')">
               <view class="menu-left">
                 <u-icon name="more-circle" size="20" color="#1a1a2e" />
                 <text class="menu-text">API 调用日志</text>
               </view>
               <u-icon name="arrow-right" size="14" color="#9ca3af" />
             </view>
-            <view class="menu-divider" />
-            <view class="menu-row" @click="onAppTap">
+            <view v-if="userStore.wxPayEnabled" class="menu-divider" />
+            <view v-if="userStore.wxPayEnabled" class="menu-row" @click="onAppTap">
               <view class="menu-left">
                 <u-icon name="grid" size="20" color="#1a1a2e" />
                 <text class="menu-text">应用消耗记录</text>
@@ -145,7 +145,7 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { getSelf } from '@/services/api.js'
+import { getSelf, getStatus } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
 const statusBarH = ref(0)
@@ -205,8 +205,12 @@ function doLogout() {
   })
 }
 
-onLoad(() => {
+onLoad(async () => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
+  try {
+    const status = await getStatus()
+    if (status) userStore.applyStatus(status)
+  } catch {}
   if (userStore.isLoggedIn) {
     if (userStore.userInfo) userInfo.value = userStore.userInfo
     loadData()
@@ -434,6 +438,9 @@ onLoad(() => {
   gap: 16rpx;
   margin-bottom: 32rpx;
   padding: 0 8rpx;
+}
+.quick-grid.compact {
+  grid-template-columns: 1fr;
 }
 .q-item {
   display: flex;

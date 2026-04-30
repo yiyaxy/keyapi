@@ -33,7 +33,7 @@
             </view>
 
             <view class="actions">
-              <view class="btn btn-primary" @click="onRecharge">
+              <view v-if="userStore.wxPayEnabled" class="btn btn-primary" @click="onRecharge">
                 <text class="btn-txt">立即充值</text>
               </view>
               <view class="btn btn-ghost" @click="onCreateKey">
@@ -43,7 +43,7 @@
           </view>
 
           <!-- 余额玻璃卡 -->
-          <view class="balance-card">
+          <view v-if="userStore.wxPayEnabled" class="balance-card">
             <view class="balance-header">
               <view class="balance-icon">
                 <u-icon name="rmb" size="14" color="#FFB84A" />
@@ -81,7 +81,7 @@
           </view>
 
           <!-- 签到 -->
-          <view v-if="userStore.checkinEnabled && userStore.isLoggedIn" class="checkin">
+          <view v-if="userStore.wxPayEnabled && userStore.checkinEnabled && userStore.isLoggedIn" class="checkin">
             <view class="checkin-left">
               <view class="checkin-icon" :class="{ done: checkedInToday }">
                 <u-icon :name="checkedInToday ? 'checkmark' : 'gift'" size="20" :color="checkedInToday ? '#00F5FF' : '#FFB84A'" />
@@ -150,7 +150,7 @@
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { doCheckin, getAppGuestToken, getAppSessionToken, getCheckinStatus, getPublicApps, getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
+import { doCheckin, getAppSessionToken, getCheckinStatus, getPublicApps, getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
 import env from '@/config/env.js'
 import { renderQuota } from '@/utils/quota.js'
 
@@ -252,24 +252,40 @@ function openWebView(targetUrl, title = '') {
   uni.navigateTo({ url: `/pages/webview/index?url=${query}&title=${pageTitle}` })
 }
 
+function notifyLogin(message = '请先登录后使用应用') {
+  uni.showToast({ title: message, icon: 'none', duration: 1800 })
+  setTimeout(() => uni.navigateTo({ url: '/pages/login/index' }), 700)
+}
+
+async function ensureValidLogin() {
+  if (!userStore.isLoggedIn || !userStore.token) {
+    notifyLogin()
+    return false
+  }
+
+  try {
+    const data = await getSelf()
+    if (!data?.id) throw new Error('Invalid session')
+    userInfo.value = data
+    userStore.setUserInfo(data)
+    return true
+  } catch {
+    notifyLogin('登录已失效，请重新登录')
+    return false
+  }
+}
+
 async function useApp(app) {
   if (!app?.slug || activeSlug.value) return
 
   activeSlug.value = app.slug
   try {
-    let token = ''
-    if (userStore.isLoggedIn) {
-      const data = await getAppSessionToken(app.slug)
-      token = data?.key || ''
-    } else if (Number(app.guest_quota || 0) > 0) {
-      const data = await getAppGuestToken(app.slug)
-      token = data?.key || ''
-    } else {
-      uni.showToast({ title: '请先登录后使用该应用', icon: 'none' })
-      setTimeout(() => uni.navigateTo({ url: '/pages/login/index' }), 600)
+    if (!(await ensureValidLogin())) {
       return
     }
 
+    const data = await getAppSessionToken(app.slug)
+    const token = data?.key || ''
     if (!token) throw new Error('未获取到应用访问令牌')
     const targetUrl = setQueryParam(toAbsoluteTarget(app.target_url), 'token', token)
     openWebView(targetUrl, app.name)

@@ -11,7 +11,7 @@
             <text class="head-title">AI 应用中心</text>
             <text class="head-sub">使用平台 Token，直接体验已接入的 AI 应用</text>
           </view>
-          <view class="quota-pill">
+          <view v-if="userStore.wxPayEnabled" class="quota-pill">
             <u-icon name="server-fill" size="17" color="#111827" />
             <view class="quota-text">
               <text class="quota-num">{{ tokenStr(userInfo?.quota) }}</text>
@@ -75,9 +75,6 @@
               <view class="app-info">
                 <view class="app-title-row">
                   <text class="app-title">{{ app.name }}</text>
-                  <view v-if="app.guest_quota > 0 && !userStore.isLoggedIn" class="trial-badge">
-                    <text class="trial-badge-text">可试用</text>
-                  </view>
                 </view>
                 <view v-if="tagsOf(app).length" class="tag-row">
                   <text v-for="tag in tagsOf(app)" :key="tag" class="tag">{{ tag }}</text>
@@ -88,11 +85,7 @@
             <text class="app-desc">{{ app.description || '这个应用暂未填写介绍' }}</text>
 
             <view class="app-actions">
-              <view class="preview-btn" @click.stop="previewApp(app)">
-                <u-icon name="eye" size="15" color="#374151" />
-                <text class="preview-text">预览</text>
-              </view>
-              <view class="use-btn" :class="{ disabled: activeSlug === app.slug }" @click.stop="useApp(app)">
+              <view class="use-btn" :class="{ disabled: activeSlug === app.slug }">
                 <u-loading-icon v-if="activeSlug === app.slug" size="28" color="#111827" />
                 <u-icon v-else name="arrow-rightward" size="16" color="#111827" />
                 <text class="use-text">{{ activeSlug === app.slug ? '准备中' : '立即使用' }}</text>
@@ -112,7 +105,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { getAppGuestToken, getAppSessionToken, getPublicApps, getSelf } from '@/services/api.js'
+import { getAppSessionToken, getPublicApps, getSelf } from '@/services/api.js'
 import env from '@/config/env.js'
 import { userStore } from '@/store/user.js'
 
@@ -205,8 +198,27 @@ function openWebView(targetUrl, title = '') {
   uni.navigateTo({ url: `/pages/webview/index?url=${query}&title=${pageTitle}` })
 }
 
-function previewApp(app) {
-  openWebView(toAbsoluteTarget(app.target_url), app.name)
+function notifyLogin(message = '请先登录后使用应用') {
+  uni.showToast({ title: message, icon: 'none', duration: 1800 })
+  setTimeout(() => uni.navigateTo({ url: '/pages/login/index' }), 700)
+}
+
+async function ensureValidLogin() {
+  if (!userStore.isLoggedIn || !userStore.token) {
+    notifyLogin()
+    return false
+  }
+
+  try {
+    const data = await getSelf()
+    if (!data?.id) throw new Error('Invalid session')
+    userInfo.value = data
+    userStore.setUserInfo(data)
+    return true
+  } catch {
+    notifyLogin('登录已失效，请重新登录')
+    return false
+  }
 }
 
 async function useApp(app) {
@@ -214,19 +226,12 @@ async function useApp(app) {
 
   activeSlug.value = app.slug
   try {
-    let token = ''
-    if (userStore.isLoggedIn) {
-      const data = await getAppSessionToken(app.slug)
-      token = data?.key || ''
-    } else if (Number(app.guest_quota || 0) > 0) {
-      const data = await getAppGuestToken(app.slug)
-      token = data?.key || ''
-    } else {
-      uni.showToast({ title: '请先登录后使用该应用', icon: 'none' })
-      setTimeout(() => uni.navigateTo({ url: '/pages/login/index' }), 600)
+    if (!(await ensureValidLogin())) {
       return
     }
 
+    const data = await getAppSessionToken(app.slug)
+    const token = data?.key || ''
     if (!token) throw new Error('未获取到应用访问令牌')
     const targetUrl = setQueryParam(toAbsoluteTarget(app.target_url), 'token', token)
     openWebView(targetUrl, app.name)
@@ -501,20 +506,6 @@ onShow(() => {
   white-space: nowrap;
 }
 
-.trial-badge {
-  flex-shrink: 0;
-  padding: 5rpx 12rpx;
-  border-radius: 999rpx;
-  background: rgba(34, 197, 94, 0.1);
-  border: 1rpx solid rgba(34, 197, 94, 0.2);
-}
-
-.trial-badge-text {
-  font-size: 20rpx;
-  color: #16a34a;
-  font-weight: 700;
-}
-
 .tag-row {
   display: flex;
   flex-wrap: wrap;
@@ -550,7 +541,6 @@ onShow(() => {
   margin-top: 24rpx;
 }
 
-.preview-btn,
 .use-btn,
 .retry-btn {
   height: 72rpx;
@@ -559,17 +549,6 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-}
-
-.preview-btn {
-  min-width: 142rpx;
-  background: #f3f4f6;
-}
-
-.preview-text {
-  font-size: 25rpx;
-  color: #374151;
-  font-weight: 700;
 }
 
 .use-btn {
@@ -718,19 +697,6 @@ onShow(() => {
   font-weight: 800;
 }
 
-.trial-badge {
-  position: absolute;
-  top: -108rpx;
-  right: 0;
-  background: rgba(255, 184, 74, 0.18);
-  border-color: rgba(255, 184, 74, 0.35);
-  backdrop-filter: blur(16rpx);
-}
-
-.trial-badge-text {
-  color: #ffda93;
-}
-
 .tag-row {
   flex-wrap: nowrap;
   gap: 6rpx;
@@ -774,27 +740,15 @@ onShow(() => {
   right: 20rpx;
   bottom: 18rpx;
   z-index: 1;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12rpx;
   margin: 0;
 }
 
-.preview-btn,
 .use-btn {
   height: 48rpx;
   border-radius: 999rpx;
   backdrop-filter: blur(18rpx);
-}
-
-.preview-btn {
-  min-width: 112rpx;
-  background: rgba(255, 255, 255, 0.13);
-  border: 1rpx solid rgba(255, 255, 255, 0.16);
-}
-
-.preview-text {
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 20rpx;
 }
 
 .use-btn {

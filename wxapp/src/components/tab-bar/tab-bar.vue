@@ -1,7 +1,7 @@
 <template>
   <view class="tabbar">
     <view
-      v-for="t in tabs"
+      v-for="t in visibleTabs"
       :key="t.id"
       class="tab"
       :class="{ active: active === t.id }"
@@ -17,6 +17,9 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { userStore } from '@/store/user.js'
+
 defineProps({
   active: { type: String, default: 'home' }
 })
@@ -27,6 +30,11 @@ const tabs = [
   { id: 'invite',  label: '邀请', icon: 'share',          path: '/pages/invite/index' },
   { id: 'profile', label: '我的', icon: 'account',        path: '/pages/profile/index' },
 ]
+
+const visibleTabs = computed(() => {
+  if (userStore.wxPayEnabled) return tabs
+  return tabs.filter((t) => t.id !== 'invite')
+})
 
 function onTab(t) {
   if (t.id === activeId()) return

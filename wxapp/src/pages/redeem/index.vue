@@ -5,10 +5,21 @@
       <view class="back-btn" @click="handleBack">
         <u-icon name="arrow-left" size="20" color="#1a1a2e" />
       </view>
-      <text class="header-title">充值</text>
+      <text class="header-title">{{ userStore.wxPayEnabled ? '充值' : '功能' }}</text>
     </view>
 
     <!-- Tab 切换（微信支付关闭时隐藏该 tab） -->
+    <template v-if="!userStore.wxPayEnabled">
+      <view class="content">
+        <view class="closed-card">
+          <u-icon name="lock" size="36" color="#9ca3af" />
+          <text class="closed-title">功能暂未开放</text>
+          <text class="closed-desc">当前小程序版本暂不展示充值、兑换和算力资产相关功能。</text>
+        </view>
+      </view>
+    </template>
+
+    <template v-else>
     <view class="tab-bar">
       <view
         v-if="userStore.wxPayEnabled"
@@ -158,6 +169,7 @@
         </view>
       </template>
     </view>
+    </template>
   </view>
 </template>
 
@@ -436,6 +448,31 @@ onLoad(async () => {
   pointer-events: none;
 }
 .content { padding: 24rpx; }
+
+.closed-card {
+  min-height: 420rpx;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 72rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.06);
+}
+.closed-title {
+  margin-top: 24rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+.closed-desc {
+  margin-top: 14rpx;
+  font-size: 25rpx;
+  line-height: 1.7;
+  color: #6b7280;
+}
 
 /* Tab 切换 */
 .tab-bar {
