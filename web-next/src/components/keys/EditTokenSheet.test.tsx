@@ -21,6 +21,7 @@ const token: Token = {
   created_time: 1713484800,
   model_limits_enabled: false,
   model_limits: '',
+  enable_image_gen: true,
   allow_ips: '',
   group: 'auto',
   cross_group_retry: false,

@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/jimeng"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
+	taskapimart "github.com/QuantumNous/new-api/relay/channel/task/apimart"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/QuantumNous/new-api/relay/channel/xai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -155,6 +156,14 @@ func (a *TaskAdaptor) GetChannelName() string { return ChannelName }
 func runSyncUpstream(snapshot *SyncWrapSnapshot) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+	common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.syncwrap.start", map[string]interface{}{
+		"task_id": snapshot.TaskPublicID,
+		"model":   snapshot.OriginModelName,
+		"channel": map[string]interface{}{
+			"id":   snapshot.ChannelMeta.ChannelId,
+			"type": snapshot.ChannelMeta.ChannelType,
+		},
+	})
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -175,6 +184,10 @@ func runSyncUpstream(snapshot *SyncWrapSnapshot) {
 
 	imageResp, _, err := ExecImageUpstream(ctx, snapshot, snapshot.ImageRequest)
 	if err != nil {
+		common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.syncwrap.upstream_error", map[string]interface{}{
+			"task_id": snapshot.TaskPublicID,
+			"error":   err.Error(),
+		})
 		task.FailReason = err.Error()
 		task.Status = model.TaskStatusFailure
 		task.Progress = taskcommon.ProgressComplete
@@ -189,6 +202,19 @@ func runSyncUpstream(snapshot *SyncWrapSnapshot) {
 		}
 		return
 	}
+	if imageResp == nil || len(filterDisplayableImageData(imageResp.Data)) == 0 {
+		common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.syncwrap.empty_image_data", map[string]interface{}{
+			"task_id":  snapshot.TaskPublicID,
+			"response": imageResp,
+		})
+		failSyncTask(ctx, snapshot, fmt.Errorf("image response has no displayable image data"))
+		return
+	}
+	imageResp.Data = filterDisplayableImageData(imageResp.Data)
+	common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.syncwrap.upstream_success", map[string]interface{}{
+		"task_id":  snapshot.TaskPublicID,
+		"response": imageResp,
+	})
 
 	data, err := common.Marshal(imageResp.Data)
 	if err != nil {
@@ -207,6 +233,19 @@ func runSyncUpstream(snapshot *SyncWrapSnapshot) {
 	if !updated {
 		logger.LogWarn(ctx, fmt.Sprintf("syncwrap: task %s was changed concurrently, skip success write", task.TaskID))
 	}
+}
+
+func filterDisplayableImageData(data []dto.ImageData) []dto.ImageData {
+	filtered := make([]dto.ImageData, 0, len(data))
+	for _, item := range data {
+		item.Url = strings.TrimSpace(item.Url)
+		item.B64Json = strings.TrimSpace(item.B64Json)
+		if item.Url == "" && item.B64Json == "" {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
 
 func failSyncTask(ctx context.Context, snapshot *SyncWrapSnapshot, err error) {
@@ -234,6 +273,10 @@ func failSyncTask(ctx context.Context, snapshot *SyncWrapSnapshot, err error) {
 
 func ExecImageUpstream(ctx context.Context, snapshot *SyncWrapSnapshot, request dto.ImageRequest) (*dto.ImageResponse, *dto.Usage, error) {
 	info := snapshot.ToRelayInfo()
+	if snapshot.ChannelMeta.ChannelType == constant.ChannelTypeApimart {
+		return execApimartImageUpstream(ctx, snapshot, info, request)
+	}
+
 	adaptor := getImageAdaptor(snapshot.ChannelMeta.ApiType)
 	if adaptor == nil {
 		return nil, nil, fmt.Errorf("image async not implemented for api type %d", snapshot.ChannelMeta.ApiType)
@@ -265,6 +308,136 @@ func ExecImageUpstream(ctx context.Context, snapshot *SyncWrapSnapshot, request 
 		return nil, nil, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return extractor.ExtractImageResponse(resp, info)
+}
+
+func execApimartImageUpstream(ctx context.Context, snapshot *SyncWrapSnapshot, info *relaycommon.RelayInfo, request dto.ImageRequest) (*dto.ImageResponse, *dto.Usage, error) {
+	if info.UpstreamModelName != "" {
+		request.Model = info.UpstreamModelName
+	}
+	common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.apimart.submit_request", map[string]interface{}{
+		"model":    request.Model,
+		"prompt":   request.Prompt,
+		"size":     request.Size,
+		"quality":  request.Quality,
+		"n":        request.N,
+		"base_url": strings.TrimRight(info.ChannelBaseUrl, "/"),
+	})
+	body, err := common.Marshal(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("%s/v1/images/generations", strings.TrimRight(info.ChannelBaseUrl, "/")),
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+info.ApiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	client, err := service.GetHttpClientWithProxy(snapshot.Proxy)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+	submitBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.apimart.submit_response", common.RequestJSONLRawJSON(submitBody))
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, nil, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(submitBody)))
+	}
+	var submitResp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    []struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := common.Unmarshal(submitBody, &submitResp); err != nil {
+		return nil, nil, err
+	}
+	if submitResp.Code != 0 && submitResp.Code != http.StatusOK {
+		msg := strings.TrimSpace(submitResp.Message)
+		if msg == "" {
+			msg = "apimart submit failed"
+		}
+		return nil, nil, fmt.Errorf("%s", msg)
+	}
+	if len(submitResp.Data) == 0 || strings.TrimSpace(submitResp.Data[0].TaskID) == "" {
+		return nil, nil, fmt.Errorf("apimart response missing task_id")
+	}
+	common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.apimart.submitted", map[string]interface{}{
+		"upstream_task_id": strings.TrimSpace(submitResp.Data[0].TaskID),
+	})
+	return pollApimartImageTask(ctx, info, snapshot.Proxy, strings.TrimSpace(submitResp.Data[0].TaskID))
+}
+
+func pollApimartImageTask(ctx context.Context, info *relaycommon.RelayInfo, proxy string, taskID string) (*dto.ImageResponse, *dto.Usage, error) {
+	adaptor := &taskapimart.TaskAdaptor{}
+	wait := 5 * time.Second
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(wait):
+			wait = 10 * time.Second
+		}
+
+		fetchResp, err := adaptor.FetchTask(info.ChannelBaseUrl, info.ApiKey, map[string]any{"task_id": taskID}, proxy)
+		if err != nil {
+			logger.LogWarn(ctx, "apimart image poll failed: "+err.Error())
+			continue
+		}
+		body, readErr := io.ReadAll(fetchResp.Body)
+		_ = fetchResp.Body.Close()
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		if fetchResp.StatusCode != http.StatusOK {
+			return nil, nil, fmt.Errorf("apimart poll returned %d: %s", fetchResp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		common.WriteRequestJSONLByID(info.RequestId, "imagegen.apimart.poll_response", common.RequestJSONLRawJSON(body))
+		taskInfo, err := adaptor.ParseTaskResult(body)
+		if err != nil {
+			return nil, nil, err
+		}
+		common.WriteRequestJSONLByID(info.RequestId, "imagegen.apimart.poll_task_info", taskInfo)
+		switch taskInfo.Status {
+		case string(model.TaskStatusSuccess):
+			if len(taskInfo.Urls) == 0 {
+				return nil, nil, fmt.Errorf("apimart image task %s completed without image urls", taskID)
+			}
+			imageResp := &dto.ImageResponse{
+				Created: common.GetTimestamp(),
+				Data:    make([]dto.ImageData, 0, len(taskInfo.Urls)),
+			}
+			for _, imageURL := range taskInfo.Urls {
+				imageURL = strings.TrimSpace(imageURL)
+				if imageURL != "" {
+					imageResp.Data = append(imageResp.Data, dto.ImageData{Url: imageURL})
+				}
+			}
+			if len(imageResp.Data) == 0 {
+				return nil, nil, fmt.Errorf("apimart image task %s completed without image urls", taskID)
+			}
+			return imageResp, &dto.Usage{}, nil
+		case string(model.TaskStatusFailure):
+			reason := strings.TrimSpace(taskInfo.Reason)
+			if reason == "" {
+				reason = "apimart image task failed"
+			}
+			return nil, nil, fmt.Errorf("%s", reason)
+		}
+	}
 }
 
 func getImageAdaptor(apiType int) channel.Adaptor {

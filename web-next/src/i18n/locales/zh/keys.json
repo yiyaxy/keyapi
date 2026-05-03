@@ -36,6 +36,7 @@
   "edit.field.expired_time.30d": "+30 天",
   "edit.field.model_limits": "可用模型",
   "edit.field.model_limits.placeholder": "未限制",
+  "edit.field.enable_image_gen": "图片生成工具",
   "edit.field.allow_ips": "允许 IP（每行一个）",
   "edit.field.group": "分组",
   "edit.field.cross_group_retry": "跨分组重试",

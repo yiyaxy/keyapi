@@ -20,7 +20,10 @@ function parseList(value: string): string[] {
   } catch {
     /* fallthrough */
   }
-  return [];
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export function StringListEditor({

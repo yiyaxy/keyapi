@@ -36,6 +36,7 @@ export const editTokenSchema = z
     expired_time: z.number().int(),
     model_limits_enabled: z.boolean(),
     model_limits: z.array(z.string()),
+    enable_image_gen: z.boolean(),
     allow_ips: z.array(z.string()),
     group: z.array(z.string()).min(1),
     cross_group_retry: z.boolean(),

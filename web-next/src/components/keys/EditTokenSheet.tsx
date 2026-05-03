@@ -49,6 +49,7 @@ export function EditTokenSheet({
       expired_time: token.expired_time,
       model_limits_enabled: token.model_limits_enabled,
       model_limits: token.model_limits ? token.model_limits.split(',').filter(Boolean) : [],
+      enable_image_gen: token.enable_image_gen ?? true,
       allow_ips: parseAllowIps(token.allow_ips ?? ''),
       group: parseGroupChain(token.group),
       cross_group_retry: token.cross_group_retry,
@@ -64,6 +65,7 @@ export function EditTokenSheet({
       expired_time: token.expired_time,
       model_limits_enabled: token.model_limits_enabled,
       model_limits: token.model_limits ? token.model_limits.split(',').filter(Boolean) : [],
+      enable_image_gen: token.enable_image_gen ?? true,
       allow_ips: parseAllowIps(token.allow_ips ?? ''),
       group: parseGroupChain(token.group),
       cross_group_retry: token.cross_group_retry,
@@ -87,6 +89,7 @@ export function EditTokenSheet({
         expired_time: values.expired_time,
         model_limits_enabled: values.model_limits_enabled,
         model_limits: values.model_limits.join(','),
+        enable_image_gen: values.enable_image_gen,
         allow_ips: serializeAllowIps(values.allow_ips),
         group: serializeGroupChain(values.group),
         cross_group_retry: values.cross_group_retry,
@@ -200,6 +203,13 @@ export function EditTokenSheet({
                 })}
               </PopoverContent>
             </Popover>
+          </div>
+          <div className='flex items-center justify-between'>
+            <Label>{t('edit.field.enable_image_gen')}</Label>
+            <Switch
+              checked={form.watch('enable_image_gen')}
+              onCheckedChange={(v) => form.setValue('enable_image_gen', v)}
+            />
           </div>
           <div className='space-y-2'>
             <Label htmlFor='e-ips'>{t('edit.field.allow_ips')}</Label>

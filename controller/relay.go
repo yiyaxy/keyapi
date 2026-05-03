@@ -21,6 +21,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -474,6 +475,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if openaiReq, ok := request.(*dto.GeneralOpenAIRequest); ok {
 		service.ApplyPromptRules(openaiReq, 0)
 	}
+	common.WriteRequestJSONL(c, "relay.request.validated", map[string]interface{}{
+		"format":  string(relayFormat),
+		"request": request,
+	})
 
 	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
@@ -486,6 +491,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		"group":     relayInfo.TokenGroup,
 		"is_stream": relayInfo.IsStream,
 	})
+
+	if relayimagegen.InjectTools(relayInfo, request) {
+		addTraceEvent(c, "imagegen", "image generation tool injected", map[string]interface{}{
+			"format": string(relayInfo.RelayFormat),
+		})
+		common.WriteRequestJSONL(c, "imagegen.request.after_tool_injection", map[string]interface{}{
+			"format":  string(relayInfo.RelayFormat),
+			"request": request,
+		})
+	}
 
 	// ── Tenant-level enforcement: quota / RPM / model access ──
 	if relayInfo.TenantId > 0 {

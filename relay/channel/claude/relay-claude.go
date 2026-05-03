@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
 	"github.com/QuantumNous/new-api/relay/reasonmap"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -890,7 +892,28 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		Usage:        &dto.Usage{},
 	}
 	var err *types.NewAPIError
+	var imageToolCapture *relayimagegen.ClaudeStreamCapture
+	if _, ok := info.Request.(*dto.ClaudeRequest); ok {
+		imageToolCapture = relayimagegen.NewClaudeStreamCapture(relayimagegen.EnabledForInfo(info))
+	}
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if imageToolCapture != nil {
+			decision, captureErr := imageToolCapture.Handle(data, info.SendResponseCount > 0)
+			if captureErr != nil {
+				sr.Stop(types.NewError(captureErr, types.ErrorCodeBadResponseBody))
+				return
+			}
+			for _, buffered := range decision.Flush {
+				err = HandleStreamResponseData(c, info, claudeInfo, buffered)
+				if err != nil {
+					sr.Stop(err)
+					return
+				}
+			}
+			if decision.Suppress {
+				return
+			}
+		}
 		err = HandleStreamResponseData(c, info, claudeInfo, data)
 		if err != nil {
 			sr.Stop(err)
@@ -898,6 +921,14 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	})
 	if err != nil {
 		return nil, err
+	}
+	if imageToolCapture != nil && imageToolCapture.Ready() {
+		req := info.Request.(*dto.ClaudeRequest)
+		usage, apiErr := handleClaudeImageToolCall(c, info, req, imageToolCapture.ToolCall())
+		if apiErr != nil {
+			return nil, apiErr
+		}
+		return usage, nil
 	}
 
 	// Zero chunks = upstream returned empty stream, trigger retry
@@ -963,6 +994,18 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		claudeInfo.Usage.ClaudeCacheCreation5mTokens = claudeResponse.Usage.GetCacheCreation5mTokens()
 		claudeInfo.Usage.ClaudeCacheCreation1hTokens = claudeResponse.Usage.GetCacheCreation1hTokens()
 	}
+	if req, ok := info.Request.(*dto.ClaudeRequest); ok && relayimagegen.EnabledForInfo(info) {
+		if call, found := relayimagegen.FindClaudeGenerateToolCall(&claudeResponse); found {
+			usage, apiErr := handleClaudeImageToolCall(c, info, req, call)
+			if apiErr != nil {
+				return apiErr
+			}
+			if usage != nil {
+				claudeInfo.Usage = usage
+			}
+			return nil
+		}
+	}
 	var responseData []byte
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
@@ -982,6 +1025,93 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 
 	service.IOCopyBytesGracefully(c, httpResp, responseData)
 	return nil
+}
+
+func handleClaudeImageToolCall(c *gin.Context, info *relaycommon.RelayInfo, req *dto.ClaudeRequest, call relayimagegen.ClaudeToolCall) (*dto.Usage, *types.NewAPIError) {
+	common.WriteRequestJSONL(c, "imagegen.claude.tool_call", map[string]interface{}{
+		"id":       call.ID,
+		"name":     call.Name,
+		"input":    call.Input,
+		"raw_json": call.RawJSON,
+	})
+	args, err := relayimagegen.ParseGenerateArgsAny(call.Input)
+	if err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	common.WriteRequestJSONL(c, "imagegen.claude.tool_args", args)
+	result, apiErr := relayimagegen.ExecuteGenerate(c, info, args)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	common.WriteRequestJSONL(c, "imagegen.claude.tool_result", result)
+	nextReq, err := relayimagegen.BuildClaudeRoundTripRequest(req, call, result)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	common.WriteRequestJSONL(c, "imagegen.claude.round_trip_request", nextReq)
+	return runClaudeRoundTrip(c, info, nextReq)
+}
+
+func runClaudeRoundTrip(c *gin.Context, info *relaycommon.RelayInfo, req *dto.ClaudeRequest) (*dto.Usage, *types.NewAPIError) {
+	prevRequest := info.Request
+	prevStream := info.IsStream
+	info.Request = req
+	info.IsStream = req.IsStream(c)
+	defer func() {
+		info.Request = prevRequest
+		info.IsStream = prevStream
+	}()
+
+	adaptor := &Adaptor{}
+	adaptor.Init(info)
+	convertedRequest, err := adaptor.ConvertClaudeRequest(c, info, req)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
+	jsonData, err := common.Marshal(convertedRequest)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeJsonMarshalFailed, types.ErrOptionWithSkipRetry())
+	}
+	jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	if len(info.ParamOverride) > 0 {
+		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+	}
+	common.WriteRequestJSONL(c, "imagegen.claude.round_trip_upstream_request", map[string]interface{}{
+		"channel_id":   info.ChannelId,
+		"channel_type": info.ChannelType,
+		"model":        info.OriginModelName,
+		"body":         common.RequestJSONLRawJSON(jsonData),
+	})
+
+	resp, err := adaptor.DoRequest(c, info, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+	}
+	httpResp, _ := resp.(*http.Response)
+	if httpResp != nil {
+		defer service.CloseResponseBodyGracefully(httpResp)
+		if httpResp.StatusCode != http.StatusOK {
+			apiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+			service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
+			return nil, apiErr
+		}
+	}
+	usage, apiErr := adaptor.DoResponse(c, httpResp, info)
+	if apiErr != nil {
+		service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
+		return nil, apiErr
+	}
+	if usage == nil {
+		return &dto.Usage{}, nil
+	}
+	return usage.(*dto.Usage), nil
 }
 
 func ClaudeHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {

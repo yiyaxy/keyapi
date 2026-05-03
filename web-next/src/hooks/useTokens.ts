@@ -15,6 +15,7 @@ export type Token = {
   created_time: number;
   model_limits_enabled: boolean;
   model_limits: string;
+  enable_image_gen: boolean;
   allow_ips?: string | null;
   group: string;
   cross_group_retry: boolean;
@@ -50,6 +51,7 @@ export function useCreateToken() {
         unlimited_quota: true,
         remain_quota: 0,
         expired_time: -1,
+        enable_image_gen: true,
       });
     },
     onSuccess: () => {

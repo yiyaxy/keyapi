@@ -627,6 +627,14 @@ export const SETTINGS_GROUPS: Group[] = [
     title: { zh: '日志与导出', en: 'Log & export' },
     fields: [
       f('LogConsumeEnabled', 'bool', { zh: '记录消耗日志', en: 'Log consumption' }),
+      f('RequestJSONLEnabled', 'bool', {
+        zh: '请求 JSONL 调试',
+        en: 'Request JSONL debug',
+      }),
+      f('RequestJSONLDir', 'text', {
+        zh: '请求 JSONL 目录',
+        en: 'Request JSONL directory',
+      }),
       f('DataExportEnabled', 'bool', {
         zh: '启用数据导出',
         en: 'Enable data export',
@@ -754,6 +762,39 @@ export const SETTINGS_GROUPS: Group[] = [
         zh: '查询重试间隔（秒）',
         en: 'Query retry interval (s)',
       }),
+    ],
+  },
+  {
+    id: 'image-generation',
+    title: { zh: '图片生成', en: 'Image generation' },
+    fields: [
+      f(
+        'image_gen.enabled',
+        'bool',
+        { zh: '启用输入框生图工具', en: 'Enable chat image tool' },
+        {
+          zh: '开启后，支持工具调用的聊天模型会收到 generate_image 工具；还需要当前 Token 的图片生成工具开关处于开启状态。',
+          en: 'When enabled, tool-capable chat models receive the generate_image tool. The current token must also have image generation enabled.',
+        }
+      ),
+      f(
+        'image_gen.default_model',
+        'text',
+        { zh: '默认生图模型', en: 'Default image model' },
+        {
+          zh: '当模型调用 generate_image 但没有指定 model 时使用。该模型必须能在当前分组路由到图片生成渠道。',
+          en: 'Used when generate_image omits model. This model must route to an available image-generation channel in the active group.',
+        }
+      ),
+      {
+        key: 'image_gen.allowed_models',
+        kind: 'stringList',
+        label: { zh: '允许的生图模型', en: 'Allowed image models' },
+        help: {
+          zh: '留空表示不限制。填写后，generate_image 只能使用列表中的模型；默认模型也应包含在这里。',
+          en: 'Leave empty to allow any model. When set, generate_image can only use models in this list; include the default model here too.',
+        },
+      },
     ],
   },
   {

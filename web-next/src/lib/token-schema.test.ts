@@ -46,6 +46,7 @@ describe('editTokenSchema', () => {
     expired_time: -1,
     model_limits_enabled: false,
     model_limits: [] as string[],
+    enable_image_gen: true,
     allow_ips: [] as string[],
     group: ['auto'],
     cross_group_retry: false,

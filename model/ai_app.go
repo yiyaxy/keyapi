@@ -302,6 +302,7 @@ func GenerateSessionTokenForApp(app *AiApp, userId int, tenantId int) (*Token, e
 		UnlimitedQuota: true, // 继承用户额度
 		Group:          group,
 		AppId:          app.Id,
+		EnableImageGen: true,
 	}
 
 	if err := token.Insert(); err != nil {
@@ -341,6 +342,7 @@ func GenerateGuestSessionToken(app *AiApp, guestUserId int, tenantId int) (*Toke
 		Group:          app.DefaultGroup,
 		AppId:          app.Id,
 		IsGuest:        true,
+		EnableImageGen: true,
 	}
 
 	if err := token.Insert(); err != nil {

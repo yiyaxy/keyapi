@@ -66,9 +66,10 @@ func PlaygroundRelay(c *gin.Context, relayFormat types.RelayFormat) {
 		usingGroup = userCache.Group
 	}
 	tempToken := &model.Token{
-		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", usingGroup),
-		Group:  usingGroup,
+		UserId:         userId,
+		Name:           fmt.Sprintf("playground-%s", usingGroup),
+		Group:          usingGroup,
+		EnableImageGen: true,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 

@@ -1,6 +1,7 @@
 package user
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -246,6 +247,7 @@ func AddToken(c *gin.Context) {
 		UnlimitedQuota:     token.UnlimitedQuota,
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
+		EnableImageGen:     true,
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
@@ -280,7 +282,13 @@ func UpdateToken(c *gin.Context) {
 	userId := c.GetInt("id")
 	statusOnly := c.Query("status_only")
 	token := model.Token{}
-	err := c.ShouldBindJSON(&token)
+	var raw map[string]json.RawMessage
+	err := common.UnmarshalBodyReusable(c, &raw)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	err = common.UnmarshalBodyReusable(c, &token)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -326,6 +334,9 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.UnlimitedQuota = token.UnlimitedQuota
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
+		if _, ok := raw["enable_image_gen"]; ok {
+			cleanToken.EnableImageGen = token.EnableImageGen
+		}
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry

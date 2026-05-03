@@ -12,6 +12,7 @@ import (
 type SyncWrapSnapshot struct {
 	TaskPublicID string
 	TaskID       int64
+	RequestID    string
 
 	ChannelMeta relaycommon.ChannelMeta
 	Proxy       string
@@ -40,6 +41,7 @@ func (s *SyncWrapSnapshot) ToRelayInfo() *relaycommon.RelayInfo {
 		RelayFormat:       types.RelayFormatOpenAIImage,
 		RequestURLPath:    "/v1/images/generations",
 		OriginModelName:   s.OriginModelName,
+		RequestId:         s.RequestID,
 		PriceData:         s.PriceData,
 		PriceMarkupRatio:  s.PriceMarkupRatio,
 		PriceMarkupSource: s.PriceMarkupSource,

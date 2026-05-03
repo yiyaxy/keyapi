@@ -36,6 +36,11 @@ func InitOptionMap() {
 	common.OptionMap["FileDownloadPermission"] = strconv.Itoa(common.FileDownloadPermission)
 	common.OptionMap["ImageUploadPermission"] = strconv.Itoa(common.ImageUploadPermission)
 	common.OptionMap["ImageDownloadPermission"] = strconv.Itoa(common.ImageDownloadPermission)
+	common.OptionMap["image_gen.enabled"] = "false"
+	common.OptionMap["image_gen.default_model"] = "gpt-image-1"
+	common.OptionMap["image_gen.allowed_models"] = ""
+	common.OptionMap[common.RequestJSONLEnabledOption] = "false"
+	common.OptionMap[common.RequestJSONLDirOption] = ""
 	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
 	common.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(common.PasswordRegisterEnabled)
 	common.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(common.EmailVerificationEnabled)

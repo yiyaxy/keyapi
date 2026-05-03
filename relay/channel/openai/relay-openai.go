@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
 	"github.com/QuantumNous/new-api/relaymetrics"
 	"github.com/QuantumNous/new-api/service"
 
@@ -149,8 +151,24 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
+	var imageToolCapture *relayimagegen.OpenAIStreamCapture
+	if _, ok := info.Request.(*dto.GeneralOpenAIRequest); ok && info.RelayFormat == types.RelayFormatOpenAI {
+		imageToolCapture = relayimagegen.NewOpenAIStreamCapture(relayimagegen.EnabledForInfo(info))
+	}
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if imageToolCapture != nil {
+			decision, err := imageToolCapture.Handle(data, info.SendResponseCount > 0)
+			if err != nil {
+				sr.Stop(types.NewError(err, types.ErrorCodeBadResponseBody))
+				return
+			}
+			if decision == relayimagegen.OpenAIStreamSuppress {
+				lastStreamData = ""
+				streamItems = nil
+				return
+			}
+		}
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -167,6 +185,14 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			streamItems = append(streamItems, data)
 		}
 	})
+	if imageToolCapture != nil && imageToolCapture.Ready() {
+		req := info.Request.(*dto.GeneralOpenAIRequest)
+		usage, apiErr := handleOpenAIImageToolCall(c, info, req, imageToolCapture.ToolCall())
+		if apiErr != nil {
+			return nil, apiErr
+		}
+		return usage, nil
+	}
 
 	// Zero chunks = upstream returned empty stream, trigger retry
 	if info.ReceivedResponseCount == 0 {
@@ -278,6 +304,92 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	return usage, nil
 }
 
+func handleOpenAIImageToolCall(c *gin.Context, info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRequest, call relayimagegen.OpenAIToolCall) (*dto.Usage, *types.NewAPIError) {
+	common.WriteRequestJSONL(c, "imagegen.openai.tool_call", map[string]interface{}{
+		"id":        call.ID,
+		"name":      call.Name,
+		"arguments": call.Arguments,
+	})
+	args, err := relayimagegen.ParseGenerateArgs(call.Arguments)
+	if err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	common.WriteRequestJSONL(c, "imagegen.openai.tool_args", args)
+	result, apiErr := relayimagegen.ExecuteGenerate(c, info, args)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	common.WriteRequestJSONL(c, "imagegen.openai.tool_result", result)
+	nextReq, err := relayimagegen.BuildOpenAIRoundTripRequest(req, call, result)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	common.WriteRequestJSONL(c, "imagegen.openai.round_trip_request", nextReq)
+	return runOpenAIRoundTrip(c, info, nextReq)
+}
+
+func runOpenAIRoundTrip(c *gin.Context, info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRequest) (*dto.Usage, *types.NewAPIError) {
+	prevRequest := info.Request
+	prevStream := info.IsStream
+	info.Request = req
+	info.IsStream = req.IsStream(c)
+	defer func() {
+		info.Request = prevRequest
+		info.IsStream = prevStream
+	}()
+
+	adaptor := &Adaptor{}
+	adaptor.Init(info)
+	convertedRequest, err := adaptor.ConvertOpenAIRequest(c, info, req)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
+	jsonData, err := common.Marshal(convertedRequest)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeJsonMarshalFailed, types.ErrOptionWithSkipRetry())
+	}
+	jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	if len(info.ParamOverride) > 0 {
+		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+	}
+	common.WriteRequestJSONL(c, "imagegen.openai.round_trip_upstream_request", map[string]interface{}{
+		"channel_id":   info.ChannelId,
+		"channel_type": info.ChannelType,
+		"model":        info.OriginModelName,
+		"body":         common.RequestJSONLRawJSON(jsonData),
+	})
+
+	resp, err := adaptor.DoRequest(c, info, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+	}
+	httpResp, _ := resp.(*http.Response)
+	if httpResp != nil {
+		defer service.CloseResponseBodyGracefully(httpResp)
+		if httpResp.StatusCode != http.StatusOK {
+			apiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+			service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
+			return nil, apiErr
+		}
+	}
+	usage, apiErr := adaptor.DoResponse(c, httpResp, info)
+	if apiErr != nil {
+		service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
+		return nil, apiErr
+	}
+	if usage == nil {
+		return &dto.Usage{}, nil
+	}
+	return usage.(*dto.Usage), nil
+}
+
 func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
@@ -331,6 +443,13 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		if choice.FinishReason == constant.FinishReasonContentFilter {
 			common.SetContextKey(c, constant.ContextKeyAdminRejectReason, "openai_finish_reason=content_filter")
 			break
+		}
+	}
+	if req, ok := info.Request.(*dto.GeneralOpenAIRequest); ok &&
+		info.RelayFormat == types.RelayFormatOpenAI &&
+		relayimagegen.EnabledForInfo(info) {
+		if call, found := relayimagegen.FindOpenAIGenerateToolCall(&simpleResponse); found {
+			return handleOpenAIImageToolCall(c, info, req, call)
 		}
 	}
 

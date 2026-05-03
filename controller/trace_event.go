@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/tracing"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,10 @@ type TraceEvent = tracing.Event
 
 func addTraceEvent(c *gin.Context, phase string, message string, detail map[string]interface{}) {
 	tracing.Add(c, phase, message, detail)
+	common.WriteRequestJSONL(c, "trace."+phase, map[string]interface{}{
+		"message": message,
+		"detail":  detail,
+	})
 }
 
 func getTraceEvents(c *gin.Context) []tracing.Event {

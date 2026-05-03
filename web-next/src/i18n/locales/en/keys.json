@@ -36,6 +36,7 @@
   "edit.field.expired_time.30d": "+30 days",
   "edit.field.model_limits": "Allowed models",
   "edit.field.model_limits.placeholder": "No limit",
+  "edit.field.enable_image_gen": "Image generation tool",
   "edit.field.allow_ips": "Allowed IPs (one per line)",
   "edit.field.group": "Group",
   "edit.field.cross_group_retry": "Cross group retry",
