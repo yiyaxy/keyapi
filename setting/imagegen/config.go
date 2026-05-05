@@ -13,6 +13,7 @@ const (
 	OptionDefaultModel             = "image_gen.default_model"
 	OptionAllowedModels            = "image_gen.allowed_models"
 	OptionSubmittedMessageTemplate = "image_gen.submitted_message_template"
+	OptionRewriteHistoryImages     = "image_gen.rewrite_history_images"
 
 	DefaultModel = "gpt-image-2"
 
@@ -38,6 +39,23 @@ func getOption(key, fallback string) string {
 
 func Enabled() bool {
 	value := strings.TrimSpace(getOption(OptionEnabled, "false"))
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return false
+	}
+	return enabled
+}
+
+// RewriteHistoryImagesEnabled controls whether the imagegen middleware
+// rewrites the most recent user message to include images that were generated
+// in the immediately-preceding assistant turn. This lets the vision-capable
+// model actually "see" pixels of images it produced, instead of only seeing the
+// markdown URL string in chat history.
+//
+// Default off: rewriting bloats prompt tokens and only makes sense for vision
+// backends; operators must opt in.
+func RewriteHistoryImagesEnabled() bool {
+	value := strings.TrimSpace(getOption(OptionRewriteHistoryImages, "false"))
 	enabled, err := strconv.ParseBool(value)
 	if err != nil {
 		return false

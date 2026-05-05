@@ -50,7 +50,13 @@ func InjectTools(info *relaycommon.RelayInfo, request dto.Request) bool {
 	}
 	switch req := request.(type) {
 	case *dto.GeneralOpenAIRequest:
-		return InjectOpenAITool(info, req)
+		injected := InjectOpenAITool(info, req)
+		// History rewrite is independent of tool injection: even when this
+		// turn isn't an image-related ask, prior assistant images may still
+		// need to be lifted into vision input so the model can answer
+		// follow-ups about them.
+		rewritten := RewriteOpenAIHistoryImages(info, req)
+		return injected || rewritten
 	case *dto.ClaudeRequest:
 		return InjectClaudeTool(info, req)
 	default:
