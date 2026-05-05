@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -38,6 +39,8 @@ type Client interface {
 }
 
 const (
+	ObjectURLScheme = "storage://"
+
 	optionBucket         = "ticket_storage.bucket"
 	optionRegion         = "ticket_storage.region"
 	optionEndpoint       = "ticket_storage.endpoint"
@@ -47,6 +50,25 @@ const (
 	optionAccessKey = "ticket_storage.access_key"
 	optionSecretKey = "ticket_storage.secret_key"
 )
+
+func ObjectURL(objectKey string) string {
+	objectKey = strings.TrimSpace(objectKey)
+	objectKey = strings.TrimPrefix(objectKey, "/")
+	if objectKey == "" {
+		return ""
+	}
+	return ObjectURLScheme + objectKey
+}
+
+func ObjectKeyFromURL(rawURL string) (string, bool) {
+	rawURL = strings.TrimSpace(rawURL)
+	if !strings.HasPrefix(rawURL, ObjectURLScheme) {
+		return "", false
+	}
+	objectKey := strings.TrimSpace(strings.TrimPrefix(rawURL, ObjectURLScheme))
+	objectKey = strings.TrimPrefix(objectKey, "/")
+	return objectKey, objectKey != ""
+}
 
 type s3Client struct {
 	bucket   string
@@ -119,7 +141,12 @@ func (c *s3Client) UploadObject(ctx context.Context, objectKey, contentType stri
 	}
 	defer httpResp.Body.Close()
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		return fmt.Errorf("upload http status %d", httpResp.StatusCode)
+		respBody, _ := io.ReadAll(io.LimitReader(httpResp.Body, 4096))
+		msg := strings.TrimSpace(string(respBody))
+		if msg == "" {
+			return fmt.Errorf("upload http status %d", httpResp.StatusCode)
+		}
+		return fmt.Errorf("upload http status %d: %s", httpResp.StatusCode, msg)
 	}
 	return nil
 }

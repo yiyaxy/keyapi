@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/ticket_storage"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
@@ -30,14 +33,12 @@ func imageProxyError(c *gin.Context, status int, errType, message string) {
 
 func ImageProxy(c *gin.Context) {
 	taskID := c.Param("task_id")
-	indexStr := c.Param("index")
 	if taskID == "" {
 		imageProxyError(c, http.StatusBadRequest, "invalid_request_error", "task_id is required")
 		return
 	}
-	index, err := strconv.Atoi(indexStr)
-	if err != nil || index < 0 {
-		imageProxyError(c, http.StatusNotFound, "invalid_request_error", "Image not found")
+	index, ok := parseImageProxyIndex(c)
+	if !ok {
 		return
 	}
 
@@ -51,18 +52,62 @@ func ImageProxy(c *gin.Context) {
 		imageProxyError(c, http.StatusNotFound, "invalid_request_error", "Task not found")
 		return
 	}
+	serveImageProxy(c, taskID, index, task)
+}
+
+func PublicImageProxy(c *gin.Context) {
+	taskID := c.Param("task_id")
+	if taskID == "" {
+		imageProxyError(c, http.StatusBadRequest, "invalid_request_error", "task_id is required")
+		return
+	}
+	if err := relayimagegen.ValidatePublicTaskLink(taskID, c.Query("expires"), c.Query("sig"), time.Now()); err != nil {
+		imageProxyError(c, http.StatusForbidden, "invalid_request_error", "Link expired or invalid")
+		return
+	}
+	index, ok := parseImageProxyIndex(c)
+	if !ok {
+		return
+	}
+	task, exists, err := model.GetByOnlyTaskId(taskID)
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query public image task %s: %s", taskID, err.Error()))
+		imageProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
+		return
+	}
+	if !exists || task == nil || task.Platform != constant.TaskPlatformImageSyncWrap {
+		imageProxyError(c, http.StatusNotFound, "invalid_request_error", "Task not found")
+		return
+	}
+	serveImageProxy(c, taskID, index, task)
+}
+
+func parseImageProxyIndex(c *gin.Context) (int, bool) {
+	index, err := strconv.Atoi(c.Param("index"))
+	if err != nil || index < 0 {
+		imageProxyError(c, http.StatusNotFound, "invalid_request_error", "Image not found")
+		return 0, false
+	}
+	return index, true
+}
+
+func serveImageProxy(c *gin.Context, taskID string, index int, task *model.Task) {
 	if task.Status != model.TaskStatusSuccess {
 		imageProxyError(c, http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Task is not completed yet, current status: %s", task.Status))
 		return
 	}
 
 	var imageData []dto.ImageData
-	if len(task.PrivateData.ImageData) == 0 {
-		imageProxyError(c, http.StatusNotFound, "invalid_request_error", "Image not found")
-		return
+	if len(task.PrivateData.ImageData) > 0 {
+		if err := common.Unmarshal(task.PrivateData.ImageData, &imageData); err != nil {
+			imageProxyError(c, http.StatusInternalServerError, "server_error", "Invalid image data")
+			return
+		}
+	} else if task.PrivateData.ResultURL != "" {
+		imageData = append(imageData, dto.ImageData{Url: task.PrivateData.ResultURL})
 	}
-	if err := common.Unmarshal(task.PrivateData.ImageData, &imageData); err != nil {
-		imageProxyError(c, http.StatusInternalServerError, "server_error", "Invalid image data")
+	if len(imageData) == 0 {
+		imageProxyError(c, http.StatusNotFound, "invalid_request_error", "Image not found")
 		return
 	}
 	if index >= len(imageData) {
@@ -72,6 +117,20 @@ func ImageProxy(c *gin.Context) {
 	upstreamURL := strings.TrimSpace(imageData[index].Url)
 	if upstreamURL == "" {
 		imageProxyError(c, http.StatusBadRequest, "invalid_request_error", "inline base64 not proxyable, fetch full task")
+		return
+	}
+	if objectKey, ok := ticket_storage.ObjectKeyFromURL(upstreamURL); ok {
+		client, err := ticket_storage.GetClient()
+		if err != nil {
+			imageProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create storage client")
+			return
+		}
+		storageURL, _, err := client.PresignGet(objectKey, relayimagegen.PublicTaskLinkTTL)
+		if err != nil {
+			imageProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create storage URL")
+			return
+		}
+		c.Redirect(http.StatusTemporaryRedirect, storageURL)
 		return
 	}
 

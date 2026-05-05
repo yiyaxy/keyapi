@@ -12,13 +12,29 @@ import { MODEL_PRICING_KEYS } from '@/components/settings/modelPricingKeys';
 import { StringListEditor } from '@/components/settings/StringListEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useForceLogoutAll, useOptions } from '@/hooks/useOptions';
+import {
+  useForceLogoutAll,
+  useOptions,
+  useTestTicketStorageUpload,
+  useUpdateTicketStorageSecret,
+} from '@/hooks/useOptions';
 import { allKnownKeys, SECRET_FIELDS, SETTINGS_GROUPS, type FieldDef } from '@/lib/settingsSchema';
 
 type TabId = string;
 const SECRETS_TAB = '__secrets';
 const ADVANCED_TAB = '__advanced';
+const TICKET_STORAGE_TAB = 'ticket_storage';
+
+const TICKET_STORAGE_DEFAULTS: Record<string, string> = {
+  'ticket_storage.allowed_mime_prefix': 'image/',
+  'ticket_storage.force_path_style': 'false',
+  'ticket_storage.max_file_size_mb': '5',
+  'ticket_storage.max_files_per_ticket': '5',
+  'ticket_storage.prefix': 'tickets/tmp',
+  'ticket_storage.presign_expire_seconds': '900',
+};
 
 function FieldList({
   fields,
@@ -35,10 +51,12 @@ function FieldList({
 }) {
   const { t } = useTranslation('settings');
   const isRatios = groupId === 'ratios';
+  const isTicketStorage = groupId === TICKET_STORAGE_TAB;
   const filtered = useMemo(() => {
     const present = fields.filter((f) => {
       // In the ratios tab, per-model fields are owned by ModelPricingPanel
       if (isRatios && MODEL_PRICING_KEYS.includes(f.key as never)) return false;
+      if (isTicketStorage) return true;
       return Object.prototype.hasOwnProperty.call(values, f.key);
     });
     if (!searchTerm) return present;
@@ -49,7 +67,7 @@ function FieldList({
         f.label.zh.toLowerCase().includes(q) ||
         f.label.en.toLowerCase().includes(q)
     );
-  }, [fields, values, searchTerm, isRatios]);
+  }, [fields, values, searchTerm, isRatios, isTicketStorage]);
 
   const showModelPanel =
     isRatios &&
@@ -79,7 +97,7 @@ function FieldList({
                 <BoolRow
                   key={f.key}
                   field={f}
-                  value={values[f.key]!}
+                  value={values[f.key] ?? TICKET_STORAGE_DEFAULTS[f.key] ?? ''}
                   onSaved={(next) => onSaved(f.key, next)}
                 />
               );
@@ -89,7 +107,7 @@ function FieldList({
                 <SelectRow
                   key={f.key}
                   field={f}
-                  value={values[f.key]!}
+                  value={values[f.key] ?? TICKET_STORAGE_DEFAULTS[f.key] ?? ''}
                   onSaved={(next) => onSaved(f.key, next)}
                 />
               );
@@ -99,7 +117,7 @@ function FieldList({
                 <KvMapEditor
                   key={f.key}
                   field={f}
-                  value={values[f.key]!}
+                  value={values[f.key] ?? TICKET_STORAGE_DEFAULTS[f.key] ?? ''}
                   onSaved={(next) => onSaved(f.key, next)}
                 />
               );
@@ -109,7 +127,7 @@ function FieldList({
                 <StringListEditor
                   key={f.key}
                   field={f}
-                  value={values[f.key]!}
+                  value={values[f.key] ?? TICKET_STORAGE_DEFAULTS[f.key] ?? ''}
                   onSaved={(next) => onSaved(f.key, next)}
                 />
               );
@@ -118,7 +136,7 @@ function FieldList({
               <TextRow
                 key={f.key}
                 field={f}
-                value={values[f.key]!}
+                value={values[f.key] ?? TICKET_STORAGE_DEFAULTS[f.key] ?? ''}
                 onSaved={(next) => onSaved(f.key, next)}
               />
             );
@@ -184,6 +202,82 @@ function AdvancedList({
           />
         );
       })}
+    </div>
+  );
+}
+
+function TicketStorageSecretPanel() {
+  const { t } = useTranslation('settings');
+  const update = useUpdateTicketStorageSecret();
+  const testUpload = useTestTicketStorageUpload();
+  const [accessKey, setAccessKey] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+
+  function save() {
+    if (!accessKey || !secretKey) return;
+    update.mutate(
+      { access_key: accessKey, secret_key: secretKey },
+      {
+        onSuccess: () => {
+          setAccessKey('');
+          setSecretKey('');
+          toast.success(t('toast.save.success'));
+        },
+        onError: (e) => toast.error((e as Error).message),
+      }
+    );
+  }
+
+  function test() {
+    testUpload.mutate(undefined, {
+      onSuccess: (result) => {
+        toast.success(`测试上传成功：${result.object_key}`);
+      },
+      onError: (e) => toast.error((e as Error).message),
+    });
+  }
+
+  return (
+    <div className='rounded-md border border-line bg-bg-1 px-4 py-3'>
+      <div className='grid gap-3 md:grid-cols-2'>
+        <div className='space-y-1'>
+          <Label className='text-13'>AccessKey ID</Label>
+          <Input
+            type='password'
+            value={accessKey}
+            onChange={(e) => setAccessKey(e.target.value)}
+            placeholder={t('secrets.placeholder')}
+          />
+        </div>
+        <div className='space-y-1'>
+          <Label className='text-13'>AccessKey Secret</Label>
+          <Input
+            type='password'
+            value={secretKey}
+            onChange={(e) => setSecretKey(e.target.value)}
+            placeholder={t('secrets.placeholder')}
+          />
+        </div>
+      </div>
+      <div className='mt-3 flex justify-end gap-2'>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          disabled={testUpload.isPending}
+          onClick={test}
+        >
+          {testUpload.isPending ? '正在测试' : '测试上传'}
+        </Button>
+        <Button
+          type='button'
+          size='sm'
+          disabled={!accessKey || !secretKey || update.isPending}
+          onClick={save}
+        >
+          {update.isPending ? t('action.saving') : t('action.save')}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -346,13 +440,16 @@ export function SettingsAdminPage() {
             ) : activeTab === ADVANCED_TAB ? (
               <AdvancedList unknown={unknown} onSaved={onSaved} searchTerm={keyword} />
             ) : activeGroup ? (
-              <FieldList
-                groupId={activeGroup.id}
-                fields={activeGroup.fields}
-                values={values}
-                onSaved={onSaved}
-                searchTerm={keyword}
-              />
+              <div className='space-y-3'>
+                <FieldList
+                  groupId={activeGroup.id}
+                  fields={activeGroup.fields}
+                  values={values}
+                  onSaved={onSaved}
+                  searchTerm={keyword}
+                />
+                {activeGroup.id === TICKET_STORAGE_TAB && !keyword && <TicketStorageSecretPanel />}
+              </div>
             ) : null}
           </div>
         </div>

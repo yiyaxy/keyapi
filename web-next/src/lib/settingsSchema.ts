@@ -798,6 +798,36 @@ export const SETTINGS_GROUPS: Group[] = [
     ],
   },
   {
+    id: 'ticket_storage',
+    title: { zh: '对象存储', en: 'Object storage' },
+    fields: [
+      f('ticket_storage.bucket', 'text', { zh: 'Bucket', en: 'Bucket' }),
+      f('ticket_storage.region', 'text', { zh: 'Region', en: 'Region' }),
+      f('ticket_storage.endpoint', 'text', { zh: 'Endpoint', en: 'Endpoint' }),
+      f('ticket_storage.force_path_style', 'bool', {
+        zh: 'Path style',
+        en: 'Path style',
+      }),
+      f('ticket_storage.prefix', 'text', { zh: '对象前缀', en: 'Object prefix' }),
+      f('ticket_storage.presign_expire_seconds', 'number', {
+        zh: '签名有效期（秒）',
+        en: 'Presign expiry seconds',
+      }),
+      f('ticket_storage.max_file_size_mb', 'number', {
+        zh: '最大文件大小（MB）',
+        en: 'Max file size (MB)',
+      }),
+      f('ticket_storage.max_files_per_ticket', 'number', {
+        zh: '每个工单最大文件数',
+        en: 'Max files per ticket',
+      }),
+      f('ticket_storage.allowed_mime_prefix', 'text', {
+        zh: '允许的 MIME 前缀',
+        en: 'Allowed MIME prefix',
+      }),
+    ],
+  },
+  {
     id: 'midjourney',
     title: { zh: 'Midjourney', en: 'Midjourney' },
     fields: [

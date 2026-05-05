@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -19,6 +20,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/ticket_storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -420,7 +422,14 @@ func imageAsyncFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskRe
 		}
 		for i := range data {
 			if data[i].Url != "" {
-				data[i].Url = taskcommon.BuildImageProxyURL(originTask.TaskID, i, tenantID)
+				if storageURL, ok, err := presignStoredTaskImageURL(data[i].Url); err != nil {
+					taskResp = service.TaskErrorWrapper(err, "presign_stored_image_failed", http.StatusInternalServerError)
+					return
+				} else if ok {
+					data[i].Url = storageURL
+				} else {
+					data[i].Url = taskcommon.BuildImageProxyURL(originTask.TaskID, i, tenantID)
+				}
 			}
 		}
 		completed := originTask.FinishTime
@@ -448,6 +457,22 @@ func imageAsyncFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskRe
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
 	return
+}
+
+func presignStoredTaskImageURL(rawURL string) (string, bool, error) {
+	objectKey, ok := ticket_storage.ObjectKeyFromURL(rawURL)
+	if !ok {
+		return "", false, nil
+	}
+	client, err := ticket_storage.GetClient()
+	if err != nil {
+		return "", true, fmt.Errorf("image storage client unavailable: %w", err)
+	}
+	url, _, err := client.PresignGet(objectKey, 24*time.Hour)
+	if err != nil {
+		return "", true, fmt.Errorf("presign stored image %s: %w", objectKey, err)
+	}
+	return url, true, nil
 }
 
 func sunoFetchRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {

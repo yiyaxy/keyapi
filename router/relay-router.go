@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
+	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -62,6 +63,14 @@ func SetRelayRouter(router *gin.Engine) {
 		geminiCompatibleRouter.GET("", func(c *gin.Context) {
 			catalog.ListModels(c, constant.ChannelTypeOpenAI)
 		})
+	}
+
+	publicImageTaskRouter := router.Group(relayimagegen.PublicTaskPathPrefix)
+	publicImageTaskRouter.Use(middleware.RouteTag("relay"))
+	publicImageTaskRouter.Use(middleware.GlobalWebRateLimit())
+	{
+		publicImageTaskRouter.GET("/:task_id", relay.PublicImageAsyncTaskPage)
+		publicImageTaskRouter.GET("/:task_id/content/:index", media.PublicImageProxy)
 	}
 
 	playgroundRouter := router.Group("/pg")

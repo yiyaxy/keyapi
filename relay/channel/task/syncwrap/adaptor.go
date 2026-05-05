@@ -3,8 +3,12 @@ package syncwrap
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -25,6 +29,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/xai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/ticket_storage"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
@@ -216,6 +221,17 @@ func runSyncUpstream(snapshot *SyncWrapSnapshot) {
 		"response": imageResp,
 	})
 
+	persistedData, err := persistImageDataToStorage(ctx, snapshot, task, imageResp.Data)
+	if err != nil {
+		common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.syncwrap.storage_error", map[string]interface{}{
+			"task_id": snapshot.TaskPublicID,
+			"error":   err.Error(),
+		})
+		failSyncTask(ctx, snapshot, err)
+		return
+	}
+	imageResp.Data = persistedData
+
 	data, err := common.Marshal(imageResp.Data)
 	if err != nil {
 		failSyncTask(ctx, snapshot, err)
@@ -246,6 +262,121 @@ func filterDisplayableImageData(data []dto.ImageData) []dto.ImageData {
 		filtered = append(filtered, item)
 	}
 	return filtered
+}
+
+func persistImageDataToStorage(ctx context.Context, snapshot *SyncWrapSnapshot, task *model.Task, data []dto.ImageData) ([]dto.ImageData, error) {
+	if task == nil {
+		return nil, fmt.Errorf("image task is nil")
+	}
+	client, err := ticket_storage.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("image storage client unavailable: %w", err)
+	}
+
+	persisted := make([]dto.ImageData, 0, len(data))
+	for i, item := range data {
+		if objectKey, ok := ticket_storage.ObjectKeyFromURL(item.Url); ok {
+			common.SysLog(fmt.Sprintf("imagegen storage skip existing object task=%s index=%d object_key=%s", task.TaskID, i, objectKey))
+			item.Url = ticket_storage.ObjectURL(objectKey)
+			item.B64Json = ""
+			persisted = append(persisted, item)
+			continue
+		}
+
+		contentType, body, err := imageDataBytes(item)
+		if err != nil {
+			return nil, fmt.Errorf("prepare image %d for storage: %w", i, err)
+		}
+		objectKey := storedImageObjectKey(task.TaskID, i, contentType, body)
+		startedAt := time.Now()
+		common.SysLog(fmt.Sprintf("imagegen storage upload start task=%s index=%d object_key=%s content_type=%q size_bytes=%d", task.TaskID, i, objectKey, contentType, len(body)))
+		if err := client.UploadObject(ctx, objectKey, contentType, body); err != nil {
+			return nil, fmt.Errorf("upload image %d to storage: %w", i, err)
+		}
+		common.SysLog(fmt.Sprintf("imagegen storage upload success task=%s index=%d object_key=%s elapsed_ms=%d", task.TaskID, i, objectKey, time.Since(startedAt).Milliseconds()))
+
+		item.Url = ticket_storage.ObjectURL(objectKey)
+		item.B64Json = ""
+		persisted = append(persisted, item)
+	}
+	common.WriteRequestJSONLByID(snapshot.RequestID, "imagegen.syncwrap.storage_success", map[string]interface{}{
+		"task_id": task.TaskID,
+		"count":   len(persisted),
+	})
+	return persisted, nil
+}
+
+func imageDataBytes(item dto.ImageData) (string, []byte, error) {
+	if item.Url != "" {
+		contentType, b64Data, err := service.GetImageFromUrl(item.Url)
+		if err != nil {
+			return "", nil, err
+		}
+		body, err := base64.StdEncoding.DecodeString(b64Data)
+		if err != nil {
+			return "", nil, fmt.Errorf("decode downloaded image: %w", err)
+		}
+		return normalizeImageContentType(contentType), body, nil
+	}
+	if item.B64Json != "" {
+		contentType, cleanBase64, err := service.DecodeBase64FileData(item.B64Json)
+		if err != nil {
+			return "", nil, err
+		}
+		body, err := base64.StdEncoding.DecodeString(cleanBase64)
+		if err != nil {
+			return "", nil, fmt.Errorf("decode base64 image: %w", err)
+		}
+		return normalizeImageContentType(contentType), body, nil
+	}
+	return "", nil, fmt.Errorf("image has neither url nor b64_json")
+}
+
+func normalizeImageContentType(contentType string) string {
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" || contentType == "application/octet-stream" {
+		return "image/png"
+	}
+	if mediaType, _, err := mime.ParseMediaType(contentType); err == nil && mediaType != "" {
+		contentType = mediaType
+	}
+	if !strings.HasPrefix(contentType, "image/") {
+		return "image/png"
+	}
+	return contentType
+}
+
+func storedImageObjectKey(taskID string, index int, contentType string, body []byte) string {
+	sum := sha256.Sum256(body)
+	ext := imageExtension(contentType)
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		taskID = "unknown"
+	}
+	return fmt.Sprintf("images/async/%s/%d-%s%s", taskID, index, hex.EncodeToString(sum[:])[:16], ext)
+}
+
+func imageExtension(contentType string) string {
+	contentType = normalizeImageContentType(contentType)
+	exts, err := mime.ExtensionsByType(contentType)
+	if err == nil && len(exts) > 0 {
+		switch exts[0] {
+		case ".jpe":
+			return ".jpg"
+		default:
+			return exts[0]
+		}
+	}
+	switch contentType {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".png"
+	}
 }
 
 func failSyncTask(ctx context.Context, snapshot *SyncWrapSnapshot, err error) {

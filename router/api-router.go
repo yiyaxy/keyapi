@@ -112,6 +112,7 @@ func SetApiRouter(router *gin.Engine) {
 		ticketStorageRoute.Use(middleware.PlatformAdminAuth())
 		{
 			ticketStorageRoute.PUT("/secret", ticket.UpsertTicketStorageSecret)
+			ticketStorageRoute.POST("/test", ticket.TestTicketStorageUpload)
 		}
 
 		invoiceSelfRoute := apiRouter.Group("/invoice/self")

@@ -35,6 +35,29 @@ export function useUpdateOption() {
   });
 }
 
+export function useUpdateTicketStorageSecret() {
+  return useMutation({
+    mutationFn: async (body: { access_key: string; secret_key: string }) => {
+      await api.put('/api/ticket_storage/secret', body);
+    },
+  });
+}
+
+export type TicketStorageTestResult = {
+  object_key: string;
+  size_bytes: number;
+  content_type?: string;
+};
+
+export function useTestTicketStorageUpload() {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post<TicketStorageTestResult>('/api/ticket_storage/test', {});
+      return res.data;
+    },
+  });
+}
+
 export function useForceLogoutAll() {
   const qc = useQueryClient();
   return useMutation({

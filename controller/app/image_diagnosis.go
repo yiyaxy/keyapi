@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/ticket_storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -217,6 +218,17 @@ func firstImageResultURL(task *model.Task) string {
 		return ""
 	}
 	if data[0].Url != "" {
+		if objectKey, ok := ticket_storage.ObjectKeyFromURL(data[0].Url); ok {
+			client, err := ticket_storage.GetClient()
+			if err != nil {
+				return ""
+			}
+			url, _, err := client.PresignGet(objectKey, 24*time.Hour)
+			if err != nil {
+				return ""
+			}
+			return url
+		}
 		return data[0].Url
 	}
 	if data[0].B64JSON != "" {

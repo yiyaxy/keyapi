@@ -317,6 +317,10 @@ func handleOpenAIImageToolCall(c *gin.Context, info *relaycommon.RelayInfo, req 
 	common.WriteRequestJSONL(c, "imagegen.openai.tool_args", args)
 	result, apiErr := relayimagegen.ExecuteGenerate(c, info, args)
 	if apiErr != nil {
+		if c.GetBool(relayimagegen.StatusSentContextKey) && info.IsStream && info.RelayFormat == types.RelayFormatOpenAI {
+			sendOpenAIImageToolStatusError(c, info, apiErr.Error())
+			return &dto.Usage{}, nil
+		}
 		return nil, apiErr
 	}
 	common.WriteRequestJSONL(c, "imagegen.openai.tool_result", result)
@@ -325,7 +329,40 @@ func handleOpenAIImageToolCall(c *gin.Context, info *relaycommon.RelayInfo, req 
 		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	common.WriteRequestJSONL(c, "imagegen.openai.round_trip_request", nextReq)
-	return runOpenAIRoundTrip(c, info, nextReq)
+	usage, apiErr := runOpenAIRoundTrip(c, info, nextReq)
+	if apiErr != nil && c.GetBool(relayimagegen.StatusSentContextKey) && info.IsStream && info.RelayFormat == types.RelayFormatOpenAI {
+		sendOpenAIImageToolStatusError(c, info, apiErr.Error())
+		return &dto.Usage{}, nil
+	}
+	return usage, apiErr
+}
+
+func sendOpenAIImageToolStatusError(c *gin.Context, info *relaycommon.RelayInfo, message string) {
+	if c == nil || info == nil {
+		return
+	}
+	if strings.TrimSpace(message) == "" {
+		message = "图片生成失败"
+	}
+	content := "\n图片生成失败：" + message + "\n"
+	response := &dto.ChatCompletionsStreamResponse{
+		Id:      helper.GetResponseID(c),
+		Object:  "chat.completion.chunk",
+		Created: common.GetTimestamp(),
+		Model:   info.OriginModelName,
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					Content: common.GetPointer(content),
+				},
+				Index: 0,
+			},
+		},
+	}
+	_ = helper.ObjectData(c, response)
+	helper.Done(c)
+	info.SendResponseCount++
+	info.MarkFirstStreamContent()
 }
 
 func runOpenAIRoundTrip(c *gin.Context, info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRequest) (*dto.Usage, *types.NewAPIError) {

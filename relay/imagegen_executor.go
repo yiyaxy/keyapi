@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,6 +23,9 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/ticket_storage"
+	imagegensetting "github.com/QuantumNous/new-api/setting/imagegen"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -98,13 +103,124 @@ func executeGenerateImageTool(c *gin.Context, parentInfo *relaycommon.RelayInfo,
 	}
 	common.WriteRequestJSONL(c, "imagegen.execute.task_submitted", map[string]interface{}{
 		"task_id":    task.TaskID,
+		"task_url":   imageToolTaskURL(c, task.TaskID, parentInfo.TenantId),
 		"channel_id": imageInfo.ChannelId,
 		"model":      imageInfo.OriginModelName,
 	})
+	sendImageToolSubmittedStreamMessage(c, parentInfo, task.TaskID)
 
 	waitCtx, cancel := context.WithTimeout(c.Request.Context(), imageToolTaskWaitTimeout)
 	defer cancel()
-	return waitForImageToolTask(waitCtx, parentInfo.RequestId, task.TaskID, imageInfo.TenantId, args.Model, args.Prompt)
+	return waitForImageToolTask(waitCtx, c, parentInfo.RequestId, task.TaskID, imageInfo.TenantId, args.Model, args.Prompt)
+}
+
+func sendImageToolSubmittedStreamMessage(c *gin.Context, info *relaycommon.RelayInfo, taskID string) {
+	if c == nil || info == nil || !info.IsStream || info.RelayFormat != types.RelayFormatOpenAI || taskID == "" {
+		return
+	}
+	taskURL := imageToolTaskURL(c, taskID, info.TenantId)
+	message := imagegensetting.RenderSubmittedMessage(taskID, taskURL)
+	if message == "" {
+		return
+	}
+
+	response := &dto.ChatCompletionsStreamResponse{
+		Id:      helper.GetResponseID(c),
+		Object:  "chat.completion.chunk",
+		Created: common.GetTimestamp(),
+		Model:   info.OriginModelName,
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					Role:    "assistant",
+					Content: common.GetPointer(message),
+				},
+				Index: 0,
+			},
+		},
+	}
+	if err := helper.ObjectData(c, response); err == nil {
+		c.Set(relayimagegen.StatusSentContextKey, true)
+		info.SendResponseCount++
+		info.MarkFirstStreamContent()
+	}
+}
+
+func imageToolTaskURL(c *gin.Context, taskID string, tenantID int) string {
+	return imageToolTaskURLAt(c, taskID, tenantID, time.Now())
+}
+
+func imageToolTaskURLAt(c *gin.Context, taskID string, tenantID int, now time.Time) string {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return ""
+	}
+	return relayimagegen.PublicTaskURL(imageToolPublicBaseURL(c, tenantID), taskID, now.Add(relayimagegen.PublicTaskLinkTTL).Unix())
+}
+
+func imageToolPublicBaseURL(c *gin.Context, tenantID int) string {
+	return imageToolTenantBaseURL(imageToolRequestBaseURL(c), tenantID)
+}
+
+func imageToolRequestBaseURL(c *gin.Context) string {
+	base := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
+	if base == "" && c != nil && c.Request != nil {
+		scheme := firstForwardedValue(c.Request.Header.Get("X-Forwarded-Proto"))
+		if scheme == "" {
+			scheme = strings.TrimSpace(c.Request.Header.Get("X-Scheme"))
+		}
+		if scheme == "" {
+			if c.Request.TLS != nil {
+				scheme = "https"
+			} else {
+				scheme = "http"
+			}
+		}
+		host := firstForwardedValue(c.Request.Header.Get("X-Forwarded-Host"))
+		if host == "" {
+			host = strings.TrimSpace(c.Request.Host)
+		}
+		if host != "" {
+			base = scheme + "://" + host
+		}
+	}
+	return base
+}
+
+func imageToolTenantBaseURL(base string, tenantID int) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if tenantID <= 0 {
+		return base
+	}
+	tenant := model.GetTenantById(tenantID)
+	if tenant == nil || strings.TrimSpace(tenant.Slug) == "" {
+		return base
+	}
+	parsed, err := url.Parse(base)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return base
+	}
+	host := parsed.Hostname()
+	if host == "" || strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil {
+		return base
+	}
+	rootHost := host
+	if parts := strings.Split(host, "."); len(parts) >= 3 {
+		rootHost = strings.Join(parts[1:], ".")
+	}
+	newHost := strings.TrimSpace(tenant.Slug) + "." + rootHost
+	if port := parsed.Port(); port != "" {
+		newHost = net.JoinHostPort(newHost, port)
+	}
+	parsed.Host = newHost
+	return strings.TrimRight(parsed.String(), "/")
+}
+
+func firstForwardedValue(value string) string {
+	if idx := strings.Index(value, ","); idx >= 0 {
+		value = value[:idx]
+	}
+	return strings.TrimSpace(value)
 }
 
 func submitImageToolTask(c *gin.Context, imageInfo *relaycommon.RelayInfo, imageReq dto.ImageRequest, snapshot *syncwrap.SyncWrapSnapshot) (*model.Task, *types.NewAPIError) {
@@ -228,7 +344,7 @@ func failInsertedImageToolTask(ctx context.Context, task *model.Task, err error)
 	_, _ = task.UpdateWithStatus(oldStatus)
 }
 
-func waitForImageToolTask(ctx context.Context, requestID string, taskID string, tenantID int, modelName string, prompt string) (relayimagegen.Result, *types.NewAPIError) {
+func waitForImageToolTask(ctx context.Context, c *gin.Context, requestID string, taskID string, tenantID int, modelName string, prompt string) (relayimagegen.Result, *types.NewAPIError) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -240,10 +356,13 @@ func waitForImageToolTask(ctx context.Context, requestID string, taskID string, 
 		if exists && task != nil {
 			switch task.Status {
 			case model.TaskStatusSuccess:
-				result, err := imageToolResultFromTask(task, tenantID, modelName, prompt)
+				expiresAt := time.Now().Add(relayimagegen.PublicTaskLinkTTL).Unix()
+				publicBaseURL := imageToolPublicBaseURL(c, tenantID)
+				result, err := imageToolResultFromTask(task, tenantID, modelName, prompt, publicBaseURL, expiresAt)
 				if err != nil {
 					return relayimagegen.Result{}, types.NewErrorWithStatusCode(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 				}
+				result.TaskURL = relayimagegen.PublicTaskURL(publicBaseURL, task.TaskID, expiresAt)
 				common.WriteRequestJSONLByID(requestID, "imagegen.execute.task_success", result)
 				return result, nil
 			case model.TaskStatusFailure:
@@ -268,10 +387,11 @@ func waitForImageToolTask(ctx context.Context, requestID string, taskID string, 
 				"error":   ctx.Err().Error(),
 			})
 			return relayimagegen.Result{
-				TaskID: taskID,
-				Status: status,
-				Model:  modelName,
-				Prompt: prompt,
+				TaskID:  taskID,
+				TaskURL: imageToolTaskURL(c, taskID, tenantID),
+				Status:  status,
+				Model:   modelName,
+				Prompt:  prompt,
 			}, nil
 		case <-ticker.C:
 		}
@@ -446,7 +566,7 @@ func imageToolResultFromResponse(resp *dto.ImageResponse, modelName, prompt stri
 	return result, nil
 }
 
-func imageToolResultFromTask(task *model.Task, tenantID int, modelName, prompt string) (relayimagegen.Result, error) {
+func imageToolResultFromTask(task *model.Task, tenantID int, modelName, prompt string, publicBaseURL string, publicExpiresAt int64) (relayimagegen.Result, error) {
 	if task == nil {
 		return relayimagegen.Result{}, fmt.Errorf("image task is nil")
 	}
@@ -464,9 +584,17 @@ func imageToolResultFromTask(task *model.Task, tenantID int, modelName, prompt s
 	if len(data) == 0 {
 		return relayimagegen.Result{}, fmt.Errorf("image task %s has no image data", task.TaskID)
 	}
-	if fromImageData && data[0].Url != "" {
-		if proxyURL := taskcommon.BuildImageProxyURL(task.TaskID, 0, tenantID); strings.HasPrefix(proxyURL, "http://") || strings.HasPrefix(proxyURL, "https://") {
-			data[0].Url = proxyURL
+	if data[0].Url != "" {
+		if storageURL, ok, err := presignStoredImageURL(data[0].Url); err != nil {
+			return relayimagegen.Result{}, err
+		} else if ok {
+			data[0].Url = storageURL
+		} else if publicExpiresAt > 0 {
+			data[0].Url = relayimagegen.PublicTaskContentURL(publicBaseURL, task.TaskID, 0, publicExpiresAt)
+		} else if fromImageData {
+			if proxyURL := taskcommon.BuildImageProxyURL(task.TaskID, 0, tenantID); strings.HasPrefix(proxyURL, "http://") || strings.HasPrefix(proxyURL, "https://") {
+				data[0].Url = proxyURL
+			}
 		}
 	}
 	result, err := imageToolResultFromResponse(&dto.ImageResponse{Data: data}, modelName, prompt)
@@ -474,8 +602,29 @@ func imageToolResultFromTask(task *model.Task, tenantID int, modelName, prompt s
 		return relayimagegen.Result{}, err
 	}
 	result.TaskID = task.TaskID
+	if publicExpiresAt > 0 {
+		result.TaskURL = relayimagegen.PublicTaskURL(publicBaseURL, task.TaskID, publicExpiresAt)
+	} else {
+		result.TaskURL = imageToolTaskURL(nil, task.TaskID, tenantID)
+	}
 	result.Status = "succeeded"
 	return result, nil
+}
+
+func presignStoredImageURL(rawURL string) (string, bool, error) {
+	objectKey, ok := ticket_storage.ObjectKeyFromURL(rawURL)
+	if !ok {
+		return "", false, nil
+	}
+	client, err := ticket_storage.GetClient()
+	if err != nil {
+		return "", true, fmt.Errorf("image storage client unavailable: %w", err)
+	}
+	url, _, err := client.PresignGet(objectKey, relayimagegen.PublicTaskLinkTTL)
+	if err != nil {
+		return "", true, fmt.Errorf("presign stored image %s: %w", objectKey, err)
+	}
+	return url, true, nil
 }
 
 func filterDisplayableImageData(data []dto.ImageData) []dto.ImageData {

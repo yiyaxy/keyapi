@@ -15,6 +15,7 @@ import (
 type Result struct {
 	ImageID       string `json:"image_id"`
 	TaskID        string `json:"task_id,omitempty"`
+	TaskURL       string `json:"task_url,omitempty"`
 	Status        string `json:"status,omitempty"`
 	URL           string `json:"url,omitempty"`
 	B64JSON       string `json:"b64_json,omitempty"`
@@ -23,6 +24,8 @@ type Result struct {
 	Model         string `json:"model"`
 	Prompt        string `json:"prompt"`
 }
+
+const StatusSentContextKey = "imagegen_status_sent"
 
 func (r Result) DataURL() string {
 	if r.B64JSON == "" {
@@ -57,6 +60,7 @@ func (r Result) ToolResultText() (string, error) {
 	payload := map[string]any{
 		"image_id":       r.ImageID,
 		"task_id":        r.TaskID,
+		"task_url":       r.TaskURL,
 		"status":         r.Status,
 		"url":            r.URL,
 		"b64_json":       r.B64JSON,
