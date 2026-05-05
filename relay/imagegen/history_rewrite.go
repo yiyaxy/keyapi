@@ -73,12 +73,8 @@ func RewriteOpenAIHistoryImages(info *relaycommon.RelayInfo, req *dto.GeneralOpe
 	if userIdx <= 0 {
 		return false
 	}
-	assistantIdx := lastAssistantMessageBefore(req.Messages, userIdx)
-	if assistantIdx < 0 {
-		return false
-	}
 
-	urls := extractMarkdownImageURLs(req.Messages[assistantIdx].StringContent())
+	urls := collectAssistantImageURLs(req.Messages, userIdx)
 	if len(urls) == 0 {
 		return false
 	}
@@ -111,13 +107,38 @@ func lastUserMessageIndex(messages []dto.Message) int {
 	return -1
 }
 
-func lastAssistantMessageBefore(messages []dto.Message, before int) int {
-	for i := before - 1; i >= 0; i-- {
-		if messages[i].Role == "assistant" {
-			return i
+// collectAssistantImageURLs walks every assistant message before `before` and
+// returns every Markdown image URL it finds, in conversation order, deduped.
+//
+// Why scan all of them and not just the most recent: visual continuity. If the
+// model generated images across multiple earlier turns, a follow-up like
+// "compare the two" or "which one looks better" needs all of them to be
+// liftable as image_url blocks — not just the freshest one.
+//
+// Token cost is bounded by:
+//   - dedupe (each URL only contributes once even if quoted in later turns);
+//   - the natural ceiling of how many distinct images a conversation produces;
+//   - the caller's filterNew step, which drops anything already attached.
+//
+// Provider prompt caching further amortizes the per-image cost across turns
+// IF the URLs themselves are stable. See the URL resolver for the stability
+// strategy.
+func collectAssistantImageURLs(messages []dto.Message, before int) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for i := 0; i < before; i++ {
+		if messages[i].Role != "assistant" {
+			continue
+		}
+		for _, u := range extractMarkdownImageURLs(messages[i].StringContent()) {
+			if _, dup := seen[u]; dup {
+				continue
+			}
+			seen[u] = struct{}{}
+			out = append(out, u)
 		}
 	}
-	return -1
+	return out
 }
 
 func extractMarkdownImageURLs(text string) []string {

@@ -1,15 +1,70 @@
 package relay
 
 import (
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
 )
+
+// resolvedURLRefreshMargin is how much TTL we leave on the underlying presigned
+// URL before refreshing. Provider prompt caches (OpenAI/Claude) match on the
+// exact prefix bytes — including the URL's Signature & Expires query string —
+// so re-presigning on every call gives us a different URL each turn and
+// guarantees a cache miss. We keep the URL stable for nearly its whole lifetime
+// instead, refreshing only when expiry is close enough that a slow upstream
+// fetch could 403.
+const resolvedURLRefreshMargin = 30 * time.Minute
+
+type cachedDirectURL struct {
+	url       string
+	expiresAt time.Time
+}
+
+var (
+	resolvedURLCacheMu sync.RWMutex
+	resolvedURLCache   = map[string]cachedDirectURL{}
+)
+
+func directURLCacheKey(taskID string, idx int) string {
+	return fmt.Sprintf("%s/%d", taskID, idx)
+}
+
+func loadCachedDirectURL(taskID string, idx int) (string, bool) {
+	resolvedURLCacheMu.RLock()
+	entry, ok := resolvedURLCache[directURLCacheKey(taskID, idx)]
+	resolvedURLCacheMu.RUnlock()
+	if !ok {
+		return "", false
+	}
+	if time.Until(entry.expiresAt) <= resolvedURLRefreshMargin {
+		return "", false
+	}
+	return entry.url, true
+}
+
+func storeCachedDirectURL(taskID string, idx int, u string) {
+	resolvedURLCacheMu.Lock()
+	defer resolvedURLCacheMu.Unlock()
+	resolvedURLCache[directURLCacheKey(taskID, idx)] = cachedDirectURL{
+		url:       u,
+		expiresAt: time.Now().Add(relayimagegen.PublicTaskLinkTTL),
+	}
+}
+
+// resetResolvedURLCache is exposed for tests; production code should not call it.
+func resetResolvedURLCache() {
+	resolvedURLCacheMu.Lock()
+	defer resolvedURLCacheMu.Unlock()
+	resolvedURLCache = map[string]cachedDirectURL{}
+}
 
 func init() {
 	relayimagegen.RegisterURLResolver(resolveHistoryImageURL)
@@ -37,6 +92,13 @@ func resolveHistoryImageURL(rawURL string) string {
 		return rawURL
 	}
 
+	// Reuse the previously-presigned URL while it still has comfortable TTL.
+	// This is what makes the rewritten request prefix byte-identical across
+	// turns, which is what the provider's prompt cache needs to hit.
+	if cached, hit := loadCachedDirectURL(taskID, idx); hit {
+		return cached
+	}
+
 	task, exists, err := model.GetByOnlyTaskId(taskID)
 	if err != nil || !exists || task == nil {
 		return rawURL
@@ -51,6 +113,7 @@ func resolveHistoryImageURL(rawURL string) string {
 	if err != nil || !ok || direct == "" {
 		return rawURL
 	}
+	storeCachedDirectURL(taskID, idx, direct)
 	return direct
 }
 

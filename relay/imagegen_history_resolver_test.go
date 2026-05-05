@@ -1,6 +1,11 @@
 package relay
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	relayimagegen "github.com/QuantumNous/new-api/relay/imagegen"
+)
 
 func TestParsePublicTaskContentURL_Recognizes(t *testing.T) {
 	cases := []struct {
@@ -58,6 +63,62 @@ func TestParsePublicTaskContentURL_Rejects(t *testing.T) {
 				t.Fatalf("did not expect match for %q", u)
 			}
 		})
+	}
+}
+
+func TestDirectURLCache_HitWhileFresh(t *testing.T) {
+	t.Cleanup(resetResolvedURLCache)
+	storeCachedDirectURL("task_a", 0, "https://oss.example/signed?x=1")
+
+	got, ok := loadCachedDirectURL("task_a", 0)
+	if !ok || got != "https://oss.example/signed?x=1" {
+		t.Fatalf("expected cache hit, got ok=%v url=%q", ok, got)
+	}
+}
+
+func TestDirectURLCache_MissOnDifferentKey(t *testing.T) {
+	t.Cleanup(resetResolvedURLCache)
+	storeCachedDirectURL("task_a", 0, "url-a-0")
+
+	if _, ok := loadCachedDirectURL("task_a", 1); ok {
+		t.Fatal("different idx must miss")
+	}
+	if _, ok := loadCachedDirectURL("task_b", 0); ok {
+		t.Fatal("different task id must miss")
+	}
+}
+
+func TestDirectURLCache_RefreshesNearExpiry(t *testing.T) {
+	t.Cleanup(resetResolvedURLCache)
+	// Manually plant an entry whose TTL falls inside the refresh margin —
+	// load must treat it as a miss so the resolver re-presigns instead of
+	// serving a URL that may 403 mid-fetch.
+	resolvedURLCacheMu.Lock()
+	resolvedURLCache[directURLCacheKey("task_x", 0)] = cachedDirectURL{
+		url:       "almost-expired",
+		expiresAt: time.Now().Add(resolvedURLRefreshMargin / 2),
+	}
+	resolvedURLCacheMu.Unlock()
+
+	if _, ok := loadCachedDirectURL("task_x", 0); ok {
+		t.Fatal("entry within refresh margin must be treated as miss")
+	}
+}
+
+func TestDirectURLCache_TTLAlignedWithPublicLink(t *testing.T) {
+	t.Cleanup(resetResolvedURLCache)
+	before := time.Now()
+	storeCachedDirectURL("task_q", 7, "u")
+	after := time.Now()
+
+	resolvedURLCacheMu.RLock()
+	entry := resolvedURLCache[directURLCacheKey("task_q", 7)]
+	resolvedURLCacheMu.RUnlock()
+
+	minExp := before.Add(relayimagegen.PublicTaskLinkTTL)
+	maxExp := after.Add(relayimagegen.PublicTaskLinkTTL)
+	if entry.expiresAt.Before(minExp) || entry.expiresAt.After(maxExp) {
+		t.Fatalf("expiresAt %v outside [%v, %v]", entry.expiresAt, minExp, maxExp)
 	}
 }
 

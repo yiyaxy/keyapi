@@ -143,14 +143,14 @@ func TestRewriteOpenAIHistoryImages_MultipleImagesDedupedWithinAssistant(t *test
 	}
 }
 
-func TestRewriteOpenAIHistoryImages_OnlyMostRecentAssistantTurnLifted(t *testing.T) {
+func TestRewriteOpenAIHistoryImages_LiftsAllAssistantTurnsInOrder(t *testing.T) {
 	enableRewrite(t)
 	req := &dto.GeneralOpenAIRequest{Messages: []dto.Message{
 		{Role: "user", Content: "first request"},
-		{Role: "assistant", Content: "old image ![old](https://e.com/old.png)"},
+		{Role: "assistant", Content: "first image ![a](https://e.com/1.png)"},
 		{Role: "user", Content: "another request"},
-		{Role: "assistant", Content: "new image ![new](https://e.com/new.png)"},
-		{Role: "user", Content: "describe the latest"},
+		{Role: "assistant", Content: "second image ![b](https://e.com/2.png)"},
+		{Role: "user", Content: "compare them"},
 	}}
 	if !RewriteOpenAIHistoryImages(chatInfo(), req) {
 		t.Fatal("expected rewrite")
@@ -164,8 +164,35 @@ func TestRewriteOpenAIHistoryImages_OnlyMostRecentAssistantTurnLifted(t *testing
 			}
 		}
 	}
-	if len(urls) != 1 || urls[0] != "https://e.com/new.png" {
-		t.Fatalf("only the most recent assistant turn's image should be lifted, got %v", urls)
+	if len(urls) != 2 || urls[0] != "https://e.com/1.png" || urls[1] != "https://e.com/2.png" {
+		t.Fatalf("expected both images in conversation order, got %v", urls)
+	}
+}
+
+// Sanity check: when the same URL appears in multiple assistant turns
+// (e.g. the model quoted an earlier image in a later answer), we must still
+// only attach it once to the user message.
+func TestRewriteOpenAIHistoryImages_DedupesAcrossAssistantTurns(t *testing.T) {
+	enableRewrite(t)
+	req := &dto.GeneralOpenAIRequest{Messages: []dto.Message{
+		{Role: "user", Content: "draw cat"},
+		{Role: "assistant", Content: "![cat](https://e.com/cat.png)"},
+		{Role: "user", Content: "show again"},
+		{Role: "assistant", Content: "here it is again ![cat](https://e.com/cat.png)"},
+		{Role: "user", Content: "describe"},
+	}}
+	if !RewriteOpenAIHistoryImages(chatInfo(), req) {
+		t.Fatal("expected rewrite")
+	}
+	parts := req.Messages[len(req.Messages)-1].ParseContent()
+	imgCount := 0
+	for _, p := range parts {
+		if p.Type == dto.ContentTypeImageURL {
+			imgCount++
+		}
+	}
+	if imgCount != 1 {
+		t.Fatalf("expected 1 unique image across assistant turns, got %d", imgCount)
 	}
 }
 
