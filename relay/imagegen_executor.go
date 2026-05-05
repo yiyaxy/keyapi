@@ -39,6 +39,16 @@ func init() {
 }
 
 func executeGenerateImageTool(c *gin.Context, parentInfo *relaycommon.RelayInfo, args relayimagegen.GenerateArgs) (relayimagegen.Result, *types.NewAPIError) {
+	// The chat upstream has already produced a tool_call response — by the
+	// time we get here, the chat channel has fulfilled its job. The pending
+	// wait-for-image phase belongs to the imagegen channel, not the chat one.
+	// Mark first-content on the parent (chat) RelayInfo so the stability
+	// framework's first-token timer is canceled and the chat channel doesn't
+	// get cooled down for what is, from its POV, a request that already
+	// returned content. We use MarkFirstStreamContent (not StopFirstTokenTimer)
+	// because the latter also cancels the upstream HTTP stream.
+	parentInfo.MarkFirstStreamContent()
+
 	common.WriteRequestJSONL(c, "imagegen.execute.start", args)
 	imageReq := dto.ImageRequest{
 		Model:   args.Model,
