@@ -796,6 +796,15 @@ export const SETTINGS_GROUPS: Group[] = [
         },
       },
       f(
+        'image_gen.return_on_submit',
+        'bool',
+        { zh: '提交即返回（不等图）', en: 'Return immediately on submit (do not wait for image)' },
+        {
+          zh: '默认关闭。开启后，模型调用 generate_image 提交完任务就立刻返回 chat 流，不再阻塞等图（最长 5 分钟）。tool 结果只带 task_id + 任务页 URL，模型会让用户去任务页查看。适合慢生图后端（避免 chat 卡住、节省连接、稳定性彻底解耦）。代价：用户拿不到 chat 内联的图片，要点链接看；模型也"看不到"自己生成的图（无法用于后续 vision 追问）。同步快渠道（10-30s 出图）建议保持关闭。',
+          en: 'Disabled by default. When enabled, the chat returns to the client the moment the imagegen task is submitted — no in-process wait (up to 5 min). The tool result carries task_id + task page URL; the model tells the user to open that link. Best for slow image backends (chat finishes fast, connection short, fully decouples chat-channel stability from imagegen latency). Cost: no inline image in chat; the model can no longer "see" its own image for follow-ups. Keep disabled for fast sync channels (10–30s).',
+        }
+      ),
+      f(
         'image_gen.sticky_after_first_use',
         'bool',
         { zh: '会话首次调用后保持注入', en: 'Sticky after first use in a session' },

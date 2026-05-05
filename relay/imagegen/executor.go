@@ -85,7 +85,19 @@ func (r Result) ToolResultText() (string, error) {
 	if status == "" {
 		status = "processing"
 	}
-	payload["instruction"] = "No displayable image URL is available yet. Do not say the image is visible. Tell the user the task status and task_id."
+	// Two no-image cases share this branch:
+	//   (a) submitted-mode (operator turned on return_on_submit): we never
+	//       wait for the image, just hand back task_id + task_url so the
+	//       chat finishes fast. The model must point the user at task_url.
+	//   (b) processing/timeout: the wait expired or upstream hasn't produced
+	//       a URL yet. Same UX: show task_url so the user can poll.
+	// Either way the model should NOT claim the image is generated, and it
+	// should surface task_url verbatim if present so the link is clickable.
+	if r.TaskURL != "" {
+		payload["instruction"] = "The image task has been submitted but no image URL is available in this response. Tell the user the task is in progress, give them the task_url verbatim as a clickable link so they can open the public task page to view the image when ready, and include the task_id. Do not claim the image is visible or already generated."
+	} else {
+		payload["instruction"] = "No displayable image URL is available yet. Do not say the image is visible. Tell the user the task status and task_id."
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", err

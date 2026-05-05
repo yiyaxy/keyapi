@@ -81,3 +81,26 @@ func TestRenderSubmittedMessage_NoURLPlaceholderUnaffected(t *testing.T) {
 		t.Fatalf("templates without {task_url}:\n got = %q", got)
 	}
 }
+
+func TestReturnOnSubmitEnabled_Default(t *testing.T) {
+	withOption(t, OptionReturnOnSubmit, "", false)
+	if ReturnOnSubmitEnabled() {
+		t.Fatal("default should be false (preserve sync-feel behavior)")
+	}
+}
+
+func TestReturnOnSubmitEnabled_True(t *testing.T) {
+	withOption(t, OptionReturnOnSubmit, "true", true)
+	if !ReturnOnSubmitEnabled() {
+		t.Fatal("expected true when option set to 'true'")
+	}
+}
+
+func TestReturnOnSubmitEnabled_GarbageDefaultsFalse(t *testing.T) {
+	// Defensive: a typo / migration mishap in the OptionMap shouldn't silently
+	// flip the chat into fire-and-forget mode without operator intent.
+	withOption(t, OptionReturnOnSubmit, "yesplease", true)
+	if ReturnOnSubmitEnabled() {
+		t.Fatal("invalid value must default to false")
+	}
+}

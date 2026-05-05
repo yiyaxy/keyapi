@@ -15,6 +15,7 @@ const (
 	OptionSubmittedMessageTemplate = "image_gen.submitted_message_template"
 	OptionRewriteHistoryImages     = "image_gen.rewrite_history_images"
 	OptionStickyAfterFirstUse      = "image_gen.sticky_after_first_use"
+	OptionReturnOnSubmit           = "image_gen.return_on_submit"
 
 	DefaultModel = "gpt-image-2"
 
@@ -80,6 +81,32 @@ func StickyAfterFirstUseEnabled() bool {
 	enabled, err := strconv.ParseBool(value)
 	if err != nil {
 		return true
+	}
+	return enabled
+}
+
+// ReturnOnSubmitEnabled controls whether the imagegen tool returns to the
+// chat as soon as the task is submitted (true) or waits for the image to
+// finish before returning (false, default).
+//
+// When true: chat completes in seconds regardless of how long image gen
+// takes; the tool result carries task_id + task_url and instructs the model
+// to point the user at the public task page. The user opens the link to see
+// the image. Channel stability is fully insulated from imagegen latency.
+//
+// When false (default): chat blocks for up to imageToolTaskWaitTimeout (5
+// min) waiting for the image, then includes the markdown image inline. Best
+// UX when image gen is fast (sync upstream channels finish in 10–30s); poor
+// experience when image gen is slow.
+//
+// Operators on slow image backends or with channel-stability concerns should
+// turn this on. Operators on fast sync channels usually keep it off so users
+// get the image inline.
+func ReturnOnSubmitEnabled() bool {
+	value := strings.TrimSpace(getOption(OptionReturnOnSubmit, "false"))
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return false
 	}
 	return enabled
 }

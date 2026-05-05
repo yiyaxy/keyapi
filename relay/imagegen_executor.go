@@ -132,6 +132,22 @@ func executeGenerateImageTool(c *gin.Context, parentInfo *relaycommon.RelayInfo,
 	})
 	sendImageToolSubmittedStreamMessage(c, parentInfo, task.TaskID)
 
+	// Fire-and-forget mode: skip the in-process wait entirely and return a
+	// "submitted" Result immediately. The chat finishes in seconds, the
+	// model receives task_id + task_url in the tool result and tells the
+	// user to open the public task page. The image task continues running
+	// async on the worker side and gets post-consumed independently.
+	if imagegensetting.ReturnOnSubmitEnabled() {
+		taskURL := imageToolTaskURL(c, task.TaskID, parentInfo.TenantId)
+		return relayimagegen.Result{
+			TaskID:  task.TaskID,
+			TaskURL: taskURL,
+			Status:  "submitted",
+			Model:   args.Model,
+			Prompt:  args.Prompt,
+		}, nil
+	}
+
 	waitCtx, cancel := context.WithTimeout(c.Request.Context(), imageToolTaskWaitTimeout)
 	defer cancel()
 	// Bracket the wait with a timer so we can subtract this duration from
