@@ -567,3 +567,35 @@ func TestSchemaParametersIncludesImageURLsField(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGenerateArgsAcceptsResolutionAndRatioSize(t *testing.T) {
+	withImageGenOptions(t, "true", "")
+	args, err := ParseGenerateArgs(`{"prompt":"poster","size":"16:9","resolution":"4K"}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if args.Size != "16:9" {
+		t.Errorf("size: got %q want %q", args.Size, "16:9")
+	}
+	// Resolution should be lower-cased so "4K" is normalized to "4k" before
+	// hitting upstream — providers tend to be case-sensitive on enums.
+	if args.Resolution != "4k" {
+		t.Errorf("resolution should be normalized to lowercase, got %q", args.Resolution)
+	}
+}
+
+func TestSchemaParametersIncludesResolution(t *testing.T) {
+	schema := schemaParameters()
+	props, _ := schema["properties"].(map[string]interface{})
+	field, ok := props["resolution"].(map[string]interface{})
+	if !ok {
+		t.Fatal("resolution not in schema")
+	}
+	if field["type"] != "string" {
+		t.Errorf("resolution type should be string, got %v", field["type"])
+	}
+	enum, _ := field["enum"].([]string)
+	if len(enum) != 3 || enum[0] != "1k" || enum[2] != "4k" {
+		t.Errorf("resolution enum should be [1k 2k 4k], got %v", enum)
+	}
+}

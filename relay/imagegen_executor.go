@@ -51,11 +51,12 @@ func executeGenerateImageTool(c *gin.Context, parentInfo *relaycommon.RelayInfo,
 
 	common.WriteRequestJSONL(c, "imagegen.execute.start", args)
 	imageReq := dto.ImageRequest{
-		Model:   args.Model,
-		Prompt:  args.Prompt,
-		N:       common.GetPointer(args.N),
-		Size:    args.Size,
-		Quality: args.Quality,
+		Model:      args.Model,
+		Prompt:     args.Prompt,
+		N:          common.GetPointer(args.N),
+		Size:       args.Size,
+		Quality:    args.Quality,
+		Resolution: args.Resolution,
 	}
 	if len(args.ImageURLs) > 0 {
 		// gpt-image-* accepts an `image` field containing a URL (or array of

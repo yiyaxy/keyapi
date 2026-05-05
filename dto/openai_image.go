@@ -32,6 +32,9 @@ type ImageRequest struct {
 	WatermarkEnabled json.RawMessage `json:"watermark_enabled,omitempty"`
 	UserId           json.RawMessage `json:"user_id,omitempty"`
 	Image            json.RawMessage `json:"image,omitempty"`
+	// gpt-image-2 等模型使用 size (比例) + resolution (分辨率档位) 两轴指定输出，
+	// resolution 取值 1k / 2k / 4k；老模型（gpt-image-1 / DALL-E）忽略此字段。
+	Resolution string `json:"resolution,omitempty"`
 	// 用匿名参数接收额外参数
 	Extra map[string]json.RawMessage `json:"-"`
 }

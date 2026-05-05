@@ -29,12 +29,13 @@ You have access to generate_image for real image generation.
 - Reply in the user's language.`
 
 type GenerateArgs struct {
-	Prompt    string   `json:"prompt"`
-	Model     string   `json:"model,omitempty"`
-	Size      string   `json:"size,omitempty"`
-	Quality   string   `json:"quality,omitempty"`
-	N         uint     `json:"n,omitempty"`
-	ImageURLs []string `json:"image_urls,omitempty"`
+	Prompt     string   `json:"prompt"`
+	Model      string   `json:"model,omitempty"`
+	Size       string   `json:"size,omitempty"`
+	Quality    string   `json:"quality,omitempty"`
+	N          uint     `json:"n,omitempty"`
+	ImageURLs  []string `json:"image_urls,omitempty"`
+	Resolution string   `json:"resolution,omitempty"`
 }
 
 func EnabledForInfo(info *relaycommon.RelayInfo) bool {
@@ -207,6 +208,7 @@ func normalizeGenerateArgs(args GenerateArgs) (GenerateArgs, error) {
 	args.Model = strings.TrimSpace(args.Model)
 	args.Size = strings.TrimSpace(args.Size)
 	args.Quality = strings.TrimSpace(args.Quality)
+	args.Resolution = strings.ToLower(strings.TrimSpace(args.Resolution))
 	if args.Prompt == "" {
 		return args, fmt.Errorf("generate_image prompt is required")
 	}
@@ -459,8 +461,15 @@ func schemaParameters() map[string]interface{} {
 			"description": "Optional image generation model. Omit to use the system default.",
 		},
 		"size": map[string]interface{}{
+			"type": "string",
+			"description": "Optional output size. Two formats are accepted depending on the model: " +
+				"(a) aspect ratio strings — auto, 1:1, 3:2, 2:3, 4:3, 3:4, 5:4, 4:5, 16:9, 9:16, 2:1, 1:2, 21:9, 9:21 — used by gpt-image-2 / similar ratio-based models; " +
+				"(b) pixel strings such as 1024x1024, 1024x1536, 1536x1024, 512x512, 256x256 — used by gpt-image-1 / DALL-E. Pick the format that matches the chosen model; the upstream rejects mismatched values.",
+		},
+		"resolution": map[string]interface{}{
 			"type":        "string",
-			"description": "Optional output size such as 1024x1024, 1024x1536, 1536x1024, 512x512, or 256x256.",
+			"description": "Optional output resolution tier for ratio-based models (gpt-image-2 etc.). One of: 1k, 2k, 4k. Defaults to 1k. Note: 4k is only valid with size in {16:9, 9:16, 2:1, 1:2, 21:9, 9:21}; other ratios at 4k exceed the pixel cap and will be rejected by upstream. Ignored by pixel-size models.",
+			"enum":        []string{"1k", "2k", "4k"},
 		},
 		"quality": map[string]interface{}{
 			"type":        "string",
