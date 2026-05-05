@@ -795,6 +795,24 @@ export const SETTINGS_GROUPS: Group[] = [
           en: 'Leave empty to allow any model. When set, generate_image can only use models in this list; include the default model here too.',
         },
       },
+      f(
+        'image_gen.rewrite_history_images',
+        'bool',
+        { zh: '历史图自动注入为视觉输入', en: 'Auto-inject prior images as vision input' },
+        {
+          zh: '开启后，对话历史中模型生成过的图片会自动以 image_url 形式附加到当前用户消息上，让 vision 模型能"真正看到"自己之前画过的图。仅 OpenAI 兼容的 chat completions 链路生效，且需要后端模型本身支持 vision。会增加 prompt token，但配合 prompt cache 大部分轮次只付一次首图成本。',
+          en: 'When enabled, images the model generated earlier in the conversation are automatically attached to the current user message as image_url blocks, so vision-capable models can actually see their own past output (not just the URL text). OpenAI-compatible chat completions only; backend model must support vision. Increases prompt tokens but provider prompt caching amortizes the cost.',
+        }
+      ),
+      f(
+        'image_gen.submitted_message_template',
+        'longText',
+        { zh: '"任务已提交"提示模板', en: '"Task submitted" message template' },
+        {
+          zh: '异步生图任务提交后立即推给用户的提示文本，支持占位符 {task_id} 和 {task_url}。从未设置 → 使用内置中文模板；保存为空字符串 → 完全不发这条提示（同步渠道任务秒级完成，可以清空避免冗余）。仅在 OpenAI 流式响应下生效。',
+          en: 'Text streamed to the user the moment an async image task is submitted. Supports {task_id} and {task_url} placeholders. Never set → built-in Chinese template; saved as empty string → opt out entirely (useful for sync upstreams that finish in seconds, where the preamble feels redundant). Only emitted on OpenAI streaming responses.',
+        }
+      ),
     ],
   },
   {

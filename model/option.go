@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	imagegensetting "github.com/QuantumNous/new-api/setting/imagegen"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -39,6 +40,12 @@ func InitOptionMap() {
 	common.OptionMap["image_gen.enabled"] = "false"
 	common.OptionMap["image_gen.default_model"] = "gpt-image-1"
 	common.OptionMap["image_gen.allowed_models"] = ""
+	common.OptionMap["image_gen.rewrite_history_images"] = "false"
+	// Seed with the built-in default text rather than "" so the admin sees the
+	// template prefilled and can edit/clear it. An explicitly-saved empty
+	// string is the documented opt-out; never seeding "" here keeps existing
+	// deployments behaving exactly as before this UI was added.
+	common.OptionMap["image_gen.submitted_message_template"] = imagegensetting.DefaultSubmittedMessageTemplate
 	common.OptionMap[common.RequestJSONLEnabledOption] = "false"
 	common.OptionMap[common.RequestJSONLDirOption] = ""
 	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
