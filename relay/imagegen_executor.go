@@ -47,6 +47,18 @@ func executeGenerateImageTool(c *gin.Context, parentInfo *relaycommon.RelayInfo,
 		Size:    args.Size,
 		Quality: args.Quality,
 	}
+	if len(args.ImageURLs) > 0 {
+		// gpt-image-* accepts an `image` field containing a URL (or array of
+		// URLs) on /v1/images/generations — same endpoint, no need to switch
+		// to /edits. Marshal as JSON and let the adaptor pass through; if a
+		// channel ignores the field we simply degrade to text-to-image
+		// rather than fail the call.
+		raw, err := json.Marshal(args.ImageURLs)
+		if err != nil {
+			return relayimagegen.Result{}, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		imageReq.Image = raw
+	}
 
 	imageInfo, snapshot, apiErr := buildImageRelayInfo(c, parentInfo, imageReq)
 	if apiErr != nil {

@@ -484,3 +484,86 @@ func TestConversationHasPriorClaudeGenerateCall(t *testing.T) {
 		}
 	})
 }
+
+// --- image_urls (image-to-image) -----------------------------------------
+
+func TestParseGenerateArgsAcceptsImageURLs(t *testing.T) {
+	withImageGenOptions(t, "true", "")
+	args, err := ParseGenerateArgs(`{"prompt":"make it red","image_urls":["https://e.com/a.png","https://e.com/b.png"]}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(args.ImageURLs) != 2 || args.ImageURLs[0] != "https://e.com/a.png" || args.ImageURLs[1] != "https://e.com/b.png" {
+		t.Fatalf("unexpected image_urls: %#v", args.ImageURLs)
+	}
+}
+
+func TestSanitizeImageURLs(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{name: "nil", in: nil, want: nil},
+		{name: "all empty trims to nil", in: []string{"", "  ", ""}, want: nil},
+		{
+			name: "trims and dedupes preserving order",
+			in:   []string{" https://a/1 ", "https://a/2", "https://a/1", ""},
+			want: []string{"https://a/1", "https://a/2"},
+		},
+		{
+			name: "caps at 16",
+			in: func() []string {
+				s := make([]string, 20)
+				for i := range s {
+					s[i] = "https://e.com/" + string(rune('a'+i))
+				}
+				return s
+			}(),
+			want: nil, // assertion below checks only length
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sanitizeImageURLs(tc.in)
+			if tc.name == "caps at 16" {
+				if len(got) != 16 {
+					t.Fatalf("expected len=16, got %d", len(got))
+				}
+				return
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("len mismatch: got %v want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("at %d got %q want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestSchemaParametersIncludesImageURLsField(t *testing.T) {
+	schema := schemaParameters()
+	props, _ := schema["properties"].(map[string]interface{})
+	if props == nil {
+		t.Fatal("properties missing")
+	}
+	field, ok := props["image_urls"].(map[string]interface{})
+	if !ok {
+		t.Fatal("image_urls not in schema")
+	}
+	if field["type"] != "array" {
+		t.Errorf("image_urls type should be array, got %v", field["type"])
+	}
+	if items, ok := field["items"].(map[string]interface{}); !ok || items["type"] != "string" {
+		t.Errorf("image_urls items should be {type:string}, got %v", field["items"])
+	}
+	required, _ := schema["required"].([]string)
+	for _, r := range required {
+		if r == "image_urls" {
+			t.Error("image_urls must not be required")
+		}
+	}
+}

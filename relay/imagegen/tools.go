@@ -23,14 +23,16 @@ You have access to generate_image for real image generation.
 - If the user only asks whether image generation is available, answer that it is available when requested, but do not claim that an image has already been generated.
 - Do not claim an image was generated unless generate_image returned a URL or data URL.
 - After generate_image returns display_markdown, include that Markdown image exactly in the final answer so the user can see the image.
+- For edit / variation / "make it X" follow-ups about an image you previously generated or the user attached, pass the source image URL(s) via image_urls so the model can actually condition on them. Up to 16 URLs; png/webp/jpg only.
 - Reply in the user's language.`
 
 type GenerateArgs struct {
-	Prompt  string `json:"prompt"`
-	Model   string `json:"model,omitempty"`
-	Size    string `json:"size,omitempty"`
-	Quality string `json:"quality,omitempty"`
-	N       uint   `json:"n,omitempty"`
+	Prompt    string   `json:"prompt"`
+	Model     string   `json:"model,omitempty"`
+	Size      string   `json:"size,omitempty"`
+	Quality   string   `json:"quality,omitempty"`
+	N         uint     `json:"n,omitempty"`
+	ImageURLs []string `json:"image_urls,omitempty"`
 }
 
 func EnabledForInfo(info *relaycommon.RelayInfo) bool {
@@ -218,7 +220,39 @@ func normalizeGenerateArgs(args GenerateArgs) (GenerateArgs, error) {
 	if args.N > 4 {
 		args.N = 4
 	}
+	args.ImageURLs = sanitizeImageURLs(args.ImageURLs)
 	return args, nil
+}
+
+// sanitizeImageURLs trims, drops empty entries, dedupes (preserving order),
+// and caps at 16. We don't validate the scheme here — the upstream image API
+// is the source of truth on what it accepts; rejecting locally would just
+// surface confusing errors to the model when an upstream might actually have
+// accepted the URL.
+func sanitizeImageURLs(urls []string) []string {
+	if len(urls) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(urls))
+	out := make([]string, 0, len(urls))
+	for _, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if _, dup := seen[u]; dup {
+			continue
+		}
+		seen[u] = struct{}{}
+		out = append(out, u)
+		if len(out) >= 16 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func ensureOpenAIImageToolGuidance(req *dto.GeneralOpenAIRequest) {
@@ -435,6 +469,12 @@ func schemaParameters() map[string]interface{} {
 			"description": "Number of images to generate.",
 			"minimum":     1,
 			"maximum":     4,
+		},
+		"image_urls": map[string]interface{}{
+			"type":        "array",
+			"items":       map[string]interface{}{"type": "string"},
+			"description": "Optional reference / source images (https URLs to png, webp, or jpg files, each <50MB). Up to 16. Use this for edits, variations, or style/identity transfer based on a previously generated or user-attached image. Omit for pure text-to-image.",
+			"maxItems":    16,
 		},
 	}
 	if allowed := setting.AllowedModels(); len(allowed) > 0 {
