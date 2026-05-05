@@ -32,6 +32,7 @@ import { IpAnalysisAdminPage } from '@/pages/IpAnalysisAdmin';
 import { KeysPage } from '@/pages/Keys';
 import { LegalPage } from '@/pages/Legal';
 import { Login } from '@/pages/Login';
+import { ChatHistoryAdminPage } from '@/pages/ChatHistoryAdmin';
 import { LogsAdminPage } from '@/pages/LogsAdmin';
 import { LogsPage } from '@/pages/Logs';
 import { MessageAdminPage } from '@/pages/MessageAdmin';
@@ -134,6 +135,7 @@ export const router = createBrowserRouter([
                   { path: '/admin/users', element: <UsersAdminPage /> },
                   { path: '/admin/redemption', element: <RedemptionAdminPage /> },
                   { path: '/admin/logs', element: <LogsAdminPage /> },
+                  { path: '/admin/chat-history', element: <ChatHistoryAdminPage /> },
                   { path: '/admin/tickets', element: <TicketsAdminPage /> },
                   { path: '/admin/tickets/:id', element: <TicketAdminDetailPage /> },
                   { path: '/admin/invoices', element: <InvoicesAdminPage /> },

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -41,6 +42,13 @@ type Log struct {
 	// AppId: 对应 AI 应用广场中的应用 ID。当使用绑定了 AppId 的 Token 发起调用时，自动回写此字段。
 	// 这是三方应用结算的唯一数据依据：通过按 AppId 聚合查询可计算每个应用的收益。
 	AppId int `json:"app_id" gorm:"default:0;index"`
+
+	// ChatHistory 相关字段：当 chat_history.record_messages 开启时，请求体 +
+	// 响应体被 gzip 后上传到对象存储，这里记录对象 key 和原始字节数。
+	// 留空表示该次请求未被记录（功能未开 / 路径不在记录范围 / 上传失败）。
+	// 详情查阅请走 admin chat history API，会按 key 反查并 presign 临时 URL。
+	MessageObjectKey string `json:"message_object_key,omitempty" gorm:"type:varchar(255);default:''"`
+	MessageSizeBytes int64  `json:"message_size_bytes,omitempty" gorm:"default:0"`
 }
 
 // don't use iota, avoid change log type value
@@ -1043,4 +1051,23 @@ func GetSiteRPM(windowSeconds int64, tenantId ...int) (*SiteRPMResult, error) {
 	}
 	result.All.RPM = float64(totalCount) * 60.0 / float64(windowSeconds)
 	return result, nil
+}
+
+// UpdateLogMessageObject sets the captured-conversation pointer on the Log row
+// matching requestID. It's a fire-and-forget update from the chat-history
+// recorder middleware: if no row exists yet (race), or if the requestID maps
+// to multiple rows for some reason, we still want the upload to be findable —
+// so we update by request_id, not by primary key, and do not error on zero
+// rows affected. Errors are returned for the recorder to log.
+func UpdateLogMessageObject(requestID string, objectKey string, sizeBytes int64) error {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return nil
+	}
+	return LOG_DB.Model(&Log{}).
+		Where("request_id = ?", requestID).
+		Updates(map[string]interface{}{
+			"message_object_key": objectKey,
+			"message_size_bytes": sizeBytes,
+		}).Error
 }

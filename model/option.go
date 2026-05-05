@@ -49,6 +49,7 @@ func InitOptionMap() {
 	common.OptionMap["image_gen.submitted_message_template"] = imagegensetting.DefaultSubmittedMessageTemplate
 	common.OptionMap[common.RequestJSONLEnabledOption] = "false"
 	common.OptionMap[common.RequestJSONLDirOption] = ""
+	common.OptionMap["chat_history.record_messages"] = "false"
 	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
 	common.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(common.PasswordRegisterEnabled)
 	common.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(common.EmailVerificationEnabled)

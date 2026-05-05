@@ -11,6 +11,10 @@ export const qk = {
   logs: {
     self: (query: Record<string, unknown>) => ['logs', 'self', query] as const,
   },
+  chatHistory: {
+    list: (query: Record<string, unknown>) => ['chat-history', 'list', query] as const,
+    detail: (requestId: string) => ['chat-history', 'detail', requestId] as const,
+  },
   topup: {
     history: (page: number) => ['topup', 'history', page] as const,
   },

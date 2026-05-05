@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/auth"
 	"github.com/QuantumNous/new-api/controller/catalog"
 	"github.com/QuantumNous/new-api/controller/channel"
+	chathistoryctrl "github.com/QuantumNous/new-api/controller/chat_history"
 	"github.com/QuantumNous/new-api/controller/codex"
 	"github.com/QuantumNous/new-api/controller/invoice"
 	"github.com/QuantumNous/new-api/controller/media"
@@ -124,6 +125,17 @@ func SetApiRouter(router *gin.Engine) {
 			invoiceSelfRoute.POST("/applications", invoice.InvoiceSelfCreateApplication)
 			invoiceSelfRoute.POST("/applications/:id/cancel", invoice.InvoiceSelfCancelApplication)
 			invoiceSelfRoute.GET("/files/:file_id/presign", invoice.InvoiceSelfPresignFile)
+		}
+
+		// Chat history (admin-only): list + detail of captured conversation
+		// envelopes. TenantAdminAuth lets through both tenant admins and
+		// platform admins; the controller itself enforces tenant scoping
+		// based on platform_role context.
+		chatHistoryAdminRoute := apiRouter.Group("/chat_history/admin")
+		chatHistoryAdminRoute.Use(middleware.TenantAdminAuth())
+		{
+			chatHistoryAdminRoute.GET("", chathistoryctrl.AdminList)
+			chatHistoryAdminRoute.GET("/:request_id", chathistoryctrl.AdminDetail)
 		}
 
 		invoiceAdminRoute := apiRouter.Group("/invoice/admin")

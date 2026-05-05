@@ -825,6 +825,21 @@ export const SETTINGS_GROUPS: Group[] = [
     ],
   },
   {
+    id: 'chat-history',
+    title: { zh: '对话历史', en: 'Chat history' },
+    fields: [
+      f(
+        'chat_history.record_messages',
+        'bool',
+        { zh: '记录对话内容', en: 'Record conversation content' },
+        {
+          zh: '默认关闭。开启后，所有 chat-style 路径（/chat/completions、/completions、/responses、/messages）的请求体 + 响应体会被 gzip 压缩后上传到对象存储，admin 可以在 "对话记录" 页面回看。会消耗存储成本（典型对话 5-50KB 每条），且需要先在 "对象存储" 中配置 OSS 凭据。请确保你的用户协议 / 隐私政策中已声明此行为。',
+          en: 'Disabled by default. When enabled, the request and response bodies of all chat-style routes (/chat/completions, /completions, /responses, /messages) are gzipped and uploaded to object storage; admins can browse them on the "Chat history" page. Consumes storage (typical conversation 5-50KB each) and requires OSS credentials configured in the "Object storage" section. Make sure your terms / privacy policy disclose this.',
+        }
+      ),
+    ],
+  },
+  {
     id: 'ticket_storage',
     title: { zh: '对象存储', en: 'Object storage' },
     fields: [
