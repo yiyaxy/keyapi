@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -105,6 +106,14 @@ type RelayInfo struct {
 	TokenUnlimited       bool
 	StartTime            time.Time
 	FirstResponseTime    time.Time
+	// imageToolWaitNanos accumulates the time spent waiting for in-process
+	// image-generation tool tasks to finish. Use_time should subtract this so
+	// the chat upstream's recorded duration reflects its own work, not the
+	// imagegen tool's wait — otherwise admin logs and any duration-based
+	// channel-stability heuristics would penalize chat channels for slow
+	// imagegen channels. Atomically read/written so concurrent tool calls in
+	// one request don't race on the value.
+	imageToolWaitNanos int64
 	isFirstResponse      bool
 	//SendLastReasoningResponse bool
 	IsStream               bool
@@ -1032,4 +1041,45 @@ func RemoveGeminiDisabledFields(jsonData []byte) ([]byte, error) {
 		return jsonData, nil
 	}
 	return jsonDataAfter, nil
+}
+
+// AddImageToolWaitDuration is called by the imagegen executor after waiting
+// for an in-process generation task to complete. It records the elapsed time
+// against the parent chat request so use_time can be reported as the chat
+// channel's actual work time, not the chat-plus-wait wall clock.
+func (info *RelayInfo) AddImageToolWaitDuration(d time.Duration) {
+	if info == nil || d <= 0 {
+		return
+	}
+	atomic.AddInt64(&info.imageToolWaitNanos, int64(d))
+}
+
+// ImageToolWaitDuration returns the accumulated imagegen wait time. Safe for
+// concurrent reads while AddImageToolWaitDuration may be running.
+func (info *RelayInfo) ImageToolWaitDuration() time.Duration {
+	if info == nil {
+		return 0
+	}
+	return time.Duration(atomic.LoadInt64(&info.imageToolWaitNanos))
+}
+
+// EffectiveDuration is wall-clock duration since StartTime minus any
+// imagegen tool wait. Use this instead of time.Since(StartTime) when the
+// number is meant to represent "how long did the chat upstream take" — for
+// admin log display, billing-by-time, and any duration-based stability
+// heuristic. Never returns negative.
+func (info *RelayInfo) EffectiveDuration() time.Duration {
+	if info == nil {
+		return 0
+	}
+	total := time.Since(info.StartTime)
+	if wait := info.ImageToolWaitDuration(); wait > 0 && wait < total {
+		return total - wait
+	}
+	if info.ImageToolWaitDuration() >= total {
+		// Defensive: clock skew or accounting bug — better to report 0 than
+		// a negative number that breaks downstream summation.
+		return 0
+	}
+	return total
 }

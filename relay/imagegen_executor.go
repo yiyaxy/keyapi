@@ -134,7 +134,14 @@ func executeGenerateImageTool(c *gin.Context, parentInfo *relaycommon.RelayInfo,
 
 	waitCtx, cancel := context.WithTimeout(c.Request.Context(), imageToolTaskWaitTimeout)
 	defer cancel()
-	return waitForImageToolTask(waitCtx, c, parentInfo.RequestId, task.TaskID, imageInfo.TenantId, args.Model, args.Prompt)
+	// Bracket the wait with a timer so we can subtract this duration from
+	// the parent chat's use_time. Without this the chat channel's recorded
+	// duration would inflate by the imagegen wait, distorting admin log
+	// readability and any duration-based stability heuristic.
+	waitStart := time.Now()
+	result, apiErr := waitForImageToolTask(waitCtx, c, parentInfo.RequestId, task.TaskID, imageInfo.TenantId, args.Model, args.Prompt)
+	parentInfo.AddImageToolWaitDuration(time.Since(waitStart))
+	return result, apiErr
 }
 
 func sendImageToolSubmittedStreamMessage(c *gin.Context, info *relaycommon.RelayInfo, taskID string) {

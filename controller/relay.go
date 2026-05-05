@@ -954,6 +954,14 @@ func recordRelayErrorForTrace(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 		startTime = time.Now()
 	}
 	useTimeSeconds := int(time.Since(startTime).Seconds())
+	// If the request invoked an imagegen tool that we waited on in-process,
+	// subtract that wait time so the chat channel's error-path use_time isn't
+	// inflated by imagegen latency.
+	if relayInfo != nil {
+		if wait := int(relayInfo.ImageToolWaitDuration().Seconds()); wait > 0 && wait < useTimeSeconds {
+			useTimeSeconds -= wait
+		}
+	}
 
 	gopool.Go(func() {
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName,

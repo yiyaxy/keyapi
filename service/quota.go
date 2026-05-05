@@ -7,7 +7,6 @@ import (
 	"log"
 	"math"
 	"strings"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -174,7 +173,8 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelName string,
 	usage *dto.RealtimeUsage, extraContent string) {
 
-	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
+	// Excludes imagegen tool wait so chat use_time reflects only chat work.
+	useTimeSeconds := int64(relayInfo.EffectiveDuration().Seconds())
 	textInputTokens := usage.InputTokenDetails.TextTokens
 	textOutTokens := usage.OutputTokenDetails.TextTokens
 
@@ -303,7 +303,8 @@ func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData)
 
 func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent string) {
 
-	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
+	// Excludes imagegen tool wait so chat use_time reflects only chat work.
+	useTimeSeconds := int64(relayInfo.EffectiveDuration().Seconds())
 	textInputTokens := usage.PromptTokensDetails.TextTokens
 	textOutTokens := usage.CompletionTokenDetails.TextTokens
 
