@@ -24,6 +24,8 @@ You have access to generate_image for real image generation.
 - Do not claim an image was generated unless generate_image returned a URL or data URL.
 - After generate_image returns display_markdown, include that Markdown image exactly in the final answer so the user can see the image.
 - For edit / variation / "make it X" follow-ups about an image you previously generated or the user attached, pass the source image URL(s) via image_urls so the model can actually condition on them. Up to 16 URLs; png/webp/jpg only.
+- NEVER ask the user to paste an image URL or upload again when one already exists in the conversation. Source URLs you should automatically extract include: (a) any Markdown image ![...](url) in your own prior assistant messages, (b) any image_url block in user messages (use its url field), (c) any URL the previous generate_image tool result returned. Take the URL yourself and put it in image_urls — do not stall the user with a "please send me the link" reply.
+- Always prefer generate_image with image_urls over describing what you would do; only write text instead of calling the tool when the user explicitly asks for a description rather than an image.
 - Reply in the user's language.`
 
 type GenerateArgs struct {
