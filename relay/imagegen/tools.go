@@ -73,7 +73,10 @@ func InjectOpenAITool(info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRequest
 	}
 	userText := lastOpenAIUserText(req)
 	wantsImage := wantsImageGenerationRequest(userText)
-	imageRelated := mentionsImageGenerationTopic(userText) || wantsImage || toolChoiceForGenerate(req.ToolChoice)
+	imageRelated := mentionsImageGenerationTopic(userText) ||
+		wantsImage ||
+		toolChoiceForGenerate(req.ToolChoice) ||
+		(setting.StickyAfterFirstUseEnabled() && conversationHasPriorOpenAIGenerateCall(req.Messages))
 	if !imageRelated {
 		return false
 	}
@@ -107,7 +110,10 @@ func InjectClaudeTool(info *relaycommon.RelayInfo, req *dto.ClaudeRequest) bool 
 	}
 	userText := lastClaudeUserText(req)
 	wantsImage := wantsImageGenerationRequest(userText)
-	imageRelated := mentionsImageGenerationTopic(userText) || wantsImage || claudeToolChoiceForGenerate(req.ToolChoice)
+	imageRelated := mentionsImageGenerationTopic(userText) ||
+		wantsImage ||
+		claudeToolChoiceForGenerate(req.ToolChoice) ||
+		(setting.StickyAfterFirstUseEnabled() && conversationHasPriorClaudeGenerateCall(req.Messages))
 	if !imageRelated {
 		return false
 	}
@@ -538,6 +544,48 @@ func claudeToolChoiceForGenerate(toolChoice any) bool {
 	var parsed dto.ClaudeToolChoice
 	_ = common.Unmarshal(data, &parsed)
 	return parsed.Type == "tool" && IsGenerateTool(parsed.Name)
+}
+
+// conversationHasPriorOpenAIGenerateCall returns true when any prior
+// assistant message in the conversation already issued a generate_image
+// tool_call. We scan only assistant messages because tool_calls live on the
+// assistant side; user/tool messages are irrelevant. Used by the "sticky"
+// behavior so the tool stays available for natural follow-ups like
+// "再红一点" / "把背景换掉" that don't trigger the keyword detector.
+func conversationHasPriorOpenAIGenerateCall(messages []dto.Message) bool {
+	for i := range messages {
+		if messages[i].Role != "assistant" {
+			continue
+		}
+		for _, tc := range messages[i].ParseToolCalls() {
+			if IsGenerateTool(tc.Function.Name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// conversationHasPriorClaudeGenerateCall is the Claude-side equivalent.
+// Claude embeds tool_use as a content block with type=="tool_use" rather
+// than as a separate field, so we walk parsed content of every assistant
+// message looking for that block.
+func conversationHasPriorClaudeGenerateCall(messages []dto.ClaudeMessage) bool {
+	for i := range messages {
+		if messages[i].Role != "assistant" {
+			continue
+		}
+		parts, err := messages[i].ParseContent()
+		if err != nil {
+			continue
+		}
+		for _, part := range parts {
+			if part.Type == "tool_use" && IsGenerateTool(part.Name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func hasGenerateOpenAITool(tools []dto.ToolCallRequest) bool {

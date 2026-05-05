@@ -41,6 +41,7 @@ func InitOptionMap() {
 	common.OptionMap["image_gen.default_model"] = "gpt-image-1"
 	common.OptionMap["image_gen.allowed_models"] = ""
 	common.OptionMap["image_gen.rewrite_history_images"] = "false"
+	common.OptionMap["image_gen.sticky_after_first_use"] = "true"
 	// Seed with the built-in default text rather than "" so the admin sees the
 	// template prefilled and can edit/clear it. An explicitly-saved empty
 	// string is the documented opt-out; never seeding "" here keeps existing

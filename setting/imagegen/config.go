@@ -14,6 +14,7 @@ const (
 	OptionAllowedModels            = "image_gen.allowed_models"
 	OptionSubmittedMessageTemplate = "image_gen.submitted_message_template"
 	OptionRewriteHistoryImages     = "image_gen.rewrite_history_images"
+	OptionStickyAfterFirstUse      = "image_gen.sticky_after_first_use"
 
 	DefaultModel = "gpt-image-2"
 
@@ -59,6 +60,26 @@ func RewriteHistoryImagesEnabled() bool {
 	enabled, err := strconv.ParseBool(value)
 	if err != nil {
 		return false
+	}
+	return enabled
+}
+
+// StickyAfterFirstUseEnabled controls whether the imagegen tool stays
+// injected for the rest of a conversation once the model has already invoked
+// it. Without this, the per-turn keyword detector decides each round in
+// isolation, so natural follow-ups like "再红一点" or "把背景换掉" — which
+// don't contain "draw / 画 / generate" — silently lose the tool and the model
+// can only reply with words.
+//
+// Default true: once a chat has visibly entered "image generation mode",
+// keep the capability available. The token overhead is one tool definition
+// (~200 tokens) per turn, fully cacheable across turns under provider prompt
+// caching since the tool block sits at a stable prefix position.
+func StickyAfterFirstUseEnabled() bool {
+	value := strings.TrimSpace(getOption(OptionStickyAfterFirstUse, "true"))
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return true
 	}
 	return enabled
 }

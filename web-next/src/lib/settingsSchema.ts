@@ -796,6 +796,15 @@ export const SETTINGS_GROUPS: Group[] = [
         },
       },
       f(
+        'image_gen.sticky_after_first_use',
+        'bool',
+        { zh: '会话首次调用后保持注入', en: 'Sticky after first use in a session' },
+        {
+          zh: '默认开启。一旦模型在当前对话里成功调用过 generate_image，后续每轮都会持续注入这个工具——即使用户消息里没有"画/生成/render"等关键词。覆盖"再红一点"/"换个背景"这类自然追问场景。关闭则恢复"每轮独立按关键词判定"的行为。',
+          en: 'Enabled by default. Once the model has successfully invoked generate_image in this conversation, the tool stays injected for every subsequent turn — even if the user message lacks keywords like "draw / generate / render". Covers natural follow-ups like "make it redder" / "change the background". Disable to revert to per-turn keyword-only detection.',
+        }
+      ),
+      f(
         'image_gen.rewrite_history_images',
         'bool',
         { zh: '历史图自动注入为视觉输入', en: 'Auto-inject prior images as vision input' },

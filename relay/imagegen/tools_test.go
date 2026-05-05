@@ -314,3 +314,173 @@ func TestClaudeStreamCaptureBuffersThenCapturesToolUse(t *testing.T) {
 		t.Fatalf("unexpected prompt %q", args.Prompt)
 	}
 }
+
+// --- sticky-after-first-use behavior --------------------------------------
+
+func withStickyOption(t *testing.T, value string) {
+	t.Helper()
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = map[string]string{}
+	}
+	prev, had := common.OptionMap["image_gen.sticky_after_first_use"]
+	common.OptionMap["image_gen.sticky_after_first_use"] = value
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		if had {
+			common.OptionMap["image_gen.sticky_after_first_use"] = prev
+		} else {
+			delete(common.OptionMap, "image_gen.sticky_after_first_use")
+		}
+		common.OptionMapRWMutex.Unlock()
+	})
+}
+
+func TestInjectOpenAIToolStickyAfterPriorGenerateCall(t *testing.T) {
+	withImageGenOptions(t, "true", "")
+	withStickyOption(t, "true")
+	info := &relaycommon.RelayInfo{
+		TokenImageGenEnabled: true,
+		RelayMode:            relayconstant.RelayModeChatCompletions,
+		RelayFormat:          types.RelayFormatOpenAI,
+	}
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-4o",
+		Messages: []dto.Message{
+			{Role: "user", Content: "draw a cat"},
+			{
+				Role:      "assistant",
+				ToolCalls: []byte(`[{"id":"c1","type":"function","function":{"name":"generate_image","arguments":"{\"prompt\":\"cat\"}"}}]`),
+			},
+			{Role: "tool", ToolCallId: "c1", Content: "ok"},
+			{Role: "assistant", Content: "here it is ![cat](https://e.com/c.png)"},
+			// Follow-up that lacks any image keyword. Without sticky behavior
+			// the tool would NOT be injected and the model would just answer
+			// in words; with sticky on, the tool stays available.
+			{Role: "user", Content: "再红一点"},
+		},
+	}
+
+	if !InjectOpenAITool(info, req) {
+		t.Fatalf("expected tool injection due to sticky history detection")
+	}
+	if !hasGenerateOpenAITool(req.Tools) {
+		t.Fatalf("generate_image tool should be present, tools=%#v", req.Tools)
+	}
+}
+
+func TestInjectOpenAIToolStickyDisabledSuppressesInjection(t *testing.T) {
+	withImageGenOptions(t, "true", "")
+	withStickyOption(t, "false")
+	info := &relaycommon.RelayInfo{
+		TokenImageGenEnabled: true,
+		RelayMode:            relayconstant.RelayModeChatCompletions,
+		RelayFormat:          types.RelayFormatOpenAI,
+	}
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-4o",
+		Messages: []dto.Message{
+			{
+				Role:      "assistant",
+				ToolCalls: []byte(`[{"id":"c1","type":"function","function":{"name":"generate_image","arguments":"{}"}}]`),
+			},
+			{Role: "user", Content: "再红一点"},
+		},
+	}
+
+	if InjectOpenAITool(info, req) {
+		t.Fatalf("sticky=false should not auto-inject without image keyword")
+	}
+}
+
+func TestConversationHasPriorOpenAIGenerateCall(t *testing.T) {
+	cases := []struct {
+		name     string
+		messages []dto.Message
+		want     bool
+	}{
+		{name: "empty", want: false},
+		{
+			name: "no tool calls",
+			messages: []dto.Message{
+				{Role: "user", Content: "hi"},
+				{Role: "assistant", Content: "hello"},
+			},
+			want: false,
+		},
+		{
+			name: "different tool call",
+			messages: []dto.Message{
+				{Role: "assistant", ToolCalls: []byte(`[{"function":{"name":"web_search"}}]`)},
+			},
+			want: false,
+		},
+		{
+			name: "generate_image present",
+			messages: []dto.Message{
+				{Role: "assistant", ToolCalls: []byte(`[{"function":{"name":"generate_image"}}]`)},
+			},
+			want: true,
+		},
+		{
+			name: "generate_image only on user role is ignored",
+			// Defensive: tool_calls only meaningful on assistant role.
+			messages: []dto.Message{
+				{Role: "user", ToolCalls: []byte(`[{"function":{"name":"generate_image"}}]`)},
+			},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := conversationHasPriorOpenAIGenerateCall(tc.messages); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestConversationHasPriorClaudeGenerateCall(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		if conversationHasPriorClaudeGenerateCall(nil) {
+			t.Fatal("expected false")
+		}
+	})
+	t.Run("text only", func(t *testing.T) {
+		msgs := []dto.ClaudeMessage{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", Content: "hello"},
+		}
+		if conversationHasPriorClaudeGenerateCall(msgs) {
+			t.Fatal("expected false for text-only history")
+		}
+	})
+	t.Run("generate tool_use present", func(t *testing.T) {
+		msgs := []dto.ClaudeMessage{
+			{
+				Role: "assistant",
+				Content: []map[string]any{
+					{"type": "text", "text": "drawing"},
+					{"type": "tool_use", "id": "u1", "name": "generate_image", "input": map[string]any{"prompt": "cat"}},
+				},
+			},
+		}
+		if !conversationHasPriorClaudeGenerateCall(msgs) {
+			t.Fatal("expected true when tool_use generate_image exists")
+		}
+	})
+	t.Run("different tool_use ignored", func(t *testing.T) {
+		msgs := []dto.ClaudeMessage{
+			{
+				Role: "assistant",
+				Content: []map[string]any{
+					{"type": "tool_use", "id": "u1", "name": "web_search"},
+				},
+			},
+		}
+		if conversationHasPriorClaudeGenerateCall(msgs) {
+			t.Fatal("expected false for unrelated tool_use")
+		}
+	})
+}
