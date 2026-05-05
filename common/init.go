@@ -56,11 +56,18 @@ func InitEnv() {
 			SessionSecret = ss
 		}
 	}
-	if os.Getenv("CRYPTO_SECRET") != "" {
-		CryptoSecret = os.Getenv("CRYPTO_SECRET")
-	} else {
-		CryptoSecret = SessionSecret
+	// CRYPTO_SECRET 必须显式设置：它用于 HMAC 签发持久外链（如公开图片任务页），
+	// 不能依赖进程内随机值——否则进程重启后所有已签发的链接立刻作废。
+	cs := os.Getenv("CRYPTO_SECRET")
+	if cs == "" {
+		log.Println("CRYPTO_SECRET is required: it signs durable HMAC links (e.g. public image task pages) and must be a stable secret across restarts and instances.")
+		log.Println("CRYPTO_SECRET 必须设置：用于签发持久外链（如公开图片任务页），需要在重启与多实例间保持一致。")
+		log.Fatal("Please set CRYPTO_SECRET to a long random string in your environment / .env.")
 	}
+	if cs == "random_string" || cs == "change-me-to-a-long-random-string" {
+		log.Fatal("CRYPTO_SECRET is set to a placeholder default; please change it to a long random string.")
+	}
+	CryptoSecret = cs
 	if os.Getenv("SQLITE_PATH") != "" {
 		SQLitePath = os.Getenv("SQLITE_PATH")
 	}
