@@ -599,3 +599,66 @@ func TestSchemaParametersIncludesResolution(t *testing.T) {
 		t.Errorf("resolution enum should be [1k 2k 4k], got %v", enum)
 	}
 }
+
+func TestInjectOpenAITool_AlwaysInjectBypassesIntentDetector(t *testing.T) {
+	withImageGenOptions(t, "true", "")
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = map[string]string{}
+	}
+	common.OptionMap["image_gen.always_inject"] = "true"
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		delete(common.OptionMap, "image_gen.always_inject")
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	info := &relaycommon.RelayInfo{
+		TokenImageGenEnabled: true,
+		RelayMode:            relayconstant.RelayModeChatCompletions,
+		RelayFormat:          types.RelayFormatOpenAI,
+	}
+	// Plain chitchat with no image-related keywords whatsoever.
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-4o",
+		Messages: []dto.Message{
+			{Role: "user", Content: "What's the capital of France?"},
+		},
+	}
+
+	if !InjectOpenAITool(info, req) {
+		t.Fatalf("always_inject must inject regardless of intent detector")
+	}
+	if !hasGenerateOpenAITool(req.Tools) {
+		t.Errorf("generate_image tool should be present, tools=%#v", req.Tools)
+	}
+}
+
+func TestInjectOpenAITool_AlwaysInjectStillRespectsTokenGate(t *testing.T) {
+	// Critical: always_inject must NOT override the token-level
+	// TokenImageGenEnabled flag. A user without imagegen permission must
+	// not have the tool injected even if the operator turned this on.
+	withImageGenOptions(t, "true", "")
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["image_gen.always_inject"] = "true"
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		delete(common.OptionMap, "image_gen.always_inject")
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	info := &relaycommon.RelayInfo{
+		TokenImageGenEnabled: false, // ← user does not have imagegen
+		RelayMode:            relayconstant.RelayModeChatCompletions,
+		RelayFormat:          types.RelayFormatOpenAI,
+	}
+	req := &dto.GeneralOpenAIRequest{
+		Model:    "gpt-4o",
+		Messages: []dto.Message{{Role: "user", Content: "draw a cat"}},
+	}
+	if InjectOpenAITool(info, req) {
+		t.Fatal("must respect token-level imagegen flag even with always_inject on")
+	}
+}

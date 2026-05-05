@@ -16,6 +16,7 @@ const (
 	OptionRewriteHistoryImages     = "image_gen.rewrite_history_images"
 	OptionStickyAfterFirstUse      = "image_gen.sticky_after_first_use"
 	OptionReturnOnSubmit           = "image_gen.return_on_submit"
+	OptionAlwaysInject             = "image_gen.always_inject"
 
 	DefaultModel = "gpt-image-2"
 
@@ -104,6 +105,29 @@ func StickyAfterFirstUseEnabled() bool {
 // get the image inline.
 func ReturnOnSubmitEnabled() bool {
 	value := strings.TrimSpace(getOption(OptionReturnOnSubmit, "false"))
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return false
+	}
+	return enabled
+}
+
+// AlwaysInjectEnabled bypasses the per-turn intent detector and unconditionally
+// injects generate_image whenever the chat is otherwise eligible (global
+// image_gen.enabled = true AND token has imagegen turned on AND request is a
+// chat-completions relay format).
+//
+// Default false, because:
+//   - Always-inject costs an extra ~200 prompt tokens per turn (tool def +
+//     guidance), which is only fully amortized by prompt caching for active
+//     conversations on cache-friendly providers (OpenAI/Anthropic).
+//   - Some non-vision-capable models may behave oddly when offered tools they
+//     can't use sensibly.
+//
+// Operators who want "if token has imagegen on, every chat turn can call it"
+// (no keyword guessing) should turn this on.
+func AlwaysInjectEnabled() bool {
+	value := strings.TrimSpace(getOption(OptionAlwaysInject, "false"))
 	enabled, err := strconv.ParseBool(value)
 	if err != nil {
 		return false

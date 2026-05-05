@@ -796,6 +796,15 @@ export const SETTINGS_GROUPS: Group[] = [
         },
       },
       f(
+        'image_gen.always_inject',
+        'bool',
+        { zh: '强制注入工具（跳过意图检测）', en: 'Always inject tool (skip intent detection)' },
+        {
+          zh: '默认关闭。开启后，只要用户 token 启用了图片生成且当前是 chat-completions 请求，generate_image 工具一律注入到每一轮——不再尝试用关键词判断"用户是不是要画图"。代价：每轮多约 200 prompt tokens（活跃会话有 prompt cache 摊销）；少数非 vision 模型可能对额外工具表现奇怪。适用：希望"工具开关 = token 级开关，运维侧不再做关键词判定"的运维。注意此开关不会绕过 token-level 权限——没开 token 图片生成的用户依然不会被注入。',
+          en: 'Disabled by default. When enabled, generate_image is unconditionally injected into every chat-completions turn as long as the calling token has imagegen enabled — the per-turn keyword intent detector is bypassed. Cost: ~200 extra prompt tokens per turn (largely amortized by provider prompt caching for active conversations); a few non-vision models may behave oddly with unused tools. Use when you want "tool availability = token permission, no keyword guessing". Token-level permission is still respected; users without imagegen on their token still get nothing.',
+        }
+      ),
+      f(
         'image_gen.return_on_submit',
         'bool',
         { zh: '提交即返回（不等图）', en: 'Return immediately on submit (do not wait for image)' },

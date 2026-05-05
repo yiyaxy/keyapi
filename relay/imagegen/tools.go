@@ -82,7 +82,11 @@ func InjectOpenAITool(info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRequest
 		wantsImage ||
 		toolChoiceForGenerate(req.ToolChoice) ||
 		(setting.StickyAfterFirstUseEnabled() && conversationHasPriorOpenAIGenerateCall(req.Messages))
-	if !imageRelated {
+	// always_inject bypasses the intent gate. The other eligibility checks
+	// (EnabledForInfo, RelayMode, hasGenerateOpenAITool) above still apply,
+	// so a request that already carries the tool or one with imagegen
+	// disabled at token level is unaffected.
+	if !imageRelated && !setting.AlwaysInjectEnabled() {
 		return false
 	}
 	req.Tools = append(req.Tools, dto.ToolCallRequest{
@@ -119,7 +123,7 @@ func InjectClaudeTool(info *relaycommon.RelayInfo, req *dto.ClaudeRequest) bool 
 		wantsImage ||
 		claudeToolChoiceForGenerate(req.ToolChoice) ||
 		(setting.StickyAfterFirstUseEnabled() && conversationHasPriorClaudeGenerateCall(req.Messages))
-	if !imageRelated {
+	if !imageRelated && !setting.AlwaysInjectEnabled() {
 		return false
 	}
 	req.AddTool(dto.Tool{
