@@ -81,6 +81,8 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundRouter.POST("/chat/completions", media.Playground)
 		playgroundRouter.POST("/responses", media.PlaygroundResponses)
 		playgroundRouter.POST("/images/generations", media.PlaygroundImage)
+		playgroundRouter.POST("/images/async", media.PlaygroundImageAsync)
+		playgroundRouter.GET("/images/async/:task_id", controller.RelayTaskFetch)
 		playgroundRouter.POST("/embeddings", media.PlaygroundEmbedding)
 		playgroundRouter.POST("/rerank", media.PlaygroundRerank)
 	}

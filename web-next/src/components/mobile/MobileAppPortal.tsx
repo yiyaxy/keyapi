@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  ExternalLink,
   History,
   Image as ImageIcon,
   LayoutGrid,
@@ -12,10 +13,12 @@ import {
   Plus,
   RefreshCw,
   Send,
+  Upload,
   UserRound,
   WalletCards,
+  X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -38,7 +41,7 @@ import { toDisplay, usePublicConfig, type PublicConfig } from '@/hooks/usePublic
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-type MobileRoute = 'home' | 'apps' | 'topup';
+type MobileRoute = 'home' | 'apps' | 'chat' | 'topup';
 type ModelKind = 'chat' | 'image';
 
 type MobileModel = {
@@ -54,6 +57,12 @@ type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   images?: string[];
+};
+
+type AttachedImage = {
+  id: string;
+  file: File;
+  previewUrl: string;
 };
 
 type StoredChatMessage = {
@@ -74,6 +83,13 @@ function createMessageId(prefix: string) {
 function currentTimestamp() {
   return Date.now();
 }
+
+const MAX_ATTACHED_IMAGES = 4;
+const MOBILE_IMAGE_APP_SLUG = import.meta.env.VITE_IMAGE_DIAGNOSIS_APP_SLUG ?? 'image-diagnosis';
+const MODEL_KIND_LABELS: Record<ModelKind, string> = {
+  chat: '大语言模型',
+  image: '图片模型',
+};
 
 function pointsFromQuota(rawQuota: number, cfg: PublicConfig): string {
   const { value } = toDisplay(rawQuota, cfg);
@@ -119,8 +135,40 @@ function launchApp(app: AiApp, key: string) {
 
 function modelKind(row: PricingRow): ModelKind {
   const endpoints = row.supported_endpoint_types ?? [];
-  const lower = `${row.model_name} ${row.description ?? ''} ${row.tags ?? ''}`.toLowerCase();
+  const modelName = row.model_name.toLowerCase();
+  const lower = `${modelName} ${row.description ?? ''} ${row.tags ?? ''}`.toLowerCase();
   if (endpoints.includes('image-generation')) return 'image';
+  if (
+    [
+      'gpt-image',
+      'dall-e',
+      'imagen',
+      'flux',
+      'stable-diffusion',
+      'sdxl',
+      'midjourney',
+      'seedream',
+      'jimeng',
+      'kling',
+      'kolors',
+      'recraft',
+      'ideogram',
+      'wanx',
+      'cogview',
+      'dreamina',
+      'nano-banana',
+      'image-preview',
+    ].some((keyword) => modelName.includes(keyword))
+  ) {
+    return 'image';
+  }
+  if (
+    lower.includes('图片生成') ||
+    lower.includes('图像生成') ||
+    lower.includes('image generation')
+  ) {
+    return 'image';
+  }
   if (
     lower.includes('image') &&
     !endpoints.includes('openai') &&
@@ -185,26 +233,293 @@ function extractChatText(data: unknown): string {
   return '模型已返回结果，但当前页面无法解析为文本。';
 }
 
-function extractImageUrls(data: unknown): string[] {
-  const items =
-    data &&
-    typeof data === 'object' &&
-    !Array.isArray(data) &&
-    Array.isArray((data as { data?: unknown }).data)
-      ? (data as { data: unknown[] }).data
-      : Array.isArray(data)
-        ? data
-        : [];
+function extractImageItems(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
 
-  return items
+  const body = data as { data?: unknown; result?: unknown };
+  if (Array.isArray(body.data)) return body.data;
+  if (body.result) return extractImageItems(body.result);
+  return [];
+}
+
+function extractImageUrls(data: unknown): string[] {
+  return extractImageItems(data)
     .map((item) => {
+      if (typeof item === 'string') return item;
       if (!item || typeof item !== 'object') return '';
       const image = item as { url?: unknown; b64_json?: unknown };
       if (typeof image.url === 'string') return image.url;
-      if (typeof image.b64_json === 'string') return `data:image/png;base64,${image.b64_json}`;
+      if (typeof image.b64_json === 'string' && image.b64_json) {
+        return `data:image/png;base64,${image.b64_json}`;
+      }
       return '';
     })
     .filter(Boolean);
+}
+
+type AsyncImageTaskResponse = {
+  task_id?: string;
+  status?: string;
+  progress?: number | string;
+  result?: unknown;
+  error?: {
+    message?: string;
+  } | null;
+};
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('读取上传图片失败，请重新选择图片'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function parseAsyncSubmitResponse(body: unknown) {
+  const taskId =
+    (body as { task_id?: string }).task_id ??
+    (body as { data?: { task_id?: string } }).data?.task_id ??
+    (body as { data?: Array<{ task_id?: string }> }).data?.[0]?.task_id;
+  if (!taskId) throw new Error('异步图片接口返回异常：缺少 task_id');
+  return taskId;
+}
+
+function normalizeAsyncImageStatus(status?: string) {
+  const value = String(status || '').toLowerCase();
+  if (['succeeded', 'success', 'completed', 'complete'].includes(value)) return 'succeeded';
+  if (['failed', 'failure', 'error'].includes(value)) return 'failed';
+  if (['processing', 'running', 'in_progress'].includes(value)) return 'running';
+  return 'queued';
+}
+
+function normalizeAsyncImageProgress(progress: AsyncImageTaskResponse['progress'], status: string) {
+  if (status === 'succeeded' || status === 'failed') return 100;
+  if (typeof progress === 'number' && Number.isFinite(progress))
+    return Math.max(10, Math.min(95, progress));
+  if (typeof progress === 'string') {
+    const parsed = Number.parseInt(progress.replace('%', ''), 10);
+    if (Number.isFinite(parsed)) return Math.max(10, Math.min(95, parsed));
+  }
+  return status === 'queued' ? 20 : 60;
+}
+
+function asyncImageStatusMessage(status: string, progress: number) {
+  if (status === 'queued') return '图片任务排队中';
+  if (status === 'running') return `图片生成中 ${progress}%`;
+  if (status === 'succeeded') return '图片已生成';
+  return '图片生成失败';
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function safeReadResponseError(response: Response) {
+  try {
+    const body = await response.json();
+    if (body && typeof body === 'object') {
+      const message =
+        (body as { message?: unknown }).message ??
+        (body as { error?: { message?: unknown } }).error?.message ??
+        (body as { error?: unknown }).error;
+      if (typeof message === 'string') return message;
+      return JSON.stringify(body);
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    return await response.text();
+  } catch {
+    return `${response.status} ${response.statusText}`;
+  }
+}
+
+function normalizeRelayToken(token: string) {
+  const value = token.trim();
+  if (!value || value === 'sk-preview') return '';
+  return value.startsWith('sk-') ? value : `sk-${value}`;
+}
+
+async function getMobileImageRelayToken() {
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = normalizeRelayToken(params.get('token') || params.get('key') || '');
+  if (urlToken) return urlToken;
+
+  if (import.meta.env.DEV) {
+    const debugToken = normalizeRelayToken(
+      window.localStorage.getItem('image-diagnosis-debug-token') ?? ''
+    );
+    if (debugToken) return debugToken;
+  }
+
+  const cacheKey = `image-diagnosis-token:${MOBILE_IMAGE_APP_SLUG}`;
+  const cached = normalizeRelayToken(window.sessionStorage.getItem(cacheKey) ?? '');
+  if (cached) return cached;
+
+  const session = await api.post<{ key: string }>(`/api/app/${MOBILE_IMAGE_APP_SLUG}/session`);
+  const token = normalizeRelayToken(session.data.key ?? '');
+  if (!token) throw new Error('没有拿到图片模型调用凭证');
+  window.sessionStorage.setItem(cacheKey, token);
+  return token;
+}
+
+function protectedAsyncImageRequestUrl(src: string) {
+  if (!src || src.startsWith('data:') || src.startsWith('blob:')) return '';
+  try {
+    const url = new URL(src, window.location.origin);
+    if (url.pathname.startsWith('/v1/images/async/') && url.pathname.includes('/content/')) {
+      return `${url.pathname}${url.search}`;
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
+async function fetchMobileImageObjectUrl(src: string) {
+  const requestUrl = protectedAsyncImageRequestUrl(src);
+  if (!requestUrl) return src;
+
+  const token = await getMobileImageRelayToken();
+  const response = await fetch(requestUrl, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`图片加载失败：${await safeReadResponseError(response)}`);
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
+function MobileGeneratedImage({
+  src,
+  alt = 'Generated image',
+  className,
+}: {
+  src: string;
+  alt?: string;
+  className?: string;
+}) {
+  const [displaySrc, setDisplaySrc] = useState(src);
+  const [loading, setLoading] = useState(Boolean(protectedAsyncImageRequestUrl(src)));
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = '';
+
+    async function loadImage() {
+      setLoading(Boolean(protectedAsyncImageRequestUrl(src)));
+      try {
+        const nextSrc = await fetchMobileImageObjectUrl(src);
+        if (cancelled) {
+          if (nextSrc.startsWith('blob:')) URL.revokeObjectURL(nextSrc);
+          return;
+        }
+        objectUrl = nextSrc.startsWith('blob:') ? nextSrc : '';
+        setDisplaySrc(nextSrc);
+      } catch {
+        if (!cancelled) setDisplaySrc(src);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadImage();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src]);
+
+  return (
+    <div className='relative overflow-hidden rounded-md bg-bg-1'>
+      {loading ? (
+        <div className='absolute inset-0 z-10 flex items-center justify-center bg-bg-1/80 text-fg-2'>
+          <Loader2 className='h-4 w-4 animate-spin' />
+        </div>
+      ) : null}
+      <img src={displaySrc} alt={alt} className={className} />
+    </div>
+  );
+}
+
+async function submitMobileAsyncImageGeneration({
+  token,
+  model,
+  prompt,
+  referenceImages,
+  onStatus,
+}: {
+  token: string;
+  model: MobileModel;
+  prompt: string;
+  referenceImages: AttachedImage[];
+  onStatus: (message: string) => void;
+}) {
+  onStatus('准备提交图片任务');
+  const imageDataUrls = await Promise.all(
+    referenceImages.map((image) => fileToDataUrl(image.file))
+  );
+  const body: Record<string, unknown> = {
+    model: model.name,
+    prompt,
+    size: '1024x1024',
+    n: 1,
+    response_format: 'url',
+    output_format: 'png',
+    quality: 'medium',
+  };
+  if (imageDataUrls.length > 0) {
+    body.image = imageDataUrls[0];
+    body.images = imageDataUrls;
+  }
+
+  const submitResponse = await fetch('/v1/images/async', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!submitResponse.ok) {
+    throw new Error(`图片任务提交失败：${await safeReadResponseError(submitResponse)}`);
+  }
+  const taskId = parseAsyncSubmitResponse(await submitResponse.json());
+  onStatus('图片任务已提交，等待生成');
+
+  const startedAt = Date.now();
+  const timeoutMs = 18 * 60 * 1000;
+  let delayMs = 2500;
+  while (Date.now() - startedAt < timeoutMs) {
+    await sleep(delayMs);
+    const response = await fetch(`/v1/images/async/${encodeURIComponent(taskId)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`图片任务查询失败：${await safeReadResponseError(response)}`);
+    }
+    const data = (await response.json()) as AsyncImageTaskResponse;
+    const status = normalizeAsyncImageStatus(data.status);
+    const progress = normalizeAsyncImageProgress(data.progress, status);
+    onStatus(asyncImageStatusMessage(status, progress));
+
+    if (status === 'succeeded') {
+      if (!data.result) throw new Error('异步图片任务已完成，但结果为空');
+      return data.result;
+    }
+    if (status === 'failed') {
+      throw new Error(data.error?.message || '异步图片任务生成失败');
+    }
+    delayMs = Math.min(6000, Math.round(delayMs * 1.15));
+  }
+  throw new Error('异步图片任务等待超时，请稍后在历史记录中查看');
 }
 
 function LoginRequired() {
@@ -234,10 +549,12 @@ function MobileHeader({
   title,
   subtitle,
   backTo,
+  action,
 }: {
   title: string;
   subtitle?: string;
   backTo?: string;
+  action?: ReactNode;
 }) {
   const { refresh } = useAuth();
   return (
@@ -258,9 +575,11 @@ function MobileHeader({
             {subtitle ? <p className='truncate text-12 text-fg-2'>{subtitle}</p> : null}
           </div>
         </div>
-        <Button size='sm' variant='secondary' className='shrink-0' onClick={() => void refresh()}>
-          <RefreshCw className='h-4 w-4' />
-        </Button>
+        {action ?? (
+          <Button size='sm' variant='secondary' className='shrink-0' onClick={() => void refresh()}>
+            <RefreshCw className='h-4 w-4' />
+          </Button>
+        )}
       </div>
     </header>
   );
@@ -406,83 +725,194 @@ function MobileAppCard({
 
 function MobileChat({
   immersive = false,
-  onEnterChatMode,
   onExitChatMode,
 }: {
   immersive?: boolean;
-  onEnterChatMode?: () => void;
   onExitChatMode?: () => void;
 }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const pricing = usePricing();
   const [kind, setKind] = useState<ModelKind>('chat');
-  const [selectedModelName, setSelectedModelName] = useState('');
+  const [selectedModelNames, setSelectedModelNames] = useState<Record<ModelKind, string>>({
+    chat: '',
+    image: '',
+  });
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [running, setRunning] = useState(false);
+  const [messagesByKind, setMessagesByKind] = useState<Record<ModelKind, ChatMessage[]>>({
+    chat: [],
+    image: [],
+  });
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+  const [runningByKind, setRunningByKind] = useState<Record<ModelKind, boolean>>({
+    chat: false,
+    image: false,
+  });
+  const [imageTaskMessage, setImageTaskMessage] = useState('');
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewUrlsRef = useRef<Set<string>>(new Set());
 
   const models = useMemo(() => modelsFromPricing(pricing.data), [pricing.data]);
   const chatModels = models.filter((model) => model.kind === 'chat');
   const imageModels = models.filter((model) => model.kind === 'image');
   const visibleModels = kind === 'chat' ? chatModels : imageModels;
+  const selectedModelName = selectedModelNames[kind];
   const selectedModel =
     visibleModels.find((model) => model.name === selectedModelName) ??
-    chatModels.find((model) => model.name === selectedModelName) ??
     visibleModels.find((model) => model.name === 'gpt-5.5') ??
-    chatModels.find((model) => model.name === 'gpt-5.5') ??
-    visibleModels[0] ??
-    chatModels[0];
+    visibleModels[0];
+  const messages = messagesByKind[kind];
+  const historyMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const running = runningByKind[kind];
 
   useEffect(() => {
     let cancelled = false;
-    async function loadHistory() {
+    async function loadHistory(messageKind: ModelKind) {
       try {
-        const res = await api.get<{ items: StoredChatMessage[] }>('/api/app/mobile-chat/messages');
+        const res = await api.get<{ items: StoredChatMessage[] }>(
+          `/api/app/mobile-chat/messages?kind=${messageKind}`
+        );
         if (cancelled) return;
         const items = res.data.items ?? [];
-        setMessages(
-          items.map((item) => ({
+        setMessagesByKind((prev) => ({
+          ...prev,
+          [messageKind]: items.map((item) => ({
             id: `db-${item.id}`,
             role: item.role,
             content: item.content,
             images: item.images ?? [],
-          }))
-        );
-        if (items.length > 0) onEnterChatMode?.();
+          })),
+        }));
       } catch {
         /* history is optional */
       }
     }
-    void loadHistory();
+    void Promise.all([loadHistory('chat'), loadHistory('image')]);
     return () => {
       cancelled = true;
     };
-  }, [onEnterChatMode]);
+  }, []);
 
-  function persistMessage(message: ChatMessage, model: MobileModel, messageKind: ModelKind) {
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current.clear();
+    };
+  }, []);
+
+  function clearAttachedImages() {
+    setAttachedImages((prev) => {
+      prev.forEach((image) => {
+        URL.revokeObjectURL(image.previewUrl);
+        previewUrlsRef.current.delete(image.previewUrl);
+      });
+      return [];
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function removeAttachedImage(id: string) {
+    setAttachedImages((prev) => {
+      const image = prev.find((item) => item.id === id);
+      if (image) {
+        URL.revokeObjectURL(image.previewUrl);
+        previewUrlsRef.current.delete(image.previewUrl);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
+  }
+
+  function onImageFilesChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []).filter((file) =>
+      file.type.startsWith('image/')
+    );
+    if (files.length === 0) return;
+
+    setAttachedImages((prev) => {
+      const available = Math.max(0, MAX_ATTACHED_IMAGES - prev.length);
+      const nextFiles = files.slice(0, available);
+      if (files.length > available) {
+        toast.info(`最多上传 ${MAX_ATTACHED_IMAGES} 张参考图`);
+      }
+      const images = nextFiles.map((file, index) => {
+        const previewUrl = URL.createObjectURL(file);
+        previewUrlsRef.current.add(previewUrl);
+        return {
+          id: `img-${Date.now()}-${index}`,
+          file,
+          previewUrl,
+        };
+      });
+      return [...prev, ...images];
+    });
+
+    event.target.value = '';
+  }
+
+  function setMessagesForKind(
+    messageKind: ModelKind,
+    nextMessages: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])
+  ) {
+    setMessagesByKind((prev) => ({
+      ...prev,
+      [messageKind]:
+        typeof nextMessages === 'function' ? nextMessages(prev[messageKind]) : nextMessages,
+    }));
+  }
+
+  function switchKind(nextKind: ModelKind, keepModelPickerOpen = false) {
+    setKind(nextKind);
+    if (!keepModelPickerOpen) {
+      setModelPickerOpen(false);
+    }
+    if (nextKind === 'chat') {
+      clearAttachedImages();
+    }
+  }
+
+  function persistMessage(
+    message: ChatMessage,
+    model: MobileModel,
+    messageKind: ModelKind,
+    persistImages?: string[]
+  ) {
     void api.post('/api/app/mobile-chat/messages', {
       role: message.role,
       kind: messageKind,
       model: model.name,
       model_display_name: model.displayName,
       content: message.content,
-      images: message.images ?? [],
+      images: persistImages ?? message.images ?? [],
       created_at: currentTimestamp(),
     });
+  }
+
+  async function openGeneratedImage(src: string) {
+    try {
+      const displayUrl = await fetchMobileImageObjectUrl(src);
+      window.open(displayUrl, '_blank', 'noopener,noreferrer');
+      if (displayUrl.startsWith('blob:')) {
+        window.setTimeout(() => URL.revokeObjectURL(displayUrl), 60_000);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '图片打开失败';
+      toast.error(msg);
+    }
   }
 
   async function startNewChat() {
     if (running) return;
 
-    setMessages([]);
+    setMessagesForKind(kind, []);
     setInput('');
+    setImageTaskMessage('');
     setModelPickerOpen(false);
+    clearAttachedImages();
     try {
-      await api.delete('/api/app/mobile-chat/messages');
+      await api.delete(`/api/app/mobile-chat/messages?kind=${kind}`);
       toast.success('已开启新对话');
     } catch {
       toast.error('新对话已开启，但历史清理失败');
@@ -493,55 +923,65 @@ function MobileChat({
     const content = input.trim();
     if (!content || running || !selectedModel) return;
 
-    const userMessage: ChatMessage = { id: createMessageId('u'), role: 'user', content };
-    onEnterChatMode?.();
-    setMessages((prev) => [...prev, userMessage]);
-    persistMessage(userMessage, selectedModel, kind);
+    const activeKind = kind;
+    const activeMessages = messagesByKind[activeKind];
+    const activeModel = selectedModel;
+    const referenceImages = activeKind === 'image' ? attachedImages : [];
+    const userMessage: ChatMessage = {
+      id: createMessageId('u'),
+      role: 'user',
+      content:
+        referenceImages.length > 0 ? `${content}\n\n参考图：${referenceImages.length} 张` : content,
+      images: referenceImages.map((image) => image.previewUrl),
+    };
+    setMessagesForKind(activeKind, (prev) => [...prev, userMessage]);
+    persistMessage(userMessage, activeModel, activeKind, []);
     setInput('');
-    setRunning(true);
+    if (referenceImages.length > 0) {
+      setAttachedImages([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+    setRunningByKind((prev) => ({ ...prev, [activeKind]: true }));
 
     try {
-      const res =
-        kind === 'image'
-          ? await api.post<unknown>(
-              '/pg/images/generations',
-              {
-                model: selectedModel.name,
-                group: user?.group || undefined,
-                prompt: content,
-                size: '1024x1024',
-                n: 1,
-                response_format: 'url',
-              },
-              { rawEnvelope: true, timeout: 180_000 } as never
-            )
-          : await api.post<unknown>(
-              '/pg/chat/completions',
-              {
-                model: selectedModel.name,
-                group: user?.group || undefined,
-                messages: [...messages, userMessage].slice(-8).map((m) => ({
-                  role: m.role,
-                  content: m.content,
-                })),
-                stream: false,
-              },
-              { rawEnvelope: true, timeout: 60_000 } as never
-            );
-      const imageUrls = kind === 'image' ? extractImageUrls(res.data) : [];
+      const data =
+        activeKind === 'image'
+          ? await submitMobileAsyncImageGeneration({
+              token: await getMobileImageRelayToken(),
+              model: activeModel,
+              prompt: content,
+              referenceImages,
+              onStatus: setImageTaskMessage,
+            })
+          : (
+              await api.post<unknown>(
+                '/pg/chat/completions',
+                {
+                  model: activeModel.name,
+                  group: user?.group || undefined,
+                  messages: [...activeMessages, userMessage].slice(-8).map((m) => ({
+                    role: m.role,
+                    content: m.content,
+                  })),
+                  stream: false,
+                },
+                { rawEnvelope: true, timeout: 60_000 } as never
+              )
+            ).data;
+      const imageUrls = activeKind === 'image' ? extractImageUrls(data) : [];
       const reply: ChatMessage = {
         id: createMessageId('a'),
         role: 'assistant',
         content:
-          kind === 'image'
+          activeKind === 'image'
             ? imageUrls.length > 0
               ? '图片已生成'
               : '图片模型已返回结果，但当前页面没有拿到可展示的图片地址。'
-            : extractChatText(res.data),
+            : extractChatText(data),
         images: imageUrls,
       };
-      setMessages((prev) => [...prev, reply]);
-      persistMessage(reply, selectedModel, kind);
+      setMessagesForKind(activeKind, (prev) => [...prev, reply]);
+      persistMessage(reply, activeModel, activeKind);
     } catch (err) {
       const msg = err instanceof ApiError ? (err.backendMessage ?? err.message) : '对话请求失败';
       toast.error(msg);
@@ -550,18 +990,22 @@ function MobileChat({
         role: 'assistant',
         content: `请求失败：${msg}`,
       };
-      setMessages((prev) => [...prev, errorMessage]);
-      persistMessage(errorMessage, selectedModel, kind);
+      setMessagesForKind(activeKind, (prev) => [...prev, errorMessage]);
+      persistMessage(errorMessage, activeModel, activeKind);
     } finally {
-      setRunning(false);
+      setRunningByKind((prev) => ({ ...prev, [activeKind]: false }));
+      if (activeKind === 'image') {
+        setImageTaskMessage('');
+      }
     }
   }
 
   return (
     <section
       className={cn(
-        'rounded-lg border border-line bg-bg-0 p-4 shadow-sm',
-        immersive ? 'min-h-[calc(100vh-96px)]' : ''
+        immersive
+          ? 'flex min-h-[100dvh] flex-col rounded-none border-0 bg-bg-0 p-4 shadow-none'
+          : 'rounded-lg border border-line bg-bg-0 p-4 shadow-sm'
       )}
     >
       <div className='flex items-start justify-between gap-3'>
@@ -623,8 +1067,57 @@ function MobileChat({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : null}
+          ) : (
+            <>
+              <button
+                type='button'
+                onClick={() => setShowHistory(true)}
+                className='flex h-9 w-9 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
+                aria-label='查看历史记录'
+              >
+                <History className='h-4 w-4' />
+              </button>
+              <Link
+                to='/m/chat'
+                className='flex h-9 w-9 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
+                aria-label='打开全屏对话'
+              >
+                <ArrowRight className='h-4 w-4' />
+              </Link>
+            </>
+          )}
         </div>
+      </div>
+
+      <div className='mt-3 grid grid-cols-2 gap-1 rounded-md bg-bg-1 p-1'>
+        {(
+          [
+            { value: 'chat', label: MODEL_KIND_LABELS.chat, icon: Bot, count: chatModels.length },
+            {
+              value: 'image',
+              label: MODEL_KIND_LABELS.image,
+              icon: ImageIcon,
+              count: imageModels.length,
+            },
+          ] as const
+        ).map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.value}
+              type='button'
+              onClick={() => switchKind(item.value)}
+              className={cn(
+                'flex h-9 items-center justify-center gap-1.5 rounded px-2 text-12 font-medium transition',
+                kind === item.value ? 'bg-bg-0 text-fg-0 shadow-sm' : 'text-fg-2'
+              )}
+            >
+              <Icon className='h-3.5 w-3.5' />
+              <span>{item.label}</span>
+              <span className='text-11 text-fg-3'>{item.count}</span>
+            </button>
+          );
+        })}
       </div>
 
       <>
@@ -632,7 +1125,7 @@ function MobileChat({
           <div
             className={cn(
               'mt-4 space-y-3 overflow-y-auto rounded-md bg-bg-1 p-3',
-              immersive ? 'max-h-[calc(100vh-300px)] min-h-[48vh]' : 'max-h-72'
+              immersive ? 'min-h-[48vh] flex-1' : 'max-h-72'
             )}
           >
             {messages.map((message) => (
@@ -652,7 +1145,7 @@ function MobileChat({
                   {message.images?.length ? (
                     <div className='mt-2 grid gap-2'>
                       {message.images.map((src) => (
-                        <img
+                        <MobileGeneratedImage
                           key={src}
                           src={src}
                           alt='Generated'
@@ -668,7 +1161,7 @@ function MobileChat({
               <div className='flex justify-start'>
                 <div className='inline-flex items-center gap-2 rounded-lg border border-line bg-bg-0 px-3 py-2 text-13 text-fg-2'>
                   <Loader2 className='h-3.5 w-3.5 animate-spin' />
-                  {kind === 'image' ? '生成中' : '思考中'}
+                  {kind === 'image' ? imageTaskMessage || '生成中' : '思考中'}
                 </div>
               </div>
             ) : null}
@@ -703,56 +1196,53 @@ function MobileChat({
 
             {modelPickerOpen ? (
               <div className='mt-2 rounded-md border border-line bg-bg-0 p-2'>
-                <div className='grid grid-cols-2 gap-2 rounded-md bg-bg-1 p-1'>
+                <div className='mb-2 grid grid-cols-2 gap-1 rounded-md bg-bg-1 p-1'>
                   {(
                     [
-                      { value: 'chat', label: '大语言模型', icon: Bot, count: chatModels.length },
-                      {
-                        value: 'image',
-                        label: '图片模型',
-                        icon: ImageIcon,
-                        count: imageModels.length,
-                      },
+                      { value: 'chat', label: MODEL_KIND_LABELS.chat, count: chatModels.length },
+                      { value: 'image', label: MODEL_KIND_LABELS.image, count: imageModels.length },
                     ] as const
-                  ).map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.value}
-                        type='button'
-                        onClick={() => setKind(item.value)}
-                        className={cn(
-                          'flex items-center justify-center gap-1.5 rounded px-2 py-2 text-12 font-medium transition',
-                          kind === item.value ? 'bg-bg-0 text-fg-0 shadow-sm' : 'text-fg-2'
-                        )}
-                      >
-                        <Icon className='h-3.5 w-3.5' />
-                        {item.label}
-                        <span className='text-11 text-fg-3'>{item.count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className='mt-2 max-h-44 space-y-1 overflow-y-auto'>
-                  {visibleModels.slice(0, 50).map((model) => (
+                  ).map((item) => (
                     <button
-                      key={model.name}
+                      key={item.value}
                       type='button'
-                      onClick={() => {
-                        setSelectedModelName(model.name);
-                        setModelPickerOpen(false);
-                      }}
+                      onClick={() => switchKind(item.value, true)}
                       className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-12 transition',
-                        selectedModel.name === model.name
-                          ? 'bg-primary/10 text-fg-0'
-                          : 'text-fg-2 hover:bg-bg-1'
+                        'flex h-8 items-center justify-center gap-1.5 rounded px-2 text-12 font-medium transition',
+                        kind === item.value ? 'bg-bg-0 text-fg-0 shadow-sm' : 'text-fg-2'
                       )}
                     >
-                      <span className='min-w-0 truncate font-mono'>{model.displayName}</span>
-                      <span className='shrink-0 text-11 text-fg-3'>{model.vendor}</span>
+                      <span>{item.label}</span>
+                      <span className='text-11 text-fg-3'>{item.count}</span>
                     </button>
                   ))}
+                </div>
+                <div key={kind} className='max-h-44 space-y-1 overflow-y-auto'>
+                  {visibleModels.length > 0 ? (
+                    visibleModels.slice(0, 50).map((model) => (
+                      <button
+                        key={model.name}
+                        type='button'
+                        onClick={() => {
+                          setSelectedModelNames((prev) => ({ ...prev, [kind]: model.name }));
+                          setModelPickerOpen(false);
+                        }}
+                        className={cn(
+                          'flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-12 transition',
+                          selectedModel.name === model.name
+                            ? 'bg-primary/10 text-fg-0'
+                            : 'text-fg-2 hover:bg-bg-1'
+                        )}
+                      >
+                        <span className='min-w-0 truncate font-mono'>{model.displayName}</span>
+                        <span className='shrink-0 text-11 text-fg-3'>{model.vendor}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className='rounded-md bg-bg-1 px-3 py-4 text-center text-12 text-fg-2'>
+                      暂无可用{MODEL_KIND_LABELS[kind]}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
@@ -760,12 +1250,68 @@ function MobileChat({
         ) : null}
 
         <div className='mt-3 space-y-2'>
+          {kind === 'image' ? (
+            <div className='rounded-md border border-line bg-bg-1 p-2'>
+              <div className='flex items-center justify-between gap-2'>
+                <button
+                  type='button'
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={running || attachedImages.length >= MAX_ATTACHED_IMAGES}
+                  className='inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-bg-0 px-3 text-12 font-medium text-fg-1 disabled:opacity-50'
+                >
+                  <Upload className='h-3.5 w-3.5' />
+                  参考图
+                </button>
+                {attachedImages.length > 0 ? (
+                  <button
+                    type='button'
+                    onClick={clearAttachedImages}
+                    disabled={running}
+                    className='inline-flex h-9 items-center justify-center rounded-md px-3 text-12 font-medium text-fg-2 disabled:opacity-50'
+                  >
+                    清空
+                  </button>
+                ) : null}
+              </div>
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept='image/*'
+                multiple
+                className='hidden'
+                onChange={onImageFilesChange}
+              />
+              {attachedImages.length > 0 ? (
+                <div className='mt-2 grid grid-cols-4 gap-2'>
+                  {attachedImages.map((image) => (
+                    <div
+                      key={image.id}
+                      className='relative aspect-square overflow-hidden rounded-md border border-line bg-bg-0'
+                    >
+                      <img src={image.previewUrl} alt='' className='h-full w-full object-cover' />
+                      <button
+                        type='button'
+                        onClick={() => removeAttachedImage(image.id)}
+                        disabled={running}
+                        className='absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-bg-0/90 text-fg-1 shadow-sm disabled:opacity-50'
+                        aria-label='移除参考图'
+                      >
+                        <X className='h-3.5 w-3.5' />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <Textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder={
               kind === 'image'
-                ? '描述图片：一张适合小程序分享卡片的海报...'
+                ? attachedImages.length > 0
+                  ? '描述怎么改图：保留主体，改成赛博朋克海报风格...'
+                  : '描述图片：一张适合小程序分享卡片的海报...'
                 : '问问模型：帮我写一段小程序介绍...'
             }
             className='min-h-20 resize-none'
@@ -783,15 +1329,17 @@ function MobileChat({
       <Dialog open={showHistory} onOpenChange={setShowHistory}>
         <DialogContent className='max-h-[82vh] w-[calc(100vw-32px)] max-w-md overflow-hidden rounded-lg p-0'>
           <DialogHeader className='border-b border-line px-4 py-3 text-left'>
-            <DialogTitle className='text-16'>历史记录</DialogTitle>
+            <DialogTitle className='text-16'>
+              {kind === 'image' ? '图片记录' : '对话记录'}
+            </DialogTitle>
           </DialogHeader>
           <div className='max-h-[68vh] space-y-3 overflow-y-auto p-4'>
-            {messages.length === 0 ? (
+            {historyMessages.length === 0 ? (
               <div className='rounded-md border border-line bg-bg-1 p-5 text-center text-13 text-fg-2'>
-                暂无对话记录
+                {kind === 'image' ? '暂无图片记录' : '暂无对话记录'}
               </div>
             ) : (
-              messages.map((message) => (
+              historyMessages.map((message) => (
                 <div key={message.id} className='rounded-md border border-line bg-bg-1 p-3'>
                   <div className='mb-1 text-11 font-medium text-fg-2'>
                     {message.role === 'user' ? '我' : 'AI'}
@@ -800,7 +1348,38 @@ function MobileChat({
                     {message.content || '图片结果'}
                   </p>
                   {message.images?.length ? (
-                    <div className='mt-2 text-12 text-fg-2'>图片 {message.images.length} 张</div>
+                    <div className='mt-3 space-y-2'>
+                      <div className='grid grid-cols-3 gap-2'>
+                        {message.images.slice(0, 3).map((src, index) => (
+                          <button
+                            key={src}
+                            type='button'
+                            onClick={() => void openGeneratedImage(src)}
+                            className='aspect-square overflow-hidden rounded-md border border-line bg-bg-0'
+                            aria-label={`查看图片 ${index + 1}`}
+                          >
+                            <MobileGeneratedImage
+                              src={src}
+                              alt=''
+                              className='h-full w-full object-cover'
+                            />
+                          </button>
+                        ))}
+                      </div>
+                      <div className='flex flex-wrap gap-2'>
+                        {message.images.map((src, index) => (
+                          <button
+                            key={`${src}-${index}`}
+                            type='button'
+                            onClick={() => void openGeneratedImage(src)}
+                            className='inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-bg-0 px-2.5 text-12 font-medium text-fg-1'
+                          >
+                            <ExternalLink className='h-3.5 w-3.5' />
+                            查看图片 {index + 1}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ) : null}
                 </div>
               ))
@@ -898,7 +1477,7 @@ function MobileChatEntryCard() {
         </div>
       </div>
       <Button className='mt-4 h-10 w-full' asChild>
-        <Link to='/m'>开始对话</Link>
+        <Link to='/m/chat'>开始对话</Link>
       </Button>
     </section>
   );
@@ -906,22 +1485,38 @@ function MobileChatEntryCard() {
 
 export function MobileHomePage() {
   const { user } = useAuth();
-  const [chatMode, setChatMode] = useState(false);
-  const enterChatMode = useCallback(() => setChatMode(true), []);
-  const exitChatMode = useCallback(() => setChatMode(false), []);
   if (!user) return <LoginRequired />;
   return (
     <main className='min-h-screen bg-bg-1 pb-10 text-fg-0'>
-      {chatMode ? null : <MobileHeader title='AI 工作台' subtitle='对话、应用和积分充值' />}
+      <MobileHeader
+        title='AI 工作台'
+        subtitle='对话、应用和积分充值'
+        action={
+          <Link
+            to='/m/chat'
+            className='inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
+            aria-label='打开 AI 对话'
+          >
+            <MessageCircle className='h-4 w-4' />
+          </Link>
+        }
+      />
       <div className='mx-auto max-w-md space-y-4 px-4 py-4'>
-        {chatMode ? null : <PointsCard compact />}
-        <MobileChat
-          immersive={chatMode}
-          onEnterChatMode={enterChatMode}
-          onExitChatMode={exitChatMode}
-        />
-        {chatMode ? null : <RecommendedApps limit={3} showMore />}
+        <PointsCard compact />
+        <MobileChat />
+        <RecommendedApps limit={3} showMore />
       </div>
+    </main>
+  );
+}
+
+export function MobileChatPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  if (!user) return <LoginRequired />;
+  return (
+    <main className='min-h-screen bg-bg-0 text-fg-0'>
+      <MobileChat immersive onExitChatMode={() => navigate('/m')} />
     </main>
   );
 }
@@ -931,7 +1526,20 @@ export function MobileAppsPage() {
   if (!user) return <LoginRequired />;
   return (
     <main className='min-h-screen bg-bg-1 pb-10 text-fg-0'>
-      <MobileHeader title='AI 应用' subtitle='选择应用后直接启动' backTo='/m' />
+      <MobileHeader
+        title='AI 应用'
+        subtitle='选择应用后直接启动'
+        backTo='/m'
+        action={
+          <Link
+            to='/m/chat'
+            className='inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
+            aria-label='打开 AI 对话'
+          >
+            <MessageCircle className='h-4 w-4' />
+          </Link>
+        }
+      />
       <div className='mx-auto max-w-md space-y-5 px-4 py-4'>
         <MobileChatEntryCard />
         <RecommendedApps />
@@ -956,6 +1564,7 @@ export function MobileTopupPage() {
 
 export function MobileRoutePage({ route }: { route: MobileRoute }) {
   if (route === 'apps') return <MobileAppsPage />;
+  if (route === 'chat') return <MobileChatPage />;
   if (route === 'topup') return <MobileTopupPage />;
   return <MobileHomePage />;
 }

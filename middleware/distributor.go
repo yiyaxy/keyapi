@@ -298,7 +298,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		if _, ok := c.Get("relay_mode"); !ok {
 			c.Set("relay_mode", relayMode)
 		}
-	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/async") {
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/async") || strings.HasPrefix(c.Request.URL.Path, "/pg/images/async") {
 		relayMode := relayconstant.RelayModeUnknown
 		if c.Request.Method == http.MethodPost {
 			relayMode = relayconstant.RelayModeImagesAsyncSubmit
@@ -343,7 +343,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = c.Param("model")
 		}
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") || strings.HasPrefix(c.Request.URL.Path, "/v1/images/async") {
+	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") || strings.HasPrefix(c.Request.URL.Path, "/v1/images/async") || strings.HasPrefix(c.Request.URL.Path, "/pg/images/async") {
 		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "dall-e")
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/edits") {
 		contentType := c.ContentType()
@@ -381,7 +381,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/") {
+	if strings.HasPrefix(c.Request.URL.Path, "/pg/") && shouldSelectChannel {
 		// playground requests use the logged-in session and may override group
 		req, err := getModelFromRequest(c)
 		if err != nil {

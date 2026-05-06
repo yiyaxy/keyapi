@@ -10,6 +10,8 @@ func TestPath2RelayModeSupportsPlaygroundRoutes(t *testing.T) {
 		{path: "/pg/chat/completions", want: RelayModeChatCompletions},
 		{path: "/pg/responses", want: RelayModeResponses},
 		{path: "/pg/images/generations", want: RelayModeImagesGenerations},
+		{path: "/pg/images/async", want: RelayModeImagesAsyncSubmit},
+		{path: "/pg/images/async/task_abc", want: RelayModeImagesAsyncFetchByID},
 		{path: "/pg/embeddings", want: RelayModeEmbeddings},
 		{path: "/pg/rerank", want: RelayModeRerank},
 	}

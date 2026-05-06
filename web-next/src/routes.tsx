@@ -106,6 +106,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/m', element: <MobileRoutePage route='home' /> },
           { path: '/m/apps', element: <MobileRoutePage route='apps' /> },
+          { path: '/m/chat', element: <MobileRoutePage route='chat' /> },
           { path: '/m/topup', element: <MobileRoutePage route='topup' /> },
           {
             element: <AppShell />,

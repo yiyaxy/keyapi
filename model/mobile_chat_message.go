@@ -25,22 +25,29 @@ func InsertMobileChatMessage(record *MobileChatMessage) error {
 	return WithTenantBypass(DB).Create(record).Error
 }
 
-func ListMobileChatMessages(tenantId int, userId int, nowMs int64, limit int) ([]MobileChatMessage, error) {
+func ListMobileChatMessages(tenantId int, userId int, kind string, nowMs int64, limit int) ([]MobileChatMessage, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
 	}
 	var records []MobileChatMessage
-	err := WithTenantBypass(DB).
-		Where("tenant_id = ? AND user_id = ? AND expires_at_ms > ?", tenantId, userId, nowMs).
+	query := WithTenantBypass(DB).
+		Where("tenant_id = ? AND user_id = ? AND expires_at_ms > ?", tenantId, userId, nowMs)
+	if kind != "" {
+		query = query.Where("kind = ?", kind)
+	}
+	err := query.
 		Order("created_at_ms ASC, id ASC").
 		Limit(limit).
 		Find(&records).Error
 	return records, err
 }
 
-func DeleteMobileChatMessages(tenantId int, userId int) error {
-	return WithTenantBypass(DB).
-		Where("tenant_id = ? AND user_id = ?", tenantId, userId).
+func DeleteMobileChatMessages(tenantId int, userId int, kind string) error {
+	query := WithTenantBypass(DB).Where("tenant_id = ? AND user_id = ?", tenantId, userId)
+	if kind != "" {
+		query = query.Where("kind = ?", kind)
+	}
+	return query.
 		Delete(&MobileChatMessage{}).Error
 }
 

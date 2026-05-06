@@ -26,6 +26,10 @@ func PlaygroundImage(c *gin.Context) {
 	PlaygroundRelay(c, types.RelayFormatOpenAIImage)
 }
 
+func PlaygroundImageAsync(c *gin.Context) {
+	PlaygroundTaskRelay(c)
+}
+
 func PlaygroundEmbedding(c *gin.Context) {
 	PlaygroundRelay(c, types.RelayFormatEmbedding)
 }
@@ -74,4 +78,41 @@ func PlaygroundRelay(c *gin.Context, relayFormat types.RelayFormat) {
 	_ = middleware.SetupContextForToken(c, tempToken)
 
 	controller.Relay(c, relayFormat)
+}
+
+func PlaygroundTaskRelay(c *gin.Context) {
+	useAccessToken := c.GetBool("use_access_token")
+	if useAccessToken {
+		c.JSON(403, gin.H{
+			"code":    "access_denied",
+			"message": "暂不支持使用 access token",
+		})
+		return
+	}
+
+	userId := c.GetInt("id")
+	userCache, err := model.GetUserCacheWithContext(c, userId)
+	if err != nil {
+		c.JSON(500, gin.H{
+			"code":    "query_user_failed",
+			"message": err.Error(),
+		})
+		return
+	}
+	userCache.WriteContext(c)
+
+	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if usingGroup == "" {
+		usingGroup = userCache.Group
+	}
+	tempToken := &model.Token{
+		UserId:         userId,
+		Name:           fmt.Sprintf("playground-%s", usingGroup),
+		Group:          usingGroup,
+		UnlimitedQuota: true,
+		EnableImageGen: true,
+	}
+	_ = middleware.SetupContextForToken(c, tempToken)
+
+	controller.RelayTask(c)
 }

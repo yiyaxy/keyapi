@@ -36,7 +36,8 @@ func ListMobileChatMessages(c *gin.Context) {
 	nowMs := time.Now().UnixMilli()
 	_ = model.DeleteExpiredMobileChatMessages(nowMs)
 
-	records, err := model.ListMobileChatMessages(middleware.GetTenantId(c), c.GetInt("id"), nowMs, 100)
+	kind := normalizeMobileChatKind(c.Query("kind"))
+	records, err := model.ListMobileChatMessages(middleware.GetTenantId(c), c.GetInt("id"), kind, nowMs, 100)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -50,7 +51,8 @@ func ListMobileChatMessages(c *gin.Context) {
 }
 
 func ClearMobileChatMessages(c *gin.Context) {
-	if err := model.DeleteMobileChatMessages(middleware.GetTenantId(c), c.GetInt("id")); err != nil {
+	kind := normalizeMobileChatKind(c.Query("kind"))
+	if err := model.DeleteMobileChatMessages(middleware.GetTenantId(c), c.GetInt("id"), kind); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -74,6 +76,7 @@ func SaveMobileChatMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid role")
 		return
 	}
+	req.Kind = normalizeMobileChatKind(req.Kind)
 	if req.Kind == "" {
 		req.Kind = "chat"
 	}
@@ -112,6 +115,14 @@ func SaveMobileChatMessage(c *gin.Context) {
 	}
 	_ = model.DeleteExpiredMobileChatMessages(nowMs)
 	common.ApiSuccess(c, mobileChatMessageToResponse(*record))
+}
+
+func normalizeMobileChatKind(kind string) string {
+	kind = strings.TrimSpace(kind)
+	if kind != "chat" && kind != "image" {
+		return ""
+	}
+	return kind
 }
 
 func mobileChatMessageToResponse(record model.MobileChatMessage) mobileChatMessageResponse {
