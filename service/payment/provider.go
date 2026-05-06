@@ -28,11 +28,17 @@ type CreateOrderResponse struct {
 	// params. Signature params are returned separately for small-program
 	// convenience.
 	PrepayId     string `json:"prepay_id,omitempty"`
-	JsapiPackage string `json:"package,omitempty"`   // "prepay_id=..."
+	JsapiPackage string `json:"package,omitempty"` // "prepay_id=..."
 	NonceStr     string `json:"nonce_str,omitempty"`
 	Timestamp    string `json:"timestamp,omitempty"`
-	SignType      string `json:"sign_type,omitempty"` // "RSA"
+	SignType     string `json:"sign_type,omitempty"` // "RSA"
 	PaySign      string `json:"pay_sign,omitempty"`
+
+	// WeChat mini-program virtual payment 2.0 (wx.requestVirtualPayment).
+	Mode      string `json:"mode,omitempty"`
+	SignData  string `json:"sign_data,omitempty"`
+	PaySig    string `json:"pay_sig,omitempty"`
+	Signature string `json:"signature,omitempty"`
 }
 
 // NotifyResult is what a provider reports after verifying and decrypting a

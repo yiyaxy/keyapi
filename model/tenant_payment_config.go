@@ -17,9 +17,9 @@ import (
 // WithTenantBypass + manual .Where("tenant_id = ?", tid) for non-request
 // contexts like webhook callbacks or reconcile loops.
 type TenantPaymentConfig struct {
-	Id             int    `json:"id" gorm:"primaryKey"`
-	TenantId       int    `json:"tenant_id" gorm:"uniqueIndex:idx_tenant_provider;not null"`
-	Provider       string `json:"provider" gorm:"uniqueIndex:idx_tenant_provider;type:varchar(32);not null"`
+	Id       int    `json:"id" gorm:"primaryKey"`
+	TenantId int    `json:"tenant_id" gorm:"uniqueIndex:idx_tenant_provider;not null"`
+	Provider string `json:"provider" gorm:"uniqueIndex:idx_tenant_provider;type:varchar(32);not null"`
 
 	Enabled        bool `json:"enabled" gorm:"default:false"`
 	PlatformLocked bool `json:"platform_locked" gorm:"default:false"`
@@ -30,16 +30,20 @@ type TenantPaymentConfig struct {
 	// the same credentials; the distinction is only which capability the
 	// tenant chose to enable.
 	MiniLoginEnabled bool `json:"mini_login_enabled" gorm:"default:false"`
+	XpayEnabled      bool `json:"xpay_enabled" gorm:"default:false"`
 
-	AppId    string `json:"app_id" gorm:"type:varchar(64)"`
-	Mchid    string `json:"mchid" gorm:"type:varchar(32)"`
-	SerialNo string `json:"serial_no" gorm:"type:varchar(64)"`
+	AppId       string `json:"app_id" gorm:"type:varchar(64)"`
+	Mchid       string `json:"mchid" gorm:"type:varchar(32)"`
+	SerialNo    string `json:"serial_no" gorm:"type:varchar(64)"`
+	XpayOfferId string `json:"xpay_offer_id" gorm:"type:varchar(64)"`
+	XpayEnv     string `json:"xpay_env" gorm:"type:varchar(16);default:'0'"`
 
 	// Encrypted (AES-256-GCM, base64).
 	// Exposed in JSON only as boolean "_set" flags in controller layer.
 	AppSecretEnc  string `json:"-" gorm:"type:text"`
 	Apiv3KeyEnc   string `json:"-" gorm:"type:text"`
 	PrivateKeyEnc string `json:"-" gorm:"type:text"`
+	XpayAppKeyEnc string `json:"-" gorm:"type:text"`
 
 	LastTestAt    int64  `json:"last_test_at"`
 	LastTestOk    bool   `json:"last_test_ok"`
@@ -57,6 +61,7 @@ type TenantPaymentPlaintext struct {
 	AppSecret  string
 	Apiv3Key   string
 	PrivateKey string
+	XpayAppKey string
 }
 
 // paymentKeyResolver is swapped in at startup by service/payment via
@@ -149,9 +154,14 @@ func (c *TenantPaymentConfig) EncryptAndSetSensitive(p TenantPaymentPlaintext) e
 	if err != nil {
 		return err
 	}
+	xk, err := encField(p.XpayAppKey)
+	if err != nil {
+		return err
+	}
 	c.AppSecretEnc = a
 	c.Apiv3KeyEnc = k
 	c.PrivateKeyEnc = pk
+	c.XpayAppKeyEnc = xk
 	return nil
 }
 
@@ -171,9 +181,14 @@ func (c *TenantPaymentConfig) DecryptSensitive() (TenantPaymentPlaintext, error)
 	if err != nil {
 		return p, err
 	}
+	xk, err := decField(c.XpayAppKeyEnc)
+	if err != nil {
+		return p, err
+	}
 	p.AppSecret = a
 	p.Apiv3Key = k
 	p.PrivateKey = pk
+	p.XpayAppKey = xk
 	return p, nil
 }
 

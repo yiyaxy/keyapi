@@ -95,9 +95,13 @@ function WechatConfigPanel({
   const [miniLoginEnabled, setMiniLoginEnabled] = useState(
     data?.mini_login_enabled ?? false
   );
+  const [xpayEnabled, setXpayEnabled] = useState(data?.xpay_enabled ?? false);
+  const [xpayOfferId, setXpayOfferId] = useState(data?.xpay_offer_id ?? '');
+  const [xpayEnv, setXpayEnv] = useState(data?.xpay_env || '0');
   const [appSecret, setAppSecret] = useState('');
   const [apiv3Key, setApiv3Key] = useState('');
   const [privateKey, setPrivateKey] = useState('');
+  const [xpayAppKey, setXpayAppKey] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const locked = data?.platform_locked;
@@ -107,18 +111,23 @@ function WechatConfigPanel({
       {
         enabled,
         mini_login_enabled: miniLoginEnabled,
+        xpay_enabled: xpayEnabled,
         app_id: appId,
         mchid,
         serial_no: serialNo,
+        xpay_offer_id: xpayOfferId,
+        xpay_env: xpayEnv,
         app_secret: appSecret || undefined,
         apiv3_key: apiv3Key || undefined,
         private_key: privateKey || undefined,
+        xpay_app_key: xpayAppKey || undefined,
       },
       {
         onSuccess: () => {
           setAppSecret('');
           setApiv3Key('');
           setPrivateKey('');
+          setXpayAppKey('');
           toast.success(t('toast.save.success'));
         },
         onError: (e) => toast.error((e as Error).message),
@@ -206,6 +215,57 @@ function WechatConfigPanel({
               onChange={(e) => setSerialNo(e.target.value)}
               disabled={locked}
               className='font-mono text-12'
+            />
+          </div>
+        </div>
+      </div>
+      <div className='space-y-4 rounded-md border border-line bg-bg-1 p-4'>
+        <div className='flex items-center justify-between'>
+          <h3 className='text-14 font-medium'>Virtual payment</h3>
+          <div className='flex items-center gap-2'>
+            <Label className='text-13'>Enabled</Label>
+            <Switch
+              checked={xpayEnabled}
+              onCheckedChange={setXpayEnabled}
+              disabled={locked}
+            />
+          </div>
+        </div>
+        <div className='grid gap-3 sm:grid-cols-2'>
+          <div className='space-y-1'>
+            <Label htmlFor='wx-xpay-offer'>Offer ID</Label>
+            <Input
+              id='wx-xpay-offer'
+              value={xpayOfferId}
+              onChange={(e) => setXpayOfferId(e.target.value)}
+              disabled={locked}
+              className='font-mono text-12'
+            />
+          </div>
+          <div className='space-y-1'>
+            <Label htmlFor='wx-xpay-env'>Env</Label>
+            <Select value={xpayEnv} onValueChange={setXpayEnv} disabled={locked}>
+              <SelectTrigger id='wx-xpay-env'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='0'>Production</SelectItem>
+                <SelectItem value='1'>Sandbox</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className='space-y-1 sm:col-span-2'>
+            <div className='flex items-center justify-between'>
+              <Label htmlFor='wx-xpay-app-key'>AppKey</Label>
+              <SecretState set={data?.xpay_app_key_set ?? false} />
+            </div>
+            <Input
+              id='wx-xpay-app-key'
+              type='password'
+              value={xpayAppKey}
+              onChange={(e) => setXpayAppKey(e.target.value)}
+              disabled={locked}
+              placeholder={data?.xpay_app_key_set ? 'stored' : undefined}
             />
           </div>
         </div>

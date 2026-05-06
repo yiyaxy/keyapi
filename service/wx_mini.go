@@ -27,7 +27,9 @@ import (
 
 const (
 	accessTokenCacheKeyPrefix = "wxmini:access_token:"
+	sessionKeyCacheKeyPrefix  = "wxmini:session_key:"
 	accessTokenSafetyMargin   = 300 // seconds subtracted from expires_in
+	wxMiniSessionKeyTTL       = 7200 * time.Second
 )
 
 type wxAccessTokenResponse struct {
@@ -44,8 +46,14 @@ type memAccessToken struct {
 	expire time.Time
 }
 
+type memSessionKey struct {
+	value  string
+	expire time.Time
+}
+
 var (
 	memAccessTokens sync.Map // map[int]memAccessToken
+	memSessionKeys  sync.Map // map[string]memSessionKey
 )
 
 // fetchTokenMu serializes concurrent upstream fetches per-tenant so we don't
@@ -303,16 +311,60 @@ func invalidateAccessTokenCache(tenantId int) {
 	memAccessTokens.Delete(tenantId)
 }
 
-// ExchangeWxMiniCode calls jscode2session against the tenant's credentials
-// and returns the openid. Shared between the login path and the scan-QR
-// confirm path so both use identical error semantics.
-func ExchangeWxMiniCode(tenantId int, code string) (string, error) {
+type WxMiniSession struct {
+	OpenId     string
+	SessionKey string
+}
+
+func wxMiniSessionCacheKey(tenantId int, openid string) string {
+	return sessionKeyCacheKeyPrefix + strconv.Itoa(tenantId) + ":" + openid
+}
+
+func StoreWxMiniSessionKey(tenantId int, openid string, sessionKey string) {
+	if tenantId <= 0 || openid == "" || sessionKey == "" {
+		return
+	}
+	key := wxMiniSessionCacheKey(tenantId, openid)
+	if common.RedisEnabled {
+		if err := common.RedisSet(key, sessionKey, wxMiniSessionKeyTTL); err != nil {
+			common.SysError("cache wx_mini session_key to redis failed: " + err.Error())
+		}
+		return
+	}
+	memSessionKeys.Store(key, memSessionKey{
+		value:  sessionKey,
+		expire: time.Now().Add(wxMiniSessionKeyTTL),
+	})
+}
+
+func GetWxMiniSessionKey(tenantId int, openid string) (string, bool) {
+	if tenantId <= 0 || openid == "" {
+		return "", false
+	}
+	key := wxMiniSessionCacheKey(tenantId, openid)
+	if common.RedisEnabled {
+		val, err := common.RedisGet(key)
+		return val, err == nil && val != ""
+	}
+	if v, ok := memSessionKeys.Load(key); ok {
+		t := v.(memSessionKey)
+		if t.value != "" && time.Now().Before(t.expire) {
+			return t.value, true
+		}
+		memSessionKeys.Delete(key)
+	}
+	return "", false
+}
+
+// ExchangeWxMiniSession calls jscode2session against the tenant's credentials,
+// returns openid + session_key, and caches session_key for xpay signing.
+func ExchangeWxMiniSession(tenantId int, code string) (*WxMiniSession, error) {
 	if code == "" {
-		return "", errors.New("微信登录凭证为空")
+		return nil, errors.New("微信登录凭证为空")
 	}
 	creds, err := LoadWxMiniCredentials(tenantId)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	endpoint := fmt.Sprintf(
@@ -323,29 +375,42 @@ func ExchangeWxMiniCode(tenantId int, code string) (string, error) {
 	client := http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(endpoint)
 	if err != nil {
-		return "", fmt.Errorf("调用微信接口失败: %w", err)
+		return nil, fmt.Errorf("调用微信接口失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("读取微信响应失败: %w", err)
+		return nil, fmt.Errorf("读取微信响应失败: %w", err)
 	}
 
 	var parsed struct {
-		OpenId  string `json:"openid"`
-		ErrCode int    `json:"errcode,omitempty"`
-		ErrMsg  string `json:"errmsg,omitempty"`
+		OpenId     string `json:"openid"`
+		SessionKey string `json:"session_key"`
+		ErrCode    int    `json:"errcode,omitempty"`
+		ErrMsg     string `json:"errmsg,omitempty"`
 	}
 	if err := common.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("解析微信响应失败: %w", err)
+		return nil, fmt.Errorf("解析微信响应失败: %w", err)
 	}
 
 	if parsed.ErrCode != 0 {
-		return "", fmt.Errorf("微信登录失败: %s (errcode=%d)", parsed.ErrMsg, parsed.ErrCode)
+		return nil, fmt.Errorf("微信登录失败: %s (errcode=%d)", parsed.ErrMsg, parsed.ErrCode)
 	}
 	if parsed.OpenId == "" {
-		return "", errors.New("微信未返回 openid")
+		return nil, errors.New("微信未返回 openid")
 	}
-	return parsed.OpenId, nil
+	if parsed.SessionKey != "" {
+		StoreWxMiniSessionKey(tenantId, parsed.OpenId, parsed.SessionKey)
+	}
+	return &WxMiniSession{OpenId: parsed.OpenId, SessionKey: parsed.SessionKey}, nil
+}
+
+// ExchangeWxMiniCode is kept for callers that only need openid.
+func ExchangeWxMiniCode(tenantId int, code string) (string, error) {
+	session, err := ExchangeWxMiniSession(tenantId, code)
+	if err != nil {
+		return "", err
+	}
+	return session.OpenId, nil
 }

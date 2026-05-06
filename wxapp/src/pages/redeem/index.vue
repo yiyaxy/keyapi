@@ -47,27 +47,17 @@
         <text class="section-title">常用金额</text>
         <view class="preset-grid">
           <view
-            v-for="v in PRESETS"
-            :key="v"
+            v-for="tier in xpayTiers"
+            :key="tier.tier_code"
             class="preset-item"
-            :class="{ active: amount === v && !customMode }"
-            @click="selectPreset(v)"
+            :class="{ active: selectedTierCode === tier.tier_code }"
+            @click="selectTier(tier)"
           >
-            <text class="preset-num">¥{{ v }}</text>
+            <text class="preset-num">¥{{ (Number(tier.amount_cents || 0) / 100).toFixed(2) }}</text>
+            <text class="preset-desc">{{ q2cny(tier.quota_preview?.total_quota || tier.quota_delta) }}</text>
           </view>
         </view>
 
-        <view class="custom-row">
-          <text class="custom-label">自定义金额</text>
-          <input
-            v-model="customInput"
-            class="custom-input"
-            type="digit"
-            placeholder="1 - 10000 元"
-            placeholder-class="ph"
-            @input="onCustomInput"
-          />
-        </view>
       </view>
 
       <!-- 到账预览 -->
@@ -177,7 +167,15 @@
 import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { redeemCode, getSelf, createWechatTopupJsapi, getPaymentOrder, getStatus, getTopupPreview } from '@/services/api.js'
+import {
+  redeemCode,
+  getSelf,
+  getPaymentOrder,
+  getStatus,
+  getWxminiTopupTiers,
+  createWxminiTopupXpay,
+  requestWxminiVirtualPayment,
+} from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
 // ─── 导航 ────────────────────────────────────────────────────────────────────
@@ -203,31 +201,25 @@ const statusBarH = ref(0)
 const activeTab = ref('wechat')
 
 // ─── 微信支付 ────────────────────────────────────────────────────────────────
-const PRESETS = [20, 50, 100, 200, 500]
-const MIN_AMOUNT = 1
-const MAX_AMOUNT = 10000
-
-const preset = ref(PRESETS[1])
-const customInput = ref('')
-const customMode = ref(false)
+const xpayTiers = ref([])
+const selectedTierCode = ref('')
+const platform = ref('android')
 const paying = ref(false)
 const previewLoading = ref(false)
 const topupPreview = ref(null)
-let previewTimer = null
 
+const selectedTier = computed(() => xpayTiers.value.find((tier) => tier.tier_code === selectedTierCode.value) || null)
 const amount = computed(() => {
-  if (customMode.value) {
-    const n = Number(customInput.value)
-    return Number.isFinite(n) && n > 0 ? n : 0
-  }
-  return preset.value
+  const cents = Number(selectedTier.value?.amount_cents || 0)
+  return cents > 0 ? cents / 100 : 0
 })
 
 const canPay = computed(
-  () => amount.value >= MIN_AMOUNT && amount.value <= MAX_AMOUNT,
+  () => Boolean(selectedTier.value) && amount.value > 0 && !previewLoading.value,
 )
 
 const fallbackBaseQuota = computed(() => {
+  if (selectedTier.value?.quota_delta) return Number(selectedTier.value.quota_delta)
   const qpu = Number(userStore.quotaPerUnit || 500000)
   if (userStore.quotaDisplayType === 'TOKENS') return amount.value
   if (userStore.quotaDisplayType === 'CNY') return amount.value / Number(userStore.usdExchangeRate || 1) * qpu
@@ -249,46 +241,56 @@ const previewLevelName = computed(() => {
   return topupPreview.value?.level_name || userStore.userInfo?.level_name || '普通用户'
 })
 
-function selectPreset(v) {
-  preset.value = v
-  customMode.value = false
-  customInput.value = ''
+function selectTier(tier) {
+  selectedTierCode.value = tier?.tier_code || ''
+  topupPreview.value = tier?.quota_preview || null
 }
 
-function onCustomInput() {
-  customMode.value = customInput.value !== ''
+function detectPlatform() {
+  const info = uni.getSystemInfoSync()
+  const p = String(info?.platform || '').toLowerCase()
+  if (p.includes('ios')) return 'ios'
+  return 'android'
 }
 
-async function loadTopupPreview() {
-  if (!userStore.isLoggedIn || !canPay.value) {
+async function loadXpayTiers() {
+  if (!userStore.isLoggedIn) {
     topupPreview.value = null
     return
   }
   previewLoading.value = true
   try {
-    const data = await getTopupPreview(amount.value)
-    topupPreview.value = data?.quota_preview || null
+    platform.value = detectPlatform()
+    const rows = await getWxminiTopupTiers(platform.value)
+    xpayTiers.value = Array.isArray(rows) ? rows : []
+    if (!xpayTiers.value.some((tier) => tier.tier_code === selectedTierCode.value)) {
+      selectedTierCode.value = xpayTiers.value[0]?.tier_code || ''
+    }
+    topupPreview.value = selectedTier.value?.quota_preview || null
   } catch {
+    xpayTiers.value = []
+    selectedTierCode.value = ''
     topupPreview.value = null
   } finally {
     previewLoading.value = false
   }
 }
 
+function ensureVirtualPaymentAvailable() {
+  if (typeof wx === 'undefined' || typeof wx.requestVirtualPayment !== 'function') {
+    throw new Error('wx.requestVirtualPayment is not available')
+  }
+  if (typeof wx.canIUse === 'function' && !wx.canIUse('requestVirtualPayment')) {
+    throw new Error('wx.requestVirtualPayment is not supported')
+  }
+}
 
 function callWxPayment(sign) {
-  return new Promise((resolve, reject) => {
-    uni.requestPayment({
-      provider: 'wxpay',
-      timeStamp: sign.timestamp,
-      nonceStr: sign.nonce_str,
-      package: sign.package,
-      signType: sign.sign_type || 'RSA',
-      paySign: sign.pay_sign,
-      success: resolve,
-      fail: (err) => reject(new Error(err?.errMsg || '支付已取消')),
-    })
-  })
+  if (!sign || !sign.sign_data || !sign.pay_sig || !sign.signature) {
+    throw new Error('missing xpay signature')
+  }
+  ensureVirtualPaymentAvailable()
+  return requestWxminiVirtualPayment(sign)
 }
 
 async function pollUntilPaid(outTradeNo) {
@@ -310,12 +312,14 @@ async function doPay() {
   }
   paying.value = true
   try {
-    const data = await createWechatTopupJsapi(amount.value)
+    const tier = selectedTier.value
+    if (!tier) throw new Error('select a topup tier first')
+    const data = await createWxminiTopupXpay(tier.tier_code, platform.value)
     const sign = data?.response
     const order = data?.order
     if (data?.quota_preview) topupPreview.value = data.quota_preview
-    if (!sign || !sign.prepay_id) {
-      throw new Error('服务端未返回支付签名')
+    if (!sign || !sign.sign_data) {
+      throw new Error('missing xpay signature')
     }
 
     await callWxPayment(sign)
@@ -399,14 +403,12 @@ async function doRedeem() {
 // wxPayEnabled 变为 false 时（异步 status 返回后）立即切换
 watch(() => userStore.wxPayEnabled, (enabled) => {
   if (!enabled) activeTab.value = 'redeem'
+  else loadXpayTiers()
 })
 
-watch(amount, () => {
-  if (previewTimer) clearTimeout(previewTimer)
-  previewTimer = setTimeout(() => {
-    loadTopupPreview()
-  }, 300)
-}, { immediate: true })
+watch(selectedTierCode, () => {
+  topupPreview.value = selectedTier.value?.quota_preview || null
+})
 
 onLoad(async () => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight
@@ -416,7 +418,7 @@ onLoad(async () => {
     if (data) userStore.applyStatus(data)
   } catch {}
   if (!userStore.wxPayEnabled) activeTab.value = 'redeem'
-  loadTopupPreview()
+  else loadXpayTiers()
 })
 </script>
 
