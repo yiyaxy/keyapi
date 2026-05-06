@@ -57,6 +57,7 @@ type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   images?: string[];
+  createdAt: number;
 };
 
 type AttachedImage = {
@@ -84,7 +85,70 @@ function currentTimestamp() {
   return Date.now();
 }
 
+function storedMessageToChatMessage(item: StoredChatMessage): ChatMessage {
+  return {
+    id: `db-${item.id}`,
+    role: item.role,
+    content: item.content,
+    images: item.images ?? [],
+    createdAt: item.created_at,
+  };
+}
+
+type HistoryEntry = {
+  id: string;
+  createdAt: number;
+  user?: ChatMessage;
+  assistant?: ChatMessage;
+};
+
+function messageSequence(message: ChatMessage) {
+  const raw = message.id.startsWith('db-') ? message.id.slice(3) : message.id.split('-').pop();
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function compareMessagesDesc(a: ChatMessage, b: ChatMessage) {
+  return b.createdAt - a.createdAt || messageSequence(b) - messageSequence(a);
+}
+
+function buildHistoryEntries(recordsDesc: ChatMessage[]): HistoryEntry[] {
+  const entries: HistoryEntry[] = [];
+  let current: HistoryEntry | null = null;
+  const sortedDesc = [...recordsDesc].sort(compareMessagesDesc);
+
+  for (const message of sortedDesc.reverse()) {
+    if (message.role === 'user') {
+      if (current) entries.push(current);
+      current = {
+        id: message.id,
+        createdAt: message.createdAt,
+        user: message,
+      };
+      continue;
+    }
+
+    if (current && !current.assistant) {
+      current.assistant = message;
+      current.id = `${current.id}-${message.id}`;
+      current.createdAt = Math.max(current.createdAt, message.createdAt);
+    } else {
+      if (current) entries.push(current);
+      current = {
+        id: message.id,
+        createdAt: message.createdAt,
+        assistant: message,
+      };
+    }
+  }
+
+  if (current) entries.push(current);
+  return entries.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+}
+
 const MAX_ATTACHED_IMAGES = 4;
+const CHAT_INITIAL_LIMIT = 30;
+const HISTORY_PAGE_SIZE = 20;
 const MOBILE_IMAGE_APP_SLUG = import.meta.env.VITE_IMAGE_DIAGNOSIS_APP_SLUG ?? 'image-diagnosis';
 const MODEL_KIND_LABELS: Record<ModelKind, string> = {
   chat: '大语言模型',
@@ -383,12 +447,18 @@ async function fetchMobileImageObjectUrl(src: string) {
   const requestUrl = protectedAsyncImageRequestUrl(src);
   if (!requestUrl) return src;
 
-  const token = await getMobileImageRelayToken();
-  const response = await fetch(requestUrl, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let response = await fetch(requestUrl, { credentials: 'include' });
+  if (
+    !response.ok &&
+    (response.status === 401 || response.status === 403 || response.status === 404)
+  ) {
+    const token = await getMobileImageRelayToken();
+    response = await fetch(requestUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
   if (!response.ok) {
     throw new Error(`图片加载失败：${await safeReadResponseError(response)}`);
   }
@@ -406,6 +476,8 @@ function MobileGeneratedImage({
 }) {
   const [displaySrc, setDisplaySrc] = useState(src);
   const [loading, setLoading] = useState(Boolean(protectedAsyncImageRequestUrl(src)));
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -413,6 +485,7 @@ function MobileGeneratedImage({
 
     async function loadImage() {
       setLoading(Boolean(protectedAsyncImageRequestUrl(src)));
+      setLoadError(false);
       try {
         const nextSrc = await fetchMobileImageObjectUrl(src);
         if (cancelled) {
@@ -422,7 +495,10 @@ function MobileGeneratedImage({
         objectUrl = nextSrc.startsWith('blob:') ? nextSrc : '';
         setDisplaySrc(nextSrc);
       } catch {
-        if (!cancelled) setDisplaySrc(src);
+        if (!cancelled) {
+          setDisplaySrc('');
+          setLoadError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -433,7 +509,7 @@ function MobileGeneratedImage({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [src]);
+  }, [src, reloadKey]);
 
   return (
     <div className='relative overflow-hidden rounded-md bg-bg-1'>
@@ -442,7 +518,18 @@ function MobileGeneratedImage({
           <Loader2 className='h-4 w-4 animate-spin' />
         </div>
       ) : null}
-      <img src={displaySrc} alt={alt} className={className} />
+      {loadError ? (
+        <button
+          type='button'
+          onClick={() => setReloadKey((key) => key + 1)}
+          className='flex h-full min-h-28 w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-line px-3 py-4 text-12 text-fg-2'
+        >
+          <RefreshCw className='h-4 w-4' />
+          重新加载图片
+        </button>
+      ) : (
+        <img src={displaySrc} alt={alt} className={className} />
+      )}
     </div>
   );
 }
@@ -452,18 +539,20 @@ async function submitMobileAsyncImageGeneration({
   model,
   prompt,
   referenceImages,
+  referenceImageDataUrls,
   onStatus,
 }: {
   token: string;
   model: MobileModel;
   prompt: string;
   referenceImages: AttachedImage[];
+  referenceImageDataUrls?: string[];
   onStatus: (message: string) => void;
 }) {
   onStatus('准备提交图片任务');
-  const imageDataUrls = await Promise.all(
-    referenceImages.map((image) => fileToDataUrl(image.file))
-  );
+  const imageDataUrls =
+    referenceImageDataUrls ??
+    (await Promise.all(referenceImages.map((image) => fileToDataUrl(image.file))));
   const body: Record<string, unknown> = {
     model: model.name,
     prompt,
@@ -723,12 +812,16 @@ function MobileAppCard({
   );
 }
 
-function MobileChat({
+export function MobileChat({
   immersive = false,
   onExitChatMode,
+  desktop = false,
+  desktopFullscreenLink = true,
 }: {
   immersive?: boolean;
   onExitChatMode?: () => void;
+  desktop?: boolean;
+  desktopFullscreenLink?: boolean;
 }) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -743,6 +836,27 @@ function MobileChat({
     chat: [],
     image: [],
   });
+  const [loadedConversationKinds, setLoadedConversationKinds] = useState<
+    Record<ModelKind, boolean>
+  >({
+    chat: false,
+    image: false,
+  });
+  const [historyRecordsByKind, setHistoryRecordsByKind] = useState<
+    Record<ModelKind, ChatMessage[]>
+  >({
+    chat: [],
+    image: [],
+  });
+  const [historyOffsets, setHistoryOffsets] = useState<Record<ModelKind, number>>({
+    chat: 0,
+    image: 0,
+  });
+  const [historyHasMore, setHistoryHasMore] = useState<Record<ModelKind, boolean>>({
+    chat: true,
+    image: true,
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const [runningByKind, setRunningByKind] = useState<Record<ModelKind, boolean>>({
     chat: false,
@@ -765,36 +879,34 @@ function MobileChat({
     visibleModels.find((model) => model.name === 'gpt-5.5') ??
     visibleModels[0];
   const messages = messagesByKind[kind];
-  const historyMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const historyRecords = historyRecordsByKind[kind];
+  const historyEntries = useMemo(() => buildHistoryEntries(historyRecords), [historyRecords]);
   const running = runningByKind[kind];
 
   useEffect(() => {
     let cancelled = false;
-    async function loadHistory(messageKind: ModelKind) {
+    async function loadConversation() {
+      if (loadedConversationKinds[kind]) return;
       try {
         const res = await api.get<{ items: StoredChatMessage[] }>(
-          `/api/app/mobile-chat/messages?kind=${messageKind}`
+          `/api/app/mobile-chat/messages?kind=${kind}&limit=${CHAT_INITIAL_LIMIT}`
         );
         if (cancelled) return;
         const items = res.data.items ?? [];
         setMessagesByKind((prev) => ({
           ...prev,
-          [messageKind]: items.map((item) => ({
-            id: `db-${item.id}`,
-            role: item.role,
-            content: item.content,
-            images: item.images ?? [],
-          })),
+          [kind]: items.map(storedMessageToChatMessage),
         }));
+        setLoadedConversationKinds((prev) => ({ ...prev, [kind]: true }));
       } catch {
-        /* history is optional */
+        if (!cancelled) setLoadedConversationKinds((prev) => ({ ...prev, [kind]: true }));
       }
     }
-    void Promise.all([loadHistory('chat'), loadHistory('image')]);
+    void loadConversation();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [kind, loadedConversationKinds]);
 
   useEffect(() => {
     return () => {
@@ -863,6 +975,52 @@ function MobileChat({
     }));
   }
 
+  function prependHistoryMessagesForKind(messageKind: ModelKind, newMessagesDesc: ChatMessage[]) {
+    setHistoryRecordsByKind((prev) => ({
+      ...prev,
+      [messageKind]: [...newMessagesDesc, ...prev[messageKind]],
+    }));
+    setHistoryOffsets((prev) => ({
+      ...prev,
+      [messageKind]: prev[messageKind] + newMessagesDesc.length,
+    }));
+  }
+
+  async function loadHistoryPage(messageKind: ModelKind, reset = false) {
+    if (historyLoading) return;
+    setHistoryLoading(true);
+    try {
+      const offset = reset ? 0 : historyOffsets[messageKind];
+      const res = await api.get<{ items: StoredChatMessage[]; has_more?: boolean }>(
+        `/api/app/mobile-chat/messages?kind=${messageKind}&order=desc&limit=${HISTORY_PAGE_SIZE}&offset=${offset}`
+      );
+      const items = (res.data.items ?? []).map(storedMessageToChatMessage);
+      setHistoryRecordsByKind((prev) => ({
+        ...prev,
+        [messageKind]: reset ? items : [...prev[messageKind], ...items],
+      }));
+      setHistoryOffsets((prev) => ({
+        ...prev,
+        [messageKind]: offset + items.length,
+      }));
+      setHistoryHasMore((prev) => ({
+        ...prev,
+        [messageKind]: Boolean(res.data.has_more),
+      }));
+    } catch {
+      toast.error('历史记录加载失败');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (showHistory) {
+      void loadHistoryPage(kind, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHistory, kind]);
+
   function switchKind(nextKind: ModelKind, keepModelPickerOpen = false) {
     setKind(nextKind);
     if (!keepModelPickerOpen) {
@@ -907,6 +1065,9 @@ function MobileChat({
     if (running) return;
 
     setMessagesForKind(kind, []);
+    setHistoryRecordsByKind((prev) => ({ ...prev, [kind]: [] }));
+    setHistoryOffsets((prev) => ({ ...prev, [kind]: 0 }));
+    setHistoryHasMore((prev) => ({ ...prev, [kind]: false }));
     setInput('');
     setImageTaskMessage('');
     setModelPickerOpen(false);
@@ -927,15 +1088,21 @@ function MobileChat({
     const activeMessages = messagesByKind[activeKind];
     const activeModel = selectedModel;
     const referenceImages = activeKind === 'image' ? attachedImages : [];
+    const referenceImageDataUrls =
+      referenceImages.length > 0
+        ? await Promise.all(referenceImages.map((image) => fileToDataUrl(image.file)))
+        : [];
+    const userCreatedAt = currentTimestamp();
     const userMessage: ChatMessage = {
       id: createMessageId('u'),
       role: 'user',
       content:
         referenceImages.length > 0 ? `${content}\n\n参考图：${referenceImages.length} 张` : content,
       images: referenceImages.map((image) => image.previewUrl),
+      createdAt: userCreatedAt,
     };
     setMessagesForKind(activeKind, (prev) => [...prev, userMessage]);
-    persistMessage(userMessage, activeModel, activeKind, []);
+    persistMessage(userMessage, activeModel, activeKind, referenceImageDataUrls);
     setInput('');
     if (referenceImages.length > 0) {
       setAttachedImages([]);
@@ -951,6 +1118,7 @@ function MobileChat({
               model: activeModel,
               prompt: content,
               referenceImages,
+              referenceImageDataUrls,
               onStatus: setImageTaskMessage,
             })
           : (
@@ -979,8 +1147,10 @@ function MobileChat({
               : '图片模型已返回结果，但当前页面没有拿到可展示的图片地址。'
             : extractChatText(data),
         images: imageUrls,
+        createdAt: currentTimestamp(),
       };
       setMessagesForKind(activeKind, (prev) => [...prev, reply]);
+      prependHistoryMessagesForKind(activeKind, [reply, userMessage]);
       persistMessage(reply, activeModel, activeKind);
     } catch (err) {
       const msg = err instanceof ApiError ? (err.backendMessage ?? err.message) : '对话请求失败';
@@ -989,8 +1159,10 @@ function MobileChat({
         id: createMessageId('e'),
         role: 'assistant',
         content: `请求失败：${msg}`,
+        createdAt: currentTimestamp(),
       };
       setMessagesForKind(activeKind, (prev) => [...prev, errorMessage]);
+      prependHistoryMessagesForKind(activeKind, [errorMessage, userMessage]);
       persistMessage(errorMessage, activeModel, activeKind);
     } finally {
       setRunningByKind((prev) => ({ ...prev, [activeKind]: false }));
@@ -1003,9 +1175,11 @@ function MobileChat({
   return (
     <section
       className={cn(
-        immersive
-          ? 'flex min-h-[100dvh] flex-col rounded-none border-0 bg-bg-0 p-4 shadow-none'
-          : 'rounded-lg border border-line bg-bg-0 p-4 shadow-sm'
+        desktop
+          ? 'flex h-[calc(100vh-104px)] min-h-[620px] flex-col rounded-xl border border-line bg-bg-0 p-5 shadow-sm'
+          : immersive
+            ? 'flex min-h-[100dvh] flex-col rounded-none border-0 bg-bg-0 p-4 shadow-none'
+            : 'rounded-lg border border-line bg-bg-0 p-4 shadow-sm'
       )}
     >
       <div className='flex items-start justify-between gap-3'>
@@ -1023,8 +1197,10 @@ function MobileChat({
             ) : null}
             <MessageCircle className='h-4 w-4 text-primary' />
             <div className='min-w-0'>
-              <h2 className='truncate text-17 font-semibold'>与大模型对话</h2>
-              {immersive && selectedModel ? (
+              <h2 className={cn('truncate font-semibold', desktop ? 'text-20' : 'text-17')}>
+                与大模型对话
+              </h2>
+              {(immersive || desktop) && selectedModel ? (
                 <p className='truncate text-11 text-fg-2'>{selectedModel.displayName}</p>
               ) : null}
             </div>
@@ -1032,7 +1208,36 @@ function MobileChat({
         </div>
         <div className='flex shrink-0 items-center gap-1'>
           {pricing.isPending ? <Loader2 className='h-4 w-4 animate-spin text-fg-2' /> : null}
-          {immersive ? (
+          {desktop ? (
+            <>
+              <button
+                type='button'
+                onClick={() => void startNewChat()}
+                disabled={running}
+                className='inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-bg-1 px-3 text-12 font-medium text-fg-1 disabled:opacity-50'
+              >
+                <Plus className='h-4 w-4' />
+                新对话
+              </button>
+              <button
+                type='button'
+                onClick={() => setShowHistory(true)}
+                className='inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-bg-1 px-3 text-12 font-medium text-fg-1'
+              >
+                <History className='h-4 w-4' />
+                记录
+              </button>
+              {desktopFullscreenLink ? (
+                <Link
+                  to='/apps/chat'
+                  className='inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-bg-1 px-3 text-12 font-medium text-fg-1'
+                >
+                  <ArrowRight className='h-4 w-4' />
+                  全屏
+                </Link>
+              ) : null}
+            </>
+          ) : immersive ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -1077,13 +1282,15 @@ function MobileChat({
               >
                 <History className='h-4 w-4' />
               </button>
-              <Link
-                to='/m/chat'
-                className='flex h-9 w-9 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
-                aria-label='打开全屏对话'
-              >
-                <ArrowRight className='h-4 w-4' />
-              </Link>
+              {!desktop ? (
+                <Link
+                  to='/m/chat'
+                  className='flex h-9 w-9 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
+                  aria-label='打开全屏对话'
+                >
+                  <ArrowRight className='h-4 w-4' />
+                </Link>
+              ) : null}
             </>
           )}
         </div>
@@ -1125,7 +1332,7 @@ function MobileChat({
           <div
             className={cn(
               'mt-4 space-y-3 overflow-y-auto rounded-md bg-bg-1 p-3',
-              immersive ? 'min-h-[48vh] flex-1' : 'max-h-72'
+              desktop ? 'min-h-0 flex-1' : immersive ? 'min-h-[48vh] flex-1' : 'max-h-72'
             )}
           >
             {messages.map((message) => (
@@ -1315,6 +1522,7 @@ function MobileChat({
                 : '问问模型：帮我写一段小程序介绍...'
             }
             className='min-h-20 resize-none'
+            rows={desktop ? 4 : undefined}
           />
           <Button
             className='h-10 w-full'
@@ -1334,55 +1542,102 @@ function MobileChat({
             </DialogTitle>
           </DialogHeader>
           <div className='max-h-[68vh] space-y-3 overflow-y-auto p-4'>
-            {historyMessages.length === 0 ? (
+            {historyLoading && historyEntries.length === 0 ? (
+              <div className='flex items-center justify-center gap-2 rounded-md border border-line bg-bg-1 p-5 text-center text-13 text-fg-2'>
+                <Loader2 className='h-4 w-4 animate-spin' />
+                加载历史记录
+              </div>
+            ) : historyEntries.length === 0 ? (
               <div className='rounded-md border border-line bg-bg-1 p-5 text-center text-13 text-fg-2'>
                 {kind === 'image' ? '暂无图片记录' : '暂无对话记录'}
               </div>
             ) : (
-              historyMessages.map((message) => (
-                <div key={message.id} className='rounded-md border border-line bg-bg-1 p-3'>
-                  <div className='mb-1 text-11 font-medium text-fg-2'>
-                    {message.role === 'user' ? '我' : 'AI'}
+              <>
+                {historyEntries.map((entry) => (
+                  <div key={entry.id} className='rounded-md border border-line bg-bg-1 p-3'>
+                    {entry.user ? (
+                      <div>
+                        <div className='mb-1 text-11 font-medium text-fg-2'>我</div>
+                        <p className='line-clamp-4 whitespace-pre-wrap text-13 leading-6 text-fg-0'>
+                          {entry.user.content}
+                        </p>
+                        {entry.user.images?.length ? (
+                          <div className='mt-2 grid grid-cols-4 gap-2'>
+                            {entry.user.images.slice(0, 4).map((src, index) => (
+                              <button
+                                key={`${src}-${index}`}
+                                type='button'
+                                onClick={() => void openGeneratedImage(src)}
+                                className='aspect-square overflow-hidden rounded-md border border-line bg-bg-0'
+                                aria-label={`查看参考图 ${index + 1}`}
+                              >
+                                <MobileGeneratedImage
+                                  src={src}
+                                  alt=''
+                                  className='h-full w-full object-cover'
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {entry.assistant ? (
+                      <div className={cn(entry.user ? 'mt-3 border-t border-line pt-3' : '')}>
+                        <div className='mb-1 text-11 font-medium text-fg-2'>AI</div>
+                        <p className='line-clamp-4 whitespace-pre-wrap text-13 leading-6 text-fg-0'>
+                          {entry.assistant.content || '图片结果'}
+                        </p>
+                        {entry.assistant.images?.length ? (
+                          <div className='mt-3 space-y-2'>
+                            <div className='grid grid-cols-3 gap-2'>
+                              {entry.assistant.images.slice(0, 3).map((src, index) => (
+                                <button
+                                  key={src}
+                                  type='button'
+                                  onClick={() => void openGeneratedImage(src)}
+                                  className='aspect-square overflow-hidden rounded-md border border-line bg-bg-0'
+                                  aria-label={`查看图片 ${index + 1}`}
+                                >
+                                  <MobileGeneratedImage
+                                    src={src}
+                                    alt=''
+                                    className='h-full w-full object-cover'
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                            <div className='flex flex-wrap gap-2'>
+                              {entry.assistant.images.map((src, index) => (
+                                <button
+                                  key={`${src}-${index}`}
+                                  type='button'
+                                  onClick={() => void openGeneratedImage(src)}
+                                  className='inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-bg-0 px-2.5 text-12 font-medium text-fg-1'
+                                >
+                                  <ExternalLink className='h-3.5 w-3.5' />
+                                  查看图片 {index + 1}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
-                  <p className='line-clamp-4 whitespace-pre-wrap text-13 leading-6 text-fg-0'>
-                    {message.content || '图片结果'}
-                  </p>
-                  {message.images?.length ? (
-                    <div className='mt-3 space-y-2'>
-                      <div className='grid grid-cols-3 gap-2'>
-                        {message.images.slice(0, 3).map((src, index) => (
-                          <button
-                            key={src}
-                            type='button'
-                            onClick={() => void openGeneratedImage(src)}
-                            className='aspect-square overflow-hidden rounded-md border border-line bg-bg-0'
-                            aria-label={`查看图片 ${index + 1}`}
-                          >
-                            <MobileGeneratedImage
-                              src={src}
-                              alt=''
-                              className='h-full w-full object-cover'
-                            />
-                          </button>
-                        ))}
-                      </div>
-                      <div className='flex flex-wrap gap-2'>
-                        {message.images.map((src, index) => (
-                          <button
-                            key={`${src}-${index}`}
-                            type='button'
-                            onClick={() => void openGeneratedImage(src)}
-                            className='inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-bg-0 px-2.5 text-12 font-medium text-fg-1'
-                          >
-                            <ExternalLink className='h-3.5 w-3.5' />
-                            查看图片 {index + 1}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ))
+                ))}
+                {historyHasMore[kind] ? (
+                  <button
+                    type='button'
+                    onClick={() => void loadHistoryPage(kind)}
+                    disabled={historyLoading}
+                    className='flex h-10 w-full items-center justify-center gap-2 rounded-md border border-line bg-bg-0 text-13 font-medium text-fg-1 disabled:opacity-60'
+                  >
+                    {historyLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
+                    加载更多
+                  </button>
+                ) : null}
+              </>
             )}
           </div>
         </DialogContent>
