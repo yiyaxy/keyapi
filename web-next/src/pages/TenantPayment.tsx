@@ -29,19 +29,25 @@ import {
   fetchOrderRefundContext,
   useCreateRefund,
   useDeleteWechatConfig,
+  useDeleteXpayProduct,
   useTenantPaymentOrders,
   useTenantPaymentRefunds,
   useTestWechatConfig,
   useUpdateWechatConfig,
+  useUpsertXpayProduct,
   useWechatConfig,
+  useXpayProducts,
   type OrderWithRefundContext,
   type PaymentRefundView,
   type WechatConfigView,
+  type XpayPlatform,
+  type XpayProductView,
+  type XpayProductWritable,
 } from '@/hooks/useTenantPayment';
 import { fromDisplay, toDisplay, usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec, fmtMoney } from '@/lib/format';
 
-type Tab = 'config' | 'orders' | 'refunds';
+type Tab = 'config' | 'xpay' | 'orders' | 'refunds';
 const PAGE_SIZE = 20;
 
 function TabBtn({
@@ -58,9 +64,7 @@ function TabBtn({
       type='button'
       onClick={onClick}
       className={`border-b-2 px-3 py-2 text-13 ${
-        active
-          ? 'border-primary text-fg-0'
-          : 'border-transparent text-fg-2 hover:text-fg-1'
+        active ? 'border-primary text-fg-0' : 'border-transparent text-fg-2 hover:text-fg-1'
       }`}
     >
       {children}
@@ -71,17 +75,11 @@ function TabBtn({
 function SecretState({ set }: { set: boolean }) {
   const { t } = useTranslation('tenantpay');
   return (
-    <Badge variant={set ? 'default' : 'outline'}>
-      {set ? t('secret.set') : t('secret.unset')}
-    </Badge>
+    <Badge variant={set ? 'default' : 'outline'}>{set ? t('secret.set') : t('secret.unset')}</Badge>
   );
 }
 
-function WechatConfigPanel({
-  data,
-}: {
-  data: WechatConfigView | null;
-}) {
+function WechatConfigPanel({ data }: { data: WechatConfigView | null }) {
   const { t, i18n } = useTranslation('tenantpay');
   const update = useUpdateWechatConfig();
   const test = useTestWechatConfig();
@@ -92,9 +90,7 @@ function WechatConfigPanel({
   const [mchid, setMchid] = useState(data?.mchid ?? '');
   const [serialNo, setSerialNo] = useState(data?.serial_no ?? '');
   const [enabled, setEnabled] = useState(data?.enabled ?? false);
-  const [miniLoginEnabled, setMiniLoginEnabled] = useState(
-    data?.mini_login_enabled ?? false
-  );
+  const [miniLoginEnabled, setMiniLoginEnabled] = useState(data?.mini_login_enabled ?? false);
   const [xpayEnabled, setXpayEnabled] = useState(data?.xpay_enabled ?? false);
   const [xpayOfferId, setXpayOfferId] = useState(data?.xpay_offer_id ?? '');
   const [xpayEnv, setXpayEnv] = useState(data?.xpay_env || '0');
@@ -155,8 +151,7 @@ function WechatConfigPanel({
     const when = fmtDateSec(data.last_test_at);
     testStatus = data.last_test_ok
       ? `${t('test.last', { at: when })} · ${t('test.ok')}`
-      : t('test.failed', { msg: data.last_test_error || '' }) +
-        ` (${when})`;
+      : t('test.failed', { msg: data.last_test_error || '' }) + ` (${when})`;
   }
 
   return (
@@ -170,11 +165,7 @@ function WechatConfigPanel({
           <div className='flex items-center gap-4'>
             <div className='flex items-center gap-2'>
               <Label className='text-13'>{t('form.enabled')}</Label>
-              <Switch
-                checked={enabled}
-                onCheckedChange={setEnabled}
-                disabled={locked}
-              />
+              <Switch checked={enabled} onCheckedChange={setEnabled} disabled={locked} />
             </div>
             <div className='flex items-center gap-2'>
               <Label className='text-13'>{t('form.mini_login_enabled')}</Label>
@@ -224,11 +215,7 @@ function WechatConfigPanel({
           <h3 className='text-14 font-medium'>Virtual payment</h3>
           <div className='flex items-center gap-2'>
             <Label className='text-13'>Enabled</Label>
-            <Switch
-              checked={xpayEnabled}
-              onCheckedChange={setXpayEnabled}
-              disabled={locked}
-            />
+            <Switch checked={xpayEnabled} onCheckedChange={setXpayEnabled} disabled={locked} />
           </div>
         </div>
         <div className='grid gap-3 sm:grid-cols-2'>
@@ -400,9 +387,7 @@ function OrdersPanel() {
           <SelectContent>
             <SelectItem value='0'>{t('orders.filter.type.all')}</SelectItem>
             <SelectItem value='topup'>{t('orders.filter.type.topup')}</SelectItem>
-            <SelectItem value='subscription'>
-              {t('orders.filter.type.subscription')}
-            </SelectItem>
+            <SelectItem value='subscription'>{t('orders.filter.type.subscription')}</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -417,16 +402,10 @@ function OrdersPanel() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value='0'>{t('orders.filter.status.all')}</SelectItem>
-            <SelectItem value='pending'>
-              {t('orders.filter.status.pending')}
-            </SelectItem>
+            <SelectItem value='pending'>{t('orders.filter.status.pending')}</SelectItem>
             <SelectItem value='paid'>{t('orders.filter.status.paid')}</SelectItem>
-            <SelectItem value='refunded'>
-              {t('orders.filter.status.refunded')}
-            </SelectItem>
-            <SelectItem value='expired'>
-              {t('orders.filter.status.expired')}
-            </SelectItem>
+            <SelectItem value='refunded'>{t('orders.filter.status.refunded')}</SelectItem>
+            <SelectItem value='expired'>{t('orders.filter.status.expired')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -445,17 +424,11 @@ function OrdersPanel() {
           <table className='w-full border-collapse tabular-nums'>
             <thead>
               <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
-                <th className='px-3 py-2 font-medium'>
-                  {t('orders.col.out_trade_no')}
-                </th>
+                <th className='px-3 py-2 font-medium'>{t('orders.col.out_trade_no')}</th>
                 <th className='px-3 py-2 font-medium'>{t('orders.col.type')}</th>
-                <th className='px-3 py-2 font-medium'>
-                  {t('orders.col.amount')}
-                </th>
+                <th className='px-3 py-2 font-medium'>{t('orders.col.amount')}</th>
                 <th className='px-3 py-2 font-medium'>{t('orders.col.status')}</th>
-                <th className='px-3 py-2 font-medium'>
-                  {t('orders.col.created')}
-                </th>
+                <th className='px-3 py-2 font-medium'>{t('orders.col.created')}</th>
                 <th className='px-3 py-2 font-medium'>{t('orders.col.paid')}</th>
               </tr>
             </thead>
@@ -474,12 +447,8 @@ function OrdersPanel() {
                   <td className='px-3 py-2'>
                     <Badge variant={statusVariant(o.status)}>{o.status}</Badge>
                   </td>
-                  <td className='px-3 py-2 text-fg-1'>
-                    {fmtDateSec(o.created_at)}
-                  </td>
-                  <td className='px-3 py-2 text-fg-1'>
-                    {o.paid_at ? fmtDateSec(o.paid_at) : '—'}
-                  </td>
+                  <td className='px-3 py-2 text-fg-1'>{fmtDateSec(o.created_at)}</td>
+                  <td className='px-3 py-2 text-fg-1'>{o.paid_at ? fmtDateSec(o.paid_at) : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -515,9 +484,7 @@ function OrdersPanel() {
 
 // ─── Refunds ─────────────────────────────────────────────────────────
 
-function refundStatusVariant(
-  s: string
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+function refundStatusVariant(s: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (s === 'succeeded') return 'default';
   if (s === 'failed' || s === 'closed') return 'destructive';
   if (s === 'pending' || s === 'processing') return 'secondary';
@@ -602,16 +569,15 @@ function RefundInitiateDialog({
 
   // Proportional quota deduction: how much of the originally credited
   // raw quota corresponds to this refund amount.
-  const proportionalQuota = ctx && ctx.amount > 0 && ctx.credited_quota > 0
-    ? Math.round((amountCents / ctx.amount) * ctx.credited_quota)
-    : 0;
+  const proportionalQuota =
+    ctx && ctx.amount > 0 && ctx.credited_quota > 0
+      ? Math.round((amountCents / ctx.amount) * ctx.credited_quota)
+      : 0;
 
   // "Auto" clamps proportional to what the user has on hand. The refund
   // is always for a topup at this point (backend forces delta=0 for sub);
   // a quota-less order type shows a disabled section.
-  const autoQuota = ctx
-    ? Math.max(0, Math.min(proportionalQuota, ctx.payer_current_quota))
-    : 0;
+  const autoQuota = ctx ? Math.max(0, Math.min(proportionalQuota, ctx.payer_current_quota)) : 0;
 
   const customQuota = useMemo(() => {
     const d = Number(customDisplay);
@@ -620,9 +586,7 @@ function RefundInitiateDialog({
   }, [customDisplay, cfg]);
 
   const chosenQuotaDelta =
-    quotaMode === 'auto' ? autoQuota
-    : quotaMode === 'custom' ? customQuota
-    : 0;
+    quotaMode === 'auto' ? autoQuota : quotaMode === 'custom' ? customQuota : 0;
 
   const deductionAvailable = Boolean(ctx && ctx.order_type === 'topup' && ctx.credited_quota > 0);
 
@@ -677,9 +641,7 @@ function RefundInitiateDialog({
               placeholder='wx_t1_T_...'
               className='font-mono text-12'
             />
-            {ctxLoading && (
-              <p className='text-12 text-fg-2'>{t('refunds.ctx.loading')}</p>
-            )}
+            {ctxLoading && <p className='text-12 text-fg-2'>{t('refunds.ctx.loading')}</p>}
             {ctx === undefined && !ctxLoading && (
               <p className='text-12 text-fg-2'>{t('refunds.ctx.unavailable')}</p>
             )}
@@ -700,9 +662,11 @@ function RefundInitiateDialog({
                   ¥{(ctx.amount / 100).toFixed(2)}
                   {ctx.refunded_amount > 0 && (
                     <span className='ml-1 text-fg-2'>
-                      ({t('refunds.ctx.already_refunded', {
+                      (
+                      {t('refunds.ctx.already_refunded', {
                         amount: (ctx.refunded_amount / 100).toFixed(2),
-                      })})
+                      })}
+                      )
                     </span>
                   )}
                 </span>
@@ -797,9 +761,7 @@ function RefundInitiateDialog({
                   <span className='font-medium'>{t('refunds.quota.custom')}</span>
                   <div className='mt-1 flex items-center gap-2'>
                     {cfg.quota_display_type !== 'TOKENS' && (
-                      <span className='text-14 text-fg-2'>
-                        {toDisplay(0, cfg).symbol}
-                      </span>
+                      <span className='text-14 text-fg-2'>{toDisplay(0, cfg).symbol}</span>
                     )}
                     <Input
                       type='number'
@@ -887,9 +849,7 @@ function RefundQuotaCell({
     return (
       <span>
         {fmt(refund.user_quota_delta)}
-        <span className='ml-1 text-11 text-fg-2'>
-          {t('refunds.col.quota_pending')}
-        </span>
+        <span className='ml-1 text-11 text-fg-2'>{t('refunds.col.quota_pending')}</span>
       </span>
     );
   }
@@ -928,9 +888,7 @@ function RefundsPanel() {
           <SelectContent>
             <SelectItem value='0'>{t('refunds.filter.status.all')}</SelectItem>
             <SelectItem value='pending'>{t('refunds.filter.status.pending')}</SelectItem>
-            <SelectItem value='succeeded'>
-              {t('refunds.filter.status.succeeded')}
-            </SelectItem>
+            <SelectItem value='succeeded'>{t('refunds.filter.status.succeeded')}</SelectItem>
             <SelectItem value='failed'>{t('refunds.filter.status.failed')}</SelectItem>
             <SelectItem value='closed'>{t('refunds.filter.status.closed')}</SelectItem>
           </SelectContent>
@@ -958,15 +916,11 @@ function RefundsPanel() {
               <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
                 <th className='px-3 py-2 font-medium'>{t('refunds.col.out_refund_no')}</th>
                 <th className='px-3 py-2 font-medium'>{t('refunds.col.out_trade_no')}</th>
-                <th className='px-3 py-2 font-medium text-right'>
-                  {t('refunds.col.amount')}
-                </th>
+                <th className='px-3 py-2 font-medium text-right'>{t('refunds.col.amount')}</th>
                 <th className='px-3 py-2 font-medium'>{t('refunds.col.status')}</th>
                 <th className='px-3 py-2 font-medium'>{t('refunds.col.created')}</th>
                 <th className='px-3 py-2 font-medium'>{t('refunds.col.refunded_at')}</th>
-                <th className='px-3 py-2 font-medium text-right'>
-                  {t('refunds.col.quota_delta')}
-                </th>
+                <th className='px-3 py-2 font-medium text-right'>{t('refunds.col.quota_delta')}</th>
                 <th className='px-3 py-2 font-medium'>{t('refunds.col.reason')}</th>
               </tr>
             </thead>
@@ -997,9 +951,7 @@ function RefundsPanel() {
                   <td className='px-3 py-2 text-right text-fg-1'>
                     <RefundQuotaCell refund={r} cfg={cfg} />
                   </td>
-                  <td className='max-w-[200px] truncate px-3 py-2 text-fg-1'>
-                    {r.reason || '—'}
-                  </td>
+                  <td className='max-w-[200px] truncate px-3 py-2 text-fg-1'>{r.reason || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -1035,6 +987,345 @@ function RefundsPanel() {
   );
 }
 
+// XpayProductsPanel — operator UI for tenant_xpay_products. One tier ×
+// platform = one row. Backend treats UPDATE as a strict PUT replace, so the
+// edit dialog hydrates the form from the existing row and sends every
+// writable field back. tier_code + platform are immutable on edit.
+function XpayProductsPanel() {
+  const { t } = useTranslation('tenantpay');
+  const [platform, setPlatform] = useState<'all' | XpayPlatform>('all');
+  const [editing, setEditing] = useState<XpayProductView | 'new' | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const list = useXpayProducts(platform === 'all' ? undefined : platform);
+  const del = useDeleteXpayProduct();
+
+  const items = list.data ?? [];
+  const target = items.find((r) => r.id === confirmDeleteId);
+
+  return (
+    <div className='space-y-4'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Select value={platform} onValueChange={(v) => setPlatform(v as 'all' | XpayPlatform)}>
+          <SelectTrigger className='max-w-[160px]'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='all'>{t('xpay.filter.all')}</SelectItem>
+            <SelectItem value='android'>Android</SelectItem>
+            <SelectItem value='ios'>iOS</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className='ml-auto'>
+          <Button type='button' size='sm' onClick={() => setEditing('new')}>
+            {t('xpay.action.add')}
+          </Button>
+        </div>
+      </div>
+
+      {list.isPending ? (
+        <div className='space-y-2'>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className='h-10 w-full' />
+          ))}
+        </div>
+      ) : list.isError ? (
+        <InlineBanner level='danger' message={String((list.error as Error).message)} />
+      ) : items.length === 0 ? (
+        <div className='rounded-md border border-line bg-bg-1 p-8 text-center text-13 text-fg-2'>
+          {t('xpay.empty')}
+        </div>
+      ) : (
+        <div className='overflow-x-auto rounded-md border border-line'>
+          <table className='w-full border-collapse tabular-nums'>
+            <thead>
+              <tr className='border-b border-line bg-bg-1 text-left text-12 uppercase text-fg-2'>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.tier')}</th>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.name')}</th>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.platform')}</th>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.product_id')}</th>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.amount')}</th>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.quota')}</th>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.enabled')}</th>
+                <th className='px-3 py-2 font-medium'>{t('xpay.col.sort')}</th>
+                <th className='px-3 py-2 font-medium' />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((r) => (
+                <tr key={r.id} className='border-b border-line text-13 hover:bg-bg-1'>
+                  <td className='px-3 py-2 font-mono text-12'>{r.tier_code}</td>
+                  <td className='px-3 py-2'>{r.name}</td>
+                  <td className='px-3 py-2'>
+                    <Badge variant='outline'>{r.platform}</Badge>
+                  </td>
+                  <td className='max-w-[200px] truncate px-3 py-2 font-mono text-12'>
+                    {r.product_id || <span className='text-fg-2'>—</span>}
+                  </td>
+                  <td className='px-3 py-2'>{fmtMoney(r.amount_cents / 100)}</td>
+                  <td className='px-3 py-2'>+{r.quota_delta.toLocaleString()}</td>
+                  <td className='px-3 py-2'>
+                    <Badge variant={r.enabled ? 'default' : 'outline'}>
+                      {r.enabled ? t('xpay.badge.on') : t('xpay.badge.off')}
+                    </Badge>
+                  </td>
+                  <td className='px-3 py-2 text-fg-2'>{r.sort_order}</td>
+                  <td className='px-3 py-2'>
+                    <div className='flex justify-end gap-2'>
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='secondary'
+                        onClick={() => setEditing(r)}
+                      >
+                        {t('xpay.action.edit')}
+                      </Button>
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='ghost'
+                        className='text-danger'
+                        onClick={() => setConfirmDeleteId(r.id)}
+                      >
+                        {t('xpay.action.delete')}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <XpayProductDialog
+          existing={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title={t('xpay.delete.title')}
+        body={t('xpay.delete.body', {
+          tier: target?.tier_code ?? '',
+          platform: target?.platform ?? '',
+        })}
+        confirmLabel={t('xpay.action.delete')}
+        isPending={del.isPending}
+        onOpenChange={(o) => {
+          if (!o) setConfirmDeleteId(null);
+        }}
+        onConfirm={() => {
+          if (confirmDeleteId === null) return;
+          const id = confirmDeleteId;
+          setConfirmDeleteId(null);
+          del.mutate(id, {
+            onSuccess: () => toast.success(t('xpay.toast.deleted')),
+            onError: (e) => toast.error((e as Error).message),
+          });
+        }}
+      />
+    </div>
+  );
+}
+
+// XpayProductDialog covers both CREATE and UPDATE. On UPDATE, tier_code and
+// platform are read-only because they are part of the row's unique
+// (tenant_id, tier_code, platform) identity — backend rejects mutations on
+// either column to avoid orphaning in-flight orders.
+function XpayProductDialog({
+  existing,
+  onClose,
+}: {
+  existing: XpayProductView | null;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation('tenantpay');
+  const upsert = useUpsertXpayProduct();
+  const isEdit = existing !== null;
+
+  const [tierCode, setTierCode] = useState(existing?.tier_code ?? '');
+  const [platform, setPlatform] = useState<XpayPlatform>(
+    (existing?.platform as XpayPlatform) ?? 'android'
+  );
+  const [name, setName] = useState(existing?.name ?? '');
+  const [productId, setProductId] = useState(existing?.product_id ?? '');
+  // amount_cents stored as a CNY-yuan string in the input so users type ¥30
+  // not 3000 cents — converted at submit.
+  const [amountYuan, setAmountYuan] = useState(
+    existing ? (existing.amount_cents / 100).toString() : ''
+  );
+  const [quotaDelta, setQuotaDelta] = useState(existing ? String(existing.quota_delta) : '');
+  const [enabled, setEnabled] = useState(existing?.enabled ?? false);
+  const [sortOrder, setSortOrder] = useState(existing ? String(existing.sort_order) : '0');
+
+  function submit() {
+    const trimmedTier = tierCode.trim();
+    const trimmedName = name.trim();
+    const trimmedProductId = productId.trim();
+    const yuan = Number(amountYuan);
+    const quota = Number(quotaDelta);
+    const sort = Number(sortOrder) || 0;
+
+    if (!trimmedTier || !trimmedName) {
+      toast.error(t('xpay.error.required'));
+      return;
+    }
+    if (!Number.isFinite(yuan) || yuan <= 0) {
+      toast.error(t('xpay.error.amount'));
+      return;
+    }
+    if (!Number.isFinite(quota) || quota <= 0 || !Number.isInteger(quota)) {
+      toast.error(t('xpay.error.quota'));
+      return;
+    }
+    if (enabled && !trimmedProductId) {
+      toast.error(t('xpay.error.product_id_required'));
+      return;
+    }
+    const body: XpayProductWritable = {
+      tier_code: trimmedTier,
+      name: trimmedName,
+      product_id: trimmedProductId,
+      platform,
+      amount_cents: Math.round(yuan * 100),
+      quota_delta: quota,
+      enabled,
+      sort_order: sort,
+    };
+    upsert.mutate(
+      { id: existing?.id, body },
+      {
+        onSuccess: () => {
+          toast.success(t(isEdit ? 'xpay.toast.updated' : 'xpay.toast.created'));
+          onClose();
+        },
+        onError: (e) => toast.error((e as Error).message),
+      }
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className='max-w-[480px]'>
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? t('xpay.dialog.title.edit') : t('xpay.dialog.title.add')}
+          </DialogTitle>
+          <DialogDescription>{t('xpay.dialog.body')}</DialogDescription>
+        </DialogHeader>
+        <div className='space-y-3'>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <div className='space-y-1'>
+              <Label htmlFor='xpay-tier'>{t('xpay.field.tier')}</Label>
+              <Input
+                id='xpay-tier'
+                value={tierCode}
+                onChange={(e) => setTierCode(e.target.value)}
+                disabled={isEdit}
+                className='font-mono text-12'
+                placeholder='tier_30'
+              />
+            </div>
+            <div className='space-y-1'>
+              <Label htmlFor='xpay-platform'>{t('xpay.field.platform')}</Label>
+              <Select
+                value={platform}
+                onValueChange={(v) => setPlatform(v as XpayPlatform)}
+                disabled={isEdit}
+              >
+                <SelectTrigger id='xpay-platform'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='android'>Android</SelectItem>
+                  <SelectItem value='ios'>iOS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className='space-y-1'>
+            <Label htmlFor='xpay-name'>{t('xpay.field.name')}</Label>
+            <Input
+              id='xpay-name'
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('xpay.field.name_placeholder')}
+            />
+          </div>
+          <div className='space-y-1'>
+            <Label htmlFor='xpay-product-id'>{t('xpay.field.product_id')}</Label>
+            <Input
+              id='xpay-product-id'
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              className='font-mono text-12'
+              placeholder='tier_30_android'
+            />
+            <p className='text-12 text-fg-2'>{t('xpay.field.product_id_hint')}</p>
+          </div>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <div className='space-y-1'>
+              <Label htmlFor='xpay-amount'>{t('xpay.field.amount')}</Label>
+              <Input
+                id='xpay-amount'
+                type='number'
+                inputMode='decimal'
+                step='0.01'
+                min='0'
+                value={amountYuan}
+                onChange={(e) => setAmountYuan(e.target.value)}
+                placeholder='30'
+              />
+            </div>
+            <div className='space-y-1'>
+              <Label htmlFor='xpay-quota'>{t('xpay.field.quota')}</Label>
+              <Input
+                id='xpay-quota'
+                type='number'
+                inputMode='numeric'
+                step='1'
+                min='1'
+                value={quotaDelta}
+                onChange={(e) => setQuotaDelta(e.target.value)}
+                placeholder='30000'
+              />
+            </div>
+          </div>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <div className='space-y-1'>
+              <Label htmlFor='xpay-sort'>{t('xpay.field.sort')}</Label>
+              <Input
+                id='xpay-sort'
+                type='number'
+                inputMode='numeric'
+                step='1'
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+              />
+            </div>
+            <div className='flex items-end gap-2'>
+              <div className='flex items-center gap-2'>
+                <Switch checked={enabled} onCheckedChange={setEnabled} />
+                <Label className='text-13'>{t('xpay.field.enabled')}</Label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className='flex justify-end gap-2 pt-2'>
+          <Button type='button' variant='secondary' onClick={onClose}>
+            {t('refunds.cancel')}
+          </Button>
+          <Button type='button' onClick={submit} disabled={upsert.isPending}>
+            {t('action.save')}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function TenantPaymentPage() {
   const { t } = useTranslation('tenantpay');
   const [tab, setTab] = useState<Tab>('config');
@@ -1045,6 +1336,9 @@ export function TenantPaymentPage() {
       <div className='flex items-center gap-1 border-b border-line'>
         <TabBtn active={tab === 'config'} onClick={() => setTab('config')}>
           {t('tab.config')}
+        </TabBtn>
+        <TabBtn active={tab === 'xpay'} onClick={() => setTab('xpay')}>
+          {t('tab.xpay')}
         </TabBtn>
         <TabBtn active={tab === 'orders'} onClick={() => setTab('orders')}>
           {t('tab.orders')}
@@ -1057,16 +1351,15 @@ export function TenantPaymentPage() {
         config.isPending ? (
           <Skeleton className='h-64 w-full' />
         ) : config.isError ? (
-          <InlineBanner
-            level='danger'
-            message={String((config.error as Error).message)}
-          />
+          <InlineBanner level='danger' message={String((config.error as Error).message)} />
         ) : (
           <WechatConfigPanel
             key={`wx-${config.data?.id ?? 'none'}-${config.data?.updated_at ?? 0}`}
             data={config.data ?? null}
           />
         )
+      ) : tab === 'xpay' ? (
+        <XpayProductsPanel />
       ) : tab === 'orders' ? (
         <OrdersPanel />
       ) : (
