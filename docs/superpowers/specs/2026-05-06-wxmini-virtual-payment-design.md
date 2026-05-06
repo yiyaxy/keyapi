@@ -40,7 +40,7 @@
 | Web/H5 wxpay | 保留现状 | 不在小程序内，不受新规约束 |
 | iOS 抽成 | 道具分端 + 加价转嫁 | 商业可持续，行业通行做法 |
 | 后端架构 | 新增独立 `wechat_xpay` provider | 签名/接口/回调与 v3 完全不同栈，独立干净 |
-| 切换策略 | 激进切换（前端一刀切 + 后端 wxpay 老接口保留 7 天兜底老版小程序） | 用户量小，回滚成本可控 |
+| 切换策略 | 激进切换（前端一刀切 + 老版小程序充值提示升级/维护） | 避免 D-Day 后继续用非合规 JSAPI 成交 |
 | 自定义金额 | 取消 | 道具直购模式价格写死在微信后台，不能动态传值 |
 | 续期 (sub) | 不改 | 小程序无入口 |
 
@@ -93,7 +93,12 @@ type TenantPaymentConfig struct {
 }
 ```
 
-- `XpayAppKeyEnc` 明文是小程序后台开通虚拟支付后下发的 AppKey，同时用于计算客户端 `pay_sig` 与回调 `pay_event_sig`（都是 HMAC-SHA256）。复用现有的 AES-256-GCM 加密链路（`encField`/`decField`）。
+- `XpayAppKeyEnc` 明文是小程序后台开通虚拟支付后下发的 AppKey，同时用于计算客户端 `pay_sig` 与回调 `pay_event_sig`（都是 HMAC-SHA256）。复用现有的 AES-256-GCM 加密链路（`encField`/`decField`），并必须同步扩展：
+  - `model.TenantPaymentPlaintext.XpayAppKey`
+  - `EncryptAndSetSensitive` / `DecryptSensitive`
+  - 配置 view 的 `xpay_app_key_set`
+  - update request 的 `xpay_app_key`
+  - controller merge 规则：请求空值保留旧密文，非空才覆盖，避免普通保存清空 AppKey。
 - `XpayOfferId` 是开通虚拟支付时分配的 OfferId，写入 signData 顶层。**不**敏感，明文存。
 - `XpayEnv` 控制走 `https://api.weixin.qq.com/xpay/...`（prod）还是 `https://api.weixin.qq.com/xpay/sandbox/...`（sandbox）。注意：**iOS 不支持 sandbox**，仅现网；切 sandbox 时 iOS 路径要拒绝下单。
 - 与登录、wxpay v3 共用同一行配置（`provider="wechat"`），不另立新 row。
@@ -106,7 +111,7 @@ type TenantXpayProduct struct {
     TenantId   int    `gorm:"uniqueIndex:idx_tenant_tier_platform;not null"`
     TierCode   string `gorm:"uniqueIndex:idx_tenant_tier_platform;type:varchar(32)"` // 逻辑档位标识，如 "tier_30"
     Platform   string `gorm:"uniqueIndex:idx_tenant_tier_platform;type:varchar(8)"`  // 'android' | 'ios'
-    ProductId  string `gorm:"type:varchar(64);not null"`        // 微信后台配置后回填
+    ProductId  string `gorm:"type:varchar(64)"`                 // 微信后台配置后回填；未回填时只能 disabled
     PriceCents int64  `gorm:"not null"`                         // 与微信后台一致，单位分
     QuotaDelta int64  `gorm:"not null"`                         // 支付成功后到账的 quota
     Enabled    bool   `gorm:"default:true"`
@@ -117,7 +122,7 @@ type TenantXpayProduct struct {
 ```
 
 - 一个档位 = 两行（android + ios），UI 渲染时按 tier_code 聚合。
-- `ProductId` 在微信后台配置后由运营回填，未回填时 `Enabled=false` 不可选。
+- `ProductId` 在微信后台配置后由运营回填，允许为空以支持先创建 disabled 档位；启用档位和下单时必须强校验 `ProductId != ""`。
 - `QuotaDelta` 是支付成功时到账的**基础 quota**，等级赠送 / `top_up_bonus_percent` 沿用现有的 `model.GetUserLevelTopUpBonusPreview` 逻辑。
 - 注册为 tenant-scoped（参考 `tenant_scope.go`）。
 
@@ -189,7 +194,7 @@ func providerNameForForm(form string) string {
 
 4. **PaymentOrder.Provider 不再硬编码** —— 改为 `Provider: providerNameForForm(a.ProductForm)`。
 5. **`Get(...)` 也用 helper** —— `Get(providerNameForForm(a.ProductForm))`。
-6. **回调路由**：`controller/payment/notify.go` 按 `Content-Type` / body 形态分流（详见 §7.3），与 provider 名解耦。`ValidateOutTradeNoRoute` 不依赖 provider，无需改动。
+6. **回调路由**：老 wxpay v3 只走 `controller/payment/notify.go`；xpay 只走新增 `controller/payment/xpay_notify.go`，不按 `Content-Type` / body 形态在老入口里分流。`ValidateOutTradeNoRoute` 不依赖 provider，无需改动。
 7. **Reconcile sweep（外部 review P2 修正）**：`service/payment/reconcile.go:51` 当前是
 
    ```go
@@ -435,7 +440,7 @@ func (p *xpayProvider) CreateOrder(ctx context.Context, req payment.CreateOrderR
   "OpenId": "...",
   "OutTradeNo": "...",
   "Env": 0,
-  "WeChatPayInfo": {
+  "PayInfo": {
     "MchOrderNo": "...",
     "TransactionId": "...",
     "PaidTime": 1700000000
@@ -549,7 +554,15 @@ type TierItem struct {
 
 ### 7.2 旧 wxpay JSAPI 接口
 
-- `POST /api/payment/wxmini/topup/jsapi`（小程序专用别名，如果已存在）：保留 7 天兜底老版小程序，期间继续工作；7 天后下线。
+- `POST /api/payment/wxmini/topup/jsapi`（即 `controller/payment/wechat.go:CreateWechatTopupJsapi` 暴露的路径）：D-Day 后不再成交，返回升级/维护提示；7 天后路由整条下线。
+- **启用方式**：在 `createTopupHandler` 入口判一个全局开关 `LegacyMiniJsapiDisabled`（新增 system_setting，默认 false，D-Day 切 true）。开关打开时**不**调 `paymentsvc.CreateTopupOrder`，直接返回业务错误体：
+
+  ```json
+  { "error": "wxmini_legacy_jsapi_disabled",
+    "message": "请升级小程序至最新版本后再充值" }
+  ```
+
+  HTTP 状态码用 200（业务错误，不是协议错），让老版小程序的统一错误处理能拿到 `error` 字段并 toast 文案，避免前端 catch 不到 4xx/5xx 而出空白页。
 - 服务端响应 header 中加 `X-Deprecated: virtual-pay-rollout`，便于监控老路径调用量趋势。
 
 ### 7.3 回调路由分流
@@ -565,7 +578,7 @@ xpay 与 wxpay v3 都是 JSON，但**载荷结构、签名 header / 字段、响
 
 - 两条路径职责单一，验签算法、解密路径、响应体格式都互不混淆，不需要写 fragile 的形态嗅探。
 - `notify_url` 在创建订单时由 `controller/payment/wechat.go:buildNotifyUrl` 拼出绝对 URL；新增 xpay 路径只需要新增一个 helper（或复用既有的，传不同 path 后缀）。
-- 老版小程序兜底窗口（§7.2）期间，老 wxpay 回调仍走老路径，互不影响。
+- D-Day 之前发起的 wxpay 订单的回调可能在 D-Day 之后才到达，仍走老路径正常落账；与新 xpay 路径互不影响。
 
 入口控制器：
 
@@ -620,7 +633,7 @@ export const createWxMiniXpayOrder = (tierCode, platform) =>
             data: { tier_code: tierCode, platform } })
 ```
 
-- 移除原 `createWechatTopupJsapi` 的小程序内引用，但**保留 export** 7 天，避免老版小程序代码引用断裂（同 7.2 后端兜底）。
+- 移除 `createWechatTopupJsapi` 的小程序内引用即可。函数 export 保留与否不影响合规：老版包调用后端时由 §7.2 的开关返回 `wxmini_legacy_jsapi_disabled`，UI 层 catch 到错误文案后自然展示升级提示。
 
 ### 8.3 客户端版本要求提示
 
@@ -665,7 +678,7 @@ export const createWxMiniXpayOrder = (tierCode, platform) =>
 
 ### 10.2 兼容窗口
 
-- 后端 `topup/jsapi` 老接口在 D-Day 后**继续保留 7 天**，让客户端老版本（24-72h 缓存 + 极少数手动停留旧版的用户）能正常充值。
+- 后端 `topup/jsapi` 老接口在 D-Day 后**继续保留 7 天但不成交**，只返回升级/维护提示，避免继续通过普通 wxpay JSAPI 销售虚拟商品。
 - 这 7 天内监控老接口调用量，下降到接近 0 才下线。
 - 老接口下线后不立即删除代码，保留 30 天再清理（紧急回滚的退路）。
 
@@ -673,7 +686,7 @@ export const createWxMiniXpayOrder = (tierCode, platform) =>
 
 - 风险事件 1：xpay 下单大面积失败 → 后端临时把 `XpayEnabled` 关掉，前端档位列表接口改返 410 + 错误码，提示用户"暂时维护，请稍后再试"。**不能回退到 wxpay**（小程序新版本里已经没有这条调用了）。
 - 风险事件 2：deliver_notify 解析错位导致 quota 没到账 → 走对账流程（`reconcile`），手动跑 `QueryOrder` 修复；不影响新订单。
-- 风险事件 3：发现严重违规风险 → 走小程序紧急下架，新版用户无法充值，老版用户走老接口（7 天兜底窗口的核心价值）。
+- 风险事件 3：发现严重违规风险 → 走小程序紧急下架，新版用户无法充值；老版用户调老接口仍能命中 §7.2 的 `wxmini_legacy_jsapi_disabled` 错误码，拿到清晰的"升级/维护"提示文案而非 5xx 或空响应，避免黑屏体验。
 
 ## 11. 安全
 
