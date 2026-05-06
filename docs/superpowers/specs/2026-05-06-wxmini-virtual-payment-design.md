@@ -208,11 +208,23 @@ func providerNameForForm(form string) string {
 
 > **§6 主链路契约 guardrail（实施前必读）**
 >
-> §6.2-§6.4 / §8.1 描述的 `wx.requestVirtualPayment` 入参形态、signData 字段集合、回调载荷与签名原文均依据外部 review 引用的腾讯虚拟支付公开文档（截至 2026-05，即 `mode='short_series_goods'`、signData 含 `offerId/buyQuantity/env/currencyType/productId/goodsPrice/outTradeNo/attach`、回调 JSON `EventType/Event/Payload/PayEventSig`、`pay_event_sig = HMAC-SHA256(AppKey, Event + '&' + Payload)`）。
+> §6.2-§6.4 / §8.1 描述的 `wx.requestVirtualPayment` 入参形态、signData 字段集合、回调载荷、签名原文与 ACK 响应均依据外部 review 引用的腾讯虚拟支付公开文档（截至 2026-05），关键约定：
 >
-> **实施 plan 开始前必须用当时微信官方开放文档 / 后台沙箱实际回调样例复核：字段名、大小写、签名原文拼装顺序、Content-Type、HTTP 响应格式。** 尤其 `EventType / Event / Payload / PayEventSig` 拼写、`signData` 字段顺序与命名、`mode` 取值是否仍为 `short_series_goods`。
+> | 维度 | 当前 spec 取值 |
+> |---|---|
+> | 客户端 mode | `short_series_goods` |
+> | signData 字段 | `offerId / buyQuantity / env / currencyType / productId / goodsPrice / outTradeNo / attach` |
+> | pay_sig | `HMAC-SHA256(AppKey, "requestVirtualPayment" + "&" + signData)` |
+> | signature | `HMAC-SHA256(session_key, signData)` |
+> | 回调 envelope | `{ EventType, Event, Payload, PayEventSig }`（顶层大写驼峰） |
+> | EventType 取值 | `TRANSACTION.SUCCESS` / `TRANSACTION.PAYERROR` 等支付**结果**类型，**不是**事件名 |
+> | Event 取值 | `xpay_goods_deliver_notify` 等**事件名**，决定 Payload 解析器 |
+> | pay_event_sig | `HMAC-SHA256(AppKey, Event + "&" + Payload)`（Payload 必须取顶层 envelope 解析后的字符串原值） |
+> | 回调 ACK | `{ "returnCode": 0, "returnMessage": "OK", "data": "OK", "requestId": "..." }`（小写驼峰，`data="OK"` 是关键） |
 >
-> 任何字段名 / 签名规则与本文不一致时，**以届时活文档为准**，并回写 spec 修订记录，不静默偏离。
+> **实施 plan 开始前必须用当时微信官方开放文档 / 后台沙箱实际回调样例复核：字段名、大小写、签名原文拼装顺序、Content-Type、HTTP 响应格式、EventType 完整状态枚举。**
+>
+> 任何字段名 / 签名规则 / 取值与本文不一致时，**以届时活文档为准**，并回写 spec 修订记录，不静默偏离。本 spec 经过三轮外部 review 修订（2026-05-06、改 1：路径硬编码 / signature 自洽，改 2：mode/signData/JSON 回调，改 3：EventType 语义/ACK 格式）；如果实施时仍发现不符，按相同流程修订并 commit。
 
 ### 6.1 目录结构
 
@@ -317,10 +329,13 @@ session_key 缓存：
                             ◄──────────────────────────  POST {notify_url}
                               VerifyAndParseNotify：       JSON {EventType, Event, Payload, PayEventSig}
                               ① pay_event_sig 验签
-                              ② 解析 Payload 取 OutTradeNo / TransactionId / PaidTime
-                              ③ ValidateOutTradeNoRoute + ApplyPaymentSuccess
+                              ② 按 envelope.Event 选 Payload 解析器
+                              ③ 按 envelope.EventType 决定订单转态：
+                                   TRANSACTION.SUCCESS  → ApplyPaymentSuccess
+                                   TRANSACTION.PAYERROR → MarkOrderClosed
+                              ④ ValidateOutTradeNoRoute 防御租户错单
 
-                            ──返回 {ErrCode:0,ErrMsg:"success"}──►
+                            ──返回 {returnCode:0, returnMessage:"OK", data:"OK", requestId}──►
 
   pollUntilPaid 看到 paid ◄── 状态查询接口
 ```
@@ -393,16 +408,25 @@ func (p *xpayProvider) CreateOrder(ctx context.Context, req payment.CreateOrderR
 
 ### 6.4 `Provider.VerifyAndParseNotify`
 
-虚拟支付 2.0 的回调是 **JSON**，结构（以道具直购的发货事件为例）：
+虚拟支付 2.0 的回调是 **JSON**，结构（以道具直购成功事件为例）：
 
 ```json
 {
-  "EventType": "xpay_goods_deliver",
-  "Event": "xpay_goods_deliver_notify",
-  "Payload": "<JSON 字符串原文，作为整体参与签名>",
+  "EventType": "TRANSACTION.SUCCESS",
+  "Event":     "xpay_goods_deliver_notify",
+  "Payload":   "<JSON 字符串原文，作为整体参与签名>",
   "PayEventSig": "<HMAC-SHA256(AppKey, Event + '&' + Payload) 十六进制>"
 }
 ```
+
+**`EventType` 与 `Event` 不是同义字段，必须分别使用**：
+
+| 字段 | 含义 | 取值（按腾讯活文档） |
+|---|---|---|
+| `EventType` | 支付**结果**类型，决定订单状态 | `TRANSACTION.SUCCESS` 成功 / `TRANSACTION.PAYERROR` 失败 / 其他状态见活文档 |
+| `Event` | 触发回调的**事件名**，决定 Payload 的业务结构 | 道具直购成功后回调用 `xpay_goods_deliver_notify`；代币模式用 `xpay_coin_pay_notify` 等 |
+
+判定支付成功**只看 `EventType == "TRANSACTION.SUCCESS"`**；`Event` 仅用于路由 Payload 解析器（goods / coin / refund 不同业务）和拼装 `pay_event_sig` 的签名输入。把成功判定挂到 `Event` 上是错的，会把失败 / 退款回调当成功处理。
 
 `Payload` 是被微信侧 `json.Marshal` 后又作为字符串塞进顶层包裹的 JSON 字符串，里面含订单交付明细，典型字段集合（**实施前以活文档为准**）：
 
@@ -454,13 +478,33 @@ func verifyPayEventSig(event, payload, gotSig string, appKey []byte) bool {
   }
   if err := json.Unmarshal(rawBody, &envelope); err != nil { ... }
   // 用 envelope.Payload + envelope.Event 算签名
-  // 验签通过后再把 envelope.Payload 解析为业务 struct
+  // 验签通过后再按 envelope.Event 路由 Payload 解析器
   ```
 
-- 验签通过后解析 `Payload` 拿 `OutTradeNo / TransactionId / PaidTime`，转成 `payment.NotifyResult`，下游复用 `ApplyPaymentSuccess`。
-- **响应**：HTTP 200 + JSON `{"ErrCode": 0, "ErrMsg": "success"}`。任何 `ErrCode != 0` 或非 200 都会被微信侧重试。
-- **幂等**：同一 `OutTradeNo` 微信侧最多重试若干次，依赖 `MarkOrderPaid` 的 pending→paid 单向 flip 保证只会成功记账一次（既有逻辑，无需新增）。
-- **大小写敏感**：上面 `EventType / Event / Payload / PayEventSig` 是大写驼峰；微信不同事件家族有时混用 snake_case（如旧公众号事件）。**实施时打一份原始 body 到日志**（脱敏后），确认大小写和结构。
+- 抽象分层（与既有 wxpay v3 路径一致，不破坏 Provider 接口）：
+  - **`provider.VerifyAndParseNotify`** 只做"验签 + envelope/Payload 解析"，输出标准 `payment.NotifyResult`：
+    - `OutTradeNo / TransactionId / PaidAt` 来自 Payload
+    - `Success = (envelope.EventType == "TRANSACTION.SUCCESS")`
+    - `RawState = envelope.EventType` 原文（透传给 controller）
+  - **`controller/payment/xpay_notify.go`** 拿到 `NotifyResult` 后按 `Success / RawState` 决策：
+    - `Success=true` → `ApplyPaymentSuccess`（既有路径）
+    - `Success=false` 且 `RawState` 是活文档列出的明确失败 / 取消状态（如 `TRANSACTION.PAYERROR`）→ `MarkOrderClosed`，记 last_error
+    - `Success=false` 且 `RawState` 未知 → 不改订单状态，仅记日志 + 仍按规范返回 `data="OK"` 阻止重试，让 reconcile sweep 继续兜底
+- 业务 Payload 解析按 `envelope.Event` 路由：道具直购走 `GoodsInfo`、代币模式（未来）走 `CoinInfo`、退款走对应 RefundInfo。`Event` 与 `EventType` 是正交维度，不要混用。
+- **响应**（按腾讯虚拟支付 callback 文档规范）：HTTP 200 + JSON
+
+  ```json
+  {
+    "returnCode":    0,
+    "returnMessage": "OK",
+    "data":          "OK",
+    "requestId":     "<原样回传请求里的 requestId，没有则生成一个>"
+  }
+  ```
+
+  `data == "OK"` 是微信侧判定回调被业务侧消费成功的关键字段；`returnCode != 0` 或 `data != "OK"` 都会触发重试。**不要**沿用既有 wxpay v3 的 `{"code":"SUCCESS"}` 或本 spec 旧版本里的 `{"ErrCode":0,"ErrMsg":"success"}`，那两套都不是虚拟支付 callback 的协议。
+- **幂等**：同一 `OutTradeNo` 微信侧最多重试若干次，依赖 `MarkOrderPaid` 的 pending→paid 单向 flip 保证只会成功记账一次（既有逻辑，无需新增）。重试时仍按上面响应规范返回 `data="OK"`，避免无谓重发。
+- **大小写敏感**：顶层 `EventType / Event / Payload / PayEventSig` 是大写驼峰，响应字段 `returnCode / returnMessage / data / requestId` 是小写驼峰。两组命名风格不同，**实施时打一份原始 body 到日志（脱敏后）逐字段比对活文档**。
 
 ### 6.5 `Provider.QueryOrder` & `Provider.Refund`
 
@@ -526,7 +570,7 @@ xpay 与 wxpay v3 都是 JSON，但**载荷结构、签名 header / 字段、响
 入口控制器：
 
 - 老路径 `notify.go` 不动。
-- 新增 `controller/payment/xpay_notify.go`：解析 envelope → 取 `cfg.XpayAppKeyEnc` 解密 → 调 `wechat_xpay` provider 的 `VerifyAndParseNotify` → `ValidateOutTradeNoRoute` → `ApplyPaymentSuccess` → 返回 `{"ErrCode":0,"ErrMsg":"success"}`。
+- 新增 `controller/payment/xpay_notify.go`：读 raw body → 调 `wechat_xpay` provider 的 `VerifyAndParseNotify`（内部用 `cfg.XpayAppKeyEnc` 解密 + 验 `pay_event_sig`）→ `ValidateOutTradeNoRoute` → 按 `NotifyResult.Success` / `RawState` 决策 `ApplyPaymentSuccess` 或 `MarkOrderClosed` → 返回 §6.4 规范的 `{returnCode:0, returnMessage:"OK", data:"OK", requestId}`。验签失败 / route 校验失败 → 返回 `data` 非 `"OK"` 的错误体。
 - 路由注册放在 `router/api-router.go` 既有 payment 路由组旁。
 
 ## 8. 小程序前端
@@ -648,7 +692,12 @@ export const createWxMiniXpayOrder = (tierCode, platform) =>
   - `pay_sig` 算法对照微信官方示例向量（uri=`/xpay/query_user_balance`、postBody=`{"openid":"xxx"...}`、appkey=`12345` → `c37809f27c6d7fd1837ad2500a04512b66b34fd793a39a385fade56dca89a4b5`）
   - `pay_event_sig` 算法对照活文档示例向量（实施时取一份 sandbox 真实回调样例固化为黄金向量）
   - `signature` 算法对照微信文档示例（session_key=`9hAb/NEYUlkaMBEsmFgzig==`、postBody=`{"openid":"xxx"...}` → `089d9e8dc5d308977360c4b79ec600a93d736802802a807d634192328032f6c7`）
-- `notify_test.go`：JSON envelope 解析（含 Payload 字符串原值未被 re-marshal） + pay_event_sig 验签 + 重复推送幂等 + 错误响应（`ErrCode != 0`）触发微信侧重试
+- `notify_test.go`：
+  - JSON envelope 解析，`envelope.Payload` 必须以字符串原值参与签名（用 raw bytes 比对）
+  - pay_event_sig 验签（正例 + 篡改 Payload 反例 + 篡改 Event 反例 + AppKey 不匹配反例）
+  - `EventType` 路由测试：`TRANSACTION.SUCCESS` → ApplyPaymentSuccess、`TRANSACTION.PAYERROR` → MarkOrderClosed、未知值 → 不动状态仅记日志
+  - 重复推送幂等：同一 OutTradeNo 二次回调返回 `data=OK` 且不重复加 quota
+  - ACK 响应格式：成功 / 验签失败 / EventType 未知 三种分支返回的 JSON 字段名、值（`returnCode/returnMessage/data/requestId`）逐字段断言
 - `goods_test.go`：CreateOrder 字段映射 + tier 不存在 / platform 非法 / 租户未开通虚拟支付 等错误路径
 - `provider_test.go`：注册名、TestCredentials（HEAD /xpay/ping 之类的轻量探活）
 - `controller/payment/wxmini_xpay_test.go`：tier 列表 + 下单 + UA 二次校验路径
