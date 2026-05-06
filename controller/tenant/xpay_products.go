@@ -13,6 +13,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// xpayProductRequest is the body for both CREATE and UPDATE. UPDATE has
+// strict PUT-replace semantics: every writable field on the row is taken
+// from the request unconditionally. Frontends must round-trip the full row
+// (read the existing record, mutate, send back).
+//
+// TierCode + Platform form the unique identity (tenant_id, tier_code,
+// platform) and are IMMUTABLE on UPDATE — buildXpayProductFromRequest
+// preserves the existing values and ignores any incoming change.
 type xpayProductRequest struct {
 	TierCode    string `json:"tier_code"`
 	Name        string `json:"name"`
@@ -20,7 +28,7 @@ type xpayProductRequest struct {
 	Platform    string `json:"platform"`
 	AmountCents int64  `json:"amount_cents"`
 	QuotaDelta  int64  `json:"quota_delta"`
-	Enabled     *bool  `json:"enabled"`
+	Enabled     bool   `json:"enabled"`
 	SortOrder   int    `json:"sort_order"`
 }
 
@@ -117,36 +125,43 @@ func DeleteTenantXpayProduct(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"deleted": true})
 }
 
+// buildXpayProductFromRequest validates the request as a complete record and
+// produces a row ready to persist. CREATE and UPDATE share validation; the
+// only difference is identity:
+//   - CREATE: TierCode + Platform come from the request
+//   - UPDATE: TierCode + Platform are taken from `existing` (immutable —
+//     they're part of the row's unique identity and changing them would
+//     either silently break (tenant_id, tier_code, platform) uniqueness or
+//     orphan in-flight orders that reference the old tier).
+//
+// All other writable fields are overwritten unconditionally so partial
+// updates can't accidentally clobber unrelated columns.
 func buildXpayProductFromRequest(tid int, existing *model.TenantXpayProduct, req xpayProductRequest) (*model.TenantXpayProduct, error) {
 	row := &model.TenantXpayProduct{TenantId: tid}
 	if existing != nil {
 		cp := *existing
 		row = &cp
 	}
-	if s := strings.TrimSpace(req.TierCode); s != "" {
-		row.TierCode = s
+
+	if existing == nil {
+		row.TierCode = strings.TrimSpace(req.TierCode)
+		row.Platform = strings.TrimSpace(strings.ToLower(req.Platform))
+		if row.Platform == "" {
+			row.Platform = "android"
+		}
 	}
-	if s := strings.TrimSpace(req.Name); s != "" {
-		row.Name = s
-	}
+	row.Name = strings.TrimSpace(req.Name)
 	row.ProductId = strings.TrimSpace(req.ProductId)
-	if s := strings.TrimSpace(strings.ToLower(req.Platform)); s != "" {
-		row.Platform = s
-	} else if row.Platform == "" {
-		row.Platform = "android"
-	}
-	if req.AmountCents > 0 {
-		row.AmountCents = req.AmountCents
-	}
-	if req.QuotaDelta > 0 {
-		row.QuotaDelta = req.QuotaDelta
-	}
-	if req.Enabled != nil {
-		row.Enabled = *req.Enabled
-	}
+	row.AmountCents = req.AmountCents
+	row.QuotaDelta = req.QuotaDelta
+	row.Enabled = req.Enabled
 	row.SortOrder = req.SortOrder
+
 	if row.TierCode == "" || row.Name == "" {
 		return nil, errors.New("tier_code and name are required")
+	}
+	if row.Platform != "android" && row.Platform != "ios" {
+		return nil, errors.New("platform must be android or ios")
 	}
 	if row.AmountCents <= 0 || row.QuotaDelta <= 0 {
 		return nil, errors.New("amount_cents and quota_delta must be positive")
