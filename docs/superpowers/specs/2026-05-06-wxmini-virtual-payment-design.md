@@ -59,20 +59,22 @@
 │  controller/payment/wxmini_xpay.go                                 │
 │   ├─ POST /api/payment/wxmini/topup/xpay  下单                     │
 │   └─ GET  /api/payment/wxmini/topup/tiers 档位列表                 │
-│  controller/payment/notify.go                                      │
-│   └─ POST /api/payment/wechat/notify/:tid/topup（XML/JSON 双形态）│
-│        ├─ 旧 wxpay v3 JSON+APIv3-Signature                        │
-│        └─ 新 xpay XML event + pay_sig HMAC                        │
+│  controller/payment/notify.go        (旧路径不动)                  │
+│   └─ POST /api/payment/wechat/notify/:tid/:order_type              │
+│         wxpay v3 JSON + Wechatpay-Signature                        │
+│  controller/payment/xpay_notify.go   (新增)                        │
+│   └─ POST /api/payment/wechat/xpay_notify/:tid/:order_type         │
+│         xpay JSON {EventType, Event, Payload, PayEventSig}         │
 │  service/payment/wechat_xpay/                                      │
 │   ├─ provider.go      实现 payment.Provider                        │
-│   ├─ client.go        HMAC-SHA256 pay_sig 签名 + HTTP 调用         │
-│   ├─ goods.go         CreateOrder（生成 OutTradeNo + 客户端入参）  │
-│   ├─ notify.go        xpay_goods_deliver_notify 解析 + 验签        │
+│   ├─ client.go        pay_sig / pay_event_sig HMAC + HTTP 调用     │
+│   ├─ goods.go         CreateOrder（生成下单四件套）                │
+│   ├─ notify.go        JSON envelope 解析 + pay_event_sig 验签      │
 │   ├─ query.go         QueryOrder（对账用）                         │
 │   └─ refund.go        Refund（仅 Android 走）                      │
 │  model/                                                            │
 │   ├─ tenant_payment_config.go：增 XpayEnabled / XpayAppKeyEnc /    │
-│   │  XpayEnv 三个字段                                              │
+│   │  XpayEnv / XpayOfferId 四个字段                                │
 │   └─ tenant_xpay_product.go（新表）：tier+platform → product_id   │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -84,13 +86,15 @@
 ```go
 type TenantPaymentConfig struct {
     // ... 既有字段
-    XpayEnabled    bool   `json:"xpay_enabled" gorm:"default:false"`
-    XpayAppKeyEnc  string `json:"-" gorm:"type:text"`         // AES-256-GCM 加密
-    XpayEnv        string `json:"xpay_env" gorm:"type:varchar(16);default:'prod'"` // 'sandbox' | 'prod'
+    XpayEnabled   bool   `json:"xpay_enabled" gorm:"default:false"`
+    XpayOfferId   string `json:"xpay_offer_id" gorm:"type:varchar(64)"`
+    XpayEnv       string `json:"xpay_env" gorm:"type:varchar(16);default:'prod'"` // 'sandbox' | 'prod'
+    XpayAppKeyEnc string `json:"-" gorm:"type:text"`                              // AES-256-GCM 加密
 }
 ```
 
-- `XpayAppKeyEnc` 的明文是微信小程序后台开通虚拟支付后下发的 AppKey，用于计算 `pay_sig`（HMAC-SHA256）。复用现有的 AES-256-GCM 加密链路（`encField`/`decField`）。
+- `XpayAppKeyEnc` 明文是小程序后台开通虚拟支付后下发的 AppKey，同时用于计算客户端 `pay_sig` 与回调 `pay_event_sig`（都是 HMAC-SHA256）。复用现有的 AES-256-GCM 加密链路（`encField`/`decField`）。
+- `XpayOfferId` 是开通虚拟支付时分配的 OfferId，写入 signData 顶层。**不**敏感，明文存。
 - `XpayEnv` 控制走 `https://api.weixin.qq.com/xpay/...`（prod）还是 `https://api.weixin.qq.com/xpay/sandbox/...`（sandbox）。注意：**iOS 不支持 sandbox**，仅现网；切 sandbox 时 iOS 路径要拒绝下单。
 - 与登录、wxpay v3 共用同一行配置（`provider="wechat"`），不另立新 row。
 
@@ -185,19 +189,39 @@ func providerNameForForm(form string) string {
 
 4. **PaymentOrder.Provider 不再硬编码** —— 改为 `Provider: providerNameForForm(a.ProductForm)`。
 5. **`Get(...)` 也用 helper** —— `Get(providerNameForForm(a.ProductForm))`。
-6. **`ApplyPaymentSuccess` / 回调路由侧**：按 `order.Provider` 解发，而不是默认 wechat。当前 `controller/payment/notify.go` 路径上 `ValidateOutTradeNoRoute` 不依赖 provider 名，但 reconcile 路径（`service/payment/reconcile.go`）目前默认调 `Get("wechat")` —— 也要改成读 `order.Provider`。
-7. **回归测试**：`service/payment/order_quota_test.go` 现有用例覆盖三种 form，要补 `xpay_goods` 形态的单测。
+6. **回调路由**：`controller/payment/notify.go` 按 `Content-Type` / body 形态分流（详见 §7.3），与 provider 名解耦。`ValidateOutTradeNoRoute` 不依赖 provider，无需改动。
+7. **Reconcile sweep（外部 review P2 修正）**：`service/payment/reconcile.go:51` 当前是
+
+   ```go
+   var reconcileProviders = []string{"wechat"}
+   ```
+
+   `ListPendingPaymentOrdersForReconcile(providerName, ...)` 按 provider 名反向拉单，硬编码只扫 `"wechat"` 表示 xpay 订单丢回调后**永远停在 pending**，不会被 QueryOrder 自愈。必须二选一改：
+
+   - **最简**：`reconcileProviders = []string{"wechat", "wechat_xpay"}`
+   - **更稳**：运行时从 `registry` 列举所有已注册 provider 名（这样未来再加 alipay/stripe 不必再回头改）
+
+   本设计采用"最简"方案以减少行为面，未来再加 provider 时如果常忘记同步这个数组，再切到运行时枚举。
+8. **回归测试**：`service/payment/order_quota_test.go` 现有用例覆盖三种 form，要补 `xpay_goods` 形态的单测；`reconcile_test.go`（如未存在则新增）覆盖 xpay sweep 链路。
 
 > 这一节不是后续 plan 的"可选优化"，是新增 provider 能跑起来的前置条件，必须和 §6.1-6.5 的代码一起进。
+
+> **§6 主链路契约 guardrail（实施前必读）**
+>
+> §6.2-§6.4 / §8.1 描述的 `wx.requestVirtualPayment` 入参形态、signData 字段集合、回调载荷与签名原文均依据外部 review 引用的腾讯虚拟支付公开文档（截至 2026-05，即 `mode='short_series_goods'`、signData 含 `offerId/buyQuantity/env/currencyType/productId/goodsPrice/outTradeNo/attach`、回调 JSON `EventType/Event/Payload/PayEventSig`、`pay_event_sig = HMAC-SHA256(AppKey, Event + '&' + Payload)`）。
+>
+> **实施 plan 开始前必须用当时微信官方开放文档 / 后台沙箱实际回调样例复核：字段名、大小写、签名原文拼装顺序、Content-Type、HTTP 响应格式。** 尤其 `EventType / Event / Payload / PayEventSig` 拼写、`signData` 字段顺序与命名、`mode` 取值是否仍为 `short_series_goods`。
+>
+> 任何字段名 / 签名规则与本文不一致时，**以届时活文档为准**，并回写 spec 修订记录，不静默偏离。
 
 ### 6.1 目录结构
 
 ```
 service/payment/wechat_xpay/
 ├── provider.go     # 实现 payment.Provider，注册名 "wechat_xpay"
-├── client.go       # HTTP 客户端 + pay_sig HMAC 签名
-├── goods.go        # CreateOrder：生成下单参数
-├── notify.go       # xpay_goods_deliver_notify XML 事件解析与验签
+├── client.go       # HTTP 客户端 + pay_sig / pay_event_sig HMAC 签名
+├── goods.go        # CreateOrder：生成 wx.requestVirtualPayment 入参三件套
+├── notify.go       # JSON {EventType, Event, Payload, PayEventSig} 解析与验签
 ├── query.go        # QueryOrder：xpay/goods/query_order
 ├── refund.go       # Refund：xpay/goods/refund（Android 限定）
 └── client_test.go
@@ -221,24 +245,28 @@ func calcPaySig(uri string, postBody []byte, appKey []byte) string {
 - `postBody` 必须与实际 HTTP body / signData JSON 字节级一致，否则签名失败。所有出参先 `json.Marshal` 一次得到字节流，签完直接发送，**不要再次序列化**。
 - 客户端登录态 `signature` = HMAC-SHA256(session_key, postBody)，由服务端算好下发给客户端，客户端在 `wx.requestVirtualPayment` 入参里透传。
 
-**session_key 落地（外部 review 补充点 2 验证后必须改）**：
+**session_key 落地（外部 review 补充点 2 修正后已自洽）**：
 
-当前 `service/wx_mini.go:309-351` `ExchangeWxMiniCode(tenantId, code) (openid string, err error)` 的返回值丢掉了 jscode2session 接口同时下发的 `session_key`。本设计要求改造：
+当前 `service/wx_mini.go:309-351` `ExchangeWxMiniCode(tenantId, code) (openid string, err error)` 丢掉了 jscode2session 同时下发的 `session_key`。仅扩字段不改 caller 会出现"登录路径不写缓存 → 下单永远 cache miss → 前端反复 wxmini_session_expired"，所以要一次到位：
 
 ```go
-// service/wx_mini.go：扩展返回结构
+// service/wx_mini.go：返回结构扩展为 *WxMiniSession
 type WxMiniSession struct {
     OpenId     string
-    UnionId    string  // 已存在，未来 OA 联通用
+    UnionId    string
     SessionKey string  // ← 新增
 }
 
-// 兼容旧调用方（控制器/auth/wx_mini.go:65、wx_mini_qr.go:166）：
-//  - 保留 ExchangeWxMiniCode(tenantId, code) (openid, err) 作为薄封装
-//  - 内部委托给新增的 ExchangeWxMiniSession(tenantId, code) (*WxMiniSession, err)
-//  - 登录路径不需要 session_key，旧函数签名不动
-//  - 支付路径调用新函数并把 session_key 写缓存
+// 主函数改造（不留向后兼容薄封装，避免漏写缓存）：
+//   ExchangeWxMiniSession(tenantId, code) (*WxMiniSession, error)
+//
+// 同时更新所有 3 处既有调用方（同一 PR）：
+//   1) controller/auth/wx_mini.go:65       —— 登录路径，必须写 session_key 缓存
+//   2) controller/auth/wx_mini_qr.go:166   —— 扫码登录路径，必须写 session_key 缓存
+//   3) 新增 controller/payment/wxmini_xpay.go —— 仅读缓存，不直调 jscode2session
 ```
+
+任何走 `wx.login` 的入口（含登录、扫码确认）都必须把 `SessionKey` 写到缓存；不存在"登录路径不需要 session_key"的例外，否则下单链路会拿不到 session_key 就走废。下单接口本身不会主动调 jscode2session（避免一次操作消耗两次微信侧 quota，也避免登录态被刷新）。
 
 session_key 缓存：
 
@@ -247,19 +275,20 @@ session_key 缓存：
 | 后端 | Redis（沿用 `common.RedisEnabled` 路径，无 Redis 则进程内 sync.Map fallback，与 access_token 缓存同款） |
 | Key | `wxmini:session_key:{tenantId}:{openid}` |
 | Value | session_key 明文（不入库不入日志，仅缓存内驻留） |
-| TTL | 7200s（与微信 session_key 寿命一致），**不**做主动续期；过期后下单接口返回 401，前端 catch 后重走 `wx.login` 拿新 code → 后端调 `/api/auth/wx_mini/login` 刷新 session_key 缓存 → 重试下单 |
-| 失效触发 | 用户主动登出 / 解绑 / `errcode=40001` 时主动 `del` |
-| 加密 | session_key 与 user.WeChatId（openid）有强敏感关联，**不**写 DB；缓存里也不要拼 plaintext 日志；如果 Redis 在共享集群中，需要按部署环境评估是否启用 Redis ACL 或单独命名空间 |
+| TTL | 7200s（与微信 session_key 寿命一致），**不**做主动续期；过期后下单接口返回 `wxmini_session_expired`，前端 catch 后重走 `wx.login` 拿新 code → 后端 `/api/auth/wx_mini/login` 刷新 session_key 缓存 → 重试下单 |
+| 失效触发 | 用户主动登出 / 解绑 / 任何对微信 API 调用收到 `errcode=40001 / 42001` 时主动 `del` |
+| 加密 | session_key 与 openid 有强敏感关联，**不**写 DB；缓存里也不要拼 plaintext 日志；如果 Redis 在共享集群中，按部署环境评估是否启用 Redis ACL 或单独命名空间 |
 
 下单时序：
 
 ```
-1. 前端走过 wx.login → /api/auth/wx_mini/login（已有路径）
-   后端在该路径上把 session_key 写入缓存（同一次 jscode2session 拿到）
+1. 前端 wx.login → /api/auth/wx_mini/login
+   后端 ExchangeWxMiniSession 拿 (openid, session_key)
+   把 session_key 写入缓存（key = wxmini:session_key:{tid}:{openid}）
 2. 前端调 /api/payment/wxmini/topup/xpay
-3. 后端从缓存取 session_key
-   ├─ 命中：算 signature，正常返回
-   └─ miss/过期：返回 {error: "wxmini_session_expired"}，前端 catch 后重新走步骤 1
+3. 后端按 (tid, 当前用户 openid) 从缓存读 session_key
+   ├─ 命中：算 signature，正常返回 sign_data / pay_sig / signature
+   └─ miss/过期：返回 {error: "wxmini_session_expired"}，前端走 wx.login 后重试
 ```
 
 ### 6.3 `Provider.CreateOrder`
@@ -267,48 +296,88 @@ session_key 缓存：
 完整流程（与 wxpay v3 的关键差异）：
 
 ```
-[小程序前端]               [我们后端]                       [微信侧]
-                                                            
+[小程序前端]               [我们后端]                            [微信侧]
+
   调 /topup/xpay  ───────►  CreateOrder：
                             ① 写 PaymentOrder(pending)
-                            ② 序列化 signData
-                            ③ paySig = HMAC(AppKey, "requestVirtualPayment"+"&"+signData)
-                            ④ signature = HMAC(session_key, signData)
-            ◄────  返回 {signData, paySig, signature, out_trade_no}
-                            
-  wx.requestVirtualPayment(
-    {signData, paySig, signature}) ───────────────────────►  微信收到，
-                                                              拉起 Apple Pay (iOS) 或 wxpay (Android)
-                                                              
-                                                              用户付款
-                                                              
-                            ◄──────────────────────────  POST /api/payment/wechat/notify/:tid/topup
-                              VerifyAndParseNotify：       (xpay_goods_deliver_notify XML 事件)
-                              ① 验 signature
-                              ② 校验 OutTradeNo 与 PaymentOrder.TenantId
-                              ③ applyTopupSuccess
-                              
+                            ② 按档位组装 signData（字段见下表）并 json.Marshal
+                            ③ paySig = HMAC-SHA256(AppKey, "requestVirtualPayment"+"&"+signData)
+                            ④ signature = HMAC-SHA256(session_key, signData)
+            ◄────  返回 {sign_data, pay_sig, signature, order:{out_trade_no}}
+
+  wx.requestVirtualPayment({
+    mode: 'short_series_goods',          ← 顶层 mode 必填
+    signData, paySig, signature,
+  }) ──────────────────────────────────────────────────────────► 微信侧拉起：
+                                                                  iOS → Apple 支付
+                                                                  Android → 微信支付
+
+                                                                  用户付款
+
+                            ◄──────────────────────────  POST {notify_url}
+                              VerifyAndParseNotify：       JSON {EventType, Event, Payload, PayEventSig}
+                              ① pay_event_sig 验签
+                              ② 解析 Payload 取 OutTradeNo / TransactionId / PaidTime
+                              ③ ValidateOutTradeNoRoute + ApplyPaymentSuccess
+
                             ──返回 {ErrCode:0,ErrMsg:"success"}──►
-                              
+
   pollUntilPaid 看到 paid ◄── 状态查询接口
 ```
 
+#### signData 字段（按腾讯虚拟支付公开文档）
+
+| 字段 | 类型 | 取值 | 说明 |
+|---|---|---|---|
+| `offerId` | string | 微信小程序后台开通虚拟支付时分配的 OfferId | 与 AppId 绑定，租户开通后录入 `tenant_payment_configs.xpay_offer_id`（**新增字段**） |
+| `buyQuantity` | int | 1 | 道具直购单次固定为 1 |
+| `env` | int | `0` 正式 / `1` 沙箱 | 与 `XpayEnv` 对齐 |
+| `currencyType` | string | `"CNY"` | |
+| `productId` | string | 微信后台配置的道具 ID | 来自 `tenant_xpay_products.product_id`，按 `(tier_code, platform)` 选 |
+| `goodsPrice` | int | 单位分 | 与微信后台道具价一致；服务端取 `tenant_xpay_products.price_cents` 写入 |
+| `outTradeNo` | string | 本地订单号 | `model.BuildOutTradeNo` 产物 |
+| `attach` | string | 自定义透传 | 推荐放 `tier_code|platform|user_id`，回调原样回来便于补救 |
+
+> 字段名拼写、大小写、是否必填以**实施时的活文档**为准（见 §6 顶部 guardrail）。
+
+> `tenant_payment_configs.XpayOfferId` 在 §5.1 已加。
+
+#### 代码骨架
+
 ```go
+type xpaySignData struct {
+    OfferId      string `json:"offerId"`
+    BuyQuantity  int    `json:"buyQuantity"`
+    Env          int    `json:"env"`
+    CurrencyType string `json:"currencyType"`
+    ProductId    string `json:"productId"`
+    GoodsPrice   int64  `json:"goodsPrice"`
+    OutTradeNo   string `json:"outTradeNo"`
+    Attach       string `json:"attach"`
+}
+
 func (p *xpayProvider) CreateOrder(ctx context.Context, req payment.CreateOrderRequest) (*payment.CreateOrderResponse, error) {
     // 与 wxpay v3 不同，xpay 不提前调微信下单接口。
-    // 服务端只负责生成下发给客户端的 signData / paySig / signature 三件套；
-    // 真正的下单由客户端 wx.requestVirtualPayment 触发，微信侧完成支付后
-    // 反向 POST 到我们的 notify URL 推 deliver 事件。
-    signData := xpaySignData{
-        OutTradeNo: req.Order.OutTradeNo,
-        ProductId:  metadata.XpayProductId,
-        Quantity:   1,
-        Env:        envCode(cfg.XpayEnv),  // 0=prod, 1=sandbox
-        // ...
+    // 服务端只生成 wx.requestVirtualPayment 入参四件套（mode 由前端写死，
+    // 服务端下发其余三件：sign_data / pay_sig / signature）。
+
+    sd := xpaySignData{
+        OfferId:      cfg.XpayOfferId,
+        BuyQuantity:  1,
+        Env:          envCode(cfg.XpayEnv),  // 0 = prod, 1 = sandbox
+        CurrencyType: "CNY",
+        ProductId:    productRow.ProductId,
+        GoodsPrice:   productRow.PriceCents,
+        OutTradeNo:   req.Order.OutTradeNo,
+        Attach:       buildAttach(productRow.TierCode, productRow.Platform, req.Order.UserId),
     }
-    body, _ := json.Marshal(signData)
-    paySig := calcPaySig("requestVirtualPayment", body, appKeyPlain)
+
+    body, err := json.Marshal(sd)
+    if err != nil { return nil, err }
+
+    paySig    := calcPaySig("requestVirtualPayment", body, appKeyPlain)
     signature := calcSignature(body, sessionKey)
+
     return &payment.CreateOrderResponse{
         XpaySignData:  string(body),
         XpayPaySig:    paySig,
@@ -318,41 +387,80 @@ func (p *xpayProvider) CreateOrder(ctx context.Context, req payment.CreateOrderR
 ```
 
 - `payment.CreateOrderResponse` 增字段 `XpaySignData / XpayPaySig / XpaySignature`。
-- 本地 `payment_orders` 行在 `CreateOrder` 后即变成 `pending`，等 deliver_notify 推送过来才转 `paid`。
-- session_key 来源：jscode2session 时由后端缓存（建议 Redis，TTL 跟随微信约定的 7200s 或更短），缓存 key 用 (tenant_id, openid)。
+- 序列化字节流必须与签名输入字节级一致，`sign_data` 直接以 `string(body)` 透传，避免 controller 层再次 marshal。
+- 本地 `payment_orders` 行在 `CreateOrder` 后即 `pending`，等 deliver 回调推过来才转 `paid`。
+- session_key 来源见 §6.2 末尾时序图。
 
 ### 6.4 `Provider.VerifyAndParseNotify`
 
-虚拟支付的回调事件是 XML 格式，结构与公众号事件类似：
+虚拟支付 2.0 的回调是 **JSON**，结构（以道具直购的发货事件为例）：
 
-```xml
-<xml>
-  <ToUserName><![CDATA[gh_xxx]]></ToUserName>
-  <FromUserName><![CDATA[OPENID]]></FromUserName>
-  <CreateTime>1700000000</CreateTime>
-  <MsgType><![CDATA[event]]></MsgType>
-  <Event><![CDATA[xpay_goods_deliver_notify]]></Event>
-  <OpenId><![CDATA[OPENID]]></OpenId>
-  <OutTradeNo><![CDATA[XXX]]></OutTradeNo>
-  <Env>0</Env>
-  <WeChatPayInfo>
-    <MchOrderNo>...</MchOrderNo>
-    <TransactionId>...</TransactionId>
-    <PaidTime>1700000000</PaidTime>
-  </WeChatPayInfo>
-  <GoodsInfo>
-    <ProductId>...</ProductId>
-    <Quantity>1</Quantity>
-    <OrigPrice>3000</OrigPrice>
-    <ActualPrice>3000</ActualPrice>
-    <Attach><![CDATA[...]]></Attach>
-  </GoodsInfo>
-</xml>
+```json
+{
+  "EventType": "xpay_goods_deliver",
+  "Event": "xpay_goods_deliver_notify",
+  "Payload": "<JSON 字符串原文，作为整体参与签名>",
+  "PayEventSig": "<HMAC-SHA256(AppKey, Event + '&' + Payload) 十六进制>"
+}
 ```
 
-- 验签：query 参数中带 `signature` 字段（HMAC over body with AppKey），服务端按 AppKey 重新计算比对。
-- 解析后产出 `payment.NotifyResult`，与 wxpay 共享下游 `applyTopupSuccess`。
-- **响应**：返回 `{"ErrCode": 0, "ErrMsg": "success"}`，否则微信会重试。
+`Payload` 是被微信侧 `json.Marshal` 后又作为字符串塞进顶层包裹的 JSON 字符串，里面含订单交付明细，典型字段集合（**实施前以活文档为准**）：
+
+```json
+{
+  "OpenId": "...",
+  "OutTradeNo": "...",
+  "Env": 0,
+  "WeChatPayInfo": {
+    "MchOrderNo": "...",
+    "TransactionId": "...",
+    "PaidTime": 1700000000
+  },
+  "GoodsInfo": {
+    "ProductId": "...",
+    "Quantity": 1,
+    "OrigPrice": 3000,
+    "ActualPrice": 3000,
+    "Attach": "tier_30|android|123"
+  }
+}
+```
+
+**验签算法**（`pay_event_sig`）：
+
+```go
+// signMsg = Event + "&" + Payload （Payload 取顶层包裹里的字符串原文，不是再次序列化的结果）
+// pay_event_sig = hex(HMAC_SHA256(AppKey, signMsg))
+func verifyPayEventSig(event, payload, gotSig string, appKey []byte) bool {
+    mac := hmac.New(sha256.New, appKey)
+    mac.Write([]byte(event))
+    mac.Write([]byte("&"))
+    mac.Write([]byte(payload))
+    want := hex.EncodeToString(mac.Sum(nil))
+    return hmac.Equal([]byte(want), []byte(gotSig))
+}
+```
+
+实现要点：
+
+- `Payload` 必须取顶层 JSON 解码后的**字符串原值**做签名输入；如果先把 Payload 解成 struct 再 marshal 回来，字节大概率不一致，会验签失败。建议用一次扁平解析：
+
+  ```go
+  var envelope struct {
+      EventType   string `json:"EventType"`
+      Event       string `json:"Event"`
+      Payload     string `json:"Payload"`     // ← 拿原始字符串
+      PayEventSig string `json:"PayEventSig"`
+  }
+  if err := json.Unmarshal(rawBody, &envelope); err != nil { ... }
+  // 用 envelope.Payload + envelope.Event 算签名
+  // 验签通过后再把 envelope.Payload 解析为业务 struct
+  ```
+
+- 验签通过后解析 `Payload` 拿 `OutTradeNo / TransactionId / PaidTime`，转成 `payment.NotifyResult`，下游复用 `ApplyPaymentSuccess`。
+- **响应**：HTTP 200 + JSON `{"ErrCode": 0, "ErrMsg": "success"}`。任何 `ErrCode != 0` 或非 200 都会被微信侧重试。
+- **幂等**：同一 `OutTradeNo` 微信侧最多重试若干次，依赖 `MarkOrderPaid` 的 pending→paid 单向 flip 保证只会成功记账一次（既有逻辑，无需新增）。
+- **大小写敏感**：上面 `EventType / Event / Payload / PayEventSig` 是大写驼峰；微信不同事件家族有时混用 snake_case（如旧公众号事件）。**实施时打一份原始 body 到日志**（脱敏后），确认大小写和结构。
 
 ### 6.5 `Provider.QueryOrder` & `Provider.Refund`
 
@@ -402,12 +510,24 @@ type TierItem struct {
 
 ### 7.3 回调路由分流
 
-`/api/payment/wechat/notify/:tid/:order_type` 既要兼容旧 wxpay v3（JSON + `Wechatpay-Signature` header），也要兼容新 xpay（XML + query 参数 `signature`）。在 controller 入口处按 `Content-Type` 和 body 起始字节判别：
+xpay 与 wxpay v3 都是 JSON，但**载荷结构、签名 header / 字段、响应体规范都不同**。为减少入口判别错误的风险，**给 xpay 单独 path**，而不是塞进现有 `/api/payment/wechat/notify`：
 
-- `application/json` 且 header 含 `Wechatpay-Serial` → 走 `wechat` provider 验签
-- `application/xml` 或 body 以 `<xml>` 起始 → 走 `wechat_xpay` provider 验签
+| 路径 | provider | 触发条件 |
+|---|---|---|
+| `POST /api/payment/wechat/notify/:tid/:order_type` | `wechat` (v3) | header `Wechatpay-Signature` + JSON body 含 `resource.ciphertext` |
+| `POST /api/payment/wechat/xpay_notify/:tid/:order_type` （新增） | `wechat_xpay` | JSON body 顶层含 `EventType` / `PayEventSig` |
 
-否则统一返回 400。
+理由：
+
+- 两条路径职责单一，验签算法、解密路径、响应体格式都互不混淆，不需要写 fragile 的形态嗅探。
+- `notify_url` 在创建订单时由 `controller/payment/wechat.go:buildNotifyUrl` 拼出绝对 URL；新增 xpay 路径只需要新增一个 helper（或复用既有的，传不同 path 后缀）。
+- 老版小程序兜底窗口（§7.2）期间，老 wxpay 回调仍走老路径，互不影响。
+
+入口控制器：
+
+- 老路径 `notify.go` 不动。
+- 新增 `controller/payment/xpay_notify.go`：解析 envelope → 取 `cfg.XpayAppKeyEnc` 解密 → 调 `wechat_xpay` provider 的 `VerifyAndParseNotify` → `ValidateOutTradeNoRoute` → `ApplyPaymentSuccess` → 返回 `{"ErrCode":0,"ErrMsg":"success"}`。
+- 路由注册放在 `router/api-router.go` 既有 payment 路由组旁。
 
 ## 8. 小程序前端
 
@@ -426,11 +546,16 @@ async function doPay() {
 
   await new Promise((resolve, reject) => {
     wx.requestVirtualPayment({
+      mode: 'short_series_goods',  // ← 顶层 mode 必填，标识道具直购模式
       signData: data.sign_data,    // 后端原样下发的 JSON 字符串
-      paySig: data.pay_sig,        // 后端 HMAC(AppKey, ...) 算好
-      signature: data.signature,   // 后端 HMAC(session_key, ...) 算好（不是微信侧自动注入）
+      paySig: data.pay_sig,        // 后端 HMAC(AppKey, 'requestVirtualPayment&'+sign_data)
+      signature: data.signature,   // 后端 HMAC(session_key, sign_data)
       success: resolve,
-      fail: (err) => reject(new Error(err.errMsg || '支付已取消')),
+      fail: (err) => {
+        // session 过期由后端 wxmini_session_expired 已经拦了一道；这里仅处理
+        // 客户端基础库 / 用户取消等错误，常见 errMsg 包括 'cancel' / 'fail'
+        reject(new Error(err.errMsg || '支付已取消'))
+      },
     })
   })
 
@@ -510,7 +635,7 @@ export const createWxMiniXpayOrder = (tierCode, platform) =>
 
 - AppKey 与现有 PrivateKey/Apiv3Key 走相同加密链路（AES-256-GCM + HKDF）。
 - platform 字段的服务端 UA 二次校验（防止用户撒谎拿低价档）。
-- pay_sig 计算使用的 body 必须与 HTTP 实际发送的 body 字节级一致；写好测试覆盖签名稳定性。
+- pay_sig / signature / pay_event_sig 三处签名输入的字节流必须与实际传输的 body 字节级一致：sign_data 一旦由 `json.Marshal` 产出就**透传**，不要在 controller / 前端中间层再 unmarshal-remarshal；回调侧的 Payload 必须取顶层 envelope 解析后的字符串原值参与签名。
 - 回调验签失败的请求一律返回 400 且不影响订单状态。
 - 沙箱与正式环境的 AppKey 不可混用，`XpayEnv` 与 AppKey 必须绑定校验（DB 约束之外加 service 层校验）。
 - iOS UA 校验作为防御层，但根本防线仍是道具价格在微信后台被强制写死，客户端伪造的 platform 参数最坏只能让 iOS 用户误付 android 价（这种情况下微信会按 product_id 收 android 价，平台不亏；只是用户在 iOS 上付了 Android 道具的钱，体验异常）。
@@ -519,8 +644,11 @@ export const createWxMiniXpayOrder = (tierCode, platform) =>
 
 ### 12.1 单元测试
 
-- `service/payment/wechat_xpay/client_test.go`：pay_sig 算法对照微信官方示例向量（uri=`/xpay/query_user_balance`、postBody=`{"openid":"xxx"...}`、appkey=`12345` → `c37809f27c6d7fd1837ad2500a04512b66b34fd793a39a385fade56dca89a4b5`）
-- `notify_test.go`：xpay_goods_deliver_notify XML 解析 + 验签 + 重复推送幂等
+- `service/payment/wechat_xpay/client_test.go`：
+  - `pay_sig` 算法对照微信官方示例向量（uri=`/xpay/query_user_balance`、postBody=`{"openid":"xxx"...}`、appkey=`12345` → `c37809f27c6d7fd1837ad2500a04512b66b34fd793a39a385fade56dca89a4b5`）
+  - `pay_event_sig` 算法对照活文档示例向量（实施时取一份 sandbox 真实回调样例固化为黄金向量）
+  - `signature` 算法对照微信文档示例（session_key=`9hAb/NEYUlkaMBEsmFgzig==`、postBody=`{"openid":"xxx"...}` → `089d9e8dc5d308977360c4b79ec600a93d736802802a807d634192328032f6c7`）
+- `notify_test.go`：JSON envelope 解析（含 Payload 字符串原值未被 re-marshal） + pay_event_sig 验签 + 重复推送幂等 + 错误响应（`ErrCode != 0`）触发微信侧重试
 - `goods_test.go`：CreateOrder 字段映射 + tier 不存在 / platform 非法 / 租户未开通虚拟支付 等错误路径
 - `provider_test.go`：注册名、TestCredentials（HEAD /xpay/ping 之类的轻量探活）
 - `controller/payment/wxmini_xpay_test.go`：tier 列表 + 下单 + UA 二次校验路径
