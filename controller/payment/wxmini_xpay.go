@@ -1,6 +1,7 @@
 package payment
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,14 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
+)
+
+// xpay event names — kept here (not imported from the provider) because the
+// controller needs to peek the envelope to route deliver vs refund callbacks
+// before either provider method runs.
+const (
+	xpayEventGoodsDeliver = "xpay_goods_deliver_notify"
+	xpayEventRefund       = "xpay_refund_notify"
 )
 
 type wxminiXpayOrderRequest struct {
@@ -35,13 +44,22 @@ func detectWxminiPlatformFromUA(ua string) string {
 	}
 }
 
+// wxminiPlatform resolves the caller's platform (android | ios) from either
+// the body field or ?platform= query, and cross-checks against the User-Agent
+// when both signals are present.
+//
+// Platform is REQUIRED — there is no default. iOS and Android have separate
+// product_id rows in tenant_xpay_products (App Store vs Google Play comply
+// with different store rules), and silently defaulting to android would
+// quietly serve the wrong tier list / fail downstream when the product_id
+// doesn't match the device.
 func wxminiPlatform(c *gin.Context, in string) (string, error) {
 	platform := strings.TrimSpace(strings.ToLower(in))
 	if platform == "" {
 		platform = strings.TrimSpace(strings.ToLower(c.Query("platform")))
 	}
 	if platform == "" {
-		platform = "android"
+		return "", errors.New("platform is required (android | ios)")
 	}
 	if platform != "android" && platform != "ios" {
 		return "", errors.New("invalid platform")
@@ -179,15 +197,21 @@ func buildXpayNotifyUrl(tenantId int, orderType string) (string, error) {
 	return fmt.Sprintf("%s/api/payment/wechat/xpay_notify/%d/%s", base, tenantId, orderType), nil
 }
 
+// HandleWechatXpayNotify is the single async-callback endpoint for WeChat
+// mini-program virtual payment 2.0 (`short_series_goods` mode). The same URL
+// receives BOTH payment-success deliver notifications and refund-status
+// notifications; they are distinguished only by the envelope's `Event`
+// field. This handler peeks at Event first, then dispatches to the
+// appropriate provider method + downstream service flow.
 func HandleWechatXpayNotify(c *gin.Context) {
 	tenantId, orderType, ok := parseNotifyRoute(c)
 	if !ok {
-		c.JSON(http.StatusBadRequest, xpayAck("1", "invalid route", c.GetString("request_id")))
+		c.JSON(http.StatusBadRequest, xpayAck(1, "invalid route", c.GetString("request_id")))
 		return
 	}
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusOK, xpayAck("1", "read body failed", c.GetString("request_id")))
+		c.JSON(http.StatusOK, xpayAck(1, "read body failed", c.GetString("request_id")))
 		return
 	}
 	headers := make(map[string]string, len(c.Request.Header))
@@ -198,18 +222,47 @@ func HandleWechatXpayNotify(c *gin.Context) {
 	}
 	provider, ok := paymentsvc.Get("wechat_xpay")
 	if !ok {
-		c.JSON(http.StatusOK, xpayAck("1", "provider missing", c.GetString("request_id")))
+		c.JSON(http.StatusOK, xpayAck(1, "provider missing", c.GetString("request_id")))
 		return
 	}
+
+	// Peek envelope to dispatch deliver vs refund. We only inspect the
+	// `Event` field here; signature verification still happens inside the
+	// provider's VerifyAndParse* method against the original body bytes.
+	var peek struct {
+		Event string `json:"Event"`
+	}
+	if err := json.Unmarshal(body, &peek); err != nil {
+		common.SysError("xpay notify peek envelope failed: " + err.Error())
+		c.JSON(http.StatusOK, xpayAck(1, "invalid envelope", c.GetString("request_id")))
+		return
+	}
+
+	switch peek.Event {
+	case xpayEventRefund:
+		handleXpayRefundNotify(c, provider, tenantId, body, headers)
+	case xpayEventGoodsDeliver, "":
+		// Empty Event falls into deliver path so the provider's strict
+		// check produces the same error response as before.
+		handleXpayDeliverNotify(c, provider, tenantId, orderType, body, headers)
+	default:
+		// Unknown event — log + ack with data="OK" so WeChat stops retrying;
+		// reconcile sweep + refund reconcile (S3) cover any state we missed.
+		common.SysLog("xpay notify unknown event=" + peek.Event)
+		c.JSON(http.StatusOK, xpayAck(0, "OK", c.GetString("request_id")))
+	}
+}
+
+func handleXpayDeliverNotify(c *gin.Context, provider paymentsvc.Provider, tenantId int, orderType string, body []byte, headers map[string]string) {
 	result, err := provider.VerifyAndParseNotify(c.Request.Context(), tenantId, body, headers)
 	if err != nil {
 		common.SysError("xpay notify verify failed: " + err.Error())
-		c.JSON(http.StatusOK, xpayAck("1", "verify failed", c.GetString("request_id")))
+		c.JSON(http.StatusOK, xpayAck(1, "verify failed", c.GetString("request_id")))
 		return
 	}
 	if err := model.ValidateOutTradeNoRoute(result.OutTradeNo, tenantId, orderType); err != nil {
 		common.SysError("xpay notify route mismatch: " + err.Error())
-		c.JSON(http.StatusOK, xpayAck("1", "route mismatch", c.GetString("request_id")))
+		c.JSON(http.StatusOK, xpayAck(1, "route mismatch", c.GetString("request_id")))
 		return
 	}
 	if result.Success {
@@ -219,13 +272,56 @@ func HandleWechatXpayNotify(c *gin.Context) {
 		}
 		if err := paymentsvc.ApplyPaymentSuccess(c.Request.Context(), result.OutTradeNo, result.TransactionId, paidAt); err != nil {
 			common.SysError("xpay ApplyPaymentSuccess failed: " + err.Error())
-			c.JSON(http.StatusOK, xpayAck("1", "apply failed", c.GetString("request_id")))
+			c.JSON(http.StatusOK, xpayAck(1, "apply failed", c.GetString("request_id")))
 			return
 		}
 	} else if result.RawState == "TRANSACTION.PAYERROR" {
 		_, _ = model.MarkOrderClosed(result.OutTradeNo, "xpay notify: "+result.RawState)
 	}
-	c.JSON(http.StatusOK, xpayAck("0", "OK", c.GetString("request_id")))
+	c.JSON(http.StatusOK, xpayAck(0, "OK", c.GetString("request_id")))
+}
+
+func handleXpayRefundNotify(c *gin.Context, provider paymentsvc.Provider, tenantId int, body []byte, headers map[string]string) {
+	result, err := provider.VerifyAndParseRefundNotify(c.Request.Context(), tenantId, body, headers)
+	if err != nil {
+		common.SysError("xpay refund notify verify failed: " + err.Error())
+		c.JSON(http.StatusOK, xpayAck(1, "verify failed", c.GetString("request_id")))
+		return
+	}
+	if err := model.ValidateOutRefundNoRoute(result.OutRefundNo, tenantId); err != nil {
+		common.SysError("xpay refund notify route mismatch: " + err.Error())
+		_ = model.CreateTenantAuditLog(&model.TenantAuditLog{
+			TenantId: tenantId, Action: "payment.refund.notify.mismatch",
+			Detail: `{"out_refund_no":"` + result.OutRefundNo + `"}`,
+		})
+		c.JSON(http.StatusOK, xpayAck(1, "route mismatch", c.GetString("request_id")))
+		return
+	}
+	switch strings.ToUpper(strings.TrimSpace(result.RefundStatus)) {
+	case "SUCCESS":
+		if err := paymentsvc.ApplyRefundSuccess(
+			c.Request.Context(),
+			result.OutRefundNo, result.RefundId, result.SuccessTime, result.Amount,
+		); err != nil {
+			common.SysError("xpay ApplyRefundSuccess failed: " + err.Error())
+			c.JSON(http.StatusOK, xpayAck(1, "apply failed", c.GetString("request_id")))
+			return
+		}
+	case "FAILED", "CLOSED", "ABNORMAL":
+		if err := model.MarkRefundFailed(result.OutRefundNo, "xpay refund: "+result.RefundStatus); err != nil {
+			common.SysError("xpay MarkRefundFailed failed: " + err.Error())
+			c.JSON(http.StatusOK, xpayAck(1, "mark failed", c.GetString("request_id")))
+			return
+		}
+	case "PROCESSING", "":
+		// Interim state — ack and wait for the next callback.
+	default:
+		// Unknown status — log + ack so WeChat stops retrying. Operators
+		// can investigate via last_error / audit logs.
+		common.SysLog("xpay refund notify unknown status=" + result.RefundStatus +
+			" out_refund_no=" + result.OutRefundNo)
+	}
+	c.JSON(http.StatusOK, xpayAck(0, "OK", c.GetString("request_id")))
 }
 
 func parseNotifyRoute(c *gin.Context) (int, string, bool) {
@@ -240,12 +336,16 @@ func parseNotifyRoute(c *gin.Context) (int, string, bool) {
 	return tenantId, orderType, true
 }
 
-func xpayAck(code string, msg string, requestId string) gin.H {
+// xpayAck returns the ACK envelope WeChat virtual-payment 2.0 expects.
+// returnCode is a JSON number (0 = success, non-zero = retry me); `data`
+// must be the literal string "OK" for WeChat to consider the callback
+// consumed — see spec §6.4. On error we set data=msg so WeChat retries.
+func xpayAck(code int, msg string, requestId string) gin.H {
 	if requestId == "" {
 		requestId = fmt.Sprintf("local-%d", time.Now().UnixNano())
 	}
 	data := "OK"
-	if code != "0" {
+	if code != 0 {
 		data = msg
 	}
 	return gin.H{"returnCode": code, "returnMessage": msg, "data": data, "requestId": requestId}
