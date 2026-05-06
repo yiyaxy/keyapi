@@ -25,9 +25,12 @@ func InsertMobileChatMessage(record *MobileChatMessage) error {
 	return WithTenantBypass(DB).Create(record).Error
 }
 
-func ListMobileChatMessages(tenantId int, userId int, kind string, nowMs int64, limit int) ([]MobileChatMessage, error) {
+func ListMobileChatMessages(tenantId int, userId int, kind string, nowMs int64, limit int, offset int, desc bool) ([]MobileChatMessage, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	var records []MobileChatMessage
 	query := WithTenantBypass(DB).
@@ -35,8 +38,13 @@ func ListMobileChatMessages(tenantId int, userId int, kind string, nowMs int64, 
 	if kind != "" {
 		query = query.Where("kind = ?", kind)
 	}
+	order := "created_at_ms ASC, id ASC"
+	if desc {
+		order = "created_at_ms DESC, id DESC"
+	}
 	err := query.
-		Order("created_at_ms ASC, id ASC").
+		Order(order).
+		Offset(offset).
 		Limit(limit).
 		Find(&records).Error
 	return records, err

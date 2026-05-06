@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ExternalLink, Loader2, MessageCircle, Tag } from 'lucide-react';
+import { ArrowLeft, Loader2, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { MobileChat } from '@/components/mobile/MobileAppPortal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -69,26 +70,33 @@ function AppCard({ app }: { app: AiApp }) {
 
   const isLoading = sessionMut.isPending || guestMut.isPending;
 
+  const visibleTags = tags.slice(0, 2);
+
   return (
-    <div className='flex flex-col rounded-xl border border-line bg-bg-0 p-5 transition hover:shadow-md'>
-      <div className='mb-3 flex items-start gap-3'>
+    <button
+      type='button'
+      onClick={() => void handleUse()}
+      disabled={isLoading}
+      className='flex min-h-[156px] flex-col rounded-lg border border-line bg-bg-0 p-3 text-left transition hover:border-primary/30 hover:shadow-sm disabled:cursor-wait disabled:opacity-70'
+    >
+      <div className='mb-2 flex items-start gap-2.5'>
         {app.icon_url ? (
           <img
             src={app.icon_url}
             alt={app.name}
-            className='h-12 w-12 shrink-0 rounded-lg object-cover'
+            className='h-9 w-9 shrink-0 rounded-md object-cover'
           />
         ) : (
-          <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-bg-2 text-2xl font-bold text-fg-2'>
+          <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-bg-2 text-16 font-bold text-fg-2'>
             {app.name.slice(0, 1).toUpperCase()}
           </div>
         )}
         <div className='min-w-0'>
-          <h3 className='truncate font-semibold leading-snug'>{app.name}</h3>
-          {tags.length > 0 && (
+          <h3 className='truncate text-14 font-semibold leading-snug'>{app.name}</h3>
+          {visibleTags.length > 0 && (
             <div className='mt-1 flex flex-wrap gap-1'>
-              {tags.map((tag) => (
-                <Badge key={tag} variant='secondary' className='text-11'>
+              {visibleTags.map((tag) => (
+                <Badge key={tag} variant='secondary' className='h-5 px-1.5 text-10'>
                   {tag}
                 </Badge>
               ))}
@@ -96,49 +104,43 @@ function AppCard({ app }: { app: AiApp }) {
           )}
         </div>
       </div>
-      <p className='mb-4 flex-1 text-13 text-fg-2 line-clamp-3'>
+      <p className='mb-3 flex-1 text-12 leading-5 text-fg-2 line-clamp-2'>
         {app.description || t('no_description')}
       </p>
       <div className='flex items-center justify-between gap-2'>
         {app.guest_quota > 0 && !user && (
           <span className='text-12 text-success'>{t('free_trial')}</span>
         )}
-        <div className='ml-auto flex gap-2'>
-          <Button size='sm' variant='secondary' asChild>
-            <a href={app.target_url} rel='noopener noreferrer'>
-              <ExternalLink className='mr-1 h-3.5 w-3.5' />
-              {t('preview')}
-            </a>
-          </Button>
-          <Button size='sm' onClick={handleUse} disabled={isLoading}>
-            {isLoading && <Loader2 className='mr-1 h-3.5 w-3.5 animate-spin' />}
-            {t('use_app')}
-          </Button>
-        </div>
+        {isLoading ? <Loader2 className='ml-auto h-4 w-4 animate-spin text-fg-2' /> : null}
       </div>
-    </div>
+    </button>
   );
 }
 
 function ChatEntryCard() {
   const { t } = useTranslation('apps');
+  const { user } = useAuth();
 
   return (
-    <section className='mb-6 rounded-xl border border-primary/20 bg-primary/5 p-5'>
-      <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-        <div className='flex min-w-0 items-start gap-3'>
-          <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground'>
-            <MessageCircle className='h-6 w-6' />
+    <section className='min-w-0 lg:sticky lg:top-20'>
+      {user ? (
+        <MobileChat desktop />
+      ) : (
+        <div className='rounded-xl border border-primary/20 bg-primary/5 p-5'>
+          <div className='flex min-w-0 items-start gap-3'>
+            <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground'>
+              <MessageCircle className='h-6 w-6' />
+            </div>
+            <div className='min-w-0'>
+              <h2 className='text-18 font-semibold'>{t('chat_entry.title')}</h2>
+              <p className='mt-1 text-13 leading-6 text-fg-2'>{t('chat_entry.subtitle')}</p>
+            </div>
           </div>
-          <div className='min-w-0'>
-            <h2 className='text-18 font-semibold'>{t('chat_entry.title')}</h2>
-            <p className='mt-1 text-13 leading-6 text-fg-2'>{t('chat_entry.subtitle')}</p>
-          </div>
+          <Button className='mt-5 w-full' asChild>
+            <a href='/login?redirect=/apps'>{t('login_required')}</a>
+          </Button>
         </div>
-        <Button className='shrink-0' asChild>
-          <a href='/playground'>{t('chat_entry.action')}</a>
-        </Button>
-      </div>
+      )}
     </section>
   );
 }
@@ -163,49 +165,68 @@ export function AppMarketplacePage() {
   );
 
   return (
-    <div className='mx-auto max-w-5xl px-4 py-10'>
-      <div className='mb-8 text-center'>
-        <div className='mb-2 flex items-center justify-center gap-2 text-fg-2'>
-          <Tag className='h-5 w-5' />
-          <span className='text-13 uppercase tracking-wider'>{t('section_label')}</span>
-        </div>
-        <h1 className='text-3xl font-bold'>{t('title')}</h1>
-        <p className='mt-2 text-fg-2'>{t('subtitle')}</p>
+    <div className='mx-auto max-w-[1440px] px-4 py-4 lg:px-6'>
+      <div className='grid gap-5 lg:grid-cols-[minmax(0,1fr)_500px] xl:grid-cols-[minmax(0,1fr)_540px] 2xl:grid-cols-[minmax(0,1fr)_560px] lg:items-start'>
+        <aside className='min-w-0'>
+          <div className='mb-4'>
+            <div className='mb-3'>
+              <h1 className='text-22 font-semibold'>{t('title')}</h1>
+              <p className='mt-1 text-13 text-fg-2'>{t('subtitle')}</p>
+            </div>
+            <input
+              type='text'
+              className='w-full rounded-lg border border-line bg-bg-0 px-4 py-2 text-14 outline-none placeholder:text-fg-3 focus:border-primary'
+              placeholder={t('search_placeholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {list.isPending ? (
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3'>
+              {Array.from({ length: 9 }).map((_, i) => (
+                <Skeleton key={i} className='h-40 w-full rounded-lg' />
+              ))}
+            </div>
+          ) : list.isError ? (
+            <div className='rounded-xl border border-danger/30 bg-danger/5 p-6 text-center text-danger'>
+              {t('load_error')}
+            </div>
+          ) : apps.length === 0 ? (
+            <div className='rounded-xl border border-line bg-bg-1 p-12 text-center text-fg-2'>
+              {search ? t('no_results') : t('empty')}
+            </div>
+          ) : (
+            <div className='grid max-h-[calc(100vh-168px)] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-3'>
+              {apps.map((app) => (
+                <AppCard key={app.id} app={app} />
+              ))}
+            </div>
+          )}
+        </aside>
+
+        <ChatEntryCard />
       </div>
-
-      <div className='mb-6'>
-        <input
-          type='text'
-          className='w-full rounded-lg border border-line bg-bg-0 px-4 py-2 text-14 outline-none placeholder:text-fg-3 focus:border-primary'
-          placeholder={t('search_placeholder')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      <ChatEntryCard />
-
-      {list.isPending ? (
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className='h-48 w-full rounded-xl' />
-          ))}
-        </div>
-      ) : list.isError ? (
-        <div className='rounded-xl border border-danger/30 bg-danger/5 p-6 text-center text-danger'>
-          {t('load_error')}
-        </div>
-      ) : apps.length === 0 ? (
-        <div className='rounded-xl border border-line bg-bg-1 p-12 text-center text-fg-2'>
-          {search ? t('no_results') : t('empty')}
-        </div>
-      ) : (
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {apps.map((app) => (
-            <AppCard key={app.id} app={app} />
-          ))}
-        </div>
-      )}
     </div>
+  );
+}
+
+export function AppsChatPage() {
+  return (
+    <main className='min-h-screen bg-bg-1 px-4 py-4 lg:px-6'>
+      <div className='mx-auto flex h-[calc(100vh-32px)] max-w-5xl flex-col gap-3'>
+        <div className='flex shrink-0 items-center justify-between'>
+          <Button variant='secondary' size='sm' asChild>
+            <a href='/apps'>
+              <ArrowLeft className='mr-1 h-4 w-4' />
+              返回应用广场
+            </a>
+          </Button>
+        </div>
+        <div className='min-h-0 flex-1'>
+          <MobileChat desktop desktopFullscreenLink={false} />
+        </div>
+      </div>
+    </main>
   );
 }

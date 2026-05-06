@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,17 +38,27 @@ func ListMobileChatMessages(c *gin.Context) {
 	_ = model.DeleteExpiredMobileChatMessages(nowMs)
 
 	kind := normalizeMobileChatKind(c.Query("kind"))
-	records, err := model.ListMobileChatMessages(middleware.GetTenantId(c), c.GetInt("id"), kind, nowMs, 100)
+	limit := parseMobileChatInt(c.Query("limit"), 100)
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	offset := parseMobileChatInt(c.Query("offset"), 0)
+	desc := c.Query("order") == "desc"
+	records, err := model.ListMobileChatMessages(middleware.GetTenantId(c), c.GetInt("id"), kind, nowMs, limit+1, offset, desc)
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
 	}
 
 	items := make([]mobileChatMessageResponse, 0, len(records))
 	for _, record := range records {
 		items = append(items, mobileChatMessageToResponse(record))
 	}
-	common.ApiSuccess(c, gin.H{"items": items})
+	common.ApiSuccess(c, gin.H{"items": items, "has_more": hasMore})
 }
 
 func ClearMobileChatMessages(c *gin.Context) {
@@ -123,6 +134,17 @@ func normalizeMobileChatKind(kind string) string {
 		return ""
 	}
 	return kind
+}
+
+func parseMobileChatInt(value string, fallback int) int {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func mobileChatMessageToResponse(record model.MobileChatMessage) mobileChatMessageResponse {

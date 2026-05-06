@@ -13,7 +13,7 @@ import { PublicLayout } from '@/components/public/PublicLayout';
 import { AboutPage } from '@/pages/About';
 import { AccountPage } from '@/pages/Account';
 import { AiAppsAdminPage } from '@/pages/AiAppsAdmin';
-import { AppMarketplacePage } from '@/pages/AppMarketplace';
+import { AppMarketplacePage, AppsChatPage } from '@/pages/AppMarketplace';
 import { AffTransferAdminPage } from '@/pages/AffTransferAdmin';
 import { AnalyticsAdminPage } from '@/pages/AnalyticsAdmin';
 import { AffTransferPage } from '@/pages/AffTransfer';
@@ -108,6 +108,7 @@ export const router = createBrowserRouter([
           { path: '/m/apps', element: <MobileRoutePage route='apps' /> },
           { path: '/m/chat', element: <MobileRoutePage route='chat' /> },
           { path: '/m/topup', element: <MobileRoutePage route='topup' /> },
+          { path: '/apps/chat', element: <AppsChatPage /> },
           {
             element: <AppShell />,
             children: [
