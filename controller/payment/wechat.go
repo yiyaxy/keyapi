@@ -127,6 +127,16 @@ func createTopupHandler(productForm string) gin.HandlerFunc {
 			common.ApiErrorMsg(c, "小程序微信支付未启用")
 			return
 		}
+		if productForm == model.PaymentProductFormJsapi {
+			if service.GetConfigBool(tid, "LegacyMiniJsapiDisabled", false) {
+				common.ApiErrorMsg(c, "wxpay_jsapi_disabled_for_virtual_goods")
+				return
+			}
+			if cfg, err := model.GetTenantPaymentConfig(tid, "wechat"); err == nil && cfg.XpayEnabled {
+				common.ApiErrorMsg(c, "wxpay_jsapi_disabled_for_virtual_goods")
+				return
+			}
+		}
 
 		var req wechatTopupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {

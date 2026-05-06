@@ -547,6 +547,7 @@ func migrateDBFast() error {
 		{&TenantLedger{}, "TenantLedger"},
 		{&TenantAuditLog{}, "TenantAuditLog"},
 		{&TenantPaymentConfig{}, "TenantPaymentConfig"},
+		{&TenantXpayProduct{}, "TenantXpayProduct"},
 		{&PaymentOrder{}, "PaymentOrder"},
 		{&PaymentRefund{}, "PaymentRefund"},
 		{&TenantChannelOverride{}, "TenantChannelOverride"},

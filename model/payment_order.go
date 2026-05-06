@@ -31,9 +31,10 @@ const (
 
 // Product form constants. Picks which WeChat ordering API is used.
 const (
-	PaymentProductFormNative = "native"
-	PaymentProductFormH5     = "h5"
-	PaymentProductFormJsapi  = "jsapi"
+	PaymentProductFormNative    = "native"
+	PaymentProductFormH5        = "h5"
+	PaymentProductFormJsapi     = "jsapi"
+	PaymentProductFormXpayGoods = "xpay_goods"
 )
 
 // PaymentOrder models one external payment order across all providers.
@@ -45,14 +46,14 @@ type PaymentOrder struct {
 	TenantId int `json:"tenant_id" gorm:"index;not null"` // 收款归属锚点，见 §11.1
 	UserId   int `json:"user_id" gorm:"index"`            // topup=充值用户; sub=租户 admin
 
-	Provider    string `json:"provider" gorm:"type:varchar(32);index"`    // "wechat"
-	OrderType   string `json:"order_type" gorm:"type:varchar(16);index"`  // "topup" | "sub"
-	ProductForm string `json:"product_form" gorm:"type:varchar(16)"`      // "native" | "h5" | "jsapi"
+	Provider    string `json:"provider" gorm:"type:varchar(32);index"`   // "wechat"
+	OrderType   string `json:"order_type" gorm:"type:varchar(16);index"` // "topup" | "sub"
+	ProductForm string `json:"product_form" gorm:"type:varchar(16)"`     // "native" | "h5" | "jsapi"
 
 	OutTradeNo    string `json:"out_trade_no" gorm:"type:varchar(64);uniqueIndex"`
 	TransactionId string `json:"transaction_id" gorm:"type:varchar(64);index"` // 微信返回
 
-	Amount   int64  `json:"amount" gorm:"bigint;not null"`                // 单位：分
+	Amount   int64  `json:"amount" gorm:"bigint;not null"` // 单位：分
 	Currency string `json:"currency" gorm:"type:varchar(8);default:'CNY'"`
 
 	// RefundedAmount: 累计已退款，S3 才会被写入。
@@ -61,7 +62,7 @@ type PaymentOrder struct {
 	Status         string `json:"status" gorm:"type:varchar(24);index"`
 
 	Openid   string `json:"openid,omitempty" gorm:"type:varchar(128)"` // JSAPI 场景
-	Metadata string `json:"metadata" gorm:"type:text"`                  // JSON
+	Metadata string `json:"metadata" gorm:"type:text"`                 // JSON
 	// LastError: 最近一次下单失败 / 回调异常的原因。下单 RPC 失败时我们
 	// **不删** 本地 pending 行（微信可能已经受理），而是留痕在这里，
 	// 由 S3 reconcile 的 QueryOrder 推进终态，或 expires_at 到期后标 expired。

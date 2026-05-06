@@ -165,6 +165,31 @@ export const getTopupPreview = (amount) =>
 export const createWechatTopupJsapi = (amount) =>
   request.post('/api/payment/wechat/topup/jsapi', { amount })
 
+export const getWxminiTopupTiers = (platform = 'android') =>
+  request.get('/api/payment/wxmini/topup/tiers', { platform })
+
+export const createWxminiTopupXpay = (tierCode, platform = 'android') =>
+  request.post('/api/payment/wxmini/topup/xpay', {
+    tier_code: tierCode,
+    platform,
+  })
+
+export const requestWxminiVirtualPayment = (xpayResponse) =>
+  new Promise((resolve, reject) => {
+    if (typeof wx === 'undefined' || typeof wx.requestVirtualPayment !== 'function') {
+      reject(new Error('wx.requestVirtualPayment is not available'))
+      return
+    }
+    wx.requestVirtualPayment({
+      mode: xpayResponse.mode || 'short_series_goods',
+      signData: xpayResponse.sign_data,
+      paySig: xpayResponse.pay_sig,
+      signature: xpayResponse.signature,
+      success: resolve,
+      fail: reject,
+    })
+  })
+
 /**
  * 查询支付订单状态
  * @param {string} outTradeNo 订单号

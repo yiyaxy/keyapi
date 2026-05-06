@@ -1,5 +1,7 @@
 # 小程序虚拟支付 2.0 接入设计
 
+> Implementation reconciliation (2026-05-06): code uses `XpayEnv` values `"0"`/`"1"`, `TenantXpayProduct.Name`, `TenantXpayProduct.AmountCents`, and response JSON fields `mode/sign_data/pay_sig/signature`. Earlier snippets using `"prod"`/`"sandbox"`, `PriceCents`, or `XpaySignData/XpayPaySig/XpaySignature` are superseded by these names. xpay notify parsing accepts both `WeChatPayInfo` and `PayInfo`.
+
 - 创建日期：2026-05-06
 - 状态：待实现（spec → plan → impl）
 - 主负责：sg
@@ -88,7 +90,7 @@ type TenantPaymentConfig struct {
     // ... 既有字段
     XpayEnabled   bool   `json:"xpay_enabled" gorm:"default:false"`
     XpayOfferId   string `json:"xpay_offer_id" gorm:"type:varchar(64)"`
-    XpayEnv       string `json:"xpay_env" gorm:"type:varchar(16);default:'prod'"` // 'sandbox' | 'prod'
+    XpayEnv       string `json:"xpay_env" gorm:"type:varchar(16);default:'0'"` // "0" = prod, "1" = sandbox
     XpayAppKeyEnc string `json:"-" gorm:"type:text"`                              // AES-256-GCM 加密
 }
 ```
@@ -734,3 +736,10 @@ export const createWxMiniXpayOrder = (tierCode, platform) =>
 - 道具配置 API 自动同步（虚拟支付 2.0 提供了 product 配置接口，本期人工配，未来再做自动化）
 - 续期支付（sub）若未来要进小程序入口，按相同模式扩展（道具 product_id 改为周期型）
 - 跨租户的 AppKey 共享（当前每租户独立 AppID，未来若做平台型小程序需另行设计）
+## 14. Implementation Reconciliation Notes
+
+- `XpayEnv` in code uses WeChat numeric strings: `"0"` for production and `"1"` for sandbox. Earlier prose that says `"prod"` / `"sandbox"` is superseded by this note.
+- `TenantXpayProduct` in code uses `Name` and `AmountCents`; earlier prose that says `PriceCents` is superseded by `AmountCents`.
+- `payment.CreateOrderResponse` returns `mode`, `sign_data`, `pay_sig`, and `signature`; earlier prose that says `XpaySignData` / `XpayPaySig` / `XpaySignature` is superseded by these JSON field names.
+- xpay notify payload parsing accepts both `WeChatPayInfo` and `PayInfo` for compatibility with Tencent examples and SDKs. `EventType` remains the payment-result field such as `TRANSACTION.SUCCESS`; `Event` remains the business event such as `xpay_goods_deliver_notify`.
+- xpay `/xpay/query_order` and `/xpay/refund_order` use `https://api.weixin.qq.com/xpay/...` with `access_token` and `pay_sig` query parameters; request body includes `env`.
