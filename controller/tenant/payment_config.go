@@ -26,13 +26,17 @@ type tenantPaymentConfigView struct {
 	Provider         string `json:"provider"`
 	Enabled          bool   `json:"enabled"`
 	MiniLoginEnabled bool   `json:"mini_login_enabled"`
+	XpayEnabled      bool   `json:"xpay_enabled"`
 	PlatformLocked   bool   `json:"platform_locked"`
 	AppId            string `json:"app_id"`
 	Mchid            string `json:"mchid"`
 	SerialNo         string `json:"serial_no"`
+	XpayOfferId      string `json:"xpay_offer_id"`
+	XpayEnv          string `json:"xpay_env"`
 	AppSecretSet     bool   `json:"app_secret_set"`
 	Apiv3KeySet      bool   `json:"apiv3_key_set"`
 	PrivateKeySet    bool   `json:"private_key_set"`
+	XpayAppKeySet    bool   `json:"xpay_app_key_set"`
 	LastTestAt       int64  `json:"last_test_at"`
 	LastTestOk       bool   `json:"last_test_ok"`
 	LastTestError    string `json:"last_test_error"`
@@ -44,10 +48,13 @@ func toView(cfg *model.TenantPaymentConfig) tenantPaymentConfigView {
 	return tenantPaymentConfigView{
 		Id: cfg.Id, Provider: cfg.Provider,
 		Enabled: cfg.Enabled, MiniLoginEnabled: cfg.MiniLoginEnabled,
+		XpayEnabled:    cfg.XpayEnabled,
 		PlatformLocked: cfg.PlatformLocked,
 		AppId:          cfg.AppId, Mchid: cfg.Mchid, SerialNo: cfg.SerialNo,
+		XpayOfferId: cfg.XpayOfferId, XpayEnv: cfg.XpayEnv,
 		AppSecretSet: cfg.AppSecretEnc != "", Apiv3KeySet: cfg.Apiv3KeyEnc != "",
 		PrivateKeySet: cfg.PrivateKeyEnc != "",
+		XpayAppKeySet: cfg.XpayAppKeyEnc != "",
 		LastTestAt:    cfg.LastTestAt, LastTestOk: cfg.LastTestOk,
 		LastTestError: cfg.LastTestError,
 		CreatedAt:     cfg.CreatedAt, UpdatedAt: cfg.UpdatedAt,
@@ -80,12 +87,16 @@ func GetTenantPaymentConfigs(c *gin.Context) {
 type UpdateTenantPaymentConfigRequest struct {
 	Enabled          *bool  `json:"enabled"`
 	MiniLoginEnabled *bool  `json:"mini_login_enabled"`
+	XpayEnabled      *bool  `json:"xpay_enabled"`
 	AppId            string `json:"app_id"`
 	Mchid            string `json:"mchid"`
 	SerialNo         string `json:"serial_no"`
+	XpayOfferId      string `json:"xpay_offer_id"`
+	XpayEnv          string `json:"xpay_env"`
 	AppSecret        string `json:"app_secret"`
 	Apiv3Key         string `json:"apiv3_key"`
 	PrivateKey       string `json:"private_key"`
+	XpayAppKey       string `json:"xpay_app_key"`
 }
 
 // UpdateTenantWechatConfig writes new config values for the current tenant.
@@ -123,24 +134,34 @@ func UpdateTenantWechatConfig(c *gin.Context) {
 	if req.SerialNo != "" {
 		cfg.SerialNo = req.SerialNo
 	}
+	if req.XpayOfferId != "" {
+		cfg.XpayOfferId = req.XpayOfferId
+	}
+	if req.XpayEnv != "" {
+		cfg.XpayEnv = req.XpayEnv
+	}
 	if req.Enabled != nil {
 		cfg.Enabled = *req.Enabled
 	}
 	if req.MiniLoginEnabled != nil {
 		cfg.MiniLoginEnabled = *req.MiniLoginEnabled
 	}
+	if req.XpayEnabled != nil {
+		cfg.XpayEnabled = *req.XpayEnabled
+	}
 
 	// Only (re-)encrypt the fields actually provided. Empty => keep existing.
-	if req.AppSecret != "" || req.Apiv3Key != "" || req.PrivateKey != "" {
+	if req.AppSecret != "" || req.Apiv3Key != "" || req.PrivateKey != "" || req.XpayAppKey != "" {
 		existing, err := cfg.DecryptSensitive()
 		if err != nil {
-			common.ApiErrorMsg(c, "现有凭据无法解密（可能已损坏或主密钥已轮换），请重新录入全部三个敏感字段")
+			common.ApiErrorMsg(c, "现有凭据无法解密（可能已损坏或主密钥已轮换），请重新录入全部敏感字段")
 			return
 		}
 		plain := model.TenantPaymentPlaintext{
 			AppSecret:  ifNonEmpty(req.AppSecret, existing.AppSecret),
 			Apiv3Key:   ifNonEmpty(req.Apiv3Key, existing.Apiv3Key),
 			PrivateKey: ifNonEmpty(req.PrivateKey, existing.PrivateKey),
+			XpayAppKey: ifNonEmpty(req.XpayAppKey, existing.XpayAppKey),
 		}
 		if err := cfg.EncryptAndSetSensitive(plain); err != nil {
 			common.ApiError(c, err)

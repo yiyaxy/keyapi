@@ -82,6 +82,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/waffo/webhook", payment.WaffoWebhook)
 		// WeChat Pay S2 callback — no auth; signature verified inside handler
 		apiRouter.POST("/payment/wechat/notify/:tenant_id/:order_type", payment.HandleWechatNotify)
+		apiRouter.POST("/payment/wechat/xpay_notify/:tenant_id/:order_type", payment.HandleWechatXpayNotify)
 		// WeChat Pay S3 refund callback — no auth; signature verified inside handler
 		apiRouter.POST("/payment/wechat/refund_notify/:tenant_id", payment.HandleWechatRefundNotify)
 
@@ -725,6 +726,10 @@ func SetApiRouter(router *gin.Engine) {
 			tenantRoute.PUT("/payment/configs/wechat", tenant.UpdateTenantWechatConfig)
 			tenantRoute.POST("/payment/configs/wechat/test", tenant.TestTenantWechatConfig)
 			tenantRoute.DELETE("/payment/configs/wechat", tenant.DeleteTenantWechatConfig)
+			tenantRoute.GET("/payment/xpay/products", tenant.ListTenantXpayProducts)
+			tenantRoute.POST("/payment/xpay/products", tenant.CreateTenantXpayProduct)
+			tenantRoute.PUT("/payment/xpay/products/:id", tenant.UpdateTenantXpayProduct)
+			tenantRoute.DELETE("/payment/xpay/products/:id", tenant.DeleteTenantXpayProduct)
 			// WeChat Pay S2 ordering + callback
 			tenantRoute.POST("/payment/wechat/sub/native", payment.CreateWechatSubNative)
 			tenantRoute.POST("/payment/wechat/sub/jsapi", payment.CreateWechatSubJsapi)
@@ -753,6 +758,8 @@ func SetApiRouter(router *gin.Engine) {
 			paymentRoute.POST("/wechat/topup/native", payment.CreateWechatTopupNative)
 			paymentRoute.POST("/wechat/topup/h5", payment.CreateWechatTopupH5)
 			paymentRoute.POST("/wechat/topup/jsapi", payment.CreateWechatTopupJsapi)
+			paymentRoute.GET("/wxmini/topup/tiers", payment.GetWxminiXpayTiers)
+			paymentRoute.POST("/wxmini/topup/xpay", payment.CreateWxminiTopupXpay)
 			paymentRoute.GET("/orders", payment.ListSelfPaymentOrders)
 			paymentRoute.GET("/orders/:out_trade_no", payment.GetPaymentOrderByOutTradeNoHandler)
 		}
@@ -767,6 +774,7 @@ func SetApiRouter(router *gin.Engine) {
 			appPublicRoute.POST("/image-diagnosis/results", app.SaveImageDiagnosisResult)
 			appPublicRoute.GET("/mobile-chat/messages", middleware.UserAuth(), app.ListMobileChatMessages)
 			appPublicRoute.POST("/mobile-chat/messages", middleware.UserAuth(), app.SaveMobileChatMessage)
+			appPublicRoute.DELETE("/mobile-chat/messages", middleware.UserAuth(), app.ClearMobileChatMessages)
 			appPublicRoute.GET("/:slug", app.GetApp)
 			appPublicRoute.POST("/:slug/guest-session", middleware.CriticalRateLimit(), app.GetGuestToken)
 			appPublicRoute.POST("/:slug/session", middleware.UserAuth(), app.GetSessionToken)

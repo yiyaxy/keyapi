@@ -265,6 +265,7 @@ func RegisterTenantCallbacks(db *gorm.DB) {
 
 	// Phase S1 表 —— 支付配置
 	RegisterTenantScopedTable("tenant_payment_configs")
+	RegisterTenantScopedTable("tenant_xpay_products")
 	RegisterTenantScopedTable("payment_orders")
 	// Phase S3 表 —— 退款
 	RegisterTenantScopedTable("payment_refunds")

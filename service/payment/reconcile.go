@@ -48,7 +48,7 @@ const (
 
 // reconcileProviders is the list of providers the sweep walks. For now only
 // wechat; future providers (alipay, stripe-cn) just append here.
-var reconcileProviders = []string{"wechat"}
+var reconcileProviders = []string{"wechat", "wechat_xpay"}
 
 // StartPaymentReconcileLoop runs RunPaymentReconcileSweep every `interval`.
 // Intended to be launched from main.go inside a gopool.Go on master nodes.

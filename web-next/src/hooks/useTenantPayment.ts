@@ -12,13 +12,17 @@ export type WechatConfigView = {
   provider: string;
   enabled: boolean;
   mini_login_enabled: boolean;
+  xpay_enabled: boolean;
   platform_locked: boolean;
   app_id: string;
   mchid: string;
   serial_no: string;
+  xpay_offer_id: string;
+  xpay_env: string;
   app_secret_set: boolean;
   apiv3_key_set: boolean;
   private_key_set: boolean;
+  xpay_app_key_set: boolean;
   last_test_at: number;
   last_test_ok: boolean;
   last_test_error: string;
@@ -29,12 +33,16 @@ export type WechatConfigView = {
 export type WechatConfigUpdate = {
   enabled?: boolean;
   mini_login_enabled?: boolean;
+  xpay_enabled?: boolean;
   app_id?: string;
   mchid?: string;
   serial_no?: string;
+  xpay_offer_id?: string;
+  xpay_env?: string;
   app_secret?: string;
   apiv3_key?: string;
   private_key?: string;
+  xpay_app_key?: string;
 };
 
 export type PaymentOrder = {

@@ -21,11 +21,12 @@ func TestTenantPaymentConfig_EncryptDecryptRoundtrip(t *testing.T) {
 		AppSecret:  "secret-app",
 		Apiv3Key:   "secret-apiv3-32-bytes-long-padding",
 		PrivateKey: "-----BEGIN PRIVATE KEY-----\nMIIB...\n-----END PRIVATE KEY-----\n",
+		XpayAppKey: "secret-xpay",
 	}
 	if err := cfg.EncryptAndSetSensitive(plaintext); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
-	if cfg.AppSecretEnc == "" || cfg.Apiv3KeyEnc == "" || cfg.PrivateKeyEnc == "" {
+	if cfg.AppSecretEnc == "" || cfg.Apiv3KeyEnc == "" || cfg.PrivateKeyEnc == "" || cfg.XpayAppKeyEnc == "" {
 		t.Fatal("enc fields should be set")
 	}
 	if cfg.AppSecretEnc == plaintext.AppSecret {
@@ -38,7 +39,8 @@ func TestTenantPaymentConfig_EncryptDecryptRoundtrip(t *testing.T) {
 	}
 	if decoded.AppSecret != plaintext.AppSecret ||
 		decoded.Apiv3Key != plaintext.Apiv3Key ||
-		decoded.PrivateKey != plaintext.PrivateKey {
+		decoded.PrivateKey != plaintext.PrivateKey ||
+		decoded.XpayAppKey != plaintext.XpayAppKey {
 		t.Fatal("roundtrip mismatch")
 	}
 }

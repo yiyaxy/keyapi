@@ -32,6 +32,8 @@ type CreateTopupOrderInput struct {
 	UserLevelId       int
 	UserLevelName     string
 	ProductForm       string
+	XpayTierCode      string
+	XpayPlatform      string
 	Openid            string // jsapi only
 	ClientIp          string // h5 only
 	Description       string // shown on WeChat UI
@@ -78,18 +80,22 @@ func CreateTopupOrder(ctx context.Context, in CreateTopupOrderInput) (*CreateOrd
 		"top_up_bonus_percent": in.TopUpBonusPercent,
 		"user_level_id":        in.UserLevelId,
 		"user_level_name":      in.UserLevelName,
+		"xpay_tier_code":       in.XpayTierCode,
+		"xpay_platform":        in.XpayPlatform,
 	})
 	return createOrder(ctx, createOrderArgs{
-		TenantId:    in.TenantId,
-		UserId:      in.UserId,
-		AmountCents: in.AmountCents,
-		OrderType:   model.PaymentOrderTypeTopup,
-		ProductForm: in.ProductForm,
-		Openid:      in.Openid,
-		ClientIp:    in.ClientIp,
-		Description: in.Description,
-		NotifyUrl:   in.NotifyUrl,
-		Metadata:    string(meta),
+		TenantId:     in.TenantId,
+		UserId:       in.UserId,
+		AmountCents:  in.AmountCents,
+		OrderType:    model.PaymentOrderTypeTopup,
+		ProductForm:  in.ProductForm,
+		XpayTierCode: in.XpayTierCode,
+		XpayPlatform: in.XpayPlatform,
+		Openid:       in.Openid,
+		ClientIp:     in.ClientIp,
+		Description:  in.Description,
+		NotifyUrl:    in.NotifyUrl,
+		Metadata:     string(meta),
 	})
 }
 
@@ -115,28 +121,34 @@ func CreateSubOrder(ctx context.Context, in CreateSubOrderInput) (*CreateOrderRe
 }
 
 type createOrderArgs struct {
-	TenantId    int
-	UserId      int
-	AmountCents int64
-	OrderType   string
-	ProductForm string
-	Openid      string
-	ClientIp    string
-	Description string
-	NotifyUrl   string
-	Metadata    string
+	TenantId     int
+	UserId       int
+	AmountCents  int64
+	OrderType    string
+	ProductForm  string
+	XpayTierCode string
+	XpayPlatform string
+	Openid       string
+	ClientIp     string
+	Description  string
+	NotifyUrl    string
+	Metadata     string
 }
 
 func createOrder(ctx context.Context, a createOrderArgs) (*CreateOrderResponse, *model.PaymentOrder, error) {
 	switch a.ProductForm {
 	case model.PaymentProductFormNative,
 		model.PaymentProductFormH5,
-		model.PaymentProductFormJsapi:
+		model.PaymentProductFormJsapi,
+		model.PaymentProductFormXpayGoods:
 	default:
 		return nil, nil, fmt.Errorf("unknown product form: %s", a.ProductForm)
 	}
 	if a.ProductForm == model.PaymentProductFormJsapi && a.Openid == "" {
 		return nil, nil, errors.New("jsapi order requires openid")
+	}
+	if a.ProductForm == model.PaymentProductFormXpayGoods && a.Openid == "" {
+		return nil, nil, errors.New("xpay_goods order requires openid")
 	}
 	if a.ProductForm == model.PaymentProductFormH5 && a.ClientIp == "" {
 		return nil, nil, errors.New("h5 order requires client ip")
@@ -150,7 +162,7 @@ func createOrder(ctx context.Context, a createOrderArgs) (*CreateOrderResponse, 
 	order := &model.PaymentOrder{
 		TenantId:    a.TenantId,
 		UserId:      a.UserId,
-		Provider:    "wechat",
+		Provider:    providerNameForProductForm(a.ProductForm),
 		OrderType:   a.OrderType,
 		ProductForm: a.ProductForm,
 		OutTradeNo:  outTradeNo,
@@ -163,10 +175,12 @@ func createOrder(ctx context.Context, a createOrderArgs) (*CreateOrderResponse, 
 		return nil, nil, fmt.Errorf("persist order: %w", err)
 	}
 
-	provider, ok := Get("wechat")
+	providerName := providerNameForProductForm(a.ProductForm)
+	provider, ok := Get(providerName)
 	if !ok {
-		markOrderCreationError(order.OutTradeNo, "wechat provider not registered")
-		return nil, nil, errors.New("wechat provider not registered")
+		msg := providerName + " provider not registered"
+		markOrderCreationError(order.OutTradeNo, msg)
+		return nil, nil, errors.New(msg)
 	}
 	resp, err := provider.CreateOrder(ctx, CreateOrderRequest{
 		Order:       order,
@@ -184,6 +198,13 @@ func createOrder(ctx context.Context, a createOrderArgs) (*CreateOrderResponse, 
 		return nil, nil, err
 	}
 	return resp, order, nil
+}
+
+func providerNameForProductForm(productForm string) string {
+	if productForm == model.PaymentProductFormXpayGoods {
+		return "wechat_xpay"
+	}
+	return "wechat"
 }
 
 // markOrderCreationError stamps the most recent provider-call error into

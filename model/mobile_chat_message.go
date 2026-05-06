@@ -38,6 +38,12 @@ func ListMobileChatMessages(tenantId int, userId int, nowMs int64, limit int) ([
 	return records, err
 }
 
+func DeleteMobileChatMessages(tenantId int, userId int) error {
+	return WithTenantBypass(DB).
+		Where("tenant_id = ? AND user_id = ?", tenantId, userId).
+		Delete(&MobileChatMessage{}).Error
+}
+
 func DeleteExpiredMobileChatMessages(nowMs int64) error {
 	return WithTenantBypass(DB).Where("expires_at_ms <= ?", nowMs).Delete(&MobileChatMessage{}).Error
 }
