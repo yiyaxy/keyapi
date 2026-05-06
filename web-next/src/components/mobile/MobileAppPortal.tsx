@@ -2,20 +2,33 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  History,
   Image as ImageIcon,
+  LayoutGrid,
   Loader2,
   LogIn,
+  Menu,
   MessageCircle,
+  Plus,
   RefreshCw,
   Send,
+  UserRound,
   WalletCards,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { RechargeCard } from '@/components/topup/RechargeCard';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
@@ -53,6 +66,14 @@ type StoredChatMessage = {
   images?: string[];
   created_at: number;
 };
+
+function createMessageId(prefix: string) {
+  return `${prefix}-${Date.now()}`;
+}
+
+function currentTimestamp() {
+  return Date.now();
+}
 
 function pointsFromQuota(rawQuota: number, cfg: PublicConfig): string {
   const { value } = toDisplay(rawQuota, cfg);
@@ -100,7 +121,11 @@ function modelKind(row: PricingRow): ModelKind {
   const endpoints = row.supported_endpoint_types ?? [];
   const lower = `${row.model_name} ${row.description ?? ''} ${row.tags ?? ''}`.toLowerCase();
   if (endpoints.includes('image-generation')) return 'image';
-  if (lower.includes('image') && !endpoints.includes('openai') && !endpoints.includes('openai-response')) {
+  if (
+    lower.includes('image') &&
+    !endpoints.includes('openai') &&
+    !endpoints.includes('openai-response')
+  ) {
     return 'image';
   }
   return 'chat';
@@ -162,8 +187,11 @@ function extractChatText(data: unknown): string {
 
 function extractImageUrls(data: unknown): string[] {
   const items =
-    data && typeof data === 'object' && !Array.isArray(data) && Array.isArray((data as { data?: unknown }).data)
-      ? ((data as { data: unknown[] }).data)
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    Array.isArray((data as { data?: unknown }).data)
+      ? (data as { data: unknown[] }).data
       : Array.isArray(data)
         ? data
         : [];
@@ -202,7 +230,15 @@ function LoginRequired() {
   );
 }
 
-function MobileHeader({ title, subtitle, backTo }: { title: string; subtitle?: string; backTo?: string }) {
+function MobileHeader({
+  title,
+  subtitle,
+  backTo,
+}: {
+  title: string;
+  subtitle?: string;
+  backTo?: string;
+}) {
   const { refresh } = useAuth();
   return (
     <header className='sticky top-0 z-10 border-b border-line bg-bg-0/95 px-4 py-3 backdrop-blur'>
@@ -338,16 +374,19 @@ function MobileAppCard({
         )}
         <div className='min-w-0 flex-1'>
           <div className='flex items-center gap-2'>
-            <h3 className='min-w-0 flex-1 truncate text-15 font-semibold text-fg-0'>
-              {app.name}
-            </h3>
+            <h3 className='min-w-0 flex-1 truncate text-15 font-semibold text-fg-0'>{app.name}</h3>
             {tokenMutation.isPending ? (
               <Loader2 className='h-4 w-4 shrink-0 animate-spin text-fg-2' />
             ) : (
               <ArrowRight className='h-4 w-4 shrink-0 text-fg-2 transition group-active:translate-x-0.5' />
             )}
           </div>
-          <p className={cn('mt-1 text-12 leading-5 text-fg-2', compact ? 'line-clamp-1' : 'line-clamp-2')}>
+          <p
+            className={cn(
+              'mt-1 text-12 leading-5 text-fg-2',
+              compact ? 'line-clamp-1' : 'line-clamp-2'
+            )}
+          >
             {app.description || '这个应用暂未填写介绍'}
           </p>
         </div>
@@ -368,11 +407,14 @@ function MobileAppCard({
 function MobileChat({
   immersive = false,
   onEnterChatMode,
+  onExitChatMode,
 }: {
   immersive?: boolean;
   onEnterChatMode?: () => void;
+  onExitChatMode?: () => void;
 }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const pricing = usePricing();
   const [kind, setKind] = useState<ModelKind>('chat');
   const [selectedModelName, setSelectedModelName] = useState('');
@@ -380,6 +422,8 @@ function MobileChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [running, setRunning] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showUserInfo, setShowUserInfo] = useState(false);
 
   const models = useMemo(() => modelsFromPricing(pricing.data), [pricing.data]);
   const chatModels = models.filter((model) => model.kind === 'chat');
@@ -427,15 +471,29 @@ function MobileChat({
       model_display_name: model.displayName,
       content: message.content,
       images: message.images ?? [],
-      created_at: Date.now(),
+      created_at: currentTimestamp(),
     });
+  }
+
+  async function startNewChat() {
+    if (running) return;
+
+    setMessages([]);
+    setInput('');
+    setModelPickerOpen(false);
+    try {
+      await api.delete('/api/app/mobile-chat/messages');
+      toast.success('已开启新对话');
+    } catch {
+      toast.error('新对话已开启，但历史清理失败');
+    }
   }
 
   async function send() {
     const content = input.trim();
     if (!content || running || !selectedModel) return;
 
-    const userMessage: ChatMessage = { id: `u-${Date.now()}`, role: 'user', content };
+    const userMessage: ChatMessage = { id: createMessageId('u'), role: 'user', content };
     onEnterChatMode?.();
     setMessages((prev) => [...prev, userMessage]);
     persistMessage(userMessage, selectedModel, kind);
@@ -472,7 +530,7 @@ function MobileChat({
             );
       const imageUrls = kind === 'image' ? extractImageUrls(res.data) : [];
       const reply: ChatMessage = {
-        id: `a-${Date.now()}`,
+        id: createMessageId('a'),
         role: 'assistant',
         content:
           kind === 'image'
@@ -488,14 +546,11 @@ function MobileChat({
       const msg = err instanceof ApiError ? (err.backendMessage ?? err.message) : '对话请求失败';
       toast.error(msg);
       const errorMessage: ChatMessage = {
-        id: `e-${Date.now()}`,
+        id: createMessageId('e'),
         role: 'assistant',
         content: `请求失败：${msg}`,
       };
-      setMessages((prev) => [
-        ...prev,
-        errorMessage,
-      ]);
+      setMessages((prev) => [...prev, errorMessage]);
       persistMessage(errorMessage, selectedModel, kind);
     } finally {
       setRunning(false);
@@ -503,15 +558,73 @@ function MobileChat({
   }
 
   return (
-    <section className='rounded-lg border border-line bg-bg-0 p-4 shadow-sm'>
+    <section
+      className={cn(
+        'rounded-lg border border-line bg-bg-0 p-4 shadow-sm',
+        immersive ? 'min-h-[calc(100vh-96px)]' : ''
+      )}
+    >
       <div className='flex items-start justify-between gap-3'>
-        <div>
+        <div className='min-w-0'>
           <div className='flex items-center gap-2'>
+            {immersive ? (
+              <button
+                type='button'
+                onClick={onExitChatMode}
+                className='flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
+                aria-label='返回'
+              >
+                <ArrowLeft className='h-4 w-4' />
+              </button>
+            ) : null}
             <MessageCircle className='h-4 w-4 text-primary' />
-            <h2 className='text-17 font-semibold'>你今天在想些什么？</h2>
+            <div className='min-w-0'>
+              <h2 className='truncate text-17 font-semibold'>与大模型对话</h2>
+              {immersive && selectedModel ? (
+                <p className='truncate text-11 text-fg-2'>{selectedModel.displayName}</p>
+              ) : null}
+            </div>
           </div>
         </div>
-        {pricing.isPending ? <Loader2 className='h-4 w-4 animate-spin text-fg-2' /> : null}
+        <div className='flex shrink-0 items-center gap-1'>
+          {pricing.isPending ? <Loader2 className='h-4 w-4 animate-spin text-fg-2' /> : null}
+          {immersive ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type='button'
+                  className='flex h-9 w-9 items-center justify-center rounded-md border border-line bg-bg-1 text-fg-1'
+                  aria-label='打开菜单'
+                >
+                  <Menu className='h-4 w-4' />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end' className='w-44'>
+                <DropdownMenuItem onSelect={() => void startNewChat()} disabled={running}>
+                  <Plus className='h-4 w-4' />
+                  新开对话
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setShowHistory(true)}>
+                  <History className='h-4 w-4' />
+                  历史记录
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setShowUserInfo(true)}>
+                  <UserRound className='h-4 w-4' />
+                  用户信息
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => navigate('/m/apps')}>
+                  <LayoutGrid className='h-4 w-4' />
+                  AI 应用
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onExitChatMode}>
+                  <ArrowLeft className='h-4 w-4' />
+                  返回工作台
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
       </div>
 
       <>
@@ -562,96 +675,158 @@ function MobileChat({
           </div>
         ) : null}
 
-          {selectedModel ? (
-            <div className='mt-3'>
-              <button
-                type='button'
-                onClick={() => setModelPickerOpen((open) => !open)}
-                className='flex w-full items-center justify-between gap-3 rounded-md border border-line bg-bg-1 px-3 py-2 text-left'
-              >
-                <div className='min-w-0'>
-                  <p className='text-11 text-fg-2'>当前模型</p>
-                  <div className='mt-0.5 flex min-w-0 items-center gap-2'>
-                    <span className='truncate font-mono text-12 font-medium text-fg-0'>
-                      {selectedModel.displayName}
-                    </span>
-                    <span className='shrink-0 rounded-full bg-bg-0 px-2 py-0.5 text-11 text-fg-2'>
-                      {selectedModel.kind === 'chat' ? '大语言模型' : '图片模型'}
-                    </span>
-                  </div>
+        {selectedModel ? (
+          <div className='mt-3'>
+            <button
+              type='button'
+              onClick={() => setModelPickerOpen((open) => !open)}
+              className='flex w-full items-center justify-between gap-3 rounded-md border border-line bg-bg-1 px-3 py-2 text-left'
+            >
+              <div className='min-w-0'>
+                <p className='text-11 text-fg-2'>当前模型</p>
+                <div className='mt-0.5 flex min-w-0 items-center gap-2'>
+                  <span className='truncate font-mono text-12 font-medium text-fg-0'>
+                    {selectedModel.displayName}
+                  </span>
+                  <span className='shrink-0 rounded-full bg-bg-0 px-2 py-0.5 text-11 text-fg-2'>
+                    {selectedModel.kind === 'chat' ? '大语言模型' : '图片模型'}
+                  </span>
                 </div>
-                <ArrowRight
-                  className={cn(
-                    'h-4 w-4 shrink-0 text-fg-2 transition',
-                    modelPickerOpen ? 'rotate-90' : ''
-                  )}
-                />
-              </button>
+              </div>
+              <ArrowRight
+                className={cn(
+                  'h-4 w-4 shrink-0 text-fg-2 transition',
+                  modelPickerOpen ? 'rotate-90' : ''
+                )}
+              />
+            </button>
 
-              {modelPickerOpen ? (
-                <div className='mt-2 rounded-md border border-line bg-bg-0 p-2'>
-                  <div className='grid grid-cols-2 gap-2 rounded-md bg-bg-1 p-1'>
-                    {([
+            {modelPickerOpen ? (
+              <div className='mt-2 rounded-md border border-line bg-bg-0 p-2'>
+                <div className='grid grid-cols-2 gap-2 rounded-md bg-bg-1 p-1'>
+                  {(
+                    [
                       { value: 'chat', label: '大语言模型', icon: Bot, count: chatModels.length },
-                      { value: 'image', label: '图片模型', icon: ImageIcon, count: imageModels.length },
-                    ] as const).map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.value}
-                          type='button'
-                          onClick={() => setKind(item.value)}
-                          className={cn(
-                            'flex items-center justify-center gap-1.5 rounded px-2 py-2 text-12 font-medium transition',
-                            kind === item.value ? 'bg-bg-0 text-fg-0 shadow-sm' : 'text-fg-2'
-                          )}
-                        >
-                          <Icon className='h-3.5 w-3.5' />
-                          {item.label}
-                          <span className='text-11 text-fg-3'>{item.count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className='mt-2 max-h-44 space-y-1 overflow-y-auto'>
-                    {visibleModels.slice(0, 50).map((model) => (
+                      {
+                        value: 'image',
+                        label: '图片模型',
+                        icon: ImageIcon,
+                        count: imageModels.length,
+                      },
+                    ] as const
+                  ).map((item) => {
+                    const Icon = item.icon;
+                    return (
                       <button
-                        key={model.name}
+                        key={item.value}
                         type='button'
-                        onClick={() => {
-                          setSelectedModelName(model.name);
-                          setModelPickerOpen(false);
-                        }}
+                        onClick={() => setKind(item.value)}
                         className={cn(
-                          'flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-12 transition',
-                          selectedModel.name === model.name
-                            ? 'bg-primary/10 text-fg-0'
-                            : 'text-fg-2 hover:bg-bg-1'
+                          'flex items-center justify-center gap-1.5 rounded px-2 py-2 text-12 font-medium transition',
+                          kind === item.value ? 'bg-bg-0 text-fg-0 shadow-sm' : 'text-fg-2'
                         )}
                       >
-                        <span className='min-w-0 truncate font-mono'>{model.displayName}</span>
-                        <span className='shrink-0 text-11 text-fg-3'>{model.vendor}</span>
+                        <Icon className='h-3.5 w-3.5' />
+                        {item.label}
+                        <span className='text-11 text-fg-3'>{item.count}</span>
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              ) : null}
-            </div>
-          ) : null}
+                <div className='mt-2 max-h-44 space-y-1 overflow-y-auto'>
+                  {visibleModels.slice(0, 50).map((model) => (
+                    <button
+                      key={model.name}
+                      type='button'
+                      onClick={() => {
+                        setSelectedModelName(model.name);
+                        setModelPickerOpen(false);
+                      }}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-12 transition',
+                        selectedModel.name === model.name
+                          ? 'bg-primary/10 text-fg-0'
+                          : 'text-fg-2 hover:bg-bg-1'
+                      )}
+                    >
+                      <span className='min-w-0 truncate font-mono'>{model.displayName}</span>
+                      <span className='shrink-0 text-11 text-fg-3'>{model.vendor}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className='mt-3 space-y-2'>
           <Textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={kind === 'image' ? '描述图片：一张适合小程序分享卡片的海报...' : '问问模型：帮我写一段小程序介绍...'}
+            placeholder={
+              kind === 'image'
+                ? '描述图片：一张适合小程序分享卡片的海报...'
+                : '问问模型：帮我写一段小程序介绍...'
+            }
             className='min-h-20 resize-none'
           />
-          <Button className='h-10 w-full' onClick={() => void send()} disabled={running || !input.trim()}>
+          <Button
+            className='h-10 w-full'
+            onClick={() => void send()}
+            disabled={running || !input.trim()}
+          >
             {running ? <Loader2 className='h-4 w-4 animate-spin' /> : <Send className='h-4 w-4' />}
             {kind === 'image' ? '生成图片' : '发送'}
           </Button>
         </div>
       </>
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className='max-h-[82vh] w-[calc(100vw-32px)] max-w-md overflow-hidden rounded-lg p-0'>
+          <DialogHeader className='border-b border-line px-4 py-3 text-left'>
+            <DialogTitle className='text-16'>历史记录</DialogTitle>
+          </DialogHeader>
+          <div className='max-h-[68vh] space-y-3 overflow-y-auto p-4'>
+            {messages.length === 0 ? (
+              <div className='rounded-md border border-line bg-bg-1 p-5 text-center text-13 text-fg-2'>
+                暂无对话记录
+              </div>
+            ) : (
+              messages.map((message) => (
+                <div key={message.id} className='rounded-md border border-line bg-bg-1 p-3'>
+                  <div className='mb-1 text-11 font-medium text-fg-2'>
+                    {message.role === 'user' ? '我' : 'AI'}
+                  </div>
+                  <p className='line-clamp-4 whitespace-pre-wrap text-13 leading-6 text-fg-0'>
+                    {message.content || '图片结果'}
+                  </p>
+                  {message.images?.length ? (
+                    <div className='mt-2 text-12 text-fg-2'>图片 {message.images.length} 张</div>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showUserInfo} onOpenChange={setShowUserInfo}>
+        <DialogContent className='w-[calc(100vw-32px)] max-w-md rounded-lg'>
+          <DialogHeader>
+            <DialogTitle>用户信息</DialogTitle>
+          </DialogHeader>
+          <div className='space-y-3 text-13'>
+            <div className='rounded-md border border-line bg-bg-1 p-3'>
+              <div className='text-11 text-fg-2'>账号</div>
+              <div className='mt-1 font-medium text-fg-0'>
+                {user?.display_name || user?.username || '当前用户'}
+              </div>
+            </div>
+            <div className='rounded-md border border-line bg-bg-1 p-3'>
+              <div className='text-11 text-fg-2'>用户组</div>
+              <div className='mt-1 font-medium text-fg-0'>{user?.group || '默认分组'}</div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -710,17 +885,41 @@ function RecommendedApps({ limit, showMore = false }: { limit?: number; showMore
   );
 }
 
+function MobileChatEntryCard() {
+  return (
+    <section className='rounded-lg border border-primary/20 bg-primary/5 p-4 shadow-sm'>
+      <div className='flex items-start gap-3'>
+        <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground'>
+          <MessageCircle className='h-5 w-5' />
+        </div>
+        <div className='min-w-0 flex-1'>
+          <h2 className='text-16 font-semibold'>与大模型对话</h2>
+          <p className='mt-1 text-12 leading-5 text-fg-2'>选择模型直接聊天，也可以生成图片。</p>
+        </div>
+      </div>
+      <Button className='mt-4 h-10 w-full' asChild>
+        <Link to='/m'>开始对话</Link>
+      </Button>
+    </section>
+  );
+}
+
 export function MobileHomePage() {
   const { user } = useAuth();
   const [chatMode, setChatMode] = useState(false);
   const enterChatMode = useCallback(() => setChatMode(true), []);
+  const exitChatMode = useCallback(() => setChatMode(false), []);
   if (!user) return <LoginRequired />;
   return (
     <main className='min-h-screen bg-bg-1 pb-10 text-fg-0'>
       {chatMode ? null : <MobileHeader title='AI 工作台' subtitle='对话、应用和积分充值' />}
       <div className='mx-auto max-w-md space-y-4 px-4 py-4'>
         {chatMode ? null : <PointsCard compact />}
-        <MobileChat immersive={chatMode} onEnterChatMode={enterChatMode} />
+        <MobileChat
+          immersive={chatMode}
+          onEnterChatMode={enterChatMode}
+          onExitChatMode={exitChatMode}
+        />
         {chatMode ? null : <RecommendedApps limit={3} showMore />}
       </div>
     </main>
@@ -734,6 +933,7 @@ export function MobileAppsPage() {
     <main className='min-h-screen bg-bg-1 pb-10 text-fg-0'>
       <MobileHeader title='AI 应用' subtitle='选择应用后直接启动' backTo='/m' />
       <div className='mx-auto max-w-md space-y-5 px-4 py-4'>
+        <MobileChatEntryCard />
         <RecommendedApps />
       </div>
     </main>

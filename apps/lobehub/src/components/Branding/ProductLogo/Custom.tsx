@@ -38,6 +38,8 @@ const CustomTextLogo = memo<FlexboxProps & { size: number }>(({ size, style, ...
 
 const CustomImageLogo = memo<Omit<ImageProps, 'alt' | 'src'> & { size: number }>(
   ({ size, ...rest }) => {
+    if (!BRANDING_LOGO_URL) return null;
+
     return (
       <Image
         alt={BRANDING_NAME}
@@ -71,6 +73,7 @@ const Divider: IconType = (({ ref, size = '1em', style, ...rest }) => (
 
 const CustomLogo = memo<LobeChatProps>(({ extra, size = 32, className, style, type, ...rest }) => {
   let logoComponent: ReactNode;
+  const hasImageLogo = Boolean(BRANDING_LOGO_URL);
 
   switch (type) {
     case '3d':
@@ -89,11 +92,13 @@ const CustomLogo = memo<LobeChatProps>(({ extra, size = 32, className, style, ty
       break;
     }
     case 'combine': {
-      logoComponent = (
+      logoComponent = hasImageLogo ? (
         <>
           <CustomImageLogo size={size} />
           <CustomTextLogo size={size} style={{ marginLeft: Math.round(size / 4) }} />
         </>
+      ) : (
+        <CustomTextLogo size={size} />
       );
 
       if (!extra)

@@ -13,7 +13,8 @@ import {
 } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 import debug from 'debug';
-import { type RuntimeImageGenParams } from 'model-bank';
+import { and, eq } from 'drizzle-orm';
+import { ModelProvider, type RuntimeImageGenParams } from 'model-bank';
 import { z } from 'zod';
 
 import { getProviderContentPolicyErrorMessage } from '@/business/server/getProviderContentPolicyErrorMessage';
@@ -24,7 +25,9 @@ import { AsyncTaskModel } from '@/database/models/asyncTask';
 import { FileModel } from '@/database/models/file';
 import { GenerationModel } from '@/database/models/generation';
 import { GenerationBatchModel } from '@/database/models/generationBatch';
+import { aiProviders } from '@/database/schemas';
 import { asyncAuthedProcedure, asyncRouter as router } from '@/libs/trpc/async';
+import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
 import { GenerationService } from '@/server/services/generation';
 import { sanitizeFileName } from '@/utils/sanitizeFileName';
@@ -76,6 +79,264 @@ const checkAbortSignal = (signal: AbortSignal) => {
   if (signal.aborted) {
     throw new Error('Operation was aborted');
   }
+};
+
+type GatewayImageConfig = {
+  apiKey: string;
+  baseURL: string;
+};
+
+type GatewayImageResponse = {
+  height?: number;
+  imageFetchHeaders?: Record<string, string>;
+  imageUrl: string;
+  isPrivateImageUrl?: boolean;
+  modelUsage?: any;
+  width?: number;
+};
+
+type AsyncImageTaskResponse = {
+  error?: { code?: string; message?: string } | null;
+  progress?: number | string;
+  result?: unknown;
+  status?: string;
+  task_id?: string;
+};
+
+const normalizeBaseURL = (url: string) => url.replace(/\/+$/, '');
+
+const isGatewayAsyncContentUrl = (imageUrl: string, baseURL: string) => {
+  try {
+    const image = new URL(imageUrl);
+    const base = new URL(baseURL);
+    const basePath = base.pathname.replace(/\/+$/, '');
+    return image.origin === base.origin && image.pathname.startsWith(`${basePath}/images/async/`);
+  } catch {
+    return false;
+  }
+};
+
+const resolveProxyBaseURL = () => {
+  const explicitProxyUrl = process.env.OPENAI_PROXY_URL?.trim();
+  if (explicitProxyUrl) return normalizeBaseURL(explicitProxyUrl);
+
+  const baseUrl = process.env.NEW_API_BASE_URL?.trim();
+  if (!baseUrl) return;
+
+  return `${normalizeBaseURL(baseUrl)}/v1`;
+};
+
+const resolveGatewayImageConfig = async (
+  ctx: { serverDB: any; userId: string },
+  provider: string,
+): Promise<GatewayImageConfig | undefined> => {
+  if (provider !== ModelProvider.OpenAI) return;
+
+  const [providerRow] = await ctx.serverDB
+    .select({ keyVaults: aiProviders.keyVaults })
+    .from(aiProviders)
+    .where(and(eq(aiProviders.id, provider), eq(aiProviders.userId, ctx.userId)))
+    .limit(1);
+
+  const keyVaults = (await KeyVaultsGateKeeper.getUserKeyVaults(
+    providerRow?.keyVaults ?? null,
+    ctx.userId,
+  )) as {
+    apiKey?: string;
+    baseURL?: string;
+    endpoint?: string;
+  };
+
+  const apiKey = keyVaults.apiKey || process.env.OPENAI_API_KEY;
+  const baseURL = keyVaults.baseURL || keyVaults.endpoint || resolveProxyBaseURL();
+
+  if (!apiKey || !baseURL) return;
+
+  return { apiKey, baseURL: normalizeBaseURL(baseURL) };
+};
+
+const safeReadError = async (response: Response) => {
+  try {
+    const body = (await response.json()) as { error?: { message?: string }; message?: string };
+    return body.error?.message ?? body.message ?? `${response.status} ${response.statusText}`;
+  } catch {
+    return `${response.status} ${response.statusText}`;
+  }
+};
+
+const parseAsyncSubmitResponse = (body: unknown) => {
+  const taskId =
+    (body as { task_id?: string }).task_id ??
+    (body as { data?: { task_id?: string } }).data?.task_id ??
+    (body as { data?: Array<{ task_id?: string }> }).data?.[0]?.task_id;
+
+  if (!taskId) throw new Error('Async image API returned no task_id');
+  return taskId;
+};
+
+const normalizeAsyncStatus = (status?: string) => {
+  const value = String(status || '').toLowerCase();
+  if (['succeeded', 'success', 'completed', 'complete'].includes(value)) return 'succeeded';
+  if (['failed', 'failure', 'error'].includes(value)) return 'failed';
+  if (['processing', 'running', 'in_progress'].includes(value)) return 'running';
+  return 'queued';
+};
+
+const collectImageUrls = (value: unknown): string[] => {
+  if (!value) return [];
+  if (typeof value === 'string') {
+    return /^https?:\/\/.+\.(?:png|jpe?g|webp)(?:\?.*)?$/i.test(value) ? [value] : [];
+  }
+  if (Array.isArray(value)) return value.flatMap((item) => collectImageUrls(item));
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap((item) =>
+      collectImageUrls(item),
+    );
+  }
+  return [];
+};
+
+const isLikelyPreviewUrl = (url: string) => /thumb|preview|small|low|compressed/i.test(url);
+
+const isLikelyFinalImageUrl = (url: string) => /gpt|image|poster|task|upload/i.test(url);
+
+const parseImageResponse = (body: unknown) => {
+  const data = (body as { data?: Array<{ b64_json?: string; url?: string }> }).data;
+  const first = data?.[0];
+  if (first?.url && !isLikelyPreviewUrl(first.url)) return first.url;
+  if (first?.b64_json) return `data:image/png;base64,${first.b64_json}`;
+
+  const urls = collectImageUrls(body);
+  const bestUrl =
+    urls.find((url) => !isLikelyPreviewUrl(url) && isLikelyFinalImageUrl(url)) ??
+    urls.find((url) => !isLikelyPreviewUrl(url)) ??
+    urls[0];
+
+  if (bestUrl) return bestUrl;
+  if (first?.url) return first.url;
+
+  throw new Error('Image API returned no url or b64_json');
+};
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error('Operation was aborted'));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new Error('Operation was aborted'));
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+
+const buildGatewayImagePayload = (model: string, params: RuntimeImageGenParams) => {
+  const imageUrls = [
+    typeof (params as any).imageUrl === 'string' ? (params as any).imageUrl : undefined,
+    ...(Array.isArray((params as any).imageUrls) ? (params as any).imageUrls : []),
+  ].filter((url): url is string => Boolean(url));
+
+  const width = typeof (params as any).width === 'number' ? (params as any).width : undefined;
+  const height = typeof (params as any).height === 'number' ? (params as any).height : undefined;
+  const size =
+    typeof (params as any).size === 'string'
+      ? (params as any).size
+      : width && height
+        ? `${width}x${height}`
+        : undefined;
+
+  return {
+    ...(imageUrls[0] ? { image: imageUrls[0] } : {}),
+    ...(imageUrls.length > 0 ? { images: imageUrls } : {}),
+    ...(typeof (params as any).output_format === 'string'
+      ? { output_format: (params as any).output_format }
+      : {}),
+    ...(typeof (params as any).quality === 'string' ? { quality: (params as any).quality } : {}),
+    ...(size ? { size } : {}),
+    model,
+    n: 1,
+    prompt: params.prompt,
+  };
+};
+
+const createGatewayAsyncImage = async ({
+  config,
+  model,
+  params,
+  signal,
+}: {
+  config: GatewayImageConfig;
+  model: string;
+  params: RuntimeImageGenParams;
+  signal: AbortSignal;
+}): Promise<GatewayImageResponse> => {
+  const submitResponse = await fetch(`${config.baseURL}/images/async`, {
+    body: JSON.stringify(buildGatewayImagePayload(model, params)),
+    headers: {
+      'Authorization': `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    method: 'POST',
+    signal,
+  });
+
+  if (!submitResponse.ok) {
+    throw new Error(`Async image task submit failed: ${await safeReadError(submitResponse)}`);
+  }
+
+  const upstreamTaskId = parseAsyncSubmitResponse(await submitResponse.json());
+  const startedAt = Date.now();
+  let delayMs = 2500;
+
+  while (Date.now() - startedAt < ASYNC_TASK_TIMEOUT) {
+    await sleep(delayMs, signal);
+    checkAbortSignal(signal);
+
+    const pollResponse = await fetch(
+      `${config.baseURL}/images/async/${encodeURIComponent(upstreamTaskId)}`,
+      {
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+        signal,
+      },
+    );
+
+    if (!pollResponse.ok) {
+      throw new Error(`Async image task query failed: ${await safeReadError(pollResponse)}`);
+    }
+
+    const body = (await pollResponse.json()) as AsyncImageTaskResponse;
+    const status = normalizeAsyncStatus(body.status);
+
+    if (status === 'succeeded') {
+      if (!body.result) throw new Error('Async image task completed with empty result');
+      const imageUrl = parseImageResponse(body.result);
+      const isPrivateImageUrl = isGatewayAsyncContentUrl(imageUrl, config.baseURL);
+
+      return {
+        ...(isPrivateImageUrl
+          ? { imageFetchHeaders: { Authorization: `Bearer ${config.apiKey}` } }
+          : {}),
+        imageUrl,
+        isPrivateImageUrl,
+      };
+    }
+
+    if (status === 'failed') {
+      throw new Error(body.error?.message || 'Async image task failed');
+    }
+
+    delayMs = Math.min(6000, Math.round(delayMs * 1.15));
+  }
+
+  throw new Error('Async image task timed out');
 };
 
 /**
@@ -267,25 +528,52 @@ export const imageRouter = router({
 
       try {
         const imageGenerationPromise = async (signal: AbortSignal) => {
-          log('Initializing agent runtime for provider: %s', provider);
           const { requestedModelId, resolvedModelId } = await resolveBusinessModelMapping(
             provider,
             model,
           );
 
-          // Read user's provider config from database
-          const modelRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId, provider);
-
           // Check if operation has been cancelled
           checkAbortSignal(signal);
-          log('Agent runtime initialized, calling createImage');
-          const response = await modelRuntime.createImage!(
-            {
+
+          let response: GatewayImageResponse | undefined;
+          const gatewayImageConfig = await resolveGatewayImageConfig(ctx, provider);
+
+          if (gatewayImageConfig) {
+            log('Submitting image generation through gateway async API');
+            response = await createGatewayAsyncImage({
+              config: gatewayImageConfig,
               model: resolvedModelId,
               params: params as unknown as RuntimeImageGenParams,
-            },
-            { metadata: { trigger: RequestTrigger.Image } },
-          );
+              signal,
+            });
+          } else {
+            log('Initializing agent runtime for provider: %s', provider);
+            // Read user's provider config from database
+            const modelRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId, provider);
+
+            checkAbortSignal(signal);
+            log('Agent runtime initialized, calling createImage');
+            response = await modelRuntime.createImage!(
+              {
+                model: resolvedModelId,
+                params: params as unknown as RuntimeImageGenParams,
+              },
+              { metadata: { trigger: RequestTrigger.Image } },
+            );
+
+            // Extract ComfyUI authentication headers if provider is ComfyUI
+            if (provider === 'comfyui') {
+              // Use the public interface method to get auth headers
+              // This avoids accessing private members and exposing credentials
+              response.imageFetchHeaders = modelRuntime.getAuthHeaders();
+              if (response.imageFetchHeaders) {
+                log('Using authentication headers for ComfyUI image download');
+              } else {
+                log('No authentication configured for ComfyUI');
+              }
+            }
+          }
 
           if (!response) {
             log('Create image response is empty');
@@ -315,22 +603,9 @@ export const imageRouter = router({
           log('Transforming image for generation');
           const { imageUrl, width, height } = response;
 
-          // Extract ComfyUI authentication headers if provider is ComfyUI
-          let authHeaders: Record<string, string> | undefined;
-          if (provider === 'comfyui') {
-            // Use the public interface method to get auth headers
-            // This avoids accessing private members and exposing credentials
-            authHeaders = modelRuntime.getAuthHeaders();
-            if (authHeaders) {
-              log('Using authentication headers for ComfyUI image download');
-            } else {
-              log('No authentication configured for ComfyUI');
-            }
-          }
-
           const { image, thumbnailImage } = await ctx.generationService.transformImageForGeneration(
             imageUrl,
-            authHeaders,
+            response.imageFetchHeaders,
           );
 
           // Check if operation has been cancelled
@@ -348,8 +623,11 @@ export const imageRouter = router({
             generationId,
             {
               height: height ?? image.height,
-              // If imageUrl is base64 data, use uploadedImageUrl instead to avoid storing large base64 in DB
-              originalUrl: imageUrl.startsWith('data:') ? uploadedImageUrl : imageUrl,
+              // Avoid storing large base64 data or private gateway content URLs in DB.
+              originalUrl:
+                imageUrl.startsWith('data:') || response.isPrivateImageUrl
+                  ? uploadedImageUrl
+                  : imageUrl,
               thumbnailUrl: thumbnailImageUrl,
               type: 'image',
               url: uploadedImageUrl,

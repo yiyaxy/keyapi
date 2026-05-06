@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ExternalLink, Loader2, Tag } from 'lucide-react';
+import { ExternalLink, Loader2, MessageCircle, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -120,6 +120,29 @@ function AppCard({ app }: { app: AiApp }) {
   );
 }
 
+function ChatEntryCard() {
+  const { t } = useTranslation('apps');
+
+  return (
+    <section className='mb-6 rounded-xl border border-primary/20 bg-primary/5 p-5'>
+      <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+        <div className='flex min-w-0 items-start gap-3'>
+          <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground'>
+            <MessageCircle className='h-6 w-6' />
+          </div>
+          <div className='min-w-0'>
+            <h2 className='text-18 font-semibold'>{t('chat_entry.title')}</h2>
+            <p className='mt-1 text-13 leading-6 text-fg-2'>{t('chat_entry.subtitle')}</p>
+          </div>
+        </div>
+        <Button className='shrink-0' asChild>
+          <a href='/playground'>{t('chat_entry.action')}</a>
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 export function AppMarketplacePage() {
   const { t } = useTranslation('apps');
   const [search, setSearch] = useState('');
@@ -159,6 +182,8 @@ export function AppMarketplacePage() {
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
+
+      <ChatEntryCard />
 
       {list.isPending ? (
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>

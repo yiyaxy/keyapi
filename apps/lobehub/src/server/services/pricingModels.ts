@@ -7,7 +7,11 @@ const PRICING_FETCH_TIMEOUT = 5000;
 const OPENAI_PROVIDER_ID = ModelProvider.OpenAI;
 
 type PricingModel = {
+  completion_ratio?: number;
+  model_price?: number;
   model_name: string;
+  model_ratio?: number;
+  quota_type?: number;
   supported_endpoint_types?: string[];
 };
 
@@ -88,8 +92,17 @@ const transformPricingModel = (item: PricingModel): EnabledAiModel | undefined =
   if (!isImageModel && !isChatModel) return;
 
   const knownModel = getKnownModel(modelId, isImageModel);
+  const imagePricing =
+    isImageModel && typeof item.model_price === 'number' && item.model_price > 0
+      ? {
+          approximatePricePerImage: item.model_price,
+          units: [
+            { name: 'imageGeneration', rate: item.model_price, strategy: 'fixed', unit: 'image' },
+          ],
+        }
+      : undefined;
 
-  return {
+  const transformedModel = {
     abilities: knownModel?.abilities || {},
     contextWindowTokens: knownModel?.contextWindowTokens,
     displayName:
@@ -100,7 +113,11 @@ const transformPricingModel = (item: PricingModel): EnabledAiModel | undefined =
     providerId: OPENAI_PROVIDER_ID,
     releasedAt: knownModel?.releasedAt,
     type: isImageModel ? 'image' : 'chat',
-  };
+  } as EnabledAiModel & { pricing?: unknown };
+
+  transformedModel.pricing = imagePricing || knownModel?.pricing;
+
+  return transformedModel;
 };
 
 export const fetchPricingModels = async (): Promise<EnabledAiModel[] | undefined> => {

@@ -49,6 +49,15 @@ func ListMobileChatMessages(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"items": items})
 }
 
+func ClearMobileChatMessages(c *gin.Context) {
+	if err := model.DeleteMobileChatMessages(middleware.GetTenantId(c), c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{"ok": true})
+}
+
 func SaveMobileChatMessage(c *gin.Context) {
 	var req mobileChatMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
