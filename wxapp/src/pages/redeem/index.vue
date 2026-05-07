@@ -186,10 +186,10 @@ function handleBack() {
     if (prevRoute === 'pages/home/index') {
       uni.navigateBack()
     } else {
-      uni.switchTab({ url: '/pages/home/index' })
+      uni.reLaunch({ url: '/pages/home/index' })
     }
   } else {
-    uni.switchTab({ url: '/pages/home/index' })
+    uni.reLaunch({ url: '/pages/home/index' })
   }
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Loader2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, ImageIcon, Loader2, MessageCircle, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { MobileChat } from '@/components/mobile/MobileAppPortal';
@@ -40,12 +40,83 @@ function launchApp(app: AiApp, key: string) {
   form.submit();
 }
 
+function parseTags(tags: string) {
+  return tags
+    .split(/[,\uFF0C]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function getInitial(name: string) {
+  return (name.trim().slice(0, 1) || 'A').toUpperCase();
+}
+
+const posterPalettes = [
+  ['#0f766e', '#38bdf8', '#111827'],
+  ['#be123c', '#f97316', '#1f2937'],
+  ['#15803d', '#a3e635', '#172554'],
+  ['#0369a1', '#22c55e', '#312e81'],
+  ['#7c2d12', '#facc15', '#1e293b'],
+  ['#4338ca', '#06b6d4', '#134e4a'],
+] as const;
+
+function posterGradient(seed: string) {
+  const index =
+    seed.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) % posterPalettes.length;
+  const [from, via, to] = posterPalettes[index];
+  return `linear-gradient(135deg, ${from} 0%, ${via} 50%, ${to} 100%)`;
+}
+
+function normalizeImageUrl(url: string) {
+  const value = url.trim();
+  if (!value) return '';
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:')) return value;
+  return value.startsWith('/') ? value : `/${value}`;
+}
+
+function AppPoster({ app }: { app: AiApp }) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = normalizeImageUrl(app.icon_url || '');
+
+  if (imageUrl && !failed) {
+    return (
+      <div className='relative aspect-[16/9] overflow-hidden bg-bg-2'>
+        <img
+          src={imageUrl}
+          alt={app.name}
+          className='h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]'
+          loading='lazy'
+          onError={() => setFailed(true)}
+        />
+        <div className='absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent' />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className='relative aspect-[16/9] overflow-hidden text-white'
+      style={{ background: posterGradient(`${app.slug}:${app.name}`) }}
+    >
+      <div className='absolute -right-8 -top-10 h-28 w-28 rounded-full bg-white/16' />
+      <div className='absolute bottom-4 right-5 h-14 w-14 rotate-12 rounded-lg bg-white/12' />
+      <div className='absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-md bg-white/18 backdrop-blur'>
+        <ImageIcon className='h-5 w-5' />
+      </div>
+      <div className='absolute bottom-4 left-4 right-4'>
+        <div className='mb-2 text-32 font-semibold leading-none'>{getInitial(app.name)}</div>
+        <div className='truncate text-13 font-medium text-white/90'>{app.name || app.slug}</div>
+      </div>
+    </div>
+  );
+}
+
 function AppCard({ app }: { app: AiApp }) {
   const { t } = useTranslation('apps');
   const { user } = useAuth();
   const sessionMut = useGetSessionToken(app.slug);
   const guestMut = useGetGuestToken(app.slug);
-  const tags = app.tags ? app.tags.split(',').filter(Boolean) : [];
+  const tags = parseTags(app.tags || '');
 
   async function handleUse() {
     try {
@@ -70,48 +141,63 @@ function AppCard({ app }: { app: AiApp }) {
 
   const isLoading = sessionMut.isPending || guestMut.isPending;
 
-  const visibleTags = tags.slice(0, 2);
+  const visibleTags = tags.slice(0, 3);
+  const canGuestUse = app.guest_quota > 0 && !user;
 
   return (
     <button
       type='button'
       onClick={() => void handleUse()}
       disabled={isLoading}
-      className='flex min-h-[156px] flex-col rounded-lg border border-line bg-bg-0 p-3 text-left transition hover:border-primary/30 hover:shadow-sm disabled:cursor-wait disabled:opacity-70'
+      className='group flex min-h-[300px] flex-col overflow-hidden rounded-lg border border-line bg-bg-0 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md disabled:cursor-wait disabled:opacity-70'
     >
-      <div className='mb-2 flex items-start gap-2.5'>
-        {app.icon_url ? (
-          <img
-            src={app.icon_url}
-            alt={app.name}
-            className='h-9 w-9 shrink-0 rounded-md object-cover'
-          />
-        ) : (
-          <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-bg-2 text-16 font-bold text-fg-2'>
-            {app.name.slice(0, 1).toUpperCase()}
-          </div>
-        )}
-        <div className='min-w-0'>
-          <h3 className='truncate text-14 font-semibold leading-snug'>{app.name}</h3>
-          {visibleTags.length > 0 && (
-            <div className='mt-1 flex flex-wrap gap-1'>
-              {visibleTags.map((tag) => (
-                <Badge key={tag} variant='secondary' className='h-5 px-1.5 text-10'>
-                  {tag}
-                </Badge>
-              ))}
-            </div>
+      <div className='relative'>
+        <AppPoster app={app} />
+        <div className='absolute left-3 top-3 flex flex-wrap gap-1.5'>
+          {canGuestUse && (
+            <Badge className='border-white/20 bg-white/90 text-fg-0 shadow-sm hover:bg-white/90'>
+              {t('free_trial')}
+            </Badge>
           )}
         </div>
       </div>
-      <p className='mb-3 flex-1 text-12 leading-5 text-fg-2 line-clamp-2'>
-        {app.description || t('no_description')}
-      </p>
-      <div className='flex items-center justify-between gap-2'>
-        {app.guest_quota > 0 && !user && (
-          <span className='text-12 text-success'>{t('free_trial')}</span>
-        )}
-        {isLoading ? <Loader2 className='ml-auto h-4 w-4 animate-spin text-fg-2' /> : null}
+
+      <div className='flex flex-1 flex-col p-3.5'>
+        <div className='min-w-0'>
+          <h3 className='truncate text-16 font-semibold leading-6 text-fg-0'>{app.name}</h3>
+          <p className='mt-1 min-h-[42px] text-13 leading-5 text-fg-2 line-clamp-2'>
+            {app.description || t('no_description')}
+          </p>
+        </div>
+
+        <div className='mt-3 flex min-h-6 flex-wrap gap-1.5'>
+          {visibleTags.length > 0 ? (
+            <>
+              {visibleTags.map((tag) => (
+                <Badge key={tag} variant='secondary' className='h-6 px-2 text-11'>
+                  {tag}
+                </Badge>
+              ))}
+              {tags.length > visibleTags.length && (
+                <Badge variant='secondary' className='h-6 px-2 text-11'>
+                  +{tags.length - visibleTags.length}
+                </Badge>
+              )}
+            </>
+          ) : (
+            <span className='inline-flex h-6 items-center gap-1.5 text-12 text-fg-2'>
+              <Sparkles className='h-3.5 w-3.5' />
+              AI
+            </span>
+          )}
+        </div>
+
+        <div className='mt-auto flex items-center justify-between gap-2 pt-4'>
+          <span className='text-12 text-fg-2'>{app.slug}</span>
+          <span className='inline-flex h-8 items-center rounded-md bg-primary px-3 text-12 font-medium text-primary-foreground'>
+            {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : t('use_app')}
+          </span>
+        </div>
       </div>
     </button>
   );

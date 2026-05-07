@@ -207,7 +207,7 @@ import {
   getMobileImageTask,
   getPricingModels,
   getSelf,
-  presignAppImageUploadBatch,
+  uploadAppImages,
 } from '@/services/api.js'
 import env from '@/config/env.js'
 import { userStore } from '@/store/user.js'
@@ -442,52 +442,27 @@ function readLocalFile(path) {
   })
 }
 
-function putObject(uploadURL, headers, contentType, data) {
-  const header = { ...(headers || {}) }
-  const hasContentType = Object.keys(header).some((key) => key.toLowerCase() === 'content-type')
-  if (!hasContentType) header['Content-Type'] = contentType
-  return new Promise((resolve, reject) => {
-    uni.request({
-      url: uploadURL,
-      method: 'PUT',
-      header,
-      data,
-      success(res) {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve()
-          return
-        }
-        reject(new Error(`参考图上传失败：${res.statusCode}`))
-      },
-      fail: () => reject(new Error('参考图上传失败')),
-    })
-  })
-}
-
 async function uploadReferenceImages(images) {
   const pending = images.filter((image) => !image.objectUrl)
   if (pending.length) {
-    const presigned = await presignAppImageUploadBatch(
-      pending.map((image, index) => {
-        const contentType = image.contentType || imageContentType(image.path)
-        return {
-          filename: image.name || `reference-${index + 1}.jpg`,
-          contentType,
-          sizeBytes: image.size || 1,
-        }
-      })
+    const uploaded = await uploadAppImages(
+      await Promise.all(
+        pending.map(async (image, index) => {
+          const data = await readLocalFile(image.path)
+          const contentType = image.contentType || imageContentType(image.path)
+          return {
+            filename: image.name || `reference-${index + 1}.jpg`,
+            contentType,
+            data,
+          }
+        })
+      )
     )
-    const items = presigned.items || []
-    if (items.length !== pending.length) throw new Error('参考图上传地址数量不匹配')
-    await Promise.all(
-      pending.map(async (image, index) => {
-        const contentType = image.contentType || imageContentType(image.path)
-        const data = await readLocalFile(image.path)
-        const item = items[index]
-        await putObject(item.upload_url, item.required_headers, contentType, data)
-        image.objectUrl = item.object_url
-      })
-    )
+    const items = uploaded.items || []
+    if (items.length !== pending.length) throw new Error('参考图上传结果数量不匹配')
+    pending.forEach((image, index) => {
+      image.objectUrl = items[index]?.object_url || ''
+    })
   }
   return images.map((image) => image.objectUrl).filter(Boolean)
 }

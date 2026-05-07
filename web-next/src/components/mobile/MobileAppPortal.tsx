@@ -168,7 +168,7 @@ function pointsFromQuota(rawQuota: number, cfg: PublicConfig): string {
 function resolveAssetUrl(url: string): string {
   const value = url.trim();
   if (!value) return '';
-  if (/^https?:\/\//i.test(value)) return value;
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:')) return value;
   return new URL(value.startsWith('/') ? value : `/${value}`, window.location.origin).toString();
 }
 
@@ -742,11 +742,13 @@ function MobileAppCard({
   const tokenMutation = useGetSessionToken(app.slug);
   const tags = app.tags
     ? app.tags
-        .split(',')
+        .split(/[,\uFF0C]/)
         .map((tag) => tag.trim())
         .filter(Boolean)
         .slice(0, compact ? 2 : 3)
     : [];
+  const posterUrl = app.icon_url ? resolveAssetUrl(app.icon_url) : '';
+  const [posterFailed, setPosterFailed] = useState(false);
 
   async function handleUse() {
     try {
@@ -763,25 +765,37 @@ function MobileAppCard({
     }
   }
 
+  const poster =
+    posterUrl && !posterFailed ? (
+      <img
+        src={posterUrl}
+        alt=''
+        className='h-full w-full object-cover transition duration-300 group-active:scale-[1.02]'
+        onError={() => setPosterFailed(true)}
+      />
+    ) : (
+      <div className='flex h-full w-full items-center justify-center bg-primary/10 text-primary'>
+        <ImageIcon className={compact ? 'h-6 w-6' : 'h-9 w-9'} />
+      </div>
+    );
+
   return (
     <button
       type='button'
       onClick={() => void handleUse()}
       disabled={tokenMutation.isPending}
-      className='group w-full overflow-hidden rounded-lg border border-line bg-bg-0 p-3.5 text-left shadow-sm transition active:scale-[0.99] disabled:opacity-70'
+      className='group w-full overflow-hidden rounded-lg border border-line bg-bg-0 text-left shadow-sm transition active:scale-[0.99] disabled:opacity-70'
     >
-      <div className='flex items-start gap-3'>
-        {app.icon_url ? (
-          <img
-            src={resolveAssetUrl(app.icon_url)}
-            alt=''
-            className='h-11 w-11 shrink-0 rounded-md object-cover'
-          />
-        ) : (
-          <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xl font-semibold text-primary'>
-            {app.name.slice(0, 1).toUpperCase()}
-          </div>
-        )}
+      {!compact ? (
+        <div className='relative aspect-[16/9] overflow-hidden bg-bg-2'>
+          {poster}
+          <div className='absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/35 to-transparent' />
+        </div>
+      ) : null}
+      <div className={cn('flex items-start gap-3 p-3.5', !compact && 'pb-0')}>
+        {compact ? (
+          <div className='h-16 w-24 shrink-0 overflow-hidden rounded-md bg-bg-2'>{poster}</div>
+        ) : null}
         <div className='min-w-0 flex-1'>
           <div className='flex items-center gap-2'>
             <h3 className='min-w-0 flex-1 truncate text-15 font-semibold text-fg-0'>{app.name}</h3>
@@ -802,7 +816,7 @@ function MobileAppCard({
         </div>
       </div>
       {tags.length > 0 ? (
-        <div className='mt-3 flex flex-wrap gap-1.5'>
+        <div className='flex flex-wrap gap-1.5 px-3.5 pb-3.5 pt-3'>
           {tags.map((tag) => (
             <span key={tag} className='rounded-full bg-bg-2 px-2 py-1 text-11 text-fg-2'>
               {tag}

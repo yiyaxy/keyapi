@@ -34,13 +34,17 @@ function buildHeader(withToken = true) {
  * 成功时 resolve(data.data)，不存在 data.data 时 resolve(data)
  * 失败时 reject(Error)，并视情况 toast 或跳登录
  */
-function request(url, method, data, withToken = true) {
+function request(url, method, data, withToken = true, customHeader = {}) {
   return new Promise((resolve, reject) => {
+    const header = {
+      ...buildHeader(withToken),
+      ...(customHeader || {}),
+    }
     uni.request({
       url: BASE_URL + url,
       method: method.toUpperCase(),
       data: data || undefined,
-      header: buildHeader(withToken),
+      header,
       success(res) {
         const { statusCode, data: body } = res
 
@@ -112,6 +116,10 @@ export default {
 
   post(url, data, withToken = true) {
     return request(url, 'POST', data, withToken)
+  },
+
+  postRaw(url, data, header = {}, withToken = true) {
+    return request(url, 'POST', data, withToken, header)
   },
 
   extractCookie,

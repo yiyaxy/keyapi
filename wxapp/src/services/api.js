@@ -233,21 +233,75 @@ export const createMobileChatCompletion = ({ model, group, messages }) =>
     stream: false,
   })
 
-export const presignAppImageUpload = ({ filename, contentType, sizeBytes }) =>
-  request.post('/api/app/image-uploads/presign', {
-    filename,
-    content_type: contentType,
-    size_bytes: sizeBytes,
-  })
+function utf8Bytes(value) {
+  const text = String(value)
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text)
+  const encoded = unescape(encodeURIComponent(text))
+  const bytes = new Uint8Array(encoded.length)
+  for (let index = 0; index < encoded.length; index += 1) {
+    bytes[index] = encoded.charCodeAt(index)
+  }
+  return bytes
+}
 
-export const presignAppImageUploadBatch = (items) =>
-  request.post('/api/app/image-uploads/presign-batch', {
-    items: (items || []).map((item) => ({
-      filename: item.filename,
-      content_type: item.contentType,
-      size_bytes: item.sizeBytes,
-    })),
+function toBytes(data) {
+  if (typeof Uint8Array !== 'undefined' && data instanceof Uint8Array) return data
+  if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) return new Uint8Array(data)
+  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView?.(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  }
+  return utf8Bytes(data || '')
+}
+
+function concatBytes(parts) {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0)
+  const merged = new Uint8Array(total)
+  let offset = 0
+  parts.forEach((part) => {
+    merged.set(part, offset)
+    offset += part.byteLength
   })
+  return merged.buffer
+}
+
+function multipartFilename(value, fallback) {
+  return String(value || fallback || 'image.jpg').replace(/["\r\n]/g, '_')
+}
+
+function buildImageUploadBody(files) {
+  const boundary = `----new-api-app-image-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const parts = []
+  ;(files || []).forEach((file, index) => {
+    const filename = multipartFilename(file.filename || file.name, `reference-${index + 1}.jpg`)
+    const contentType = file.contentType || 'image/jpeg'
+    parts.push(
+      utf8Bytes(
+        `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="files"; filename="${filename}"\r\n` +
+          `Content-Type: ${contentType}\r\n\r\n`
+      )
+    )
+    parts.push(toBytes(file.data))
+    parts.push(utf8Bytes('\r\n'))
+  })
+  parts.push(utf8Bytes(`--${boundary}--\r\n`))
+  return {
+    body: concatBytes(parts),
+    boundary,
+  }
+}
+
+export const uploadAppImages = (files) => {
+  const { body, boundary } = buildImageUploadBody(files)
+  return request.postRaw(
+    '/api/app/image-uploads',
+    body,
+    {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    },
+    true
+  )
+}
 
 export const createMobileImageGeneration = ({ model, prompt, images = [], size = '1024x1024' }) => {
   const imageUrls = Array.isArray(images) ? images.filter(Boolean).slice(0, 16) : []

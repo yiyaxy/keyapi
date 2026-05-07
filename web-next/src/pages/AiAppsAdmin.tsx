@@ -114,7 +114,7 @@ function statusVariant(status: number): 'default' | 'secondary' | 'destructive' 
 
 function parseTags(tags: string) {
   return tags
-    .split(/[,，]/)
+    .split(/[,\uFF0C]/)
     .map((tag) => tag.trim())
     .filter(Boolean);
 }

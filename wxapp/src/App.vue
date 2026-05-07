@@ -4,6 +4,12 @@ import { getStatus } from '@/services/api.js'
 import { captureInviteSource, registerShareMenu } from '@/utils/share.js'
 
 const updateManager = uni.getUpdateManager()
+const startupSafePage = '/pages/home/index'
+const paymentPageRoute = 'pages/redeem/index'
+
+function normalizeRoute(route) {
+  return String(route || '').replace(/^\/+/, '').split('?')[0]
+}
 
 export default {
   onLaunch(options) {
@@ -15,6 +21,7 @@ export default {
     this.loadStatus()
     // 检查小程序更新
     this.checkUpdate()
+    this.redirectPaymentStartup(options)
   },
   onShow(options) {
     captureInviteSource(options)
@@ -30,6 +37,16 @@ export default {
       } catch (e) {
         // 忽略，使用默认值
       }
+    },
+    redirectPaymentStartup(options = {}) {
+      if (normalizeRoute(options.path) !== paymentPageRoute) return
+      setTimeout(() => {
+        const pages = getCurrentPages()
+        const currentRoute = normalizeRoute(pages[pages.length - 1]?.route)
+        if (currentRoute === paymentPageRoute) {
+          uni.reLaunch({ url: startupSafePage })
+        }
+      }, 0)
     },
     checkUpdate() {
       updateManager.onCheckForUpdate(function(res) {
