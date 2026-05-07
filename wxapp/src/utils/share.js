@@ -1,7 +1,7 @@
 import { userStore } from '@/store/user.js'
 
 const PENDING_INVITER_KEY = 'pending_inviter_id'
-const SHARE_TITLE = 'ALl Models'
+const SHARE_TITLE = '你的 AI 自动化专家已上线，额度限时领。'
 const SHARE_IMAGE_URL = 'https://power-sass.oss-cn-beijing.aliyuncs.com/activitySuppement/APIToken/token-share.png'
 
 function firstValue(value) {
@@ -33,7 +33,7 @@ export function buildSharePath(page = '/pages/home/index') {
 }
 
 export function buildShareMessage(options = {}) {
-  const title = options.title || `来 ${SHARE_TITLE} 领取你的 AI 接口额度`
+  const title = options.title || SHARE_TITLE
   const path = options.path || buildSharePath()
   const message = { title, path }
   if (SHARE_IMAGE_URL) message.imageUrl = SHARE_IMAGE_URL

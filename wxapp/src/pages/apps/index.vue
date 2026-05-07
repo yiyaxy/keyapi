@@ -188,6 +188,26 @@ function setQueryParam(url, key, value) {
   return `${path}?${nextQuery.join('&')}${hash}`
 }
 
+function urlOrigin(url) {
+  const match = String(url || '').match(/^(https?:\/\/[^/?#]+)/i)
+  return match ? match[1].replace(/\/$/, '').toLowerCase() : ''
+}
+
+function pathWithSearchAndHash(url) {
+  const value = String(url || '')
+  const match = value.match(/^https?:\/\/[^/?#]+(.*)$/i)
+  return match ? (match[1] || '/') : '/'
+}
+
+function buildTokenHandoffUrl(targetUrl, token) {
+  const targetWithToken = setQueryParam(targetUrl, 'token', token)
+  const base = env.basePath.replace(/\/$/, '')
+  if (urlOrigin(targetWithToken) !== urlOrigin(base)) return targetWithToken
+
+  const callbackUrl = pathWithSearchAndHash(targetWithToken)
+  return `${base}/api/auth/token-login?token=${encodeURIComponent(token)}&callbackUrl=${encodeURIComponent(callbackUrl)}`
+}
+
 function openWebView(targetUrl, title = '') {
   if (!/^https?:\/\//i.test(targetUrl)) {
     uni.showToast({ title: '应用地址必须是 http 或 https', icon: 'none' })
@@ -233,7 +253,7 @@ async function useApp(app) {
     const data = await getAppSessionToken(app.slug)
     const token = data?.key || ''
     if (!token) throw new Error('未获取到应用访问令牌')
-    const targetUrl = setQueryParam(toAbsoluteTarget(app.target_url), 'token', token)
+    const targetUrl = buildTokenHandoffUrl(toAbsoluteTarget(app.target_url), token)
     openWebView(targetUrl, app.name)
   } catch (err) {
     uni.showToast({ title: err?.message || '应用启动失败，请稍后重试', icon: 'none' })
