@@ -46,7 +46,7 @@
 
             <view class="assets-main">
               <text class="assets-num">{{ tokenStr(totalAssets) }}</text>
-              <text class="assets-unit">代币</text>
+              <text class="assets-unit">积分</text>
             </view>
 
             <view class="assets-grid">
@@ -65,7 +65,7 @@
               <view class="progress-bar">
                 <view class="progress-fill" :style="{ width: usedPct + '%' }" />
               </view>
-              <text class="progress-text">{{ tokenStr(userInfo?.used_quota) }} 代币</text>
+              <text class="progress-text">{{ tokenStr(userInfo?.used_quota) }} 积分</text>
             </view>
           </view>
 

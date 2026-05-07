@@ -55,22 +55,22 @@
               <view class="bg-item">
                 <text class="bg-label">可用余额</text>
                 <text class="bg-val gold">{{ cny(userInfo?.quota) }}</text>
-                <text class="bg-sub">{{ tokenStr(userInfo?.quota) }} Token</text>
+                <text class="bg-sub">{{ tokenStr(userInfo?.quota) }} 积分</text>
               </view>
               <view class="bg-item">
                 <text class="bg-label">累计消耗</text>
                 <text class="bg-val">{{ cny(userInfo?.used_quota) }}</text>
-                <text class="bg-sub">{{ tokenStr(userInfo?.used_quota) }} Token</text>
+                <text class="bg-sub">{{ tokenStr(userInfo?.used_quota) }} 积分</text>
               </view>
               <view class="bg-item">
                 <text class="bg-label">今日消耗</text>
                 <text class="bg-val gold">{{ cny(todayQuota) }}</text>
-                <text class="bg-sub">{{ tokenStr(todayQuota) }} Token</text>
+                <text class="bg-sub">{{ tokenStr(todayQuota) }} 积分</text>
               </view>
               <view class="bg-item">
                 <text class="bg-label">本月消耗</text>
                 <text class="bg-val">{{ cny(monthQuota) }}</text>
-                <text class="bg-sub">{{ tokenStr(monthQuota) }} Token</text>
+                <text class="bg-sub">{{ tokenStr(monthQuota) }} 积分</text>
               </view>
             </view>
 
@@ -88,7 +88,7 @@
               </view>
               <view class="checkin-text">
                 <text class="checkin-title">{{ checkedInToday ? '今日已签到' : '每日签到' }}</text>
-                <text class="checkin-sub">本月 {{ checkinStats.checkin_count || 0 }} 次 · 累计 {{ q2cny(checkinStats.total_quota || 0) }}</text>
+                <text class="checkin-sub">{{ checkinRewardLabel }} · 本月 {{ checkinStats.checkin_count || 0 }} 次 · 累计 {{ q2cny(checkinStats.total_quota || 0) }}</text>
               </view>
             </view>
             <view class="checkin-btn" :class="{ disabled: checkedInToday || checkinLoading }" @click="handleCheckin">
@@ -110,6 +110,12 @@
               :style="{ background: cardBackground(app, index) }"
               @click="useApp(app)"
             >
+              <image
+                v-if="appPoster(app)"
+                class="app-poster-img"
+                :src="assetUrl(appPoster(app))"
+                mode="aspectFill"
+              />
               <view class="app-shade" />
               <view class="app-bottom">
                 <view class="app-head-row">
@@ -124,10 +130,10 @@
                   </view>
                   <text class="app-title">{{ app.name }}</text>
                 </view>
-                <text class="app-desc">{{ app.description || '这个应用暂未填写介绍' }}</text>
+                <text v-if="app.description" class="app-desc">{{ app.description }}</text>
                 <!-- 应用消耗记录先隐藏，后续有明确计费展示规则后再打开。
                 <view class="app-foot">
-                  <text class="app-foot-label">Token 消耗</text>
+                  <text class="app-foot-label">积分消耗</text>
                   <text class="app-foot-cost">{{ app.cost }}</text>
                 </view>
                 -->
@@ -163,7 +169,7 @@ const monthQuota = ref(0)
 const checkinLoading = ref(false)
 const checkinInfo = ref(null)
 
-const heroSub = '一份 Token，调用 GPT / Claude / Gemini /\nDeepSeek / Qwen / Kimi'
+const heroSub = '一份积分，调用 GPT / Claude / Gemini /\nDeepSeek / Qwen / Kimi'
 
 const apps = [
   { id: 'diagnose', title: '形象诊断', desc: '多维度分析气质与着装建议', cost: '50K / 次', icon: 'star',
@@ -190,6 +196,15 @@ const cardGradients = [
 
 const checkinStats = computed(() => checkinInfo.value?.stats || {})
 const checkedInToday = computed(() => checkinStats.value?.checked_in_today === true)
+const checkinMinQuota = computed(() => Number(checkinInfo.value?.min_quota ?? userStore.checkinMinQuota) || 0)
+const checkinMaxQuota = computed(() => Number(checkinInfo.value?.max_quota ?? userStore.checkinMaxQuota) || 0)
+const checkinRewardLabel = computed(() => {
+  const min = checkinMinQuota.value
+  const max = checkinMaxQuota.value
+  if (min <= 0 && max <= 0) return '按后台配置发放'
+  if (max <= min) return `每次 ${q2cny(min)}`
+  return `每次 ${q2cny(min)}-${q2cny(max)}`
+})
 
 function tokenStr(q) {
   return Number(q || 0).toLocaleString()
@@ -206,6 +221,10 @@ function firstLetter(name) {
 function cardBackground(app, index) {
   const seed = String(app?.slug || app?.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
   return cardGradients[(seed + index) % cardGradients.length]
+}
+
+function appPoster(app) {
+  return app?.poster_url || app?.cover_url || app?.banner_url || app?.icon_url || ''
 }
 
 function assetUrl(url) {
@@ -336,7 +355,11 @@ async function loadCheckinStatus() {
     checkinInfo.value = null
     return
   }
-  try { checkinInfo.value = await getCheckinStatus() } catch { checkinInfo.value = null }
+  try {
+    checkinInfo.value = await getCheckinStatus()
+    userStore.checkinMinQuota = Number(checkinInfo.value?.min_quota) || userStore.checkinMinQuota
+    userStore.checkinMaxQuota = Number(checkinInfo.value?.max_quota) || userStore.checkinMaxQuota
+  } catch { checkinInfo.value = null }
 }
 
 async function handleCheckin() {
@@ -672,6 +695,12 @@ onShow(() => {
   aspect-ratio: 1 / 1;
   overflow: hidden;
   box-shadow: 0 6rpx 20rpx rgba(20,16,8,0.08);
+}
+.app-poster-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 .app-shade {
   position: absolute;

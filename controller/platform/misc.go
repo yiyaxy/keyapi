@@ -139,6 +139,8 @@ func GetStatus(c *gin.Context) {
 		"privacy_policy_enabled":       legalSetting.PrivacyPolicy != "",
 		"refund_policy_enabled":        legalSetting.RefundPolicy != "",
 		"checkin_enabled":              operation_setting.GetCheckinSetting().Enabled,
+		"checkin_min_quota":            operation_setting.GetCheckinSetting().MinQuota,
+		"checkin_max_quota":            operation_setting.GetCheckinSetting().MaxQuota,
 		"top_up_rebate_count":          service.GetConfigInt(tenantId, "TopUpRebateCount", common.TopUpRebateCount),
 		"top_up_rebate_percent":        service.GetConfigInt(tenantId, "TopUpRebatePercent", common.TopUpRebatePercent),
 		"quota_for_inviter":            service.GetConfigInt(tenantId, "QuotaForInviter", common.QuotaForInviter),

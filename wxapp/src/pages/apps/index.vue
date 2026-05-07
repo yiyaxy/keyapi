@@ -9,13 +9,13 @@
           <view class="head-main">
             <text class="eyebrow">APP CENTER</text>
             <text class="head-title">AI 应用中心</text>
-            <text class="head-sub">使用平台 Token，直接体验已接入的 AI 应用</text>
+            <text class="head-sub">使用平台积分，直接体验已接入的 AI 应用</text>
           </view>
           <view v-if="userStore.wxPayEnabled" class="quota-pill">
             <u-icon name="server-fill" size="17" color="#111827" />
             <view class="quota-text">
               <text class="quota-num">{{ tokenStr(userInfo?.quota) }}</text>
-              <text class="quota-label">Tokens</text>
+              <text class="quota-label">积分</text>
             </view>
           </view>
         </view>
@@ -98,32 +98,31 @@
             v-for="(app, index) in filteredApps"
             :key="app.id || app.slug"
             class="app-card"
-            :style="{ background: cardBackground(app, index) }"
             @click="useApp(app)"
           >
-            <view class="app-top">
-              <image v-if="app.icon_url" class="app-icon-img" :src="assetUrl(app.icon_url)" mode="aspectFill" />
-              <view v-else class="app-icon-fallback">
+            <view class="poster-wrap" :style="{ background: cardBackground(app, index) }">
+              <image v-if="appPoster(app)" class="poster-img" :src="assetUrl(appPoster(app))" mode="aspectFill" />
+              <view v-else class="poster-fallback">
                 <text class="app-icon-letter">{{ firstLetter(app.name) }}</text>
               </view>
+            </view>
 
+            <view class="app-body">
               <view class="app-info">
                 <view class="app-title-row">
                   <text class="app-title">{{ app.name }}</text>
                 </view>
+                <text v-if="app.description" class="app-desc">{{ app.description }}</text>
                 <view v-if="tagsOf(app).length" class="tag-row">
                   <text v-for="tag in tagsOf(app)" :key="tag" class="tag">{{ tag }}</text>
                 </view>
               </view>
-            </view>
 
-            <text class="app-desc">{{ app.description || '这个应用暂未填写介绍' }}</text>
-
-            <view class="app-actions">
-              <view class="use-btn" :class="{ disabled: activeSlug === app.slug }">
-                <u-loading-icon v-if="activeSlug === app.slug" size="28" color="#111827" />
-                <u-icon v-else name="arrow-rightward" size="16" color="#111827" />
-                <text class="use-text">{{ activeSlug === app.slug ? '准备中' : '立即使用' }}</text>
+              <view class="app-actions">
+                <view class="use-btn" :class="{ disabled: activeSlug === app.slug }">
+                  <u-loading-icon v-if="activeSlug === app.slug" size="28" color="#ffffff" />
+                  <text class="use-text">{{ activeSlug === app.slug ? '准备中' : '立即使用' }}</text>
+                </view>
               </view>
             </view>
           </view>
@@ -191,6 +190,10 @@ function tagsOf(app) {
     .map((tag) => tag.trim())
     .filter(Boolean)
     .slice(0, 4)
+}
+
+function appPoster(app) {
+  return app?.poster_url || app?.cover_url || app?.banner_url || app?.icon_url || ''
 }
 
 function cardBackground(app, index) {
@@ -637,7 +640,6 @@ onShow(() => {
   gap: 22rpx;
 }
 
-.app-card,
 .skeleton-card,
 .empty-card {
   background: #fff;
@@ -646,100 +648,6 @@ onShow(() => {
   box-shadow: 0 8rpx 28rpx rgba(20, 16, 8, 0.05);
 }
 
-.app-card {
-  padding: 26rpx;
-}
-
-.app-top {
-  display: flex;
-  gap: 20rpx;
-  align-items: flex-start;
-}
-
-.app-icon-img,
-.app-icon-fallback {
-  width: 92rpx;
-  height: 92rpx;
-  border-radius: 20rpx;
-  flex-shrink: 0;
-}
-
-.app-icon-img {
-  background: #f3f4f6;
-}
-
-.app-icon-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #111827 0%, #334155 100%);
-}
-
-.app-icon-letter {
-  color: #ffb84a;
-  font-size: 42rpx;
-  font-weight: 900;
-}
-
-.app-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.app-title-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  min-width: 0;
-}
-
-.app-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 32rpx;
-  color: #111827;
-  font-weight: 850;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8rpx;
-  margin-top: 12rpx;
-}
-
-.tag {
-  font-size: 20rpx;
-  color: #6b7280;
-  padding: 5rpx 12rpx;
-  border-radius: 999rpx;
-  background: #f3f4f6;
-}
-
-.app-desc {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-top: 22rpx;
-  min-height: 100rpx;
-  font-size: 25rpx;
-  line-height: 1.55;
-  color: #4b5563;
-}
-
-.app-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 16rpx;
-  margin-top: 24rpx;
-}
-
-.use-btn,
 .retry-btn {
   height: 72rpx;
   border-radius: 18rpx;
@@ -747,22 +655,6 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-}
-
-.use-btn {
-  min-width: 184rpx;
-  background: #ffb84a;
-  box-shadow: 0 8rpx 20rpx rgba(255, 184, 74, 0.28);
-}
-
-.use-btn.disabled {
-  opacity: 0.76;
-}
-
-.use-text {
-  font-size: 26rpx;
-  color: #111827;
-  font-weight: 800;
 }
 
 .empty-card {
@@ -833,135 +725,142 @@ onShow(() => {
   width: 74%;
 }
 
-/* Home-style AI recommendation cards */
+/* Poster-first app cards */
 .app-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 26rpx;
 }
 
 .app-card {
-  position: relative;
-  min-height: 0;
-  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
   padding: 0;
   overflow: hidden;
   border-radius: 28rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.05);
-  box-shadow: 0 6rpx 20rpx rgba(20, 16, 8, 0.08);
+  background: #ffffff;
+  border: 1rpx solid rgba(17, 24, 39, 0.08);
+  box-shadow: 0 10rpx 30rpx rgba(20, 16, 8, 0.08);
 }
 
-.app-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.72) 100%);
-  pointer-events: none;
+.poster-wrap {
+  position: relative;
+  width: 100%;
+  height: 360rpx;
+  overflow: hidden;
+  background: #ece7dc;
 }
 
-.app-top {
-  position: absolute;
-  left: 20rpx;
-  right: 20rpx;
-  bottom: 126rpx;
-  z-index: 1;
-  display: block;
+.poster-img,
+.poster-fallback {
+  width: 100%;
+  height: 100%;
 }
 
-.app-icon-img,
-.app-icon-fallback {
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 9rpx;
-  background: rgba(255, 184, 74, 0.2);
-  border: 1rpx solid rgba(255, 184, 74, 0.24);
+.poster-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-icon-letter {
-  color: #ffb84a;
-  font-size: 20rpx;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 96rpx;
+  font-weight: 950;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24rpx;
+  align-items: end;
+  padding: 28rpx 28rpx 30rpx;
+  background: #ffffff;
+}
+
+.app-info {
+  min-width: 0;
 }
 
 .app-title-row {
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  margin-top: 8rpx;
+  min-width: 0;
 }
 
 .app-title {
-  color: #ffffff;
-  font-size: 28rpx;
-  font-weight: 800;
-}
-
-.tag-row {
-  flex-wrap: nowrap;
-  gap: 6rpx;
-  margin-top: 8rpx;
+  min-width: 0;
+  color: #111827;
+  font-size: 38rpx;
+  font-weight: 900;
   overflow: hidden;
-}
-
-.tag {
-  flex-shrink: 0;
-  max-width: 120rpx;
-  padding: 3rpx 8rpx;
-  overflow: hidden;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 18rpx;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .app-desc {
-  position: absolute;
-  left: 20rpx;
-  right: 20rpx;
-  bottom: 74rpx;
-  z-index: 1;
   display: block;
-  min-height: 0;
-  margin: 0;
+  margin-top: 12rpx;
+  color: #6b7280;
+  font-size: 26rpx;
+  line-height: 1.45;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 20rpx;
-  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 18rpx;
+  overflow: hidden;
+}
+
+.tag {
+  flex-shrink: 0;
+  max-width: 180rpx;
+  padding: 5rpx 14rpx;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 21rpx;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .app-actions {
-  position: absolute;
-  left: 20rpx;
-  right: 20rpx;
-  bottom: 18rpx;
-  z-index: 1;
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 12rpx;
   margin: 0;
 }
 
 .use-btn {
-  height: 48rpx;
-  border-radius: 999rpx;
-  backdrop-filter: blur(18rpx);
+  min-width: 164rpx;
+  height: 72rpx;
+  padding: 0 28rpx;
+  border-radius: 20rpx;
+  background: #111827;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  box-shadow: 0 10rpx 22rpx rgba(17, 24, 39, 0.18);
 }
 
-.use-btn {
-  min-width: 128rpx;
-  background: #ffb84a;
-  box-shadow: 0 6rpx 16rpx rgba(255, 184, 74, 0.28);
+.use-btn.disabled {
+  opacity: 0.76;
 }
 
 .use-text {
-  color: #111827;
-  font-size: 21rpx;
+  color: #ffffff;
+  font-size: 27rpx;
+  font-weight: 800;
 }
 
 .empty-inline {
-  grid-column: 1 / -1;
   min-height: 96rpx;
   border-radius: 24rpx;
   background: rgba(255, 255, 255, 0.74);

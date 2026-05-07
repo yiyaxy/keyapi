@@ -6,7 +6,7 @@
     <scroll-view scroll-y class="scroll">
       <view class="content" :style="{ paddingTop: (statusBarH + 24) + 'px' }">
         <view class="head">
-          <text class="head-title">REWARD HUB</text>
+          <text class="head-title">邀请奖励</text>
         </view>
 
         <template v-if="!userStore.isLoggedIn">
@@ -23,8 +23,8 @@
           <view class="banner" :style="{ background: 'linear-gradient(120deg, #1E1B4B 0%, #4338CA 50%, #7E22CE 100%)' }">
             <view class="banner-shade" />
             <view class="banner-text">
-              <text class="banner-title">邀请好友赚 Token</text>
-              <text class="banner-sub">好友注册、使用、充值，你都可以获得奖励。构建你的算力网络。</text>
+              <text class="banner-title">邀请好友赚积分</text>
+              <text class="banner-sub">好友注册、使用平台时，你都可以获得积分奖励。构建你的算力网络。</text>
             </view>
             <button class="banner-share" open-type="share">
               <u-icon name="weixin-fill" size="16" color="#050a10" />
@@ -32,8 +32,8 @@
             </button>
           </view>
 
-          <!-- 奖励里程碑 -->
-          <text class="section-label">REWARD MILESTONES</text>
+          <!-- 奖励配置 -->
+          <text class="section-label">奖励配置</text>
           <view class="milestones">
             <view v-for="(m, i) in milestones" :key="i" class="milestone-card">
               <view class="ms-icon">
@@ -45,7 +45,7 @@
           </view>
 
           <!-- 拉新数据 -->
-          <text class="section-label">MY STATS</text>
+          <text class="section-label">我的邀请数据</text>
           <view class="stat-row">
             <view class="stat-card stat-card-glow">
               <text class="stat-num">{{ userInfo?.aff_count || 0 }}</text>
@@ -61,16 +61,16 @@
             </view>
           </view>
 
-          <!-- 充值返佣 -->
-          <text class="section-label">RECHARGE BONUS</text>
+          <!-- 充值奖励 -->
+          <text class="section-label">充值奖励</text>
           <view class="bonus-card">
             <view class="bonus-left">
-              <text class="bonus-pct">10%</text>
-              <text class="bonus-title">终身返佣</text>
+              <text class="bonus-pct">{{ rebatePercentLabel }}</text>
+              <text class="bonus-title">充值奖励</text>
             </view>
             <view class="bonus-right">
-              <text class="bonus-r-1">实时结算</text>
-              <text class="bonus-r-2">RMB / TKN</text>
+              <text class="bonus-r-1">{{ rebateCountLabel }}</text>
+              <text class="bonus-r-2">积分奖励</text>
             </view>
           </view>
 
@@ -140,10 +140,11 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { getInvitees, getSelf } from '@/services/api.js'
+import { getInvitees, getSelf, getStatus } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
+import { buildShareMessage, buildSharePath } from '@/utils/share.js'
 
 const statusBarH = ref(0)
 const loading = ref(false)
@@ -154,22 +155,36 @@ const total = ref(0)
 const pageSize = 20
 const activeTab = ref('invitees')
 
-const milestones = [
-  { label: '注册奖励', value: '+50 TKN', icon: 'account-fill' },
-  { label: '首次使用', value: '+100 TKN', icon: 'star-fill' },
-  { label: '双方互赏', value: '+20 TKN', icon: 'gift-fill' },
-]
+const registerReward = computed(() => Number(userInfo.value?.effective_register_reward ?? userStore.quotaForInviter) || 0)
+const inviteeReward = computed(() => Number(userInfo.value?.effective_invitee_reward ?? userStore.quotaForInvitee) || 0)
+const rebateCount = computed(() => Number(userInfo.value?.effective_top_up_rebate_count ?? userStore.topUpRebateCount) || 0)
+const rebatePercent = computed(() => Number(userInfo.value?.effective_top_up_rebate_percent ?? userStore.topUpRebatePercent) || 0)
+const rewardLimit = computed(() => Number(userStore.inviteRewardLimit) || 0)
 
-const rules = [
+const milestones = computed(() => [
+  { label: '拉新奖励', value: rewardValue(registerReward.value), icon: 'account-fill' },
+  { label: '新用户奖励', value: rewardValue(inviteeReward.value), icon: 'gift-fill' },
+  { label: '奖励上限', value: rewardLimit.value > 0 ? `${rewardLimit.value} 人` : '不限', icon: 'star-fill' },
+])
+
+const rebatePercentLabel = computed(() => rebatePercent.value > 0 ? `${rebatePercent.value}%` : '按配置')
+const rebateCountLabel = computed(() => rebateCount.value > 0 ? `最多 ${rebateCount.value} 次` : '按后台配置')
+
+const rules = computed(() => [
   '分享小程序给新用户，对方通过分享进入并完成微信登录后自动成为你的下级。',
-  '新用户登录成功后，系统立即按后台配置发放拉新注册奖励。',
-  '注册拉新奖励可设置人数上限，达到上限后仍会保留上下级关系。',
-  '下级后续充值时，仍按原有充值返利规则给上级返利。',
-]
+  `新用户登录成功后，系统按后台配置发放注册奖励${registerReward.value > 0 ? `（${q2cny(registerReward.value)}）` : ''}。`,
+  rewardLimit.value > 0
+    ? `注册奖励最多发放 ${rewardLimit.value} 人，达到上限后仍会保留邀请关系。`
+    : '注册奖励当前不限制人数，具体以后台配置为准。',
+  '好友后续充值时，系统按后台配置发放积分奖励。',
+])
 
 const hasMore = computed(() => invitees.value.length < total.value)
 
 function q2cny(quota) { return renderQuota(quota) }
+function rewardValue(quota) {
+  return quota > 0 ? `+${q2cny(quota)}` : '按配置'
+}
 function avatarText(item) {
   const name = item.display_name || item.username || 'U'
   return name.charAt(0).toUpperCase()
@@ -179,10 +194,12 @@ async function loadData() {
   if (loading.value) return
   loading.value = true
   try {
-    const [self, list] = await Promise.all([
+    const [status, self, list] = await Promise.all([
+      getStatus().catch(() => null),
       getSelf(),
       getInvitees(1, pageSize),
     ])
+    if (status) userStore.applyStatus(status)
     userInfo.value = self
     userStore.setUserInfo(self)
     page.value = 1
@@ -216,6 +233,22 @@ onLoad(() => {
     loadData()
   }
 })
+
+onShow(() => {
+  if (!userStore.isLoggedIn) return
+  if (userStore.userInfo) userInfo.value = userStore.userInfo
+  loadData()
+})
+
+onShareAppMessage(() => buildShareMessage({
+  title: '邀请你一起领取积分奖励',
+  path: buildSharePath('/pages/invite/index'),
+}))
+
+onShareTimeline(() => ({
+  title: '邀请你一起领取积分奖励',
+  query: buildSharePath('/pages/invite/index').split('?')[1] || '',
+}))
 </script>
 
 <style lang="scss" scoped>

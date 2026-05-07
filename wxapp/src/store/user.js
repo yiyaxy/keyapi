@@ -13,7 +13,13 @@ export const userStore = reactive({
   customCurrencyRate: 1,
   wxPayEnabled: true,            // 小程序微信支付开关
   inviteRewardLimit: 0,          // 拉新注册奖励人数上限，0 表示不限制
+  quotaForInviter: 0,
+  quotaForInvitee: 0,
+  topUpRebateCount: 0,
+  topUpRebatePercent: 0,
   checkinEnabled: false,         // 签到开关
+  checkinMinQuota: 0,
+  checkinMaxQuota: 0,
 
   /** 登录后保存 cookie */
   setToken(val) {
@@ -56,8 +62,26 @@ export const userStore = reactive({
     if (data.invite_reward_limit !== undefined) {
       this.inviteRewardLimit = Number(data.invite_reward_limit) || 0
     }
+    if (data.quota_for_inviter !== undefined) {
+      this.quotaForInviter = Number(data.quota_for_inviter) || 0
+    }
+    if (data.quota_for_invitee !== undefined) {
+      this.quotaForInvitee = Number(data.quota_for_invitee) || 0
+    }
+    if (data.top_up_rebate_count !== undefined) {
+      this.topUpRebateCount = Number(data.top_up_rebate_count) || 0
+    }
+    if (data.top_up_rebate_percent !== undefined) {
+      this.topUpRebatePercent = Number(data.top_up_rebate_percent) || 0
+    }
     if (data.checkin_enabled !== undefined) {
       this.checkinEnabled = data.checkin_enabled === true
+    }
+    if (data.checkin_min_quota !== undefined) {
+      this.checkinMinQuota = Number(data.checkin_min_quota) || 0
+    }
+    if (data.checkin_max_quota !== undefined) {
+      this.checkinMaxQuota = Number(data.checkin_max_quota) || 0
     }
     // wx_pay_enabled 明确为 false 时才关闭，未返回时保持开启（向后兼容）
     if (data.wx_pay_enabled === false)  this.wxPayEnabled = false

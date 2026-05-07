@@ -25,7 +25,7 @@
       <view class="empty-wrap" v-else-if="tokens.length === 0">
         <u-icon name="file-text" size="50" color="#9ca3af" />
         <text class="empty-txt">暂无 API Key</text>
-        <text class="empty-sub">请联系管理员创建 Token</text>
+        <text class="empty-sub">请联系管理员创建 API Key</text>
       </view>
 
       <!-- Token 列表 -->
