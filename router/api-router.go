@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/controller/invoice"
 	"github.com/QuantumNous/new-api/controller/media"
 	"github.com/QuantumNous/new-api/controller/obs"
+	"github.com/QuantumNous/new-api/controller/partner"
 	"github.com/QuantumNous/new-api/controller/payment"
 	"github.com/QuantumNous/new-api/controller/platform"
 	"github.com/QuantumNous/new-api/controller/tenant"
@@ -511,6 +512,14 @@ func SetApiRouter(router *gin.Engine) {
 			purchaseRoute.POST("/subscription/complete", payment.AdminCompleteSubscriptionOrder)
 			purchaseRoute.POST("/subscription/expire", payment.AdminExpireSubscriptionOrderAction)
 			purchaseRoute.POST("/subscription/delete", payment.AdminDeleteSubscriptionOrderAction)
+		}
+
+		partnerRoute := apiRouter.Group("/partner")
+		partnerRoute.Use(middleware.PartnerAuth())
+		{
+			partnerRoute.GET("/capabilities", partner.Capabilities)
+			partnerRoute.GET("/topups", partner.ListTopUps)
+			partnerRoute.GET("/rebates", partner.ListRebates)
 		}
 
 		affTransferRoute := apiRouter.Group("/aff_transfer")
