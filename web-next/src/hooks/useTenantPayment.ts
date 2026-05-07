@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -66,9 +61,7 @@ export function useWechatConfig() {
   return useQuery<WechatConfigView | null>({
     queryKey: ['tenant-payment', 'wechat'] as const,
     queryFn: async () => {
-      const res = await api.get<WechatConfigView[]>(
-        '/api/tenant/payment/configs'
-      );
+      const res = await api.get<WechatConfigView[]>('/api/tenant/payment/configs');
       return res.data[0] ?? null;
     },
     staleTime: 30_000,
@@ -171,20 +164,14 @@ export type OrderWithRefundContext = {
   payer_current_quota: number;
 };
 
-export async function fetchOrderRefundContext(
-  outTradeNo: string
-): Promise<OrderWithRefundContext> {
+export async function fetchOrderRefundContext(outTradeNo: string): Promise<OrderWithRefundContext> {
   const res = await api.get<OrderWithRefundContext>(
     `/api/payment/orders/${encodeURIComponent(outTradeNo)}`
   );
   return res.data;
 }
 
-export function useTenantPaymentRefunds(q: {
-  page?: number;
-  page_size?: number;
-  status?: string;
-}) {
+export function useTenantPaymentRefunds(q: { page?: number; page_size?: number; status?: string }) {
   return useQuery<{ items: PaymentRefundView[]; total: number }>({
     queryKey: ['tenant-payment', 'refunds', q] as const,
     queryFn: async () => {
@@ -219,6 +206,91 @@ export function useCreateRefund() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-payment', 'refunds'] });
       void qc.invalidateQueries({ queryKey: ['tenant-payment', 'orders'] });
+    },
+  });
+}
+
+// ── xpay tier products ───────────────────────────────────────────────
+//
+// `tenant_xpay_products` rows: one tier × one platform (android | ios) per
+// row. Backend treats UPDATE as a strict PUT replace — UI must round-trip
+// every writable field. (tier_code, platform) are part of the unique
+// identity and immutable on edit.
+
+export type XpayPlatform = 'android' | 'ios';
+
+export type XpayProductView = {
+  id: number;
+  tenant_id: number;
+  tier_code: string;
+  name: string;
+  product_id: string;
+  platform: XpayPlatform;
+  amount_cents: number;
+  quota_delta: number;
+  enabled: boolean;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type XpayProductWritable = {
+  tier_code: string;
+  name: string;
+  product_id: string;
+  platform: XpayPlatform;
+  amount_cents: number;
+  quota_delta: number;
+  enabled: boolean;
+  sort_order: number;
+};
+
+export function useXpayProducts(platform?: XpayPlatform) {
+  return useQuery<XpayProductView[]>({
+    queryKey: ['tenant-payment', 'xpay-products', platform ?? 'all'] as const,
+    queryFn: async () => {
+      const url = platform
+        ? `/api/tenant/payment/xpay/products?platform=${platform}`
+        : '/api/tenant/payment/xpay/products';
+      const res = await api.get<XpayProductView[]>(url);
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 15_000,
+  });
+}
+
+export function useUpsertXpayProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { id?: number; body: XpayProductWritable }) => {
+      if (args.id) {
+        const res = await api.put<XpayProductView>(
+          `/api/tenant/payment/xpay/products/${args.id}`,
+          args.body
+        );
+        return res.data;
+      }
+      const res = await api.post<XpayProductView>('/api/tenant/payment/xpay/products', args.body);
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({
+        queryKey: ['tenant-payment', 'xpay-products'],
+      });
+    },
+  });
+}
+
+export function useDeleteXpayProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/api/tenant/payment/xpay/products/${id}`);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({
+        queryKey: ['tenant-payment', 'xpay-products'],
+      });
     },
   });
 }
