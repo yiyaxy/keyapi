@@ -14,7 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	paymentsvc "github.com/QuantumNous/new-api/service/payment"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/shopspring/decimal"
 
 	"github.com/gin-gonic/gin"
 )
@@ -32,27 +34,16 @@ type wxminiXpayOrderRequest struct {
 	Platform string `json:"platform"`
 }
 
-func detectWxminiPlatformFromUA(ua string) string {
-	ua = strings.ToLower(ua)
-	switch {
-	case strings.Contains(ua, "iphone"), strings.Contains(ua, "ipad"), strings.Contains(ua, "ios"):
-		return "ios"
-	case strings.Contains(ua, "android"):
-		return "android"
-	default:
-		return ""
-	}
-}
-
 // wxminiPlatform resolves the caller's platform (android | ios) from either
-// the body field or ?platform= query, and cross-checks against the User-Agent
-// when both signals are present.
+// the body field or ?platform= query.
 //
 // Platform is REQUIRED — there is no default. iOS and Android have separate
 // product_id rows in tenant_xpay_products (App Store vs Google Play comply
 // with different store rules), and silently defaulting to android would
 // quietly serve the wrong tier list / fail downstream when the product_id
-// doesn't match the device.
+// doesn't match the device. We intentionally trust the explicit client value
+// instead of cross-checking User-Agent: browser testing and WeChat devtools can
+// report a UA that does not match uni.getSystemInfoSync().platform.
 func wxminiPlatform(c *gin.Context, in string) (string, error) {
 	platform := strings.TrimSpace(strings.ToLower(in))
 	if platform == "" {
@@ -64,11 +55,32 @@ func wxminiPlatform(c *gin.Context, in string) (string, error) {
 	if platform != "android" && platform != "ios" {
 		return "", errors.New("invalid platform")
 	}
-	uaPlatform := detectWxminiPlatformFromUA(c.GetHeader("User-Agent"))
-	if uaPlatform != "" && uaPlatform != platform {
-		return "", errors.New("platform mismatch")
-	}
 	return platform, nil
+}
+
+func wxminiXpayBaseQuota(amountCents int64) int64 {
+	if amountCents <= 0 || common.QuotaPerUnit <= 0 || operation_setting.USDExchangeRate <= 0 {
+		return 0
+	}
+	return decimal.NewFromInt(amountCents).
+		Div(decimal.NewFromInt(100)).
+		Div(decimal.NewFromFloat(operation_setting.USDExchangeRate)).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		IntPart()
+}
+
+func wxminiXpayAmountUnits(amountCents int64) int64 {
+	if amountCents <= 0 {
+		return 0
+	}
+	units := amountCents / 100
+	if amountCents%100 != 0 {
+		units++
+	}
+	if units <= 0 {
+		return 1
+	}
+	return units
 }
 
 func GetWxminiXpayTiers(c *gin.Context) {
@@ -95,14 +107,15 @@ func GetWxminiXpayTiers(c *gin.Context) {
 	}
 	items := make([]gin.H, 0, len(rows))
 	for i := range rows {
-		quotaPreview := model.GetUserLevelTopUpBonusPreview(userId, tid, rows[i].QuotaDelta)
+		baseQuota := wxminiXpayBaseQuota(rows[i].AmountCents)
+		quotaPreview := model.GetUserLevelTopUpBonusPreview(userId, tid, baseQuota)
 		items = append(items, gin.H{
 			"tier_code":     rows[i].TierCode,
 			"name":          rows[i].Name,
 			"product_id":    rows[i].ProductId,
 			"platform":      rows[i].Platform,
 			"amount_cents":  rows[i].AmountCents,
-			"quota_delta":   rows[i].QuotaDelta,
+			"quota_delta":   baseQuota,
 			"quota_preview": quotaPreview,
 		})
 	}
@@ -135,7 +148,12 @@ func CreateWxminiTopupXpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "xpay product is not available")
 		return
 	}
-	quotaPreview := model.GetUserLevelTopUpBonusPreview(userId, tid, product.QuotaDelta)
+	baseQuota := wxminiXpayBaseQuota(product.AmountCents)
+	if baseQuota <= 0 {
+		common.ApiErrorMsg(c, "invalid xpay amount")
+		return
+	}
+	quotaPreview := model.GetUserLevelTopUpBonusPreview(userId, tid, baseQuota)
 	openid, err := resolveMiniOpenidForUser(c, userId)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -146,13 +164,7 @@ func CreateWxminiTopupXpay(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	amountUnits := int64(1)
-	if common.QuotaPerUnit > 0 {
-		amountUnits = int64(float64(product.QuotaDelta) / common.QuotaPerUnit)
-		if amountUnits <= 0 {
-			amountUnits = 1
-		}
-	}
+	amountUnits := wxminiXpayAmountUnits(product.AmountCents)
 	resp, order, err := paymentsvc.CreateTopupOrder(c.Request.Context(), paymentsvc.CreateTopupOrderInput{
 		TenantId:          tid,
 		UserId:            userId,

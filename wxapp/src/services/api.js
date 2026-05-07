@@ -186,7 +186,7 @@ export const requestWxminiVirtualPayment = (xpayResponse) =>
       paySig: xpayResponse.pay_sig,
       signature: xpayResponse.signature,
       success: resolve,
-      fail: reject,
+      fail: (err) => reject(new Error(err?.errMsg || '支付失败')),
     })
   })
 
@@ -222,3 +222,50 @@ export const getAppSessionToken = (slug) =>
 
 export const getAppGuestToken = (slug) =>
   request.post(`/api/app/${encodeURIComponent(slug)}/guest-session`, {}, false)
+
+export const getPricingModels = () => request.get('/api/pricing', null, false)
+
+export const createMobileChatCompletion = ({ model, group, messages }) =>
+  request.post('/pg/chat/completions', {
+    model,
+    group,
+    messages,
+    stream: false,
+  })
+
+export const presignAppImageUpload = ({ filename, contentType, sizeBytes }) =>
+  request.post('/api/app/image-uploads/presign', {
+    filename,
+    content_type: contentType,
+    size_bytes: sizeBytes,
+  })
+
+export const presignAppImageUploadBatch = (items) =>
+  request.post('/api/app/image-uploads/presign-batch', {
+    items: (items || []).map((item) => ({
+      filename: item.filename,
+      content_type: item.contentType,
+      size_bytes: item.sizeBytes,
+    })),
+  })
+
+export const createMobileImageGeneration = ({ model, prompt, images = [], size = '1024x1024' }) => {
+  const imageUrls = Array.isArray(images) ? images.filter(Boolean).slice(0, 16) : []
+  const body = {
+    model,
+    prompt,
+    size,
+    n: 1,
+    response_format: 'url',
+    output_format: 'png',
+    quality: 'medium',
+  }
+  if (imageUrls.length > 0) {
+    body.image = imageUrls[0]
+    body.images = imageUrls
+  }
+  return request.post('/pg/images/async', body)
+}
+
+export const getMobileImageTask = (taskId) =>
+  request.get(`/pg/images/async/${encodeURIComponent(taskId)}`)

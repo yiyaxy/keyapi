@@ -58,6 +58,7 @@ type signData struct {
 	BuyQuantity  int    `json:"buyQuantity"`
 	Env          int    `json:"env"`
 	CurrencyType string `json:"currencyType"`
+	Platform     string `json:"platform"`
 	ProductId    string `json:"productId"`
 	GoodsPrice   int64  `json:"goodsPrice"`
 	OutTradeNo   string `json:"outTradeNo"`
@@ -102,6 +103,7 @@ func (providerImpl) CreateOrder(ctx context.Context, req payment.CreateOrderRequ
 		BuyQuantity:  1,
 		Env:          env,
 		CurrencyType: req.Order.Currency,
+		Platform:     product.Platform,
 		ProductId:    product.ProductId,
 		GoodsPrice:   product.AmountCents,
 		OutTradeNo:   req.Order.OutTradeNo,

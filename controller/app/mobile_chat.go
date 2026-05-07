@@ -1,6 +1,7 @@
 package app
 
 import (
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -8,8 +9,41 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
+
+type appImagePresignUploadRequest struct {
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	SizeBytes   int64  `json:"size_bytes"`
+}
+
+type appImagePresignUploadBatchRequest struct {
+	Items []appImagePresignUploadRequest `json:"items"`
+}
+
+type appImagePresignUploadResponse struct {
+	ObjectKey        string            `json:"object_key"`
+	UploadURL        string            `json:"upload_url"`
+	ObjectURL        string            `json:"object_url"`
+	RequiredHeaders  map[string]string `json:"required_headers"`
+	ExpiresAtUnixSec int64             `json:"expires_at"`
+}
+
+type appImagePresignUploadBatchResponse struct {
+	Items []appImagePresignUploadResponse `json:"items"`
+}
+
+type appImageUploadResponse struct {
+	ObjectKey        string `json:"object_key"`
+	ObjectURL        string `json:"object_url"`
+	ExpiresAtUnixSec int64  `json:"expires_at"`
+}
+
+type appImageUploadBatchResponse struct {
+	Items []appImageUploadResponse `json:"items"`
+}
 
 type mobileChatMessageRequest struct {
 	Role             string   `json:"role"`
@@ -31,6 +65,118 @@ type mobileChatMessageResponse struct {
 	Images           []string `json:"images"`
 	CreatedAt        int64    `json:"created_at"`
 	ExpiresAt        int64    `json:"expires_at"`
+}
+
+func PresignAppImageUpload(c *gin.Context) {
+	var req appImagePresignUploadRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Filename) == "" || strings.TrimSpace(req.ContentType) == "" || req.SizeBytes <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	result, err := service.AppImagePresignUpload(c.Request.Context(), middleware.GetTenantId(c), c.GetInt("id"), req.Filename, req.ContentType, req.SizeBytes)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, appImagePresignUploadResponse{
+		ObjectKey:        result.ObjectKey,
+		UploadURL:        result.UploadURL,
+		ObjectURL:        result.ObjectURL,
+		RequiredHeaders:  result.RequiredHeaders,
+		ExpiresAtUnixSec: result.ExpiresAt,
+	})
+}
+
+func PresignAppImageUploadBatch(c *gin.Context) {
+	var req appImagePresignUploadBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Items) == 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	items := make([]service.AppImagePresignUploadItem, 0, len(req.Items))
+	for _, item := range req.Items {
+		if strings.TrimSpace(item.Filename) == "" || strings.TrimSpace(item.ContentType) == "" || item.SizeBytes <= 0 {
+			common.ApiErrorMsg(c, "参数错误")
+			return
+		}
+		items = append(items, service.AppImagePresignUploadItem{
+			Filename:    item.Filename,
+			ContentType: item.ContentType,
+			SizeBytes:   item.SizeBytes,
+		})
+	}
+
+	results, err := service.AppImagePresignUploadBatch(c.Request.Context(), middleware.GetTenantId(c), c.GetInt("id"), items)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	resp := appImagePresignUploadBatchResponse{
+		Items: make([]appImagePresignUploadResponse, 0, len(results)),
+	}
+	for _, result := range results {
+		resp.Items = append(resp.Items, appImagePresignUploadResponse{
+			ObjectKey:        result.ObjectKey,
+			UploadURL:        result.UploadURL,
+			ObjectURL:        result.ObjectURL,
+			RequiredHeaders:  result.RequiredHeaders,
+			ExpiresAtUnixSec: result.ExpiresAt,
+		})
+	}
+	common.ApiSuccess(c, resp)
+}
+
+func UploadAppImages(c *gin.Context) {
+	form, err := c.MultipartForm()
+	if err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	files := form.File["files"]
+	if len(files) == 0 {
+		files = form.File["file"]
+	}
+	if len(files) == 0 || len(files) > 20 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	resp := appImageUploadBatchResponse{
+		Items: make([]appImageUploadResponse, 0, len(files)),
+	}
+	for _, header := range files {
+		if header == nil || strings.TrimSpace(header.Filename) == "" || header.Size <= 0 {
+			common.ApiErrorMsg(c, "参数错误")
+			return
+		}
+		file, err := header.Open()
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		body, readErr := io.ReadAll(file)
+		_ = file.Close()
+		if readErr != nil {
+			common.ApiError(c, readErr)
+			return
+		}
+		contentType := header.Header.Get("Content-Type")
+		result, err := service.AppImageUpload(c.Request.Context(), middleware.GetTenantId(c), c.GetInt("id"), header.Filename, contentType, body)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		resp.Items = append(resp.Items, appImageUploadResponse{
+			ObjectKey:        result.ObjectKey,
+			ObjectURL:        result.ObjectURL,
+			ExpiresAtUnixSec: result.ExpiresAt,
+		})
+	}
+	common.ApiSuccess(c, resp)
 }
 
 func ListMobileChatMessages(c *gin.Context) {

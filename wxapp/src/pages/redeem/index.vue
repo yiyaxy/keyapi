@@ -44,7 +44,7 @@
 
       <!-- 金额选择 -->
       <view class="section">
-        <text class="section-title">常用金额</text>
+        <text class="section-title">固定金额</text>
         <view class="preset-grid">
           <view
             v-for="tier in xpayTiers"
@@ -53,8 +53,7 @@
             :class="{ active: selectedTierCode === tier.tier_code }"
             @click="selectTier(tier)"
           >
-            <text class="preset-num">¥{{ (Number(tier.amount_cents || 0) / 100).toFixed(2) }}</text>
-            <text class="preset-desc">{{ q2cny(tier.quota_preview?.total_quota || tier.quota_delta) }}</text>
+            <text class="preset-num">{{ amountYuan(tier.amount_cents) }}</text>
           </view>
         </view>
 
@@ -69,15 +68,15 @@
           </view>
           <view class="bonus-tag" v-if="bonusPercent > 0">赠送 {{ bonusPercent }}%</view>
         </view>
-        <view class="bonus-total">{{ q2cny(totalQuota) }}</view>
+        <view class="bonus-total">{{ topupTotalPointsLabel }}</view>
         <view class="bonus-lines">
           <view class="bonus-line">
             <text>基础额度</text>
-            <text>{{ q2cny(baseQuota) }}</text>
+            <text>{{ topupBasePointsLabel }}</text>
           </view>
-          <view class="bonus-line strong" v-if="bonusQuota > 0">
+          <view class="bonus-line strong" v-if="topupBonusPoints > 0">
             <text>等级赠送</text>
-            <text>+{{ q2cny(bonusQuota) }}</text>
+            <text>+{{ topupBonusPointsLabel }}</text>
           </view>
           <view class="bonus-line muted" v-else>
             <text>等级赠送</text>
@@ -102,7 +101,7 @@
           />
           <u-loading-icon v-else color="#fff" size="32" />
           <text style="margin-left: 12rpx;">
-            {{ paying ? '支付中...' : '微信支付 ¥' + amount.toFixed(2) }}
+            {{ paying ? '支付中...' : '微信支付 ' + amountYuan(selectedTier?.amount_cents) }}
           </text>
         </view>
         <text class="tip">支付成功后额度立即到账</text>
@@ -219,12 +218,10 @@ const canPay = computed(
 )
 
 const fallbackBaseQuota = computed(() => {
+  if (selectedTier.value?.quota_preview?.base_quota) return Number(selectedTier.value.quota_preview.base_quota)
   if (selectedTier.value?.quota_delta) return Number(selectedTier.value.quota_delta)
   const qpu = Number(userStore.quotaPerUnit || 500000)
-  if (userStore.quotaDisplayType === 'TOKENS') return amount.value
-  if (userStore.quotaDisplayType === 'CNY') return amount.value / Number(userStore.usdExchangeRate || 1) * qpu
-  if (userStore.quotaDisplayType === 'CUSTOM') return amount.value / Number(userStore.customCurrencyRate || 1) * qpu
-  return amount.value * qpu
+  return amount.value / Number(userStore.usdExchangeRate || 1) * qpu
 })
 const baseQuota = computed(() => {
   const raw = topupPreview.value?.base_quota
@@ -236,6 +233,15 @@ const totalQuota = computed(() => {
   return Number(raw != null ? raw : baseQuota.value) || 0
 })
 const bonusPercent = computed(() => Number(topupPreview.value?.bonus_percent) || 0)
+const topupBasePoints = computed(() => amountPointsValue(selectedTier.value?.amount_cents))
+const topupBonusPoints = computed(() => {
+  if (bonusPercent.value <= 0) return 0
+  return Math.ceil(topupBasePoints.value * bonusPercent.value / 100)
+})
+const topupTotalPoints = computed(() => topupBasePoints.value + topupBonusPoints.value)
+const topupBasePointsLabel = computed(() => formatPoints(topupBasePoints.value))
+const topupBonusPointsLabel = computed(() => formatPoints(topupBonusPoints.value))
+const topupTotalPointsLabel = computed(() => formatPoints(topupTotalPoints.value))
 const previewLevelName = computed(() => {
   if (!userStore.isLoggedIn) return '登录后查看等级赠送'
   return topupPreview.value?.level_name || userStore.userInfo?.level_name || '普通用户'
@@ -333,7 +339,7 @@ async function doPay() {
         const me = await getSelf()
         if (me) userStore.setUserInfo(me)
       } catch (_) {}
-      uni.showToast({ title: `充值成功，到账${q2cny(totalQuota.value)}`, icon: 'success', duration: 1800 })
+      uni.showToast({ title: `充值成功，到账${topupTotalPointsLabel.value}`, icon: 'success', duration: 1800 })
     } else if (finalStatus === 'expired' || finalStatus === 'closed') {
       uni.showToast({ title: `订单已${finalStatus === 'expired' ? '过期' : '关闭'}`, icon: 'none' })
     } else {
@@ -362,6 +368,17 @@ const guides = [
 ]
 
 function q2cny(quota) { return renderQuota(quota) }
+function amountYuan(amountCents) {
+  const cents = Number(amountCents || 0)
+  return '¥' + (cents / 100).toFixed(2)
+}
+function amountPointsValue(amountCents) {
+  const cents = Number(amountCents || 0)
+  return Math.ceil(cents)
+}
+function formatPoints(points) {
+  return `${Number(points || 0).toLocaleString()}积分`
+}
 
 function reset() {
   code.value = ''

@@ -196,10 +196,7 @@ function tokenStr(q) {
 }
 function q2cny(q) { return renderQuota(q) }
 function cny(q) {
-  const n = Number(q) || 0
-  const perUnit = Number(userStore.quotaPerUnit) || 500000
-  const rate = Number(userStore.usdExchangeRate) || 1
-  return '¥' + (n / perUnit * rate).toFixed(2)
+  return renderQuota(q)
 }
 
 function firstLetter(name) {

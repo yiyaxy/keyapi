@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const ImageDiagnosisResultTTLSeconds int64 = 72 * 60 * 60
+const ImageDiagnosisResultTTLSeconds int64 = 7 * 24 * 60 * 60
 
 type ImageDiagnosisResult struct {
 	Id             int    `json:"id"`

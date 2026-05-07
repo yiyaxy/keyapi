@@ -1,9 +1,4 @@
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 
@@ -46,11 +41,50 @@ export type AiAppInput = {
   tags: string;
 };
 
+type AiAppImageUploadResponse = {
+  object_key: string;
+  object_url: string;
+  expires_at: number;
+};
+
+type AiAppImageUploadBatchResponse = {
+  items: AiAppImageUploadResponse[];
+};
+
 export const AI_APP_STATUS = {
   DRAFT: 0,
   ONLINE: 1,
   ARCHIVED: 2,
 } as const;
+
+export async function uploadAiAppImages(
+  files: File[],
+  onUploaded?: (done: number, total: number) => void
+): Promise<string[]> {
+  if (files.length === 0) return [];
+
+  const body = new FormData();
+  files.forEach((file, index) => {
+    body.append('files', file, file.name || `app-image-${index + 1}`);
+  });
+  const res = await api.post<AiAppImageUploadBatchResponse>('/api/app/image-uploads', body, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  const items = res.data.items ?? [];
+  if (items.length !== files.length) throw new Error('upload response count mismatch');
+
+  return items.map((item, index) => {
+    if (!item.object_url) throw new Error('missing uploaded image url');
+    onUploaded?.(index + 1, files.length);
+    return item.object_url;
+  });
+}
+
+export async function uploadAiAppImage(file: File): Promise<string> {
+  const [url] = await uploadAiAppImages([file]);
+  if (!url) throw new Error('missing uploaded image url');
+  return url;
+}
 
 // ── Public hooks ──────────────────────────────────────────────────────────────
 

@@ -60,8 +60,8 @@
           </view>
 
           <view class="card-mid">
-            <text class="amount">¥{{ fmtAmount(order.amount) }}</text>
-            <text class="currency">{{ order.currency || 'CNY' }}</text>
+            <text class="amount">{{ fmtAmountPoints(order.amount) }}</text>
+            <text class="currency">积分</text>
           </view>
 
           <view class="card-bot">
@@ -132,9 +132,8 @@ function statusLabel(s) {
   return map[s] || s
 }
 
-function fmtAmount(fen) {
-  if (fen == null) return '0.00'
-  return (fen / 100).toFixed(2)
+function fmtAmountPoints(fen) {
+  return Math.ceil(Number(fen || 0)).toLocaleString()
 }
 
 function fmtTime(ts) {
@@ -156,7 +155,7 @@ function viewDetail(order) {
     title: '订单详情',
     content: [
       `订单号：${order.out_trade_no}`,
-      `金额：¥${fmtAmount(order.amount)} ${order.currency || 'CNY'}`,
+      `金额：${fmtAmountPoints(order.amount)} 积分`,
       `状态：${statusLabel(order.status)}`,
       `类型：${orderTypeLabel(order.order_type)}`,
       order.paid_at ? `支付时间：${fmtTime(order.paid_at)}` : `创建时间：${fmtTime(order.created_at)}`,

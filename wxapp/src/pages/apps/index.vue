@@ -34,6 +34,47 @@
           </view>
         </view>
 
+        <view class="native-chat-panel">
+          <view class="native-chat-head">
+            <view class="native-chat-heading">
+              <view class="native-chat-icon">
+                <text>AI</text>
+              </view>
+              <view class="native-chat-title-wrap">
+                <text class="native-chat-kicker">AI CHAT</text>
+                <text class="native-chat-title">AI 快捷使用</text>
+              </view>
+            </view>
+          </view>
+          <view class="native-chat-box" @click="focusQuickChat">
+            <textarea
+              v-model="quickChatInput"
+              class="native-chat-input"
+              auto-height
+              maxlength="1000"
+              :focus="quickChatFocus"
+              placeholder="直接问问模型：帮我写一段小程序介绍..."
+              placeholder-class="native-chat-placeholder"
+              @blur="quickChatFocus = false"
+            />
+          </view>
+          <view class="native-chat-actions">
+            <view class="native-chat-tip">
+              <u-icon name="server-fill" size="14" color="#6b7280" />
+              <text>使用你的平台余额结算</text>
+            </view>
+            <view class="native-chat-buttons">
+              <view class="native-chat-btn secondary" @click="openNativeChat('', 'image')">
+                <text>图片生成</text>
+              </view>
+              <view class="native-chat-btn" @click="openNativeChat(quickChatInput, 'chat')">
+                <text>{{ quickChatInput.trim() ? '开始对话' : '打开聊天' }}</text>
+                <u-icon name="arrow-rightward" size="15" color="#111827" />
+              </view>
+            </view>
+          </view>
+        </view>
+
         <view v-if="loading" class="state-list">
           <view v-for="i in 4" :key="i" class="skeleton-card">
             <view class="skeleton-icon" />
@@ -50,12 +91,6 @@
           <view class="retry-btn" @click="loadApps">
             <text class="retry-text">重新加载</text>
           </view>
-        </view>
-
-        <view v-else-if="filteredApps.length === 0" class="empty-card">
-          <u-icon name="grid" size="30" color="#9ca3af" />
-          <text class="empty-title">{{ search ? '没有找到匹配应用' : '暂无可用应用' }}</text>
-          <text class="empty-desc">{{ search ? '换个关键词试试' : '上线后的应用会展示在这里' }}</text>
         </view>
 
         <view v-else class="app-list">
@@ -92,6 +127,10 @@
               </view>
             </view>
           </view>
+
+          <view v-if="filteredApps.length === 0" class="empty-inline">
+            <text>{{ search ? '没有找到匹配应用' : '暂无其他可用应用' }}</text>
+          </view>
         </view>
 
         <view style="height: 180rpx;" />
@@ -117,6 +156,8 @@ const loadError = ref(false)
 const search = ref('')
 const activeSlug = ref('')
 const userInfo = ref(null)
+const quickChatInput = ref('')
+const quickChatFocus = ref(false)
 
 const filteredApps = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -260,6 +301,20 @@ async function useApp(app) {
   } finally {
     activeSlug.value = ''
   }
+}
+
+function focusQuickChat() {
+  quickChatFocus.value = true
+}
+
+async function openNativeChat(draft = '', mode = 'chat') {
+  if (!(await ensureValidLogin())) return
+  const text = String(draft || '').trim()
+  const params = []
+  if (text) params.push(`draft=${encodeURIComponent(text)}`)
+  if (mode === 'image') params.push('mode=image')
+  const suffix = params.length ? `?${params.join('&')}` : ''
+  uni.navigateTo({ url: `/pages/apps/chat${suffix}` })
 }
 
 async function loadApps() {
@@ -450,6 +505,129 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.native-chat-panel {
+  margin-bottom: 24rpx;
+  border-radius: 28rpx;
+  padding: 28rpx;
+  background: linear-gradient(135deg, #132033 0%, #315b7c 56%, #b87b2d 100%);
+  box-shadow: 0 12rpx 32rpx rgba(24, 38, 58, 0.18);
+}
+
+.native-chat-head {
+  display: flex;
+  align-items: center;
+}
+
+.native-chat-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.native-chat-icon {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 22rpx;
+  background: #ffb84a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 20rpx rgba(255, 184, 74, 0.28);
+  flex-shrink: 0;
+}
+
+.native-chat-icon text {
+  color: #111827;
+  font-size: 28rpx;
+  font-weight: 950;
+}
+
+.native-chat-title-wrap {
+  min-width: 0;
+}
+
+.native-chat-kicker {
+  display: block;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 19rpx;
+  font-weight: 850;
+}
+
+.native-chat-title {
+  display: block;
+  margin-top: 6rpx;
+  color: #fff;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.native-chat-box {
+  margin-top: 24rpx;
+  min-height: 132rpx;
+  border-radius: 22rpx;
+  padding: 22rpx;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.native-chat-input {
+  width: 100%;
+  min-height: 88rpx;
+  max-height: 180rpx;
+  color: #111827;
+  font-size: 27rpx;
+  line-height: 1.5;
+}
+
+.native-chat-placeholder {
+  color: #9ca3af;
+}
+
+.native-chat-actions {
+  margin-top: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.native-chat-tip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 22rpx;
+}
+
+.native-chat-buttons {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.native-chat-btn {
+  flex-shrink: 0;
+  height: 64rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: #ffb84a;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #111827;
+  font-size: 24rpx;
+  font-weight: 850;
+  box-shadow: 0 8rpx 20rpx rgba(255, 184, 74, 0.26);
+}
+
+.native-chat-btn.secondary {
+  background: rgba(255, 255, 255, 0.94);
+  color: #111827;
+  box-shadow: none;
 }
 
 .state-list,
@@ -780,5 +958,17 @@ onShow(() => {
 .use-text {
   color: #111827;
   font-size: 21rpx;
+}
+
+.empty-inline {
+  grid-column: 1 / -1;
+  min-height: 96rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.74);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  font-size: 24rpx;
 }
 </style>

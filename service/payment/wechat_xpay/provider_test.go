@@ -96,7 +96,7 @@ func TestCreateOrderBuildsVirtualPaymentParams(t *testing.T) {
 	if err := json.Unmarshal([]byte(resp.SignData), &sd); err != nil {
 		t.Fatalf("signData json: %v", err)
 	}
-	if sd.OfferId != "offer-1" || sd.ProductId != "prod-100" || sd.GoodsPrice != 100 || sd.OutTradeNo != "wx_t7_T_1_abcdef" {
+	if sd.OfferId != "offer-1" || sd.Platform != "android" || sd.ProductId != "prod-100" || sd.GoodsPrice != 100 || sd.OutTradeNo != "wx_t7_T_1_abcdef" {
 		t.Fatalf("signData = %+v", sd)
 	}
 	if sd.Attach != "q100|android|0" {

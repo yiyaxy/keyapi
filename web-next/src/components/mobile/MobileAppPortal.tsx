@@ -35,7 +35,12 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
-import { type AiApp, useGetSessionToken, usePublicApps } from '@/hooks/useAiApps';
+import {
+  type AiApp,
+  uploadAiAppImages,
+  useGetSessionToken,
+  usePublicApps,
+} from '@/hooks/useAiApps';
 import { usePricing, type PricingEnvelope, type PricingRow } from '@/hooks/usePricing';
 import { toDisplay, usePublicConfig, type PublicConfig } from '@/hooks/usePublicConfig';
 import { api, ApiError } from '@/lib/api';
@@ -146,7 +151,7 @@ function buildHistoryEntries(recordsDesc: ChatMessage[]): HistoryEntry[] {
   return entries.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
 }
 
-const MAX_ATTACHED_IMAGES = 4;
+const MAX_ATTACHED_IMAGES = 16;
 const CHAT_INITIAL_LIMIT = 30;
 const HISTORY_PAGE_SIZE = 20;
 const MOBILE_IMAGE_APP_SLUG = import.meta.env.VITE_IMAGE_DIAGNOSIS_APP_SLUG ?? 'image-diagnosis';
@@ -332,13 +337,14 @@ type AsyncImageTaskResponse = {
   } | null;
 };
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('读取上传图片失败，请重新选择图片'));
-    reader.readAsDataURL(file);
-  });
+async function uploadMobileReferenceImages(
+  images: AttachedImage[],
+  onUploaded: (done: number, total: number) => void
+): Promise<string[]> {
+  return uploadAiAppImages(
+    images.map((image) => image.file),
+    onUploaded
+  );
 }
 
 function parseAsyncSubmitResponse(body: unknown) {
@@ -538,21 +544,16 @@ async function submitMobileAsyncImageGeneration({
   token,
   model,
   prompt,
-  referenceImages,
-  referenceImageDataUrls,
+  referenceImageUrls,
   onStatus,
 }: {
   token: string;
   model: MobileModel;
   prompt: string;
-  referenceImages: AttachedImage[];
-  referenceImageDataUrls?: string[];
+  referenceImageUrls: string[];
   onStatus: (message: string) => void;
 }) {
   onStatus('准备提交图片任务');
-  const imageDataUrls =
-    referenceImageDataUrls ??
-    (await Promise.all(referenceImages.map((image) => fileToDataUrl(image.file))));
   const body: Record<string, unknown> = {
     model: model.name,
     prompt,
@@ -562,9 +563,10 @@ async function submitMobileAsyncImageGeneration({
     output_format: 'png',
     quality: 'medium',
   };
-  if (imageDataUrls.length > 0) {
-    body.image = imageDataUrls[0];
-    body.images = imageDataUrls;
+  const imageUrls = referenceImageUrls.filter(Boolean).slice(0, MAX_ATTACHED_IMAGES);
+  if (imageUrls.length > 0) {
+    body.image = imageUrls[0];
+    body.images = imageUrls;
   }
 
   const submitResponse = await fetch('/v1/images/async', {
@@ -1088,10 +1090,6 @@ export function MobileChat({
     const activeMessages = messagesByKind[activeKind];
     const activeModel = selectedModel;
     const referenceImages = activeKind === 'image' ? attachedImages : [];
-    const referenceImageDataUrls =
-      referenceImages.length > 0
-        ? await Promise.all(referenceImages.map((image) => fileToDataUrl(image.file)))
-        : [];
     const userCreatedAt = currentTimestamp();
     const userMessage: ChatMessage = {
       id: createMessageId('u'),
@@ -1102,7 +1100,6 @@ export function MobileChat({
       createdAt: userCreatedAt,
     };
     setMessagesForKind(activeKind, (prev) => [...prev, userMessage]);
-    persistMessage(userMessage, activeModel, activeKind, referenceImageDataUrls);
     setInput('');
     if (referenceImages.length > 0) {
       setAttachedImages([]);
@@ -1111,14 +1108,26 @@ export function MobileChat({
     setRunningByKind((prev) => ({ ...prev, [activeKind]: true }));
 
     try {
+      if (activeKind === 'image' && referenceImages.length > 0) {
+        setImageTaskMessage(`正在上传参考图 0/${referenceImages.length}`);
+      }
+      const referenceImageUrls =
+        activeKind === 'image' && referenceImages.length > 0
+          ? await uploadMobileReferenceImages(
+              referenceImages.slice(0, MAX_ATTACHED_IMAGES),
+              (done, total) => {
+                setImageTaskMessage(`正在上传参考图 ${done}/${total}`);
+              }
+            )
+          : [];
+      persistMessage(userMessage, activeModel, activeKind, referenceImageUrls);
       const data =
         activeKind === 'image'
           ? await submitMobileAsyncImageGeneration({
               token: await getMobileImageRelayToken(),
               model: activeModel,
               prompt: content,
-              referenceImages,
-              referenceImageDataUrls,
+              referenceImageUrls,
               onStatus: setImageTaskMessage,
             })
           : (
@@ -1455,6 +1464,9 @@ export function MobileChat({
             ) : null}
           </div>
         ) : null}
+        <p className='mt-2 px-1 text-11 leading-5 text-fg-3'>
+          对话记录和图片仅保存一周，请及时保存重要内容。
+        </p>
 
         <div className='mt-3 space-y-2'>
           {kind === 'image' ? (
@@ -1540,6 +1552,7 @@ export function MobileChat({
             <DialogTitle className='text-16'>
               {kind === 'image' ? '图片记录' : '对话记录'}
             </DialogTitle>
+            <p className='text-12 font-normal text-fg-2'>记录仅保存一周</p>
           </DialogHeader>
           <div className='max-h-[68vh] space-y-3 overflow-y-auto p-4'>
             {historyLoading && historyEntries.length === 0 ? (
