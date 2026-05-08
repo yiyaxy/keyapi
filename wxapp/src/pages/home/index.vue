@@ -54,13 +54,13 @@
             <view class="balance-grid">
               <view class="bg-item">
                 <text class="bg-label">可用余额</text>
-                <text class="bg-val gold">{{ cny(userInfo?.quota) }}</text>
-                <text class="bg-sub">{{ tokenStr(userInfo?.quota) }} 积分</text>
+                <text class="bg-val gold">{{ cny(userField('quota')) }}</text>
+                <text class="bg-sub">{{ tokenStr(userField('quota')) }} 积分</text>
               </view>
               <view class="bg-item">
                 <text class="bg-label">累计消耗</text>
-                <text class="bg-val">{{ cny(userInfo?.used_quota) }}</text>
-                <text class="bg-sub">{{ tokenStr(userInfo?.used_quota) }} 积分</text>
+                <text class="bg-val">{{ cny(userField('used_quota')) }}</text>
+                <text class="bg-sub">{{ tokenStr(userField('used_quota')) }} 积分</text>
               </view>
               <view class="bg-item">
                 <text class="bg-label">今日消耗</text>
@@ -194,10 +194,10 @@ const cardGradients = [
   'linear-gradient(135deg, #2e3140 0%, #161822 100%)',
 ]
 
-const checkinStats = computed(() => checkinInfo.value?.stats || {})
-const checkedInToday = computed(() => checkinStats.value?.checked_in_today === true)
-const checkinMinQuota = computed(() => Number(checkinInfo.value?.min_quota ?? userStore.checkinMinQuota) || 0)
-const checkinMaxQuota = computed(() => Number(checkinInfo.value?.max_quota ?? userStore.checkinMaxQuota) || 0)
+const checkinStats = computed(() => (checkinInfo.value && checkinInfo.value.stats) || {})
+const checkedInToday = computed(() => checkinStats.value && checkinStats.value.checked_in_today === true)
+const checkinMinQuota = computed(() => Number(valueOrFallback(checkinInfo.value && checkinInfo.value.min_quota, userStore.checkinMinQuota)) || 0)
+const checkinMaxQuota = computed(() => Number(valueOrFallback(checkinInfo.value && checkinInfo.value.max_quota, userStore.checkinMaxQuota)) || 0)
 const checkinRewardLabel = computed(() => {
   const min = checkinMinQuota.value
   const max = checkinMaxQuota.value
@@ -214,17 +214,25 @@ function cny(q) {
   return renderQuota(q)
 }
 
+function valueOrFallback(value, fallback) {
+  return value !== null && value !== undefined ? value : fallback
+}
+
+function userField(key) {
+  return userInfo.value ? userInfo.value[key] : undefined
+}
+
 function firstLetter(name) {
   return String(name || 'A').slice(0, 1).toUpperCase()
 }
 
 function cardBackground(app, index) {
-  const seed = String(app?.slug || app?.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  const seed = String((app && (app.slug || app.name)) || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
   return cardGradients[(seed + index) % cardGradients.length]
 }
 
 function appPoster(app) {
-  return app?.poster_url || app?.cover_url || app?.banner_url || app?.icon_url || ''
+  return (app && (app.poster_url || app.cover_url || app.banner_url || app.icon_url)) || ''
 }
 
 function assetUrl(url) {
@@ -301,7 +309,7 @@ async function ensureValidLogin() {
 
   try {
     const data = await getSelf()
-    if (!data?.id) throw new Error('Invalid session')
+    if (!data || !data.id) throw new Error('Invalid session')
     userInfo.value = data
     userStore.setUserInfo(data)
     return true
@@ -312,7 +320,7 @@ async function ensureValidLogin() {
 }
 
 async function useApp(app) {
-  if (!app?.slug || activeSlug.value) return
+  if (!app || !app.slug || activeSlug.value) return
 
   activeSlug.value = app.slug
   try {
@@ -321,12 +329,12 @@ async function useApp(app) {
     }
 
     const data = await getAppSessionToken(app.slug)
-    const token = data?.key || ''
+    const token = (data && data.key) || ''
     if (!token) throw new Error('未获取到应用访问令牌')
     const targetUrl = buildTokenHandoffUrl(toAbsoluteTarget(app.target_url), token)
     openWebView(targetUrl, app.name)
   } catch (err) {
-    uni.showToast({ title: err?.message || '应用启动失败，请稍后重试', icon: 'none' })
+    uni.showToast({ title: (err && err.message) || '应用启动失败，请稍后重试', icon: 'none' })
   } finally {
     activeSlug.value = ''
   }
@@ -357,8 +365,8 @@ async function loadCheckinStatus() {
   }
   try {
     checkinInfo.value = await getCheckinStatus()
-    userStore.checkinMinQuota = Number(checkinInfo.value?.min_quota) || userStore.checkinMinQuota
-    userStore.checkinMaxQuota = Number(checkinInfo.value?.max_quota) || userStore.checkinMaxQuota
+    userStore.checkinMinQuota = Number(checkinInfo.value && checkinInfo.value.min_quota) || userStore.checkinMinQuota
+    userStore.checkinMaxQuota = Number(checkinInfo.value && checkinInfo.value.max_quota) || userStore.checkinMaxQuota
   } catch { checkinInfo.value = null }
 }
 
@@ -367,7 +375,7 @@ async function handleCheckin() {
   checkinLoading.value = true
   try {
     const data = await doCheckin()
-    const awarded = Number(data?.quota_awarded || 0)
+    const awarded = Number((data && data.quota_awarded) || 0)
     if (awarded > 0 && userInfo.value) {
       userInfo.value = { ...userInfo.value, quota: Number(userInfo.value.quota || 0) + awarded }
       userStore.setUserInfo(userInfo.value)
@@ -399,8 +407,8 @@ async function refresh() {
         userInfo.value = selfRes.value
         userStore.setUserInfo(selfRes.value)
       }
-      if (todayRes.status === 'fulfilled') todayQuota.value = todayRes.value?.quota || 0
-      if (monthRes.status === 'fulfilled') monthQuota.value = monthRes.value?.quota || 0
+      if (todayRes.status === 'fulfilled') todayQuota.value = (todayRes.value && todayRes.value.quota) || 0
+      if (monthRes.status === 'fulfilled') monthQuota.value = (monthRes.value && monthRes.value.quota) || 0
       await loadCheckinStatus()
     }
   } finally {

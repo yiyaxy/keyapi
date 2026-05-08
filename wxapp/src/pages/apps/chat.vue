@@ -35,7 +35,7 @@
     <view class="model-bar">
       <view class="model-info" @click="pickerOpen = !pickerOpen">
         <text class="model-label">当前模型</text>
-        <text class="model-name">{{ selectedModel?.displayName || modelEmptyText }}</text>
+        <text class="model-name">{{ selectedModelNameText }}</text>
       </view>
       <view class="model-switch" @click="pickerOpen = !pickerOpen">
         <u-icon name="arrow-down" size="16" color="#4b5563" />
@@ -97,7 +97,7 @@
         <view class="msg-bubble">
           <text class="msg-role">{{ message.role === 'user' ? '我' : activeMode === 'image' ? '图片' : 'AI' }}</text>
           <text v-if="message.content" class="msg-content">{{ message.content }}</text>
-          <view v-if="message.images?.length" class="image-grid">
+          <view v-if="hasMessageImages(message)" class="image-grid">
             <image
               v-for="src in message.images"
               :key="src"
@@ -252,6 +252,7 @@ const selectedModel = computed(() => {
 })
 const quickPrompts = computed(() => (activeMode.value === 'image' ? imagePrompts : chatPrompts))
 const modelEmptyText = computed(() => (activeMode.value === 'image' ? '暂无可用图片模型' : '暂无可用大语言模型'))
+const selectedModelNameText = computed(() => (selectedModel.value && selectedModel.value.displayName) || modelEmptyText.value)
 const welcomeDesc = computed(() => (
   activeMode.value === 'image'
     ? '选择图片模型后输入提示词，生成结果会保存在本机记录里。'
@@ -262,9 +263,9 @@ const canSend = computed(() => Boolean(input.value.trim()) && Boolean(selectedMo
 const historyItems = computed(() => [...messages.value].reverse())
 
 function isImageModel(row) {
-  const endpoints = Array.isArray(row?.supported_endpoint_types) ? row.supported_endpoint_types : []
-  const name = String(row?.model_name || '').toLowerCase()
-  const text = `${name} ${row?.description || ''} ${row?.tags || ''}`.toLowerCase()
+  const endpoints = row && Array.isArray(row.supported_endpoint_types) ? row.supported_endpoint_types : []
+  const name = String((row && row.model_name) || '').toLowerCase()
+  const text = `${name} ${(row && row.description) || ''} ${(row && row.tags) || ''}`.toLowerCase()
   if (endpoints.includes('image-generation')) return true
   return [
     'gpt-image',
@@ -302,11 +303,11 @@ function normalizeModel(row, kind) {
 }
 
 function normalizeModels(data) {
-  const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : []
+  const rows = Array.isArray(data) ? data : data && Array.isArray(data.data) ? data.data : []
   const nextChat = []
   const nextImage = []
   rows.forEach((row) => {
-    if (!row?.model_name) return
+    if (!row || !row.model_name) return
     if (isImageModel(row)) {
       nextImage.push(normalizeModel(row, 'image'))
     } else {
@@ -317,7 +318,7 @@ function normalizeModels(data) {
 }
 
 function historyKey() {
-  const userId = userStore.userInfo?.id || 'guest'
+  const userId = (userStore.userInfo && userStore.userInfo.id) || 'guest'
   return `wxapp_mobile_chat:${userId}`
 }
 
@@ -336,7 +337,9 @@ function persistLocalHistory() {
 }
 
 function pickDefaultModel(models, preferred) {
-  return models.find((model) => model.name === preferred)?.name || models[0]?.name || ''
+  const preferredModel = models.find((model) => model.name === preferred)
+  if (preferredModel) return preferredModel.name
+  return models.length > 0 ? models[0].name : ''
 }
 
 async function loadModels() {
@@ -373,6 +376,10 @@ function selectModel(model) {
   pickerOpen.value = false
 }
 
+function hasMessageImages(message) {
+  return Boolean(message && Array.isArray(message.images) && message.images.length > 0)
+}
+
 function createMessage(role, content, extra = {}) {
   return {
     id: `${role}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -390,10 +397,11 @@ function extractReply(data) {
   if (typeof data.output_text === 'string') return data.output_text
   const choices = data.choices
   if (Array.isArray(choices) && choices.length > 0) {
-    const content = choices[0]?.message?.content ?? choices[0]?.text
+    const first = choices[0] || {}
+    const content = first.message && first.message.content != null ? first.message.content : first.text
     if (typeof content === 'string') return content
     if (Array.isArray(content)) {
-      return content.map((item) => item?.text || item?.content || '').filter(Boolean).join('\n')
+      return content.map((item) => (item && (item.text || item.content)) || '').filter(Boolean).join('\n')
     }
   }
   return '模型已返回结果，但当前页面无法解析为文本。'
@@ -429,7 +437,7 @@ function imageContentType(path) {
 
 function readLocalFile(path) {
   return new Promise((resolve, reject) => {
-    const fs = uni.getFileSystemManager?.()
+    const fs = typeof uni.getFileSystemManager === 'function' ? uni.getFileSystemManager() : null
     if (!fs || !path) {
       reject(new Error('当前环境不支持读取本地图片'))
       return
@@ -461,7 +469,7 @@ async function uploadReferenceImages(images) {
     const items = uploaded.items || []
     if (items.length !== pending.length) throw new Error('参考图上传结果数量不匹配')
     pending.forEach((image, index) => {
-      image.objectUrl = items[index]?.object_url || ''
+      image.objectUrl = (items[index] && items[index].object_url) || ''
     })
   }
   return images.map((image) => image.objectUrl).filter(Boolean)
@@ -507,7 +515,9 @@ function clearReferenceImages() {
 }
 
 function parseTaskId(data) {
-  const taskId = data?.task_id || data?.data?.task_id || data?.data?.[0]?.task_id
+  const payload = data && data.data
+  const first = Array.isArray(payload) ? payload[0] : null
+  const taskId = (data && data.task_id) || (payload && payload.task_id) || (first && first.task_id)
   if (!taskId) throw new Error('图片任务提交成功，但没有返回 task_id')
   return taskId
 }
@@ -532,13 +542,13 @@ async function waitImageResult(taskId) {
   while (Date.now() - startedAt < timeoutMs) {
     await sleep(delayMs)
     const data = await getMobileImageTask(taskId)
-    const status = normalizeTaskStatus(data?.status)
+    const status = normalizeTaskStatus(data && data.status)
     if (status === 'succeeded') {
-      if (!data?.result) throw new Error('图片任务已完成，但结果为空')
+      if (!data || !data.result) throw new Error('图片任务已完成，但结果为空')
       return data.result
     }
     if (status === 'failed') {
-      throw new Error(data?.error?.message || '图片生成失败')
+      throw new Error((data && data.error && data.error.message) || '图片生成失败')
     }
     delayMs = Math.min(6000, Math.round(delayMs * 1.15))
   }
@@ -605,7 +615,7 @@ async function ensureLogin() {
   }
   try {
     const data = await getSelf()
-    if (!data?.id) throw new Error('invalid session')
+    if (!data || !data.id) throw new Error('invalid session')
     userStore.setUserInfo(data)
     return true
   } catch {
@@ -634,12 +644,12 @@ async function sendChat(content, activeModel) {
   try {
     const data = await createMobileChatCompletion({
       model: activeModel.name,
-      group: userStore.userInfo?.group || undefined,
+      group: (userStore.userInfo && userStore.userInfo.group) || undefined,
       messages: contextMessages,
     })
     messages.value = [...messages.value, createMessage('assistant', extractReply(data), { kind: 'chat' })]
   } catch (err) {
-    messages.value = [...messages.value, createMessage('assistant', `请求失败：${err?.message || '对话请求失败'}`, { kind: 'chat' })]
+    messages.value = [...messages.value, createMessage('assistant', `请求失败：${(err && err.message) || '对话请求失败'}`, { kind: 'chat' })]
   } finally {
     running.value = false
     persistLocalHistory()
@@ -678,7 +688,7 @@ async function sendImage(content, activeModel) {
       }),
     ]
   } catch (err) {
-    messages.value = [...messages.value, createMessage('assistant', `图片生成失败：${err?.message || '请稍后重试'}`, { kind: 'image' })]
+    messages.value = [...messages.value, createMessage('assistant', `图片生成失败：${(err && err.message) || '请稍后重试'}`, { kind: 'image' })]
   } finally {
     running.value = false
     persistLocalHistory()

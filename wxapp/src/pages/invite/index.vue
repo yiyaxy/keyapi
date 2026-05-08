@@ -23,8 +23,8 @@
           <view class="banner" :style="{ background: 'linear-gradient(120deg, #1E1B4B 0%, #4338CA 50%, #7E22CE 100%)' }">
             <view class="banner-shade" />
             <view class="banner-text">
-              <text class="banner-title">邀请好友赚积分</text>
-              <text class="banner-sub">好友注册、使用平台时，你都可以获得积分奖励。构建你的算力网络。</text>
+              <text class="banner-title">邀请好友一起使用</text>
+              <text class="banner-sub">好友通过你的分享进入并完成登录后，会自动记录邀请关系。</text>
             </view>
             <button class="banner-share" open-type="share">
               <u-icon name="weixin-fill" size="16" color="#050a10" />
@@ -32,45 +32,20 @@
             </button>
           </view>
 
-          <!-- 奖励配置 -->
-          <text class="section-label">奖励配置</text>
-          <view class="milestones">
-            <view v-for="(m, i) in milestones" :key="i" class="milestone-card">
-              <view class="ms-icon">
-                <u-icon :name="m.icon" size="20" color="#FFB84A" />
-              </view>
-              <text class="ms-label">{{ m.label }}</text>
-              <text class="ms-value">{{ m.value }}</text>
-            </view>
-          </view>
-
           <!-- 拉新数据 -->
           <text class="section-label">我的邀请数据</text>
           <view class="stat-row">
             <view class="stat-card stat-card-glow">
-              <text class="stat-num">{{ userInfo?.aff_count || 0 }}</text>
+              <text class="stat-num">{{ userField('aff_count') || 0 }}</text>
               <text class="stat-label">已邀请人数</text>
             </view>
             <view class="stat-card">
-              <text class="stat-num gold">{{ q2cny(userInfo?.aff_quota) }}</text>
+              <text class="stat-num gold">{{ q2cny(userField('aff_quota')) }}</text>
               <text class="stat-label">待转换奖励</text>
             </view>
             <view class="stat-card">
-              <text class="stat-num">{{ q2cny(userInfo?.aff_history_quota) }}</text>
+              <text class="stat-num">{{ q2cny(userField('aff_history_quota')) }}</text>
               <text class="stat-label">累计奖励</text>
-            </view>
-          </view>
-
-          <!-- 充值奖励 -->
-          <text class="section-label">充值奖励</text>
-          <view class="bonus-card">
-            <view class="bonus-left">
-              <text class="bonus-pct">{{ rebatePercentLabel }}</text>
-              <text class="bonus-title">充值奖励</text>
-            </view>
-            <view class="bonus-right">
-              <text class="bonus-r-1">{{ rebateCountLabel }}</text>
-              <text class="bonus-r-2">积分奖励</text>
             </view>
           </view>
 
@@ -142,7 +117,7 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { getInvitees, getSelf, getStatus } from '@/services/api.js'
+import { getInvitees, getSelf } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 import { buildShareMessage, buildSharePath } from '@/utils/share.js'
 
@@ -155,35 +130,18 @@ const total = ref(0)
 const pageSize = 20
 const activeTab = ref('invitees')
 
-const registerReward = computed(() => Number(userInfo.value?.effective_register_reward ?? userStore.quotaForInviter) || 0)
-const inviteeReward = computed(() => Number(userInfo.value?.effective_invitee_reward ?? userStore.quotaForInvitee) || 0)
-const rebateCount = computed(() => Number(userInfo.value?.effective_top_up_rebate_count ?? userStore.topUpRebateCount) || 0)
-const rebatePercent = computed(() => Number(userInfo.value?.effective_top_up_rebate_percent ?? userStore.topUpRebatePercent) || 0)
-const rewardLimit = computed(() => Number(userStore.inviteRewardLimit) || 0)
-
-const milestones = computed(() => [
-  { label: '拉新奖励', value: rewardValue(registerReward.value), icon: 'account-fill' },
-  { label: '新用户奖励', value: rewardValue(inviteeReward.value), icon: 'gift-fill' },
-  { label: '奖励上限', value: rewardLimit.value > 0 ? `${rewardLimit.value} 人` : '不限', icon: 'star-fill' },
-])
-
-const rebatePercentLabel = computed(() => rebatePercent.value > 0 ? `${rebatePercent.value}%` : '按配置')
-const rebateCountLabel = computed(() => rebateCount.value > 0 ? `最多 ${rebateCount.value} 次` : '按后台配置')
-
 const rules = computed(() => [
-  '分享小程序给新用户，对方通过分享进入并完成微信登录后自动成为你的下级。',
-  `新用户登录成功后，系统按后台配置发放注册奖励${registerReward.value > 0 ? `（${q2cny(registerReward.value)}）` : ''}。`,
-  rewardLimit.value > 0
-    ? `注册奖励最多发放 ${rewardLimit.value} 人，达到上限后仍会保留邀请关系。`
-    : '注册奖励当前不限制人数，具体以后台配置为准。',
-  '好友后续充值时，系统按后台配置发放积分奖励。',
+  '分享小程序给好友，对方通过分享链接进入并完成登录后，会自动记录邀请关系。',
+  '邀请相关权益以平台实际到账记录为准，本页仅展示你的邀请统计和邀请记录。',
+  '邀请记录由服务端实时返回，如数据暂未更新，可稍后下拉刷新或重新进入页面查看。',
+  '如对邀请记录或奖励到账有疑问，可联系平台客服协助核查。',
 ])
 
 const hasMore = computed(() => invitees.value.length < total.value)
 
 function q2cny(quota) { return renderQuota(quota) }
-function rewardValue(quota) {
-  return quota > 0 ? `+${q2cny(quota)}` : '按配置'
+function userField(key) {
+  return userInfo.value ? userInfo.value[key] : undefined
 }
 function avatarText(item) {
   const name = item.display_name || item.username || 'U'
@@ -194,17 +152,15 @@ async function loadData() {
   if (loading.value) return
   loading.value = true
   try {
-    const [status, self, list] = await Promise.all([
-      getStatus().catch(() => null),
+    const [self, list] = await Promise.all([
       getSelf(),
       getInvitees(1, pageSize),
     ])
-    if (status) userStore.applyStatus(status)
     userInfo.value = self
     userStore.setUserInfo(self)
     page.value = 1
-    invitees.value = list?.items || []
-    total.value = Number(list?.total || 0)
+    invitees.value = (list && list.items) || []
+    total.value = Number((list && list.total) || 0)
   } finally {
     loading.value = false
   }
@@ -217,8 +173,8 @@ async function loadMore() {
     const nextPage = page.value + 1
     const list = await getInvitees(nextPage, pageSize)
     page.value = nextPage
-    invitees.value = invitees.value.concat(list?.items || [])
-    total.value = Number(list?.total || total.value)
+    invitees.value = invitees.value.concat((list && list.items) || [])
+    total.value = Number((list && list.total) || total.value)
   } finally {
     loading.value = false
   }
@@ -390,42 +346,6 @@ onShareTimeline(() => ({
   margin: 16rpx 0 20rpx;
 }
 
-/* Milestones */
-.milestones {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16rpx;
-  margin-bottom: 36rpx;
-}
-.milestone-card {
-  background: #ffffff;
-  border: 1rpx solid rgba(0,0,0,0.05);
-  border-radius: 24rpx;
-  padding: 28rpx 16rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  box-shadow: 0 4rpx 16rpx rgba(20,16,8,0.04);
-}
-.ms-icon {
-  width: 64rpx; height: 64rpx;
-  border-radius: 18rpx;
-  background: rgba(255,184,74,0.18);
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 16rpx;
-}
-.ms-label {
-  font-size: 22rpx;
-  color: #6b7280;
-  margin-bottom: 8rpx;
-}
-.ms-value {
-  font-size: 24rpx;
-  color: #d97706;
-  font-weight: 700;
-}
-
 /* Stats row */
 .stat-row {
   display: grid;
@@ -457,45 +377,6 @@ onShareTimeline(() => ({
 .stat-label {
   font-size: 20rpx;
   color: #9ca3af;
-}
-
-/* Bonus */
-.bonus-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #ffffff;
-  border: 1rpx solid rgba(255,184,74,0.4);
-  box-shadow: 0 8rpx 28rpx rgba(255,184,74,0.15);
-  border-radius: 24rpx;
-  padding: 32rpx 28rpx;
-  margin-bottom: 36rpx;
-}
-.bonus-left { display: flex; align-items: center; gap: 18rpx; }
-.bonus-pct {
-  font-size: 52rpx;
-  font-weight: 800;
-  color: #d97706;
-  letter-spacing: -1rpx;
-}
-.bonus-title {
-  font-size: 32rpx;
-  color: #1a1a2e;
-  font-weight: 700;
-}
-.bonus-right { text-align: right; }
-.bonus-r-1 {
-  display: block;
-  font-size: 20rpx;
-  color: #9ca3af;
-  margin-bottom: 4rpx;
-}
-.bonus-r-2 {
-  display: block;
-  font-size: 20rpx;
-  color: #1a1a2e;
-  font-weight: 700;
-  letter-spacing: 1rpx;
 }
 
 /* List tabs */
