@@ -12,8 +12,11 @@ export const DIAGNOSE_CLIENT_MAX_MS = (() => {
   return Number.isFinite(n) && n > 0 ? n : 600_000;
 })();
 
+const APP_BASE_PATH = window.location.pathname.startsWith("/app") ? "/app" : "/noterx";
+const API_BASE_URL = `${APP_BASE_PATH}/api`;
+
 const api = axios.create({
-  baseURL: "/api",
+  baseURL: API_BASE_URL,
   timeout: 120_000,
 });
 
@@ -254,7 +257,7 @@ export async function diagnoseStream(
   if (params.coverImages) params.coverImages.forEach((f) => fd.append("cover_images", f));
   if (params.videoFile) fd.append("video_file", params.videoFile);
 
-  const response = await fetch("/api/diagnose-stream", { 
+  const response = await fetch(`${API_BASE_URL}/diagnose-stream`, { 
     method: "POST", 
     body: fd, 
     headers: getLlmHeaders(),

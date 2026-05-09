@@ -1,5 +1,5 @@
 # NoteRx frontend image
-# Stage 1: build SPA with Vite (base: '/app/')
+# Stage 1: build SPA with Vite (base: '/noterx/')
 # Stage 2: serve dist + reverse-proxy non-SPA routes to backend container
 FROM node:20-alpine AS build
 
@@ -15,9 +15,9 @@ RUN npm run build
 # ────────────────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 
-# Vite's `base: '/app/'` means index.html references /app/assets/*,
-# so we drop dist under /app/ inside the document root.
-COPY --from=build /build/dist /usr/share/nginx/html/app
+# Vite's `base: '/noterx/'` means index.html references /noterx/assets/*,
+# so we drop dist under /noterx/ inside the document root.
+COPY --from=build /build/dist /usr/share/nginx/html/noterx
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 

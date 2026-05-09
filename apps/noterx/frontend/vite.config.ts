@@ -14,6 +14,16 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
+        '/noterx/api': {
+          target,
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/noterx\/api/, '/api'),
+        },
+        '/app/api': {
+          target,
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/app\/api/, '/api'),
+        },
         '/api': {
           target,
           changeOrigin: true,

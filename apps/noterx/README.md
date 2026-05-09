@@ -6,7 +6,7 @@
 - `frontend/`：React + Vite 前端，生产构建后输出到 `frontend/dist`。
 - `data/`：本地 baseline、研究数据和运行数据。
 
-当前版本已经按 `apps/lobehub` 的方式接入 `web-next` 应用广场：用户从应用广场点击 NoteRx 后，`web-next` 会为用户生成临时 session token，NoteRx 通过 `/api/auth/token-login` 接收并保存到浏览器 `sessionStorage`，之后每次诊断请求都会把该 token 作为 `X-LLM-API-Key` 发给 NoteRx 后端。后端再用这个用户 token 调用 new-api 的 OpenAI-compatible `/v1` 网关，不再默认使用项目 `.env` 里的大模型 Key。
+当前版本已经按 `apps/lobehub` 的方式接入 `web-next` 应用广场：用户从应用广场点击 NoteRx 后，`web-next` 会为用户生成临时 session token，NoteRx 保存到浏览器 `sessionStorage`，之后每次诊断请求都会把该 token 作为 `X-LLM-API-Key` 发给 NoteRx 后端。后端再用这个用户 token 调用 new-api 的 OpenAI-compatible `/v1` 网关，不再默认使用项目 `.env` 里的大模型 Key。
 
 ## 部署架构
 
@@ -20,7 +20,8 @@
 web-next / new-api 主站
   |
   | 2. POST /api/app/noterx/session 生成用户临时 sk-token
-  | 3. POST https://noterx.example.com/api/auth/token-login
+  | 3. 同域部署时跳转 /noterx?token=...
+  |    跨域部署时 POST https://noterx.example.com/api/auth/token-login
   v
 NoteRx FastAPI
   |
@@ -28,7 +29,7 @@ NoteRx FastAPI
   v
 NoteRx 前端
   |
-  | 5. 调用 /api/diagnose，并带 X-LLM-API-Key: sk-xxx
+  | 5. 调用 /noterx/api/diagnose 或 /noterx/api/diagnose-stream，并带 X-LLM-API-Key: sk-xxx
   v
 NoteRx 后端 -> new-api /v1 -> 上游模型
 ```
@@ -143,8 +144,9 @@ FastAPI 会自动托管这个目录：
 - `/noterx`：NoteRx 主应用
 - `/noterx/assets/*`：前端静态资源
 - `/assets/*`：前端静态资源
-- `/api/*`：后端 API
-- `/api/auth/token-login`：应用广场免登录桥接入口
+- `/noterx/api/*`：NoteRx 后端 API，同域嵌入到 web-next 时使用，避免和主站 `/api/*` 冲突
+- `/api/*`：后端 API，独立域名部署兼容入口
+- `/api/auth/token-login`：跨域应用广场免登录桥接入口
 
 ## Linux 单机部署
 
@@ -249,6 +251,24 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+如果和 `web-next` 共用同一个域名，例如 `https://lob.cymoon.cn/noterx`，需要在主站 Nginx 中把 `/noterx` 优先转发到 NoteRx 后端，并放在主站 `/` 或 `/api` 规则之前：
+
+```nginx
+location ^~ /noterx/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
+    proxy_buffering off;
+}
+```
+
+NoteRx 前端会请求 `/noterx/api/diagnose-stream`。如果浏览器里仍然看到 `https://你的域名/api/diagnose-stream`，说明没有发布新的前端构建产物。
+
 ## 接入 web-next 应用广场
 
 NoteRx 服务部署好后，在 new-api 的 `web-next` 管理后台配置应用：
@@ -321,13 +341,14 @@ sudo systemctl reload nginx
 curl -I https://noterx.example.com/noterx
 ASSET_JS=$(grep -o '/noterx/assets/[^"]*\.js' /opt/noterx/frontend/dist/index.html | head -n 1)
 curl -I "https://noterx.example.com${ASSET_JS}"
-curl https://noterx.example.com/api/health
+curl https://noterx.example.com/noterx/api/health
 ```
 
 浏览器检查：
 
 - 访问 `https://noterx.example.com/noterx` 能看到 NoteRx 页面。
 - `/noterx/assets/*.js` 的响应头应是 `application/javascript` 或 `text/javascript`，不能是 `text/html`。
+- `/noterx/api/diagnose-stream` 应由 NoteRx 后端处理，不能落到主站 `/api`；如果请求仍是 `/api/diagnose-stream`，说明前端还没有重新构建发布。
 - 直接访问时页面会提示需要从应用广场进入，这是正常的。
 - 从 web-next `/apps` 点击 NoteRx 后，地址栏短暂出现 token，然后前端会清理 URL。
 - 发起诊断时，NoteRx 后端日志不应再依赖 `OPENAI_API_KEY`。

@@ -17,6 +17,8 @@ from app import local_memory
 from app.agents.base_agent import llm_api_key_var, llm_base_url_var, llm_model_var
 
 FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
+SPA_BASE_PATH = "/noterx"
+LEGACY_SPA_BASE_PATH = "/app"
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "baseline.db")
 
@@ -145,12 +147,16 @@ def _append_token_to_callback(callback_path: str, token: str) -> str:
 
 
 @app.get("/api/auth/token-login")
+@app.get(f"{SPA_BASE_PATH}/api/auth/token-login")
+@app.get(f"{LEGACY_SPA_BASE_PATH}/api/auth/token-login")
 async def token_login_get(request: Request, token: str = "", callbackUrl: str = ""):
     target = _append_token_to_callback(_safe_callback_path(request, callbackUrl), token.strip())
     return RedirectResponse(target, status_code=303)
 
 
 @app.post("/api/auth/token-login")
+@app.post(f"{SPA_BASE_PATH}/api/auth/token-login")
+@app.post(f"{LEGACY_SPA_BASE_PATH}/api/auth/token-login")
 async def token_login_post(
     request: Request,
     token: str = Form(default=""),
@@ -160,6 +166,8 @@ async def token_login_post(
     return RedirectResponse(target, status_code=303)
 
 app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix=f"{SPA_BASE_PATH}/api")
+app.include_router(api_router, prefix=f"{LEGACY_SPA_BASE_PATH}/api")
 
 # Admin panel at /admin (no /api prefix)
 from app.api.admin_api import router as admin_router
@@ -204,9 +212,6 @@ async def serve_privacy():
     return {"error": "Privacy page not found"}
 
 # ── SPA: product app at /noterx and sub-routes ──
-SPA_BASE_PATH = "/noterx"
-LEGACY_SPA_BASE_PATH = "/app"
-
 if os.path.isdir(FRONTEND_DIST):
     from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -217,6 +222,8 @@ if os.path.isdir(FRONTEND_DIST):
             path = request.url.path
             if (response.status_code == 404
                     and not path.startswith("/api")
+                    and not path.startswith(f"{SPA_BASE_PATH}/api")
+                    and not path.startswith(f"{LEGACY_SPA_BASE_PATH}/api")
                     and not path.startswith("/assets")
                     and not path.startswith(f"{SPA_BASE_PATH}/assets")
                     and path not in ("/", "/research", "/terms", "/privacy")
