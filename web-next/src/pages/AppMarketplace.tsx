@@ -15,15 +15,14 @@ function shouldAttachLlmBaseUrl(app: AiApp) {
   return value.includes('noterx');
 }
 
-function buildTokenLoginUrl(targetUrl: URL) {
-  const basePath = targetUrl.pathname.endsWith('/') ? targetUrl.pathname : `${targetUrl.pathname}/`;
-  return new URL(`${basePath}api/auth/token-login`, targetUrl.origin);
-}
-
 function persistSameOriginNoterxConfig(targetUrl: URL, key: string) {
   sessionStorage.setItem('noterx.session_token', key);
   const llmBaseUrl = targetUrl.searchParams.get('llm_base_url');
   if (llmBaseUrl) sessionStorage.setItem('noterx.llm_base_url', llmBaseUrl);
+}
+
+function getSessionKey(res: { key?: string; data?: { key?: string } }) {
+  return res.key || res.data?.key || '';
 }
 
 function launchApp(app: AiApp, key: string) {
@@ -31,18 +30,20 @@ function launchApp(app: AiApp, key: string) {
   const isNoteRx = shouldAttachLlmBaseUrl(app);
   if (isNoteRx) {
     targetUrl.searchParams.set('llm_base_url', new URL('/v1', window.location.origin).toString());
-  }
-  if (targetUrl.origin === window.location.origin) {
-    if (isNoteRx) {
+    targetUrl.searchParams.set('token', key);
+    if (targetUrl.origin === window.location.origin) {
       persistSameOriginNoterxConfig(targetUrl, key);
-    } else {
-      targetUrl.searchParams.set('token', key);
     }
     window.location.href = targetUrl.toString();
     return;
   }
+  if (targetUrl.origin === window.location.origin) {
+    targetUrl.searchParams.set('token', key);
+    window.location.href = targetUrl.toString();
+    return;
+  }
 
-  const loginUrl = isNoteRx ? buildTokenLoginUrl(targetUrl) : new URL('/api/auth/token-login', targetUrl);
+  const loginUrl = new URL('/api/auth/token-login', targetUrl);
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = loginUrl.toString();
@@ -147,15 +148,16 @@ function AppCard({ app }: { app: AiApp }) {
       let key: string;
       if (user) {
         const res = await sessionMut.mutateAsync();
-        key = res.key;
+        key = getSessionKey(res);
       } else if (app.guest_quota > 0) {
         const res = await guestMut.mutateAsync();
-        key = res.key;
+        key = getSessionKey(res);
       } else {
         toast.error(t('login_required'));
         window.location.href = '/login';
         return;
       }
+      if (!key) throw new Error('missing app token');
 
       launchApp(app, key);
     } catch {
