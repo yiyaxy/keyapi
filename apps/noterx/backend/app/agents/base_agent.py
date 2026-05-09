@@ -126,6 +126,10 @@ def _resolve_openai_api_key() -> str:
     return ""
 
 
+def has_request_llm_api_key() -> bool:
+    return bool((llm_api_key_var.get() or "").strip())
+
+
 def _get_client():
     """获取 OpenAI 兼容 API 客户端（绕过本地代理）"""
     import httpx

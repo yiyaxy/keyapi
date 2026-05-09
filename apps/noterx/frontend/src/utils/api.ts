@@ -476,7 +476,7 @@ export async function quickRecognize(
     "/screenshot/quick-recognize",
     fd,
     {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: { "Content-Type": "multipart/form-data", ...getLlmHeaders() },
       /** 视觉 60s + OCR，与后端留余量 */
       timeout: 180_000,
     },
@@ -495,7 +495,7 @@ export async function quickRecognizeVideo(file: File): Promise<QuickRecognizeRes
     "/screenshot/quick-recognize-video",
     fd,
     {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: { "Content-Type": "multipart/form-data", ...getLlmHeaders() },
       /** 视频快识包含整段 STT，长视频可能需要数分钟 */
       timeout: 600_000,
     }
@@ -527,7 +527,7 @@ export async function deepAnalyze(params: {
   const { data } = await api.post<DeepAnalysisResult>(
     "/screenshot/deep-analyze",
     fd,
-    { headers: { "Content-Type": "multipart/form-data" }, timeout: 180000 }
+    { headers: { "Content-Type": "multipart/form-data", ...getLlmHeaders() }, timeout: 180000 }
   );
   return data;
 }

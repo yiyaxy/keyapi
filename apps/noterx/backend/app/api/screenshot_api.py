@@ -16,7 +16,12 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image
 
-from app.agents.base_agent import _get_client, _is_mimo_openai_compat, _parse_json_from_llm_text
+from app.agents.base_agent import (
+    _get_client,
+    _is_mimo_openai_compat,
+    _parse_json_from_llm_text,
+    has_request_llm_api_key,
+)
 from app.analysis.mimo_video import build_mimo_video_url_content_part
 from app.analysis.video_stt import transcribe_video_with_whisper
 from app.api.diagnose import (
@@ -30,6 +35,20 @@ from app.api.diagnose import (
 
 router = APIRouter()
 logger = logging.getLogger("noterx.screenshot")
+
+
+def _require_user_llm_key() -> None:
+    if has_request_llm_api_key():
+        return
+    if os.getenv("NOTERX_ALLOW_ENV_LLM_KEY", "").strip().lower() in ("1", "true", "yes") and os.getenv(
+        "OPENAI_API_KEY",
+        "",
+    ).strip():
+        return
+    raise HTTPException(
+        status_code=401,
+        detail="缺少用户模型凭证，请从 web-next 应用广场进入 NoteRx，或重新打开应用以刷新 session token。",
+    )
 
 
 def _env_int(name: str, default: int, *, min_v: int, max_v: int) -> int:
@@ -740,6 +759,7 @@ async def quick_recognize(
     @param slot_hint - 可选的位置提示：cover/content/profile/comments
     @returns 识别结果含 slot_type, category, summary
     """
+    _require_user_llm_key()
     if file.content_type and file.content_type not in ALLOWED_IMAGE_MIME:
         raise HTTPException(400, f"不支持的图片格式: {file.content_type}")
 
@@ -833,6 +853,7 @@ async def quick_recognize_video(request: Request, file: UploadFile = File(...)):
     优先使用 MiMo 支持的 video_url 全片理解；失败或非支持格式时抽代表帧走视觉快识。
     @param file - mp4 / webm / quicktime
     """
+    _require_user_llm_key()
     if file.content_type and file.content_type not in ALLOWED_VIDEO_MIME:
         raise HTTPException(400, f"不支持的视频格式: {file.content_type}")
 
@@ -1018,6 +1039,7 @@ async def deep_analyze(
     @param video - 视频录屏文件（可选）
     @param extra_text - 额外文字说明（自动过滤链接）
     """
+    _require_user_llm_key()
     if scenario not in ("pre_publish", "post_publish"):
         raise HTTPException(400, "scenario 须为 pre_publish 或 post_publish")
 
