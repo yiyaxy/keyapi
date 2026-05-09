@@ -39,20 +39,30 @@ type BillingSession struct {
 func (s *BillingSession) Settle(actualQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	common.SysLog(fmt.Sprintf("[BILLING-DEBUG] Settle entry userId=%d actualQuota=%d preConsumedQuota=%d settled=%v fundingSettled=%v refunded=%v source=%s",
+		s.relayInfo.UserId, actualQuota, s.preConsumedQuota, s.settled, s.fundingSettled, s.refunded, s.funding.Source()))
 	if s.settled {
+		common.SysLog(fmt.Sprintf("[BILLING-DEBUG] Settle SKIPPED already-settled userId=%d", s.relayInfo.UserId))
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
 	if delta == 0 {
+		common.SysLog(fmt.Sprintf("[BILLING-DEBUG] Settle delta==0 EARLY-RETURN userId=%d (no funding.Settle call!) actualQuota=%d preConsumedQuota=%d",
+			s.relayInfo.UserId, actualQuota, s.preConsumedQuota))
 		s.settled = true
 		return nil
 	}
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
+		common.SysLog(fmt.Sprintf("[BILLING-DEBUG] calling funding.Settle userId=%d delta=%d (negative=refund)", s.relayInfo.UserId, delta))
 		if err := s.funding.Settle(delta); err != nil {
+			common.SysLog(fmt.Sprintf("[BILLING-DEBUG] funding.Settle FAILED userId=%d delta=%d err=%s", s.relayInfo.UserId, delta, err.Error()))
 			return err
 		}
 		s.fundingSettled = true
+		common.SysLog(fmt.Sprintf("[BILLING-DEBUG] funding.Settle OK userId=%d delta=%d", s.relayInfo.UserId, delta))
+	} else {
+		common.SysLog(fmt.Sprintf("[BILLING-DEBUG] Settle SKIPPED funding (already-funding-settled) userId=%d delta=%d", s.relayInfo.UserId, delta))
 	}
 	// 2) 调整令牌额度
 	var tokenErr error

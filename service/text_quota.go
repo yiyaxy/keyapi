@@ -78,13 +78,13 @@ func isLegacyClaudeDerivedOpenAIUsage(relayInfo *relaycommon.RelayInfo, usage *d
 
 func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) textQuotaSummary {
 	summary := textQuotaSummary{
-		ModelName:            relayInfo.OriginModelName,
-		TokenName:            ctx.GetString("token_name"),
+		ModelName: relayInfo.OriginModelName,
+		TokenName: ctx.GetString("token_name"),
 		// EffectiveDuration excludes time spent waiting for in-process imagegen
 		// tool tasks, so the chat upstream's recorded use_time reflects its
 		// own work and downstream stability heuristics aren't fooled into
 		// cooling chat channels for slow imagegen channels.
-		UseTimeSeconds: int64(relayInfo.EffectiveDuration().Seconds()),
+		UseTimeSeconds:       int64(relayInfo.EffectiveDuration().Seconds()),
 		CompletionRatio:      relayInfo.PriceData.CompletionRatio,
 		CacheRatio:           relayInfo.PriceData.CacheRatio,
 		ImageRatio:           relayInfo.PriceData.ImageRatio,
@@ -343,6 +343,18 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+		// BUG-FIX: when SettleBilling fails (typically funding.Settle's
+		// IncreaseUserQuota returned a DB error), the pre-consumed quota
+		// stays LOCKED on the user's wallet — neither settled nor refunded.
+		// Without this Refund, the user effectively pays the full
+		// pre-consume amount instead of the much smaller actual usage,
+		// which is the root cause of the "user undercharged on logs but
+		// overcharged on balance" symptom we saw in production.
+		// BillingSession.Refund is idempotent and respects fundingSettled,
+		// so it is safe to call even when the failure happened mid-Settle.
+		if relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(ctx)
+		}
 	}
 
 	logModel := summary.ModelName

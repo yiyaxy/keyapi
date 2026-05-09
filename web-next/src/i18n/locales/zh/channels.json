@@ -139,6 +139,8 @@
   "form.field.status_code_mapping_hint": "上游返回的 HTTP 状态码 → 返给客户端的状态码",
   "form.field.openai_organization": "OpenAI Organization ID",
   "form.field.system_prompt": "强制 System Prompt",
+  "form.field.pass_user_info": "传递用户信息到上游",
+  "form.field.pass_user_info_hint": "开启后，转发到上游时会附加 X-Pool-User-Id / X-Pool-User-Name 请求头，便于下游做用户级审计或限流。",
   "form.field.param_override": "请求体参数覆盖",
   "form.field.param_override_hint": "会与客户端请求体浅合并；值可以是数字/字符串/对象",
   "form.field.header_override": "请求头覆盖",

@@ -1,0 +1,58 @@
+# NoteRx production stack.
+#
+# Public exposure: only frontend on 127.0.0.1:8080.
+# Reverse-proxy from the host's nginx (which terminates SSL).
+#
+# Build:    docker compose build
+# Start:    docker compose up -d
+# Logs:     docker compose logs -f backend
+# Update:   git pull && docker compose build && docker compose up -d
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: noterx-backend:latest
+    container_name: noterx-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    volumes:
+      # Persist the SQLite database, temp videos, and the local-memory workspace.
+      - ./data:/app/backend/data
+    networks:
+      - noterx-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Bootstrap can take ~30-60s on the first run while seeding 3000 notes.
+      start_period: 120s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: noterx-frontend:latest
+    container_name: noterx-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # Host nginx proxies to this. Loopback-only so the container is not
+      # publicly reachable on its own.
+      - "127.0.0.1:8080:80"
+    networks:
+      - noterx-net
+
+networks:
+  noterx-net:
+    driver: bridge
+    name: noterx-net
