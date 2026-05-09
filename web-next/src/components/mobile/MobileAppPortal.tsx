@@ -177,18 +177,34 @@ function shouldAttachLlmBaseUrl(app: AiApp) {
   return value.includes('noterx');
 }
 
+function buildTokenLoginUrl(targetUrl: URL) {
+  const basePath = targetUrl.pathname.endsWith('/') ? targetUrl.pathname : `${targetUrl.pathname}/`;
+  return new URL(`${basePath}api/auth/token-login`, targetUrl.origin);
+}
+
+function persistSameOriginNoterxConfig(targetUrl: URL, key: string) {
+  sessionStorage.setItem('noterx.session_token', key);
+  const llmBaseUrl = targetUrl.searchParams.get('llm_base_url');
+  if (llmBaseUrl) sessionStorage.setItem('noterx.llm_base_url', llmBaseUrl);
+}
+
 function launchApp(app: AiApp, key: string) {
   const targetUrl = new URL(app.target_url, window.location.origin);
-  if (shouldAttachLlmBaseUrl(app)) {
+  const isNoteRx = shouldAttachLlmBaseUrl(app);
+  if (isNoteRx) {
     targetUrl.searchParams.set('llm_base_url', new URL('/v1', window.location.origin).toString());
   }
   if (targetUrl.origin === window.location.origin) {
-    targetUrl.searchParams.set('token', key);
+    if (isNoteRx) {
+      persistSameOriginNoterxConfig(targetUrl, key);
+    } else {
+      targetUrl.searchParams.set('token', key);
+    }
     window.location.href = targetUrl.toString();
     return;
   }
 
-  const loginUrl = new URL('/api/auth/token-login', targetUrl);
+  const loginUrl = isNoteRx ? buildTokenLoginUrl(targetUrl) : new URL('/api/auth/token-login', targetUrl);
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = loginUrl.toString();

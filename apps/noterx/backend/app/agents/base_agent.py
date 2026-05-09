@@ -134,13 +134,19 @@ def _get_client():
     """获取 OpenAI 兼容 API 客户端（绕过本地代理）"""
     import httpx
     from openai import AsyncOpenAI
+    api_key = _resolve_openai_api_key()
+    if not api_key:
+        raise RuntimeError(
+            "缺少用户模型凭证：请从 web-next 应用广场进入 NoteRx，"
+            "或确认前端请求带有 X-LLM-API-Key。"
+        )
     http_client = httpx.AsyncClient(
         proxy=None,
         trust_env=False,
         timeout=httpx.Timeout(120.0, connect=30.0),
     )
     return AsyncOpenAI(
-        api_key=_resolve_openai_api_key(),
+        api_key=api_key,
         base_url=_resolve_openai_base_url(),
         http_client=http_client,
     )
