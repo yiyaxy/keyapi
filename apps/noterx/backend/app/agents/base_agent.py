@@ -55,19 +55,21 @@ _load_env_files()
 
 logger = logging.getLogger("noterx.agent")
 
+DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "gpt-5.5")
+
 def get_model_fast() -> str:
-    return llm_model_var.get() or os.getenv("LLM_MODEL_FAST", "mimo-v2-flash")
+    return llm_model_var.get() or os.getenv("LLM_MODEL_FAST") or DEFAULT_LLM_MODEL
 
 def get_model_pro() -> str:
-    return llm_model_var.get() or os.getenv("LLM_MODEL_PRO", "mimo-v2-pro")
+    return llm_model_var.get() or os.getenv("LLM_MODEL_PRO") or DEFAULT_LLM_MODEL
 
 def get_model_omni() -> str:
-    return llm_model_var.get() or os.getenv("LLM_MODEL_OMNI", "mimo-v2-omni")
+    return llm_model_var.get() or os.getenv("LLM_MODEL_OMNI") or DEFAULT_LLM_MODEL
 
 
-MODEL_FAST = os.getenv("LLM_MODEL_FAST", "mimo-v2-flash")
-MODEL_PRO = os.getenv("LLM_MODEL_PRO", "mimo-v2-pro")
-MODEL_OMNI = os.getenv("LLM_MODEL_OMNI", "mimo-v2-omni")
+MODEL_FAST = os.getenv("LLM_MODEL_FAST") or DEFAULT_LLM_MODEL
+MODEL_PRO = os.getenv("LLM_MODEL_PRO") or DEFAULT_LLM_MODEL
+MODEL_OMNI = os.getenv("LLM_MODEL_OMNI") or DEFAULT_LLM_MODEL
 
 
 def _is_mimo_openai_compat() -> bool:

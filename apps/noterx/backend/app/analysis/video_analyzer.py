@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Optional
 
-from app.agents.base_agent import _get_client, _is_mimo_openai_compat, _parse_json_from_llm_text
+from app.agents.base_agent import _get_client, _is_mimo_openai_compat, _parse_json_from_llm_text, get_model_omni
 from app.analysis.mimo_video import build_mimo_video_url_content_part
 
 logger = logging.getLogger("noterx.video_analyzer")
@@ -35,7 +35,7 @@ class VideoAnalyzer:
         @param media_resolution - 若提供则临时覆盖 MIMO_VIDEO_MEDIA_RESOLUTION
         """
         client = _get_client()
-        model = os.getenv("LLM_MODEL_OMNI", "mimo-v2-omni")
+        model = get_model_omni()
         sys_prompt = (
             "You are a strict JSON video analysis engine. "
             "Return ONLY valid JSON without markdown fences."

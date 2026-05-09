@@ -14,6 +14,7 @@ from app.agents.base_agent import (
     _bytes_to_image_data_url,
     _is_mimo_openai_compat,
     _parse_json_from_llm_text,
+    get_model_omni,
 )
 
 logger = logging.getLogger("noterx.ocr")
@@ -81,7 +82,7 @@ class OCRProcessor:
             return self._fallback_result()
 
         data_url = _bytes_to_image_data_url(image_bytes)
-        ocr_model = os.getenv("LLM_MODEL_OMNI", "mimo-v2-omni")
+        ocr_model = get_model_omni()
 
         try:
             msg_body: list | str = [

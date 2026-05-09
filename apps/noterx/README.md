@@ -108,9 +108,10 @@ OPENAI_API_KEY=
 NOTERX_ALLOW_ENV_LLM_KEY=0
 
 # 模型名按你的 new-api 后台支持情况填写。
-LLM_MODEL_FAST=gpt-4.1-mini
-LLM_MODEL_PRO=gpt-4.1
-LLM_MODEL_OMNI=gpt-4.1
+LLM_MODEL=gpt-5.5
+LLM_MODEL_FAST=gpt-5.5
+LLM_MODEL_PRO=gpt-5.5
+LLM_MODEL_OMNI=gpt-5.5
 
 # 如果使用视频理解，必须配置为公网可访问的 NoteRx HTTPS 域名。
 MIMO_VIDEO_PUBLIC_BASE_URL=https://noterx.example.com

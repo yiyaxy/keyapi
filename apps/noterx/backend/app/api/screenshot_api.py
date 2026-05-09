@@ -20,6 +20,7 @@ from app.agents.base_agent import (
     _get_client,
     _is_mimo_openai_compat,
     _parse_json_from_llm_text,
+    get_model_omni,
     has_request_llm_api_key,
 )
 from app.analysis.mimo_video import build_mimo_video_url_content_part
@@ -310,7 +311,7 @@ async def _vision_call(
 ) -> dict:
     """调用多模态模型进行图片分析。"""
     b64 = base64.b64encode(image_bytes).decode("utf-8")
-    resolved_model = model or os.getenv("LLM_MODEL_OMNI", "mimo-v2-omni")
+    resolved_model = model or get_model_omni()
     out_cap = max_out_tokens if max_out_tokens is not None else 2048
 
     kwargs = {
@@ -594,7 +595,7 @@ async def _video_url_quick_call(client, video_url: str) -> dict:
     通过 MiMo 视频理解（video_url content part）请求模型，返回与快识相同结构的 JSON。
     消息体对齐：https://platform.xiaomimimo.com/#/docs/usage-guide/multimodal-understanding/video-understanding
     """
-    resolved_model = os.getenv("LLM_MODEL_OMNI", "mimo-v2-omni")
+    resolved_model = get_model_omni()
     out_cap = _env_int("QUICK_RECOGNIZE_VIDEO_MAX_COMPLETION_TOKENS", 4096, min_v=256, max_v=8192)
     video_part = _quick_video_mimo_part(video_url)
     kwargs = {
@@ -641,7 +642,7 @@ async def _video_url_subtitle_transcript_call(client, video_url: str) -> list[st
     """
     第二轮：同一 video_url，仅请求 subtitle_lines，减轻模型在 category/summary 上分心导致只摘一句的问题。
     """
-    resolved_model = os.getenv("LLM_MODEL_OMNI", "mimo-v2-omni")
+    resolved_model = get_model_omni()
     out_cap = _env_int(
         "QUICK_RECOGNIZE_VIDEO_TRANSCRIPT_MAX_COMPLETION_TOKENS",
         8192,
