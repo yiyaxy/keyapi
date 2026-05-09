@@ -50,6 +50,9 @@ function initLlmConfig(): void {
       sessionStorage.setItem(BASE_URL_KEY, baseUrl);
       params.delete("llm_base_url");
       dirty = true;
+      if (!token) {
+        sessionStorage.removeItem(SESSION_KEY);
+      }
     }
 
     const model = params.get("llm_model");

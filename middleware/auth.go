@@ -335,7 +335,10 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			defer cleanup()
 		}
 
-		userCache, err := model.GetUserCacheWithContext(c.Request.Context(), token.UserId)
+		// Read the tenant-scoped user row directly. The shared Redis user
+		// cache is keyed only by user id, so a multi-tenant deployment can
+		// otherwise inherit a stale status from another tenant.
+		userRecord, err := model.GetUserByIdWithContext(c.Request.Context(), token.UserId, false)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
@@ -344,6 +347,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
+		userCache := userRecord.ToBaseUser()
 		if userCache.Status != common.UserStatusEnabled {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
@@ -458,11 +462,16 @@ func TokenAuth() func(c *gin.Context) {
 			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)
 		}
 
-		userCache, err := model.GetUserCacheWithContext(c.Request.Context(), token.UserId)
+		// Read the tenant-scoped user row directly for authorization. The
+		// Redis user cache is keyed only by user id, which is unsafe when the
+		// same numeric user id can exist in multiple tenants with different
+		// statuses or groups.
+		userRecord, err := model.GetUserByIdWithContext(c.Request.Context(), token.UserId, false)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusInternalServerError, err.Error())
 			return
 		}
+		userCache := userRecord.ToBaseUser()
 		userEnabled := userCache.Status == common.UserStatusEnabled
 		if !userEnabled {
 			abortWithOpenAiMessage(c, http.StatusForbidden, "用户已被封禁")
