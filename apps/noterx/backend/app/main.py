@@ -24,9 +24,42 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "baseline.db")
 
 
 def _ensure_history_table():
-    """启动时自动创建 diagnosis_history 表（如不存在）"""
+    """启动时自动创建 NoteRx 本地 SQLite 表（如不存在）。"""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            title_length INTEGER,
+            content TEXT,
+            tags TEXT,
+            publish_hour INTEGER,
+            likes INTEGER DEFAULT 0,
+            collects INTEGER DEFAULT 0,
+            comments INTEGER DEFAULT 0,
+            followers INTEGER DEFAULT 0,
+            is_viral INTEGER DEFAULT 0,
+            cover_has_face INTEGER DEFAULT 0,
+            cover_text_ratio REAL DEFAULT 0,
+            cover_saturation REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS baseline_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            metric_name TEXT NOT NULL,
+            metric_value REAL,
+            metric_json TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(category, metric_name)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_viral ON notes(category, is_viral)")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS diagnosis_history (
             id TEXT PRIMARY KEY,
