@@ -117,18 +117,18 @@ async def extract_llm_headers(request: Request, call_next):
 
 def _safe_callback_path(request: Request, callback_url: str | None) -> str:
     if not callback_url:
-        return "/app"
+        return "/noterx"
 
     parsed = urlsplit(callback_url)
     if parsed.scheme or parsed.netloc:
         request_origin = f"{request.url.scheme}://{request.url.netloc}"
         callback_origin = f"{parsed.scheme}://{parsed.netloc}"
         if callback_origin != request_origin:
-            return "/app"
+            return "/noterx"
 
-    path = parsed.path or "/app"
+    path = parsed.path or "/noterx"
     if not path.startswith("/") or path.startswith("//"):
-        return "/app"
+        return "/noterx"
     return urlunsplit(("", "", path, parsed.query, parsed.fragment))
 
 
@@ -141,7 +141,7 @@ def _append_token_to_callback(callback_path: str, token: str) -> str:
     ]
     if token:
         query.append(("token", token))
-    return urlunsplit(("", "", parsed.path or "/app", urlencode(query), parsed.fragment))
+    return urlunsplit(("", "", parsed.path or "/noterx", urlencode(query), parsed.fragment))
 
 
 @app.get("/api/auth/token-login")
@@ -203,32 +203,54 @@ async def serve_privacy():
         return FileResponse(PRIVACY_HTML, media_type="text/html")
     return {"error": "Privacy page not found"}
 
-# ── SPA: product app at /app and sub-routes ──
-SPA_ROUTES = {"/app", "/diagnosing", "/report", "/history", "/screenshot"}
+# ── SPA: product app at /noterx and sub-routes ──
+SPA_BASE_PATH = "/noterx"
+LEGACY_SPA_BASE_PATH = "/app"
 
 if os.path.isdir(FRONTEND_DIST):
     from starlette.middleware.base import BaseHTTPMiddleware
 
     class SPAMiddleware(BaseHTTPMiddleware):
-        """Serve SPA index.html for /app and its sub-routes"""
+        """Serve SPA index.html for NoteRx client-side routes."""
         async def dispatch(self, request, call_next):
             response = await call_next(request)
             path = request.url.path
             if (response.status_code == 404
                     and not path.startswith("/api")
                     and not path.startswith("/assets")
+                    and not path.startswith(f"{SPA_BASE_PATH}/assets")
                     and path not in ("/", "/research", "/terms", "/privacy")
-                    and not path.startswith("/admin")):
+                    and not path.startswith("/admin")
+                    and (path == SPA_BASE_PATH
+                         or path.startswith(f"{SPA_BASE_PATH}/")
+                         or path == LEGACY_SPA_BASE_PATH
+                         or path.startswith(f"{LEGACY_SPA_BASE_PATH}/"))):
                 return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
             return response
 
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="static")
+    app.mount(
+        f"{SPA_BASE_PATH}/assets",
+        StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")),
+        name="noterx-static",
+    )
     app.add_middleware(SPAMiddleware)
 
-    @app.get("/app")
+    @app.get(SPA_BASE_PATH)
+    @app.get(f"{SPA_BASE_PATH}/")
+    @app.get(LEGACY_SPA_BASE_PATH)
     async def serve_app():
         """产品主页面"""
         return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+
+
+    @app.get(f"{SPA_BASE_PATH}/favicon.svg")
+    async def serve_noterx_favicon():
+        return FileResponse(os.path.join(FRONTEND_DIST, "favicon.svg"), media_type="image/svg+xml")
+
+    @app.get(f"{SPA_BASE_PATH}/icons.svg")
+    async def serve_noterx_icons():
+        return FileResponse(os.path.join(FRONTEND_DIST, "icons.svg"), media_type="image/svg+xml")
 
 
 @app.get("/api/health")

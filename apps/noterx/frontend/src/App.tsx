@@ -14,6 +14,7 @@ const Diagnosing = lazy(() => import("./pages/Diagnosing"));
 const Report = lazy(() => import("./pages/Report"));
 const History = lazy(() => import("./pages/History"));
 const ScreenshotAnalysis = lazy(() => import("./pages/ScreenshotAnalysis"));
+const routerBaseName = window.location.pathname.startsWith("/app") ? "/app" : "/noterx";
 
 /* ── Minimal loading fallback ── */
 function PageLoader() {
@@ -144,7 +145,7 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary>
-        <BrowserRouter basename="/app">
+        <BrowserRouter basename={routerBaseName}>
           <AnimatedRoutes />
           <ToastContainer />
         </BrowserRouter>

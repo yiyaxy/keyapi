@@ -24,7 +24,7 @@ web-next / new-api 主站
   v
 NoteRx FastAPI
   |
-  | 4. 303 跳转 /app?token=sk-xxx&llm_base_url=https://new-api.example.com/v1
+  | 4. 303 跳转 /noterx?token=sk-xxx&llm_base_url=https://new-api.example.com/v1
   v
 NoteRx 前端
   |
@@ -82,7 +82,7 @@ VITE_API_PROXY_TARGET=http://localhost:8001
 本地直接测试用户 token 链路：
 
 ```text
-http://localhost:5173/app?token=sk-your-new-api-token&llm_base_url=http://localhost:3000/v1
+http://localhost:5173/noterx?token=sk-your-new-api-token&llm_base_url=http://localhost:3000/v1
 ```
 
 ## 生产环境变量
@@ -140,7 +140,8 @@ apps/noterx/frontend/dist
 
 FastAPI 会自动托管这个目录：
 
-- `/app`：NoteRx 主应用
+- `/noterx`：NoteRx 主应用
+- `/noterx/assets/*`：前端静态资源
 - `/assets/*`：前端静态资源
 - `/api/*`：后端 API
 - `/api/auth/token-login`：应用广场免登录桥接入口
@@ -276,7 +277,7 @@ npm run build
 ```text
 名称：NoteRx / 薯柒
 Slug：noterx
-应用地址：https://noterx.example.com/app
+应用地址：https://noterx.example.com/noterx
 状态：上架
 默认分组：按你的模型渠道分组填写，可留空继承用户分组
 Session Token TTL：86400
@@ -287,7 +288,7 @@ Session Token TTL：86400
 
 - 调用 `/api/app/noterx/session` 生成当前用户的临时 token。
 - 跳转到 `https://noterx.example.com/api/auth/token-login`。
-- NoteRx 保存 token 并进入 `/app`。
+- NoteRx 保存 token 并进入 `/noterx`。
 - 后续诊断请求使用用户自己的 token 计费和记录日志。
 
 ## 更新部署
@@ -317,13 +318,16 @@ sudo systemctl reload nginx
 上线后按顺序检查：
 
 ```bash
-curl -I https://noterx.example.com/app
+curl -I https://noterx.example.com/noterx
+ASSET_JS=$(grep -o '/noterx/assets/[^"]*\.js' /opt/noterx/frontend/dist/index.html | head -n 1)
+curl -I "https://noterx.example.com${ASSET_JS}"
 curl https://noterx.example.com/api/health
 ```
 
 浏览器检查：
 
-- 访问 `https://noterx.example.com/app` 能看到 NoteRx 页面。
+- 访问 `https://noterx.example.com/noterx` 能看到 NoteRx 页面。
+- `/noterx/assets/*.js` 的响应头应是 `application/javascript` 或 `text/javascript`，不能是 `text/html`。
 - 直接访问时页面会提示需要从应用广场进入，这是正常的。
 - 从 web-next `/apps` 点击 NoteRx 后，地址栏短暂出现 token，然后前端会清理 URL。
 - 发起诊断时，NoteRx 后端日志不应再依赖 `OPENAI_API_KEY`。
@@ -336,7 +340,7 @@ curl https://noterx.example.com/api/health
 检查 `target_url` 是否填成了：
 
 ```text
-https://noterx.example.com/app
+https://noterx.example.com/noterx
 ```
 
 不要填 `/api/auth/token-login`，web-next 会自动拼接 token-login 入口。
@@ -355,7 +359,7 @@ https://noterx.example.com/app
 这是预期行为。生产环境默认不读 `.env` 里的项目 Key。需要从 web-next 应用广场进入，或者本地调试时手动追加：
 
 ```text
-https://noterx.example.com/app?token=sk-xxx&llm_base_url=https://token.example.com/v1
+https://noterx.example.com/noterx?token=sk-xxx&llm_base_url=https://token.example.com/v1
 ```
 
 ### 需要保留 `.env` Key 兜底
