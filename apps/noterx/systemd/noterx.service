@@ -1,0 +1,55 @@
+# NoteRx FastAPI systemd unit.
+#
+# Install:
+#   sudo cp apps/noterx/systemd/noterx.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now noterx
+#
+# View logs:
+#   journalctl -u noterx -f
+#
+# Adjust the four paths below if your install root differs from
+# /data/service/key-api/keyapi/apps/noterx.
+
+[Unit]
+Description=NoteRx FastAPI backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+WorkingDirectory=/data/service/key-api/keyapi/apps/noterx/backend
+
+# Defaults come first; values in .env override them.
+Environment=PYTHONUNBUFFERED=1
+Environment=BACKEND_HOST=127.0.0.1
+Environment=BACKEND_PORT=18000
+EnvironmentFile=-/data/service/key-api/keyapi/apps/noterx/backend/.env
+
+# Bind to loopback only by default — host nginx terminates SSL and reverse-proxies here.
+# Override host/port via BACKEND_HOST / BACKEND_PORT in backend/.env.
+ExecStart=/data/service/key-api/keyapi/apps/noterx/backend/venv/bin/uvicorn \
+    app.main:app \
+    --host ${BACKEND_HOST} \
+    --port ${BACKEND_PORT} \
+    --proxy-headers \
+    --forwarded-allow-ips=127.0.0.1
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+
+# Soft hardening — relax if anything misbehaves.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+# Diagnose runs spawn many concurrent agent calls; bump fd limit.
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
