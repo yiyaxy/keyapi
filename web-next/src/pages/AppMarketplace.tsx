@@ -10,8 +10,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { usePublicApps, useGetSessionToken, useGetGuestToken, type AiApp } from '@/hooks/useAiApps';
 
+function shouldAttachLlmBaseUrl(app: AiApp) {
+  const value = `${app.slug} ${app.target_url}`.toLowerCase();
+  return value.includes('noterx');
+}
+
 function launchApp(app: AiApp, key: string) {
   const targetUrl = new URL(app.target_url, window.location.origin);
+  if (shouldAttachLlmBaseUrl(app)) {
+    targetUrl.searchParams.set('llm_base_url', new URL('/v1', window.location.origin).toString());
+  }
   if (targetUrl.origin === window.location.origin) {
     targetUrl.searchParams.set('token', key);
     window.location.href = targetUrl.toString();

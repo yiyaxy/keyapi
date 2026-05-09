@@ -34,10 +34,11 @@ function initLlmConfig(): void {
     const params = new URLSearchParams(window.location.search);
     let dirty = false;
 
-    const token = params.get("token");
+    const token = params.get("token") || params.get("key");
     if (token) {
       sessionStorage.setItem(SESSION_KEY, token);
       params.delete("token");
+      params.delete("key");
       dirty = true;
     }
 
