@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -34,6 +36,15 @@ type WalletFunding struct {
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
 
+// PreConsume locks `amount` from the user's wallet. May be called more than
+// once per BillingSession (initial pre-consume + PreConsumeAdditional during
+// retry to a pricier channel).
+//
+// BUG-FIX: previous version did `w.consumed = amount`, which OVERWROTE the
+// total locked amount on every call. If PreConsumeAdditional fired during a
+// retry, only the last delta was tracked and Refund() under-refunded by the
+// initial pre-consume amount. Accumulate instead so Refund returns the full
+// locked total.
 func (w *WalletFunding) PreConsume(amount int) error {
 	if amount <= 0 {
 		return nil
@@ -41,7 +52,7 @@ func (w *WalletFunding) PreConsume(amount int) error {
 	if err := model.DecreaseUserQuota(w.userId, amount, w.tenantId); err != nil {
 		return err
 	}
-	w.consumed = amount
+	w.consumed += amount
 	return nil
 }
 
@@ -50,9 +61,13 @@ func (w *WalletFunding) Settle(delta int) error {
 		return nil
 	}
 	if delta > 0 {
-		return model.DecreaseUserQuota(w.userId, delta, w.tenantId)
+		err := model.DecreaseUserQuota(w.userId, delta, w.tenantId)
+		common.SysLog(fmt.Sprintf("[BILLING-DEBUG] WalletFunding.Settle DECREASE userId=%d amount=%d err=%v", w.userId, delta, err))
+		return err
 	}
-	return model.IncreaseUserQuota(w.userId, -delta, false, w.tenantId)
+	err := model.IncreaseUserQuota(w.userId, -delta, false, w.tenantId)
+	common.SysLog(fmt.Sprintf("[BILLING-DEBUG] WalletFunding.Settle INCREASE(refund) userId=%d amount=%d err=%v", w.userId, -delta, err))
+	return err
 }
 
 func (w *WalletFunding) Refund() error {

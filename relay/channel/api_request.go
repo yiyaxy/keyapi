@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -483,10 +484,40 @@ func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
 	}
 }
 
+// applyUserPassthroughHeaders 在渠道开启「传递用户信息」(ChannelSettings.PassUserInfo)
+// 时把当前请求所属的用户身份附加到上游请求头：
+//   - X-Pool-User-Id：登录用户 ID（int 字符串）
+//   - X-Pool-User-Name：登录用户名（仅当 context 中存在时）
+//
+// 渠道测试与匿名请求（UserId <= 0）跳过 —— 没有意义且会污染上游审计。
+// 若 HeaderOverride 已显式设置过同名 header，则保留 HeaderOverride 的值
+// （HeaderOverride 优先级最高，与 doRequest 上层调用约定一致）。
+func applyUserPassthroughHeaders(req *http.Request, c *gin.Context, info *common.RelayInfo) {
+	if req == nil || c == nil || info == nil || info.ChannelMeta == nil {
+		return
+	}
+	if info.IsChannelTest || !info.ChannelSetting.PassUserInfo {
+		return
+	}
+	if info.UserId <= 0 {
+		return
+	}
+	if req.Header.Get("X-Pool-User-Id") == "" {
+		req.Header.Set("X-Pool-User-Id", strconv.Itoa(info.UserId))
+	}
+	if req.Header.Get("X-Pool-User-Name") == "" {
+		if username := c.GetString("username"); username != "" {
+			req.Header.Set("X-Pool-User-Name", username)
+		}
+	}
+}
+
 func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	return doRequest(c, req, info)
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	applyUserPassthroughHeaders(req, c, info)
+
 	var client *http.Client
 	var err error
 	if info.ChannelSetting.Proxy != "" {

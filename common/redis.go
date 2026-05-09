@@ -78,11 +78,25 @@ func RedisGet(key string) (string, error) {
 	return val, err
 }
 
-//func RedisExpire(key string, expiration time.Duration) error {
-//	ctx := context.Background()
-//	return RDB.Expire(ctx, key, expiration).Err()
-//}
-//
+func RedisExpire(key string, expiration time.Duration) error {
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis EXPIRE: key=%s, expiration=%v", key, expiration))
+	}
+	ctx := context.Background()
+	return RDB.Expire(ctx, key, expiration).Err()
+}
+
+// RedisHSetNXField sets a hash field only if it does not exist (atomic).
+// Used by updateUserCache to safely seed Quota without clobbering an
+// in-flight HIncrBy from a concurrent request.
+func RedisHSetNXField(key, field string, value interface{}) error {
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis HSETNX: key=%s, field=%s, value=%v", key, field, value))
+	}
+	ctx := context.Background()
+	return RDB.HSetNX(ctx, key, field, value).Err()
+}
+
 //func RedisGetEx(key string, expiration time.Duration) (string, error) {
 //	ctx := context.Background()
 //	return RDB.GetSet(ctx, key, expiration).Result()

@@ -184,18 +184,27 @@ func storeAccessTokenToCache(tenantId int, cacheKey string, token string, ttl ti
 }
 
 func fetchAccessTokenUpstream(creds *WxMiniCredentials) (string, time.Duration, error) {
-	endpoint := fmt.Sprintf(
-		"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s",
-		creds.AppId, creds.AppSecret,
-	)
+	// 使用 stable_token 而不是 /cgi-bin/token：多实例并发调用返回同一个 token，
+	// 不会互相把对方的 access_token 踢失效（旧接口会，导致偶发 40001）。
+	const endpoint = "https://api.weixin.qq.com/cgi-bin/stable_token"
+	bodyBytes, err := common.Marshal(map[string]any{
+		"grant_type":    "client_credential",
+		"appid":         creds.AppId,
+		"secret":        creds.AppSecret,
+		"force_refresh": false,
+	})
+	if err != nil {
+		return "", 0, err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", 0, err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	client := http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {

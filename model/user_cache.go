@@ -58,17 +58,57 @@ func invalidateUserCache(userId int) error {
 	return common.RedisDelKey(getUserCacheKey(userId))
 }
 
-// updateUserCache updates all user cache fields using hash
+// updateUserCache updates all user cache fields using hash.
+//
+// IMPORTANT — concurrency note:
+// The Quota field is mutated via HIncrBy from cacheIncrUserQuota /
+// cacheDecrUserQuota during pre-consume / settle / refund. If we re-use
+// HSetObj here (which overwrites the entire hash with the current DB
+// snapshot), any HIncrBy that fired BETWEEN our DB read and this Redis
+// write gets silently CLOBBERED — its delta is lost in the cache. With a
+// 60s cache TTL and 5s batch-update interval, the DB snapshot we just
+// read is also stale relative to in-flight batch entries, which means
+// HSetObj systematically reverts cache to a pre-batch-flush value.
+// Under load this manifests as user balance "bouncing back" / not
+// decreasing as expected (user appears to have been undercharged).
+//
+// Fix: write the non-Quota fields individually (HSet per field) and
+// only initialize Quota via HSETNX so a concurrent HIncrBy that already
+// created the field is preserved. The Quota field is owned by
+// HIncrBy and will be lazily seeded from DB on first read after eviction.
 func updateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
 	}
 
-	return common.RedisHSetObj(
-		getUserCacheKey(user.Id),
-		user.ToBaseUser(),
-		time.Duration(common.RedisKeyCacheSeconds())*time.Second,
-	)
+	key := getUserCacheKey(user.Id)
+	base := user.ToBaseUser()
+	ttl := time.Duration(common.RedisKeyCacheSeconds()) * time.Second
+
+	// Seed Quota only when the field does not exist yet — never clobber
+	// in-flight HIncrBy values.
+	if err := common.RedisHSetNXField(key, "Quota", fmt.Sprintf("%d", base.Quota)); err != nil {
+		return err
+	}
+	if err := common.RedisHSetField(key, "Id", fmt.Sprintf("%d", base.Id)); err != nil {
+		return err
+	}
+	if err := common.RedisHSetField(key, "Group", base.Group); err != nil {
+		return err
+	}
+	if err := common.RedisHSetField(key, "Email", base.Email); err != nil {
+		return err
+	}
+	if err := common.RedisHSetField(key, "Status", fmt.Sprintf("%d", base.Status)); err != nil {
+		return err
+	}
+	if err := common.RedisHSetField(key, "Username", base.Username); err != nil {
+		return err
+	}
+	if err := common.RedisHSetField(key, "Setting", base.Setting); err != nil {
+		return err
+	}
+	return common.RedisExpire(key, ttl)
 }
 
 // GetUserCache gets complete user cache from hash
@@ -241,11 +281,21 @@ func updateUserStatusCache(userId int, status bool) error {
 	return common.RedisHSetField(getUserCacheKey(userId), "Status", fmt.Sprintf("%d", statusInt))
 }
 
+// updateUserQuotaCache is called from GetUserQuota's defer when the cache
+// missed and we had to read from DB. The naïve HSetField approach would
+// CLOBBER any HIncrBy operations that fired between the DB read and this
+// write — exact same race that caused user balance to "bounce back" /
+// users to be undercharged.
+//
+// Use HSETNX so we only seed the Quota field when it does not exist
+// yet. If HIncrBy already created/incremented the field concurrently,
+// we leave it alone — its value is closer to truth than our stale DB
+// snapshot (which lags by up to BatchUpdateInterval).
 func updateUserQuotaCache(userId int, quota int) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisHSetField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
+	return common.RedisHSetNXField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
 }
 
 func updateUserGroupCache(userId int, group string) error {

@@ -9,18 +9,20 @@ const (
 )
 
 type ChannelSettings struct {
-	ForceFormat            bool             `json:"force_format,omitempty"`
-	ThinkingToContent      bool             `json:"thinking_to_content,omitempty"`
-	Proxy                  string           `json:"proxy"`
-	PassThroughBodyEnabled bool             `json:"pass_through_body_enabled,omitempty"`
-	SystemPrompt           string           `json:"system_prompt,omitempty"`
-	SystemPromptOverride   bool             `json:"system_prompt_override,omitempty"`
-	CacheBillingMode       CacheBillingMode       `json:"cache_billing_mode,omitempty"`
-	ChannelRatio           float64                `json:"channel_ratio"`
-	ModelRatioOverride     map[string]float64     `json:"model_ratio_override,omitempty"`
-	VirtualCacheEnabled    bool                   `json:"virtual_cache_enabled,omitempty"`
-	VirtualCacheHitRate    float64                `json:"virtual_cache_hit_rate,omitempty"` // 0-1 default 0.5
-	VirtualCacheJitter     float64                `json:"virtual_cache_jitter,omitempty"`   // 0-1 default 0.05
+	ForceFormat            bool               `json:"force_format,omitempty"`
+	ThinkingToContent      bool               `json:"thinking_to_content,omitempty"`
+	Proxy                  string             `json:"proxy"`
+	PassThroughBodyEnabled bool               `json:"pass_through_body_enabled,omitempty"`
+	SystemPrompt           string             `json:"system_prompt,omitempty"`
+	SystemPromptOverride   bool               `json:"system_prompt_override,omitempty"`
+	CacheBillingMode       CacheBillingMode   `json:"cache_billing_mode,omitempty"`
+	ChannelRatio           float64            `json:"channel_ratio"`
+	ModelRatioOverride     map[string]float64 `json:"model_ratio_override,omitempty"`
+	VirtualCacheEnabled    bool               `json:"virtual_cache_enabled,omitempty"`
+	VirtualCacheHitRate    float64            `json:"virtual_cache_hit_rate,omitempty"` // 0-1 default 0.5
+	VirtualCacheJitter     float64            `json:"virtual_cache_jitter,omitempty"`   // 0-1 default 0.05
+	// 转发到上游时是否附加 X-Pool-User-Id / X-Pool-User-Name 头，供下游做用户级审计/限流。
+	PassUserInfo bool `json:"pass_user_info,omitempty"`
 }
 
 type VertexKeyType string

@@ -39,6 +39,7 @@ export function useTokensQuery(page = 1) {
 export type CreateTokenBody = {
   name: string;
   group: string;
+  cross_group_retry?: boolean;
 };
 
 export function useCreateToken() {
@@ -48,6 +49,7 @@ export function useCreateToken() {
       return api.post('/api/token/', {
         name: body.name,
         group: body.group,
+        cross_group_retry: body.cross_group_retry ?? false,
         unlimited_quota: true,
         remain_quota: 0,
         expired_time: -1,

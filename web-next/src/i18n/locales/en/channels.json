@@ -139,6 +139,8 @@
   "form.field.status_code_mapping_hint": "Upstream HTTP code → client-facing HTTP code",
   "form.field.openai_organization": "OpenAI Organization ID",
   "form.field.system_prompt": "Force system prompt",
+  "form.field.pass_user_info": "Pass user identity to upstream",
+  "form.field.pass_user_info_hint": "When on, X-Pool-User-Id / X-Pool-User-Name headers are attached when forwarding to upstream, so downstream services can do user-level auditing or rate-limiting.",
   "form.field.param_override": "Body param override",
   "form.field.param_override_hint": "Shallow-merged into the client body; values can be numbers, strings, or objects",
   "form.field.header_override": "Header override",

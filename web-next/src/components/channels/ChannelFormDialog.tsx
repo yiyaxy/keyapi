@@ -43,6 +43,7 @@ type SettingJson = {
   system_prompt?: string;
   channel_ratio?: number;
   model_ratio_override?: Record<string, number>;
+  pass_user_info?: boolean;
   [key: string]: unknown;
 };
 
@@ -61,7 +62,8 @@ function buildSetting(
   proxy: string,
   systemPrompt: string,
   channelRatio: number,
-  modelRatioOverrideRaw: string
+  modelRatioOverrideRaw: string,
+  passUserInfo: boolean
 ): string {
   const merged: SettingJson = { ...original };
   if (proxy) merged.proxy = proxy;
@@ -70,6 +72,8 @@ function buildSetting(
   else delete merged.system_prompt;
   if (channelRatio > 0 && channelRatio !== 1) merged.channel_ratio = channelRatio;
   else delete merged.channel_ratio;
+  if (passUserInfo) merged.pass_user_info = true;
+  else delete merged.pass_user_info;
   if (modelRatioOverrideRaw.trim()) {
     try {
       const parsed = JSON.parse(modelRatioOverrideRaw);
@@ -131,6 +135,7 @@ const schema = z.object({
   status_code_mapping: jsonString,
   max_retry: z.number().int().min(0).max(10),
   auto_ban: z.boolean(),
+  pass_user_info: z.boolean(),
   // advanced
   param_override: jsonString,
   header_override: jsonString,
@@ -165,6 +170,7 @@ const EMPTY: FormValues = {
   status_code_mapping: '',
   max_retry: 0,
   auto_ban: true,
+  pass_user_info: false,
   param_override: '',
   header_override: '',
   tag: '',
@@ -199,6 +205,7 @@ function fromChannel(ch: Channel): FormValues {
     status_code_mapping: ch.status_code_mapping ?? '',
     max_retry: ch.max_retry ?? 0,
     auto_ban: (ch.auto_ban ?? 1) !== 0,
+    pass_user_info: typeof setting.pass_user_info === 'boolean' ? setting.pass_user_info : false,
     param_override: ch.param_override ?? '',
     header_override: ch.header_override ?? '',
     tag: ch.tag ?? '',
@@ -375,7 +382,8 @@ export function ChannelFormDialog({
       values.proxy.trim(),
       values.system_prompt,
       values.channel_ratio,
-      values.model_ratio_override
+      values.model_ratio_override,
+      values.pass_user_info
     );
 
     // Build the write payload. On edit we omit `key` unless the admin
@@ -776,6 +784,17 @@ export function ChannelFormDialog({
             <div className='space-y-2'>
               <Label htmlFor='ch-sys'>{t('form.field.system_prompt')}</Label>
               <Textarea id='ch-sys' rows={3} {...form.register('system_prompt')} />
+            </div>
+            <div className='space-y-1'>
+              <div className='flex items-center gap-2'>
+                <Switch
+                  id='ch-pass-user'
+                  checked={form.watch('pass_user_info')}
+                  onCheckedChange={(v) => form.setValue('pass_user_info', v)}
+                />
+                <Label htmlFor='ch-pass-user'>{t('form.field.pass_user_info')}</Label>
+              </div>
+              <p className='text-12 text-fg-2'>{t('form.field.pass_user_info_hint')}</p>
             </div>
             <div className='space-y-2'>
               <Label>{t('form.field.param_override')}</Label>

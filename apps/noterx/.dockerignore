@@ -1,0 +1,40 @@
+# Keep the build context small and avoid leaking host state into images.
+
+# Version control
+.git/
+.gitignore
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+backend/venv/
+backend/.env
+backend/data/*.db
+backend/data/temp_videos/
+backend/data/noterx_workspace/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/*.log
+
+# Bind-mount target — never copy the host's data dir into the image
+data/
+
+# Docker artifacts
+docker-compose.override.yml
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Misc
+*.log
+_tmp_*.png

@@ -23,6 +23,9 @@ tiktoken_cache
 .gomodcache/
 .cache
 web/bun.lock
+.env.*
+!.env.example
+!.env.production*.example
 plans
 !**/docs/superpowers/
 !**/docs/superpowers/plans/

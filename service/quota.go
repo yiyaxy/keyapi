@@ -376,6 +376,12 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+		// BUG-FIX (audio path): mirror text_quota.go — refund pre-consumed
+		// quota when Settle fails, otherwise the user gets billed the full
+		// pre-consume amount instead of actual usage.
+		if relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(ctx)
+		}
 	}
 
 	logModel := relayInfo.OriginModelName
