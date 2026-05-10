@@ -15,7 +15,7 @@ from typing import Optional, Callable, Awaitable, Any
 from app.analysis.text_analyzer import TextAnalyzer
 from app.analysis.image_analyzer import ImageAnalyzer
 from app.baseline.comparator import BaselineComparator
-from app.agents.base_agent import get_model_pro, get_model_fast
+from app.agents.base_agent import DEFAULT_LLM_MODEL, get_model_pro, get_model_fast, llm_model_var
 from app.agents.research_data import pre_score
 from app.agents.content_agent import ContentAgent
 from app.agents.visual_agent import VisualAgent
@@ -140,18 +140,21 @@ class Orchestrator:
 
     def __init__(self, model: Optional[str] = None):
         """
-        @param model - 覆盖默认模型；未传时使用 LLM_MODEL；小米 MiMo 可回退 mimo-v2-omni
+        @param model - 覆盖默认模型；未传时使用请求头 llm_model 或 LLM_MODEL。
         """
         if model:
             self.model = model
         else:
+            request_model = (llm_model_var.get() or "").strip()
             env_model = os.getenv("LLM_MODEL", "").strip()
-            if env_model:
+            if request_model:
+                self.model = request_model
+            elif env_model:
                 self.model = env_model
             elif _is_mimo_openai_compat():
                 self.model = "mimo-v2-omni"
             else:
-                self.model = "gpt-4o"
+                self.model = DEFAULT_LLM_MODEL
         self.text_analyzer = TextAnalyzer()
         self.image_analyzer = ImageAnalyzer()
         self.baseline_comparator = BaselineComparator()
