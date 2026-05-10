@@ -5,6 +5,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/require"
 )
 
 // resetTPMCounters 重置内存 TPM 计数器，测试前必调。
@@ -123,4 +126,35 @@ func TestIncrementTenantPlatformChannelUsed_GuardsAreNoOps(t *testing.T) {
 	IncrementTenantPlatformChannelUsed(-1, 100)
 	IncrementTenantPlatformChannelUsed(42, 0)
 	IncrementTenantPlatformChannelUsed(42, -5)
+}
+
+func TestIncrementTenantPlatformChannelUsed_TracksWhenCapUnlimited(t *testing.T) {
+	truncate(t)
+	t.Cleanup(func() { model.DB.Exec("DELETE FROM tenant_plans") })
+
+	plan := &model.TenantPlan{
+		TenantId:                 9001,
+		PlanName:                 "free",
+		PlatformQuotaCap:         -1,
+		PlatformQuotaPeriod:      model.PlatformQuotaPeriodNone,
+		PlatformQuotaUsed:        0,
+		PlatformQuotaPeriodStart: 0,
+		Status:                   model.TenantPlanStatusActive,
+	}
+	require.NoError(t, model.DB.Create(plan).Error)
+	model.InvalidateTenantPlanCache(9001)
+
+	IncrementTenantPlatformChannelUsed(9001, 250)
+
+	var got model.TenantPlan
+	require.NoError(t, model.WithTenantBypass(model.DB).Where("tenant_id = ?", 9001).First(&got).Error)
+	if got.PlatformQuotaUsed != 250 {
+		t.Fatalf("expected platform_quota_used=250 (must accumulate even when cap is unlimited), got %d", got.PlatformQuotaUsed)
+	}
+
+	IncrementTenantPlatformChannelUsed(9001, 50)
+	require.NoError(t, model.WithTenantBypass(model.DB).Where("tenant_id = ?", 9001).First(&got).Error)
+	if got.PlatformQuotaUsed != 300 {
+		t.Fatalf("expected accumulated platform_quota_used=300, got %d", got.PlatformQuotaUsed)
+	}
 }

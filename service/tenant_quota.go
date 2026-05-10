@@ -313,9 +313,8 @@ func IncrementTenantPlatformChannelUsed(tenantId int, quotaDelta int) {
 			common.SysError(fmt.Sprintf("IncrementTenantPlatformChannelUsed SELECT failed tenant=%d: %s", tenantId, err.Error()))
 			return
 		}
-		if row.PlatformQuotaCap < 0 {
-			return
-		}
+		// 即使 cap < 0(unlimited) 也照常累加,用于控制台观测;
+		// 限额检查由 CheckTenantPlatformChannelQuota 单独负责跳过。
 
 		needReset, newStart := model.ComputePlatformQuotaPeriodReset(row.PlatformQuotaPeriod, row.PlatformQuotaPeriodStart, now)
 
