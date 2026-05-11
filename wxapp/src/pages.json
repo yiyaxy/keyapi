@@ -14,12 +14,6 @@
 			}
 		},
 		{
-			"path": "pages/apps/chat",
-			"style": {
-				"navigationStyle": "custom"
-			}
-		},
-		{
 			"path": "pages/webview/index",
 			"style": {
 				"navigationBarTitleText": "AI 应用"

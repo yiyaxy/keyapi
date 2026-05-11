@@ -145,10 +145,10 @@ const fallbackModels: ModelCardData[] = [
     health: 99.98,
   },
   {
-    name: 'gpt-image-1',
+    name: 'gpt-image-2',
     vendor: 'OpenAI',
     description: '',
-    descriptionKey: 'fallback.gpt_image_1',
+    descriptionKey: 'fallback.gpt_image_2',
     capabilities: ['image_generation', 'vision'],
     endpointTypes: ['image-generation'],
     inputUsd: 0,

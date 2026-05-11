@@ -300,8 +300,8 @@ function modelsFromPricing(envelope?: PricingEnvelope): MobileModel[] {
         description: '轻量、快速、适合日常对话',
       },
       {
-        name: 'gpt-image-1',
-        displayName: 'gpt-image-1',
+        name: 'gpt-image-2',
+        displayName: 'gpt-image-2',
         vendor: 'OpenAI',
         kind: 'image',
         description: '图片生成模型',
@@ -914,7 +914,7 @@ export function MobileChat({
   const [kind, setKind] = useState<ModelKind>('chat');
   const [selectedModelNames, setSelectedModelNames] = useState<Record<ModelKind, string>>({
     chat: '',
-    image: '',
+    image: 'gpt-image-2',
   });
   const [input, setInput] = useState('');
   const [messagesByKind, setMessagesByKind] = useState<Record<ModelKind, ChatMessage[]>>({
@@ -959,9 +959,10 @@ export function MobileChat({
   const imageModels = models.filter((model) => model.kind === 'image');
   const visibleModels = kind === 'chat' ? chatModels : imageModels;
   const selectedModelName = selectedModelNames[kind];
+  const preferredModelName = kind === 'image' ? 'gpt-image-2' : 'gpt-5.5';
   const selectedModel =
     visibleModels.find((model) => model.name === selectedModelName) ??
-    visibleModels.find((model) => model.name === 'gpt-5.5') ??
+    visibleModels.find((model) => model.name === preferredModelName) ??
     visibleModels[0];
   const messages = messagesByKind[kind];
   const historyRecords = historyRecordsByKind[kind];
