@@ -547,6 +547,13 @@ func GetSelf(c *gin.Context) {
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
+		// features 是按租户开通的功能开关集合。前端用它决定菜单显隐 / 路由守卫。
+		// 平台管理员（platform_role >= RoleAdminUser）默认拥有所有 feature；
+		// 普通租户管理员仅拥有租户被显式开通的 feature。
+		"features": map[string]bool{
+			"chat_history": platformRole >= common.RoleAdminUser ||
+				model.IsChatHistoryViewEnabled(middleware.GetTenantId(c)),
+		},
 	}
 
 	// Expose effective rebate settings for the current user (as inviter)

@@ -2,12 +2,39 @@ package middleware
 
 import (
 	"bytes"
+	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	servicechathistory "github.com/QuantumNous/new-api/service/chat_history"
 	settingchathistory "github.com/QuantumNous/new-api/setting/chat_history"
 
 	"github.com/gin-gonic/gin"
 )
+
+// ChatHistoryViewGate enforces the per-tenant "view chat history" feature
+// flag for the admin list/detail endpoints. Platform admins always pass —
+// they need cross-tenant visibility for ops/troubleshooting. Tenant admins
+// only pass when the tenant's TenantOptionKeyChatHistoryView is "true".
+//
+// Mount AFTER TenantAdminAuth so role + tenant context are populated.
+func ChatHistoryViewGate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetInt("platform_role") >= common.RoleAdminUser {
+			c.Next()
+			return
+		}
+		tenantId := GetTenantId(c)
+		if tenantId > 0 && model.IsChatHistoryViewEnabled(tenantId) {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "chat history view is not enabled for this tenant",
+		})
+	}
+}
 
 // chatHistoryWriter wraps gin.ResponseWriter to mirror everything written to
 // the client into an in-memory buffer for later upload. The wrapper is fully
