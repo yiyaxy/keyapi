@@ -130,11 +130,11 @@ export const createToken = (payload = {}) =>
   request.post('/api/token/', {
     name: payload.name || '小程序 Key',
     group: payload.group || '',
-    cross_group_retry: payload.cross_group_retry ?? false,
-    unlimited_quota: payload.unlimited_quota ?? true,
-    remain_quota: payload.remain_quota ?? 0,
-    expired_time: payload.expired_time ?? -1,
-    enable_image_gen: payload.enable_image_gen ?? true,
+    cross_group_retry: payload.cross_group_retry !== undefined ? payload.cross_group_retry : false,
+    unlimited_quota: payload.unlimited_quota !== undefined ? payload.unlimited_quota : true,
+    remain_quota: payload.remain_quota !== undefined ? payload.remain_quota : 0,
+    expired_time: payload.expired_time !== undefined ? payload.expired_time : -1,
+    enable_image_gen: payload.enable_image_gen !== undefined ? payload.enable_image_gen : true,
   })
 
 /**
@@ -205,7 +205,7 @@ export const requestWxminiVirtualPayment = (xpayResponse) =>
       paySig: xpayResponse.pay_sig,
       signature: xpayResponse.signature,
       success: resolve,
-      fail: (err) => reject(new Error(err?.errMsg || '支付失败')),
+      fail: (err) => reject(new Error((err && err.errMsg) || '支付失败')),
     })
   })
 
@@ -280,7 +280,7 @@ function utf8Bytes(value) {
 function toBytes(data) {
   if (typeof Uint8Array !== 'undefined' && data instanceof Uint8Array) return data
   if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) return new Uint8Array(data)
-  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView?.(data)) {
+  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(data)) {
     return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
   }
   return utf8Bytes(data || '')

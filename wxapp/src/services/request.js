@@ -18,14 +18,14 @@ function redirectToLogin() {
 
 function buildHeader(withToken = true) {
   const header = { 'Content-Type': 'application/json' }
-  const tenantId = userStore.userInfo?.tenant_id
+  const tenantId = userStore.userInfo && userStore.userInfo.tenant_id
   if (tenantId !== undefined && tenantId !== null && tenantId !== '') {
     header['X-Tenant-Id'] = String(tenantId)
   }
   if (withToken && userStore.token) {
     header['Cookie'] = userStore.token
     // 后端 authHelper 要求此头与 session 中的 id 匹配
-    const userId = userStore.userInfo?.id
+    const userId = userStore.userInfo && userStore.userInfo.id
     if (userId !== undefined && userId !== null) {
       header['New-Api-User'] = String(userId)
     }
