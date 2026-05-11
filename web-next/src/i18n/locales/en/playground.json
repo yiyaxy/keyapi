@@ -42,7 +42,7 @@
   "capabilities.long_context": "Long context",
   "capabilities.audio": "Audio",
   "fallback.gpt_4_1_mini": "Fast general model for production debugging and tool calls.",
-  "fallback.gpt_image_1": "Image generation model for prompt-to-image workflows.",
+  "fallback.gpt_image_2": "Image generation model for prompt-to-image workflows.",
   "fallback.claude_sonnet_4": "Balanced model for code review, reasoning, and long answers.",
   "fallback.gemini_2_5_pro": "Long-context model for documents, vision, and analysis.",
   "models.title": "Models",

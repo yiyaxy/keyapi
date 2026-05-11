@@ -42,7 +42,7 @@
   "capabilities.long_context": "长上下文",
   "capabilities.audio": "音频",
   "fallback.gpt_4_1_mini": "适合生产调试、轻量分析和工具调用的快速通用模型。",
-  "fallback.gpt_image_1": "适合提示词生成图片的图片模型。",
+  "fallback.gpt_image_2": "适合提示词生成图片的图片模型。",
   "fallback.claude_sonnet_4": "适合代码审查、复杂推理和长回答的均衡模型。",
   "fallback.gemini_2_5_pro": "适合长文档、视觉输入和综合分析的长上下文模型。",
   "models.title": "模型",

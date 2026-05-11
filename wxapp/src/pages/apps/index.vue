@@ -14,7 +14,7 @@
           <view v-if="userStore.wxPayEnabled" class="quota-pill">
             <u-icon name="server-fill" size="17" color="#111827" />
             <view class="quota-text">
-              <text class="quota-num">{{ tokenStr(userInfo?.quota) }}</text>
+              <text class="quota-num">{{ tokenStr(userInfo && userInfo.quota) }}</text>
               <text class="quota-label">积分</text>
             </view>
           </view>
@@ -64,10 +64,7 @@
               <text>使用你的平台余额结算</text>
             </view>
             <view class="native-chat-buttons">
-              <view class="native-chat-btn secondary" @click="openNativeChat('', 'image')">
-                <text>图片生成</text>
-              </view>
-              <view class="native-chat-btn" @click="openNativeChat(quickChatInput, 'chat')">
+              <view class="native-chat-btn" @click="openNativeChat(quickChatInput)">
                 <text>{{ quickChatInput.trim() ? '开始对话' : '打开聊天' }}</text>
                 <u-icon name="arrow-rightward" size="15" color="#111827" />
               </view>
@@ -159,6 +156,7 @@ const userInfo = ref(null)
 const quickChatInput = ref('')
 const quickChatFocus = ref(false)
 const chatControlApp = ref(null)
+const H5_CHAT_URL = 'https://token.cymoon.cn/m/chat'
 
 const filteredApps = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -195,11 +193,11 @@ function tagsOf(app) {
 }
 
 function appPoster(app) {
-  return app?.poster_url || app?.cover_url || app?.banner_url || app?.icon_url || ''
+  return (app && (app.poster_url || app.cover_url || app.banner_url || app.icon_url)) || ''
 }
 
 function cardBackground(app, index) {
-  const seed = String(app?.slug || app?.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  const seed = String((app && (app.slug || app.name)) || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
   return cardGradients[(seed + index) % cardGradients.length]
 }
 
@@ -277,7 +275,7 @@ async function ensureValidLogin() {
 
   try {
     const data = await getSelf()
-    if (!data?.id) throw new Error('Invalid session')
+    if (!data || !data.id) throw new Error('Invalid session')
     userInfo.value = data
     userStore.setUserInfo(data)
     return true
@@ -288,7 +286,7 @@ async function ensureValidLogin() {
 }
 
 async function useApp(app) {
-  if (!app?.slug || activeSlug.value) return
+  if (!app || !app.slug || activeSlug.value) return
 
   activeSlug.value = app.slug
   try {
@@ -297,12 +295,12 @@ async function useApp(app) {
     }
 
     const data = await getAppSessionToken(app.slug)
-    const token = data?.key || ''
+    const token = (data && data.key) || ''
     if (!token) throw new Error('未获取到应用访问令牌')
     const targetUrl = buildTokenHandoffUrl(toAbsoluteTarget(app.target_url), token)
     openWebView(targetUrl, app.name)
   } catch (err) {
-    uni.showToast({ title: err?.message || '应用启动失败，请稍后重试', icon: 'none' })
+    uni.showToast({ title: (err && err.message) || '应用启动失败，请稍后重试', icon: 'none' })
   } finally {
     activeSlug.value = ''
   }
@@ -312,18 +310,32 @@ function focusQuickChat() {
   quickChatFocus.value = true
 }
 
-async function openNativeChat(draft = '', mode = 'chat') {
-  if (!chatControlApp.value?.slug) {
+function buildH5ChatUrl(draft = '') {
+  const configuredUrl = String((chatControlApp.value && chatControlApp.value.target_url) || '').trim()
+  let targetUrl = /^https?:\/\//i.test(configuredUrl) ? configuredUrl : H5_CHAT_URL
+  const text = String(draft || '').trim()
+  if (text) targetUrl = setQueryParam(targetUrl, 'draft', text)
+  return targetUrl
+}
+
+async function openNativeChat(draft = '') {
+  if (!chatControlApp.value || !chatControlApp.value.slug) {
     uni.showToast({ title: 'AI 对话暂未开放', icon: 'none' })
     return
   }
   if (!(await ensureValidLogin())) return
-  const text = String(draft || '').trim()
-  const params = [`appSlug=${encodeURIComponent(chatControlApp.value.slug)}`]
-  if (text) params.push(`draft=${encodeURIComponent(text)}`)
-  if (mode === 'image') params.push('mode=image')
-  const suffix = params.length ? `?${params.join('&')}` : ''
-  uni.navigateTo({ url: `/pages/apps/chat${suffix}` })
+  activeSlug.value = chatControlApp.value.slug
+  try {
+    const data = await getAppSessionToken(chatControlApp.value.slug)
+    const token = (data && data.key) || ''
+    if (!token) throw new Error('未获取到应用访问令牌')
+    const targetUrl = buildTokenHandoffUrl(buildH5ChatUrl(draft), token)
+    openWebView(targetUrl, chatControlApp.value.name || 'AI 对话')
+  } catch (err) {
+    uni.showToast({ title: (err && err.message) || 'AI 对话启动失败', icon: 'none' })
+  } finally {
+    activeSlug.value = ''
+  }
 }
 
 async function loadApps() {

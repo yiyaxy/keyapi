@@ -130,11 +130,11 @@ export const createToken = (payload = {}) =>
   request.post('/api/token/', {
     name: payload.name || '小程序 Key',
     group: payload.group || '',
-    cross_group_retry: payload.cross_group_retry ?? false,
-    unlimited_quota: payload.unlimited_quota ?? true,
-    remain_quota: payload.remain_quota ?? 0,
-    expired_time: payload.expired_time ?? -1,
-    enable_image_gen: payload.enable_image_gen ?? true,
+    cross_group_retry: payload.cross_group_retry !== undefined ? payload.cross_group_retry : false,
+    unlimited_quota: payload.unlimited_quota !== undefined ? payload.unlimited_quota : true,
+    remain_quota: payload.remain_quota !== undefined ? payload.remain_quota : 0,
+    expired_time: payload.expired_time !== undefined ? payload.expired_time : -1,
+    enable_image_gen: payload.enable_image_gen !== undefined ? payload.enable_image_gen : true,
   })
 
 /**
@@ -205,7 +205,7 @@ export const requestWxminiVirtualPayment = (xpayResponse) =>
       paySig: xpayResponse.pay_sig,
       signature: xpayResponse.signature,
       success: resolve,
-      fail: (err) => reject(new Error(err?.errMsg || '支付失败')),
+      fail: (err) => reject(new Error((err && err.errMsg) || '支付失败')),
     })
   })
 
@@ -241,118 +241,3 @@ export const getAppSessionToken = (slug) =>
 
 export const getAppGuestToken = (slug) =>
   request.post(`/api/app/${encodeURIComponent(slug)}/guest-session`, {}, false)
-
-export const getPricingModels = () => request.get('/api/pricing', null, false)
-
-function normalizeBearerToken(token) {
-  const value = String(token || '').trim()
-  if (!value) return ''
-  return value.startsWith('sk-') ? value : `sk-${value}`
-}
-
-export const createMobileChatCompletion = ({ model, messages, token, tenantId }) => {
-  const bearerToken = normalizeBearerToken(token)
-  if (!bearerToken) return Promise.reject(new Error('未获取到 AI 对话应用访问令牌'))
-  const headers = {
-    Authorization: `Bearer ${bearerToken}`,
-  }
-  if (tenantId !== undefined && tenantId !== null && tenantId !== '') {
-    headers['X-Tenant-Id'] = String(tenantId)
-  }
-  return request.postRaw('/v1/chat/completions', {
-    model,
-    messages,
-    stream: false,
-  }, headers, false)
-}
-
-function utf8Bytes(value) {
-  const text = String(value)
-  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text)
-  const encoded = unescape(encodeURIComponent(text))
-  const bytes = new Uint8Array(encoded.length)
-  for (let index = 0; index < encoded.length; index += 1) {
-    bytes[index] = encoded.charCodeAt(index)
-  }
-  return bytes
-}
-
-function toBytes(data) {
-  if (typeof Uint8Array !== 'undefined' && data instanceof Uint8Array) return data
-  if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) return new Uint8Array(data)
-  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView?.(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-  }
-  return utf8Bytes(data || '')
-}
-
-function concatBytes(parts) {
-  const total = parts.reduce((sum, part) => sum + part.byteLength, 0)
-  const merged = new Uint8Array(total)
-  let offset = 0
-  parts.forEach((part) => {
-    merged.set(part, offset)
-    offset += part.byteLength
-  })
-  return merged.buffer
-}
-
-function multipartFilename(value, fallback) {
-  return String(value || fallback || 'image.jpg').replace(/["\r\n]/g, '_')
-}
-
-function buildImageUploadBody(files) {
-  const boundary = `----new-api-app-image-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  const parts = []
-  ;(files || []).forEach((file, index) => {
-    const filename = multipartFilename(file.filename || file.name, `reference-${index + 1}.jpg`)
-    const contentType = file.contentType || 'image/jpeg'
-    parts.push(
-      utf8Bytes(
-        `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="files"; filename="${filename}"\r\n` +
-          `Content-Type: ${contentType}\r\n\r\n`
-      )
-    )
-    parts.push(toBytes(file.data))
-    parts.push(utf8Bytes('\r\n'))
-  })
-  parts.push(utf8Bytes(`--${boundary}--\r\n`))
-  return {
-    body: concatBytes(parts),
-    boundary,
-  }
-}
-
-export const uploadAppImages = (files) => {
-  const { body, boundary } = buildImageUploadBody(files)
-  return request.postRaw(
-    '/api/app/image-uploads',
-    body,
-    {
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-    },
-    true
-  )
-}
-
-export const createMobileImageGeneration = ({ model, prompt, images = [], size = '1024x1024' }) => {
-  const imageUrls = Array.isArray(images) ? images.filter(Boolean).slice(0, 16) : []
-  const body = {
-    model,
-    prompt,
-    size,
-    n: 1,
-    response_format: 'url',
-    output_format: 'png',
-    quality: 'medium',
-  }
-  if (imageUrls.length > 0) {
-    body.image = imageUrls[0]
-    body.images = imageUrls
-  }
-  return request.post('/pg/images/async', body)
-}
-
-export const getMobileImageTask = (taskId) =>
-  request.get(`/pg/images/async/${encodeURIComponent(taskId)}`)
