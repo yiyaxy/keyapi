@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 const keys = {
   list: ['platform', 'tenants'] as const,
   plans: ['platform', 'tenant-plans'] as const,
+  features: (tenantId: number) => ['platform', 'tenant-features', tenantId] as const,
 };
 
 // TenantPlan mirrors model.TenantPlan — every field admins see/edit on
@@ -119,6 +120,41 @@ export function useUpdateTenantPlan() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.plans });
+    },
+  });
+}
+
+// Per-tenant feature toggles managed by platform admins.
+// Mirrors controller/tenant/features.go: a flat record of boolean flags.
+// Currently only chat_history; future flags can be appended without breaking
+// callers because the type carries each known flag explicitly.
+export type TenantFeatures = {
+  chat_history: boolean;
+};
+
+export type UpdateTenantFeaturesPayload = Partial<TenantFeatures>;
+
+export function useTenantFeatures(tenantId: number | null) {
+  return useQuery<TenantFeatures>({
+    enabled: tenantId != null && tenantId > 0,
+    queryKey: tenantId != null ? keys.features(tenantId) : ['platform', 'tenant-features', 0],
+    queryFn: async () => {
+      const res = await api.get<TenantFeatures>(`/api/platform/tenants/${tenantId}/features`);
+      return res.data;
+    },
+    staleTime: 15_000,
+  });
+}
+
+export function useUpdateTenantFeatures(tenantId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: UpdateTenantFeaturesPayload) => {
+      const res = await api.put<TenantFeatures>(`/api/platform/tenants/${tenantId}/features`, body);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(keys.features(tenantId), data);
     },
   });
 }

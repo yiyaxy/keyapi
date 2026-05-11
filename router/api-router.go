@@ -134,7 +134,7 @@ func SetApiRouter(router *gin.Engine) {
 		// platform admins; the controller itself enforces tenant scoping
 		// based on platform_role context.
 		chatHistoryAdminRoute := apiRouter.Group("/chat_history/admin")
-		chatHistoryAdminRoute.Use(middleware.TenantAdminAuth())
+		chatHistoryAdminRoute.Use(middleware.TenantAdminAuth(), middleware.ChatHistoryViewGate())
 		{
 			chatHistoryAdminRoute.GET("", chathistoryctrl.AdminList)
 			chatHistoryAdminRoute.GET("/:request_id", chathistoryctrl.AdminDetail)
@@ -758,6 +758,8 @@ func SetApiRouter(router *gin.Engine) {
 			platformTenantRoute.GET("/platform-channel-usage", tenant.ListPlatformChannelUsage)
 			platformTenantRoute.POST("/:id/platform-channel-usage/reset", tenant.ResetPlatformChannelUsage)
 			platformTenantRoute.PUT("/:id/plan", tenant.UpdateTenantPlanHandler)
+			platformTenantRoute.GET("/:id/features", tenant.GetTenantFeatures)
+			platformTenantRoute.PUT("/:id/features", tenant.UpdateTenantFeatures)
 		}
 
 		// WeChat Pay S2 user-facing ordering

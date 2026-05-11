@@ -6,6 +6,7 @@ import { InlineBanner } from '@/components/auth/InlineBanner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreateTenantDialog } from '@/components/platform/CreateTenantDialog';
 import { TenantChannelAccessDialog } from '@/components/platform/TenantChannelAccessDialog';
+import { TenantFeaturesDialog } from '@/components/platform/TenantFeaturesDialog';
 import { TenantPlanEditorDialog } from '@/components/platform/TenantPlanEditorDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,7 @@ export function PlatformTenantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
   const [planTarget, setPlanTarget] = useState<{ tenant: Tenant; plan: TenantPlan } | null>(null);
   const [accessTarget, setAccessTarget] = useState<Tenant | null>(null);
+  const [featuresTarget, setFeaturesTarget] = useState<Tenant | null>(null);
 
   const items = tenants.data ?? [];
   const planByTenant = new Map<number, TenantPlan>();
@@ -123,6 +125,14 @@ export function PlatformTenantsPage() {
                         type='button'
                         variant='ghost'
                         size='sm'
+                        onClick={() => setFeaturesTarget(tnt)}
+                      >
+                        {t('tenants.action.features', { defaultValue: '功能开关' })}
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
                         className='text-danger'
                         disabled={tnt.id === 1}
                         onClick={() => setDeleteTarget(tnt)}
@@ -152,6 +162,14 @@ export function PlatformTenantsPage() {
           tenantId={accessTarget.id}
           tenantName={accessTarget.name}
           onOpenChange={(o) => !o && setAccessTarget(null)}
+        />
+      )}
+      {featuresTarget && (
+        <TenantFeaturesDialog
+          open
+          tenantId={featuresTarget.id}
+          tenantName={featuresTarget.name}
+          onOpenChange={(o) => !o && setFeaturesTarget(null)}
         />
       )}
       {deleteTarget && (

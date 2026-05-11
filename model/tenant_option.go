@@ -1,7 +1,9 @@
 package model
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm/clause"
 )
@@ -95,6 +97,11 @@ const (
 	PlatformChannelModePlatformPriority = "platform_priority"
 	PlatformChannelModeOnlyPrivate      = "only_private"
 	PlatformChannelModeOnlyPlatform     = "only_platform"
+
+	// TenantOptionKeyChatHistoryView controls whether tenant admins of this
+	// tenant can view captured chat history. Defaults OFF (key absent).
+	// Platform admins always bypass this gate.
+	TenantOptionKeyChatHistoryView = "chat_history.view_enabled"
 )
 
 func isValidPlatformChannelMode(s string) bool {
@@ -127,4 +134,33 @@ func SetTenantPlatformChannelMode(tenantId int, mode string) error {
 		return fmt.Errorf("invalid platform_channel_mode: %q", mode)
 	}
 	return SetTenantOption(tenantId, TenantOptionKeyPlatformChannelMode, mode)
+}
+
+// IsChatHistoryViewEnabled reports whether tenant admins of the given tenant
+// have been granted access to the chat history admin pages. Defaults to false
+// (must be opted-in by a platform admin per tenant). Any non-"true" stored
+// value is treated as disabled — defensive default so a typo can never
+// silently expose captured prompts.
+func IsChatHistoryViewEnabled(tenantId int) bool {
+	if tenantId <= 0 {
+		return false
+	}
+	v, ok := GetTenantOption(tenantId, TenantOptionKeyChatHistoryView)
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(v) == "true"
+}
+
+// SetChatHistoryViewEnabled flips the per-tenant chat history viewing toggle.
+// When disabled, the row is deleted rather than stored as "false" so the
+// options table stays free of explicit-false entries (absence = default = off).
+func SetChatHistoryViewEnabled(tenantId int, enabled bool) error {
+	if tenantId <= 0 {
+		return errors.New("invalid tenant id")
+	}
+	if enabled {
+		return SetTenantOption(tenantId, TenantOptionKeyChatHistoryView, "true")
+	}
+	return DeleteTenantOption(tenantId, TenantOptionKeyChatHistoryView)
 }

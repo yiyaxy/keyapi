@@ -1,5 +1,12 @@
 import { createContext, useContext } from 'react';
 
+export type UserFeatures = {
+  // Tenant-admin viewing of captured chat history.
+  // Platform admins always see `true`; tenant admins see `true` only when
+  // a platform admin enabled the per-tenant flag.
+  chat_history: boolean;
+};
+
 export type User = {
   id: number;
   username: string;
@@ -18,6 +25,7 @@ export type User = {
   oidc_id?: string;
   telegram_id?: string;
   linux_do_id?: string;
+  features?: UserFeatures;
 };
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';

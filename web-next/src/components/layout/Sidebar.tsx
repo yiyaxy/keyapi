@@ -92,11 +92,13 @@ export function Sidebar() {
               <NavItem to='/admin/users' label={t('nav.admin.users')} icon={Users} />
               <NavItem to='/admin/redemption' label={t('nav.admin.redemption')} icon={Ticket} />
               <NavItem to='/admin/logs' label={t('nav.admin.logs')} icon={List} />
-              <NavItem
-                to='/admin/chat-history'
-                label={t('nav.admin.chat_history', { defaultValue: '对话记录' })}
-                icon={MessagesSquare}
-              />
+              {user?.features?.chat_history && (
+                <NavItem
+                  to='/admin/chat-history'
+                  label={t('nav.admin.chat_history', { defaultValue: '对话记录' })}
+                  icon={MessagesSquare}
+                />
+              )}
               <NavItem to='/admin/tickets' label={t('nav.admin.tickets')} icon={LifeBuoy} />
               <NavItem to='/admin/invoices' label={t('nav.admin.invoices')} icon={ScrollText} />
               <NavItem to='/admin/subscriptions' label={t('nav.admin.subscriptions')} icon={Gem} />

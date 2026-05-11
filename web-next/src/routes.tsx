@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { AdminRoute } from '@/components/common/AdminRoute';
 import { ComingSoon } from '@/components/common/ComingSoon';
+import { FeatureGate } from '@/components/common/FeatureGate';
 import { Forbidden } from '@/components/common/Forbidden';
 import { NotFound } from '@/components/common/NotFound';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
@@ -137,7 +138,10 @@ export const router = createBrowserRouter([
                   { path: '/admin/users', element: <UsersAdminPage /> },
                   { path: '/admin/redemption', element: <RedemptionAdminPage /> },
                   { path: '/admin/logs', element: <LogsAdminPage /> },
-                  { path: '/admin/chat-history', element: <ChatHistoryAdminPage /> },
+                  {
+                    element: <FeatureGate feature='chat_history' />,
+                    children: [{ path: '/admin/chat-history', element: <ChatHistoryAdminPage /> }],
+                  },
                   { path: '/admin/tickets', element: <TicketsAdminPage /> },
                   { path: '/admin/tickets/:id', element: <TicketAdminDetailPage /> },
                   { path: '/admin/invoices', element: <InvoicesAdminPage /> },
