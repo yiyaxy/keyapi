@@ -334,6 +334,58 @@ function extractChatText(data: unknown): string {
   return '模型已返回结果，但当前页面无法解析为文本。';
 }
 
+function stringifyChatContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (!part || typeof part !== 'object') return '';
+      const item = part as { text?: unknown; content?: unknown };
+      if (typeof item.text === 'string') return item.text;
+      if (typeof item.content === 'string') return item.content;
+      return '';
+    })
+    .join('');
+}
+
+function extractChatStreamDelta(data: unknown): string {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return '';
+  const body = data as {
+    choices?: Array<{
+      delta?: { content?: unknown; reasoning_content?: unknown };
+      message?: { content?: unknown };
+      text?: unknown;
+    }>;
+    delta?: unknown;
+    output_text?: unknown;
+  };
+  if (typeof body.output_text === 'string') return body.output_text;
+  const choices = body.choices;
+  if (Array.isArray(choices)) {
+    return choices
+      .map((choice) => {
+        const content = choice.delta?.content ?? choice.message?.content ?? choice.text;
+        return stringifyChatContent(content);
+      })
+      .join('');
+  }
+  return stringifyChatContent(body.delta);
+}
+
+function parseChatStreamLine(line: string): { done: boolean; text: string } {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith(':')) return { done: false, text: '' };
+  const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
+  if (!payload) return { done: false, text: '' };
+  if (payload === '[DONE]') return { done: true, text: '' };
+  try {
+    return { done: false, text: extractChatStreamDelta(JSON.parse(payload)) };
+  } catch {
+    return { done: false, text: '' };
+  }
+}
+
 function extractImageItems(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') return [];
@@ -484,10 +536,12 @@ async function submitMobileChatCompletion({
   token,
   model,
   messages,
+  onText,
 }: {
   token: string;
   model: string;
   messages: Array<{ role: ChatMessage['role']; content: string }>;
+  onText: (text: string) => void;
 }) {
   const response = await fetch(llmUrl('/chat/completions'), {
     method: 'POST',
@@ -495,13 +549,53 @@ async function submitMobileChatCompletion({
     body: JSON.stringify({
       model,
       messages,
-      stream: false,
+      stream: true,
     }),
   });
   if (!response.ok) {
     throw new Error(await safeReadResponseError(response));
   }
-  return response.json();
+  if (!response.body) {
+    const data = await response.json();
+    const text = extractChatText(data);
+    onText(text);
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = done ? '' : (lines.pop() ?? '');
+
+    for (const line of lines) {
+      const parsed = parseChatStreamLine(line);
+      if (parsed.done) {
+        reader.releaseLock();
+        return text;
+      }
+      if (!parsed.text) continue;
+      text += parsed.text;
+      onText(text);
+    }
+
+    if (done) break;
+  }
+
+  if (buffer) {
+    const parsed = parseChatStreamLine(buffer);
+    if (parsed.text) {
+      text += parsed.text;
+      onText(text);
+    }
+  }
+  reader.releaseLock();
+  return text;
 }
 
 function protectedAsyncImageRequestUrl(src: string) {
@@ -1191,6 +1285,7 @@ export function MobileChat({
     }
     setRunningByKind((prev) => ({ ...prev, [activeKind]: true }));
 
+    let pendingAssistantMessageId = '';
     try {
       if (activeKind === 'image' && referenceImages.length > 0) {
         setImageTaskMessage(`正在上传参考图 0/${referenceImages.length}`);
@@ -1205,24 +1300,51 @@ export function MobileChat({
             )
           : [];
       persistMessage(userMessage, activeModel, activeKind, referenceImageUrls);
-      const data =
-        activeKind === 'image'
-          ? await submitMobileAsyncImageGeneration({
-              token: await getMobileImageRelayToken(),
-              model: activeModel,
-              prompt: content,
-              referenceImageUrls,
-              onStatus: setImageTaskMessage,
-            })
-          : await submitMobileChatCompletion({
-              token: await getMobileChatRelayToken(),
-              model: activeModel.name,
-              messages: [...activeMessages, userMessage].slice(-8).map((m) => ({
-                role: m.role,
-                content: m.content,
-              })),
-            });
-      const imageUrls = activeKind === 'image' ? extractImageUrls(data) : [];
+      if (activeKind === 'chat') {
+        const reply: ChatMessage = {
+          id: createMessageId('a'),
+          role: 'assistant',
+          content: '',
+          createdAt: currentTimestamp(),
+        };
+        pendingAssistantMessageId = reply.id;
+        setMessagesForKind(activeKind, (prev) => [...prev, reply]);
+        const streamedText = await submitMobileChatCompletion({
+          token: await getMobileChatRelayToken(),
+          model: activeModel.name,
+          messages: [...activeMessages, userMessage].slice(-8).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          onText: (nextText) => {
+            setMessagesForKind(activeKind, (prev) =>
+              prev.map((message) =>
+                message.id === reply.id ? { ...message, content: nextText } : message
+              )
+            );
+          },
+        });
+        const finalReply = {
+          ...reply,
+          content: streamedText || reply.content,
+          createdAt: currentTimestamp(),
+        };
+        setMessagesForKind(activeKind, (prev) =>
+          prev.map((message) => (message.id === reply.id ? finalReply : message))
+        );
+        prependHistoryMessagesForKind(activeKind, [finalReply, userMessage]);
+        persistMessage(finalReply, activeModel, activeKind);
+        pendingAssistantMessageId = '';
+        return;
+      }
+      const data = await submitMobileAsyncImageGeneration({
+        token: await getMobileImageRelayToken(),
+        model: activeModel,
+        prompt: content,
+        referenceImageUrls,
+        onStatus: setImageTaskMessage,
+      });
+      const imageUrls = extractImageUrls(data);
       const reply: ChatMessage = {
         id: createMessageId('a'),
         role: 'assistant',
@@ -1247,7 +1369,10 @@ export function MobileChat({
         content: `请求失败：${msg}`,
         createdAt: currentTimestamp(),
       };
-      setMessagesForKind(activeKind, (prev) => [...prev, errorMessage]);
+      setMessagesForKind(activeKind, (prev) => [
+        ...prev.filter((message) => message.id !== pendingAssistantMessageId),
+        errorMessage,
+      ]);
       prependHistoryMessagesForKind(activeKind, [errorMessage, userMessage]);
       persistMessage(errorMessage, activeModel, activeKind);
     } finally {
