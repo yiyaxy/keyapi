@@ -15,7 +15,7 @@ export type PlatformChannelUsageRow = {
   period_start: number;
 };
 
-export function usePlatformChannelUsage() {
+export function usePlatformChannelUsage(options?: { enabled?: boolean }) {
   return useQuery<PlatformChannelUsageRow[]>({
     queryKey: usageKey,
     queryFn: async () => {
@@ -23,6 +23,7 @@ export function usePlatformChannelUsage() {
       return Array.isArray(res.data) ? res.data : [];
     },
     staleTime: 10_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
