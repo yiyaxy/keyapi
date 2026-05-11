@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 llm_api_key_var = contextvars.ContextVar("llm_api_key", default=None)
 llm_base_url_var = contextvars.ContextVar("llm_base_url", default=None)
 llm_model_var = contextvars.ContextVar("llm_model", default=None)
+llm_tenant_id_var = contextvars.ContextVar("llm_tenant_id", default=None)
 
 
 def _load_env_files() -> None:
@@ -150,6 +151,11 @@ def _get_client():
     return AsyncOpenAI(
         api_key=api_key,
         base_url=_resolve_openai_base_url(),
+        default_headers=(
+            {"X-Tenant-Id": llm_tenant_id_var.get().strip()}
+            if (llm_tenant_id_var.get() or "").strip()
+            else None
+        ),
         http_client=http_client,
     )
 

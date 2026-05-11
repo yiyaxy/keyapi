@@ -34,7 +34,7 @@
           </view>
         </view>
 
-        <view class="native-chat-panel">
+        <view v-if="chatControlApp" class="native-chat-panel">
           <view class="native-chat-head">
             <view class="native-chat-heading">
               <view class="native-chat-icon">
@@ -146,6 +146,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getAppSessionToken, getPublicApps, getSelf } from '@/services/api.js'
 import env from '@/config/env.js'
 import { userStore } from '@/store/user.js'
+import { filterMarketplaceApps, findWxappChatApp } from '@/utils/ai-apps.js'
 
 const statusBarH = ref(0)
 const apps = ref([])
@@ -157,6 +158,7 @@ const activeSlug = ref('')
 const userInfo = ref(null)
 const quickChatInput = ref('')
 const quickChatFocus = ref(false)
+const chatControlApp = ref(null)
 
 const filteredApps = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -311,9 +313,13 @@ function focusQuickChat() {
 }
 
 async function openNativeChat(draft = '', mode = 'chat') {
+  if (!chatControlApp.value?.slug) {
+    uni.showToast({ title: 'AI 对话暂未开放', icon: 'none' })
+    return
+  }
   if (!(await ensureValidLogin())) return
   const text = String(draft || '').trim()
-  const params = []
+  const params = [`appSlug=${encodeURIComponent(chatControlApp.value.slug)}`]
   if (text) params.push(`draft=${encodeURIComponent(text)}`)
   if (mode === 'image') params.push('mode=image')
   const suffix = params.length ? `?${params.join('&')}` : ''
@@ -325,7 +331,9 @@ async function loadApps() {
   loadError.value = false
   try {
     const data = await getPublicApps()
-    apps.value = Array.isArray(data) ? data : []
+    const list = Array.isArray(data) ? data : []
+    chatControlApp.value = findWxappChatApp(list)
+    apps.value = filterMarketplaceApps(list)
   } catch {
     loadError.value = true
   } finally {

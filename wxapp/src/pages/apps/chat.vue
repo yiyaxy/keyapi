@@ -204,13 +204,16 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import {
   createMobileChatCompletion,
   createMobileImageGeneration,
+  getAppSessionToken,
   getMobileImageTask,
+  getPublicApps,
   getPricingModels,
   getSelf,
   uploadAppImages,
 } from '@/services/api.js'
 import env from '@/config/env.js'
 import { userStore } from '@/store/user.js'
+import { findWxappChatApp, WXAPP_CHAT_APP_SLUG } from '@/utils/ai-apps.js'
 
 const statusBarH = ref(0)
 const chatModels = ref([])
@@ -225,6 +228,9 @@ const running = ref(false)
 const historyOpen = ref(false)
 const scrollAnchor = ref('')
 const referenceImages = ref([])
+const chatAppSlug = ref(WXAPP_CHAT_APP_SLUG)
+const chatAppChecked = ref(false)
+const chatSessionToken = ref('')
 
 const MAX_REFERENCE_IMAGES = 16
 
@@ -625,6 +631,27 @@ async function ensureLogin() {
   }
 }
 
+async function ensureChatAppAvailable() {
+  if (chatAppChecked.value) return true
+  const apps = await getPublicApps()
+  const list = Array.isArray(apps) ? apps : []
+  const target = list.find((app) => app && app.slug === chatAppSlug.value) || findWxappChatApp(list)
+  if (!target || !target.slug) throw new Error('AI 对话暂未开放')
+  chatAppSlug.value = target.slug
+  chatAppChecked.value = true
+  return true
+}
+
+async function getChatSessionToken() {
+  if (chatSessionToken.value) return chatSessionToken.value
+  await ensureChatAppAvailable()
+  const data = await getAppSessionToken(chatAppSlug.value)
+  const token = (data && data.key) || ''
+  if (!token) throw new Error('未获取到 AI 对话应用访问令牌')
+  chatSessionToken.value = token
+  return token
+}
+
 async function sendChat(content, activeModel) {
   const userMessage = createMessage('user', content)
   const contextMessages = [...messages.value, userMessage]
@@ -642,10 +669,12 @@ async function sendChat(content, activeModel) {
   scrollToBottom()
 
   try {
+    const token = await getChatSessionToken()
     const data = await createMobileChatCompletion({
       model: activeModel.name,
-      group: (userStore.userInfo && userStore.userInfo.group) || undefined,
       messages: contextMessages,
+      token,
+      tenantId: userStore.userInfo && userStore.userInfo.tenant_id,
     })
     messages.value = [...messages.value, createMessage('assistant', extractReply(data), { kind: 'chat' })]
   } catch (err) {
@@ -700,6 +729,12 @@ async function send() {
   const content = input.value.trim()
   if (!content || running.value || !selectedModel.value) return
   if (!(await ensureLogin())) return
+  try {
+    await ensureChatAppAvailable()
+  } catch (err) {
+    uni.showToast({ title: (err && err.message) || 'AI 对话暂未开放', icon: 'none' })
+    return
+  }
 
   const activeModel = selectedModel.value
   if (activeMode.value === 'image') {
@@ -713,6 +748,7 @@ onLoad((options = {}) => {
   statusBarH.value = uni.getSystemInfoSync().statusBarHeight || 0
   if (options.mode === 'image') activeMode.value = 'image'
   if (options.draft) input.value = decodeURIComponent(String(options.draft))
+  if (options.appSlug) chatAppSlug.value = decodeURIComponent(String(options.appSlug))
   loadLocalHistory()
   loadModels()
 })

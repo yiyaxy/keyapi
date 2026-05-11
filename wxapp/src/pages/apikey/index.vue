@@ -6,6 +6,9 @@
         <u-icon name="arrow-left" size="20" color="#1a1a2e" />
       </view>
       <text class="header-title">API Key</text>
+      <view class="header-create" @click="openCreateDialog">
+        <u-icon name="plus" size="17" color="#4F6EF7" />
+      </view>
     </view>
 
     <view class="content">
@@ -25,11 +28,26 @@
       <view class="empty-wrap" v-else-if="tokens.length === 0">
         <u-icon name="file-text" size="50" color="#9ca3af" />
         <text class="empty-txt">暂无 API Key</text>
-        <text class="empty-sub">请联系管理员创建 API Key</text>
+        <text class="empty-sub">创建一个 Key 后即可在 OpenAI 兼容客户端中使用</text>
+        <view class="primary-btn empty-create" @click="openCreateDialog">
+          <u-icon name="plus" size="16" color="#fff" />
+          <text class="primary-btn-txt">新建 API Key</text>
+        </view>
       </view>
 
       <!-- Token 列表 -->
       <view class="token-list" v-else>
+        <view class="list-toolbar">
+          <view class="list-summary">
+            <text class="list-title">我的 API Key</text>
+            <text class="list-count">共 {{ tokens.length }} 个，可继续创建多个 Key</text>
+          </view>
+          <view class="list-create-btn" @click="openCreateDialog">
+            <u-icon name="plus" size="15" color="#fff" />
+            <text class="list-create-txt">新建</text>
+          </view>
+        </view>
+
         <view
           class="token-card"
           v-for="token in tokens"
@@ -43,7 +61,7 @@
               </view>
             </view>
             <text class="token-meta">
-              创建：{{ formatDate(token.created_at) }}
+              创建：{{ formatDate(tokenCreatedAt(token)) }}
               <text v-if="userStore.wxPayEnabled && token.remain_quota >= 0">
                 · 剩余：{{ q2cny(token.remain_quota) }}
               </text>
@@ -89,6 +107,61 @@
 
       <view style="height:48rpx;" />
     </view>
+
+    <view class="create-mask" v-if="createVisible" @click="closeCreateDialog">
+      <view class="create-panel" @click.stop>
+        <view class="create-head">
+          <text class="create-title">新建 API Key</text>
+          <view class="close-btn" @click="closeCreateDialog">
+            <u-icon name="close" size="18" color="#6b7280" />
+          </view>
+        </view>
+
+        <view class="field">
+          <text class="field-label">名称</text>
+          <input
+            class="field-input"
+            v-model="createForm.name"
+            maxlength="50"
+            placeholder="例如：小程序默认 Key"
+            placeholder-class="input-placeholder"
+          />
+        </view>
+
+        <view class="field">
+          <text class="field-label">额度</text>
+          <view class="segmented">
+            <view class="seg-item" :class="{ 'seg-active': createForm.unlimited }" @click="createForm.unlimited = true">无限额度</view>
+            <view class="seg-item" :class="{ 'seg-active': !createForm.unlimited }" @click="createForm.unlimited = false">限定额度</view>
+          </view>
+          <input
+            v-if="!createForm.unlimited"
+            class="field-input quota-input"
+            type="number"
+            v-model="createForm.quota"
+            placeholder="请输入原始额度，例如 100000"
+            placeholder-class="input-placeholder"
+          />
+        </view>
+
+        <view class="field">
+          <text class="field-label">有效期</text>
+          <view class="expire-grid">
+            <view class="expire-item" :class="{ 'expire-active': createForm.expireMode === 'never' }" @click="createForm.expireMode = 'never'">永不过期</view>
+            <view class="expire-item" :class="{ 'expire-active': createForm.expireMode === '7d' }" @click="createForm.expireMode = '7d'">7 天</view>
+            <view class="expire-item" :class="{ 'expire-active': createForm.expireMode === '30d' }" @click="createForm.expireMode = '30d'">30 天</view>
+          </view>
+        </view>
+
+        <view class="create-actions">
+          <view class="cancel-btn" @click="closeCreateDialog">取消</view>
+          <view class="submit-btn" :class="{ 'submit-disabled': creating }" @click="submitCreate">
+            <u-loading-icon v-if="creating" color="#fff" size="24" />
+            <text>{{ creating ? '创建中...' : '创建 Key' }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -96,19 +169,28 @@
 import { ref, reactive } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userStore } from '@/store/user.js'
-import { getTokens, getTokenKey } from '@/services/api.js'
+import { createToken, getTokens, getTokenKey } from '@/services/api.js'
 import { renderQuota } from '@/utils/quota.js'
 
 const statusBarH = ref(0)
 const loading = ref(false)
+const creating = ref(false)
+const createVisible = ref(false)
 // token 列表，每条附加 _revealed / _fullKey / _revealing 字段
 const tokens = ref([])
+
+const createForm = reactive({
+  name: '',
+  unlimited: true,
+  quota: '',
+  expireMode: 'never',
+})
 
 const guides = [
   '将 API Key 设置在请求头：Authorization: Bearer sk-xxxxx',
   'API 请求地址请参考管理员提供的接入文档。',
-  '如 Key 泄露请联系管理员禁用并重新创建。',
-  '每个 Key 可设置额度限制，超出后将停止服务。',
+  '如 Key 泄露请及时删除或重新创建。',
+  '创建时可选择无限额度或设置单个 Key 的额度上限。',
 ]
 
 function q2cny(quota) {
@@ -129,6 +211,61 @@ function formatDate(ts) {
   const m = (d.getMonth() + 1).toString().padStart(2, '0')
   const day = d.getDate().toString().padStart(2, '0')
   return `${d.getFullYear()}-${m}-${day}`
+}
+
+function tokenCreatedAt(token) {
+  return token.created_at || token.created_time || token.createdTime
+}
+
+function openCreateDialog() {
+  createForm.name = `小程序 Key ${formatDate(Math.floor(Date.now() / 1000))}`
+  createForm.unlimited = true
+  createForm.quota = ''
+  createForm.expireMode = 'never'
+  createVisible.value = true
+}
+
+function closeCreateDialog() {
+  if (creating.value) return
+  createVisible.value = false
+}
+
+function resolveExpiredTime() {
+  const now = Math.floor(Date.now() / 1000)
+  if (createForm.expireMode === '7d') return now + 7 * 86400
+  if (createForm.expireMode === '30d') return now + 30 * 86400
+  return -1
+}
+
+async function submitCreate() {
+  if (creating.value) return
+
+  const name = createForm.name.trim()
+  if (!name) {
+    uni.showToast({ title: '请输入 Key 名称', icon: 'none' })
+    return
+  }
+
+  const remainQuota = createForm.unlimited ? 0 : Number(createForm.quota)
+  if (!createForm.unlimited && (!Number.isFinite(remainQuota) || remainQuota <= 0)) {
+    uni.showToast({ title: '请输入有效额度', icon: 'none' })
+    return
+  }
+
+  creating.value = true
+  try {
+    await createToken({
+      name,
+      unlimited_quota: createForm.unlimited,
+      remain_quota: createForm.unlimited ? 0 : Math.floor(remainQuota),
+      expired_time: resolveExpiredTime(),
+    })
+    uni.showToast({ title: '创建成功', icon: 'success' })
+    createVisible.value = false
+    await loadTokens()
+  } finally {
+    creating.value = false
+  }
 }
 
 async function toggleReveal(token) {
@@ -158,11 +295,12 @@ async function toggleReveal(token) {
 }
 
 function copyKey(token) {
-  const key = token._revealed
-    ? 'sk-' + token._fullKey
-    : ('sk-' + token.key)
+  if (!token._revealed || !token._fullKey) {
+    uni.showToast({ title: '请先查看 Key 后复制', icon: 'none' })
+    return
+  }
 
-  if (!key || key === 'sk-') return uni.showToast({ title: '请先查看 Key', icon: 'none' })
+  const key = 'sk-' + token._fullKey
 
   uni.setClipboardData({
     data: key,
@@ -224,6 +362,17 @@ onLoad(() => {
   left: 50%; transform: translateX(-50%);
   font-size: 32rpx; font-weight: 600; color: #1a1a2e;
 }
+.header-create {
+  position: absolute;
+  right: 24rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #eef2ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 .content { padding: 24rpx; }
 
@@ -242,8 +391,44 @@ onLoad(() => {
 }
 .loading-txt, .empty-txt { font-size: 28rpx; color: #6b7280; }
 .empty-sub { font-size: 24rpx; color: #9ca3af; }
+.primary-btn {
+  height: 76rpx;
+  padding: 0 30rpx;
+  border-radius: 16rpx;
+  background: #4F6EF7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+}
+.primary-btn-txt { font-size: 26rpx; color: #fff; font-weight: 600; }
+.empty-create { margin-top: 8rpx; }
 
 /* Token 卡片 */
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18rpx;
+}
+.list-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.list-title { font-size: 30rpx; font-weight: 700; color: #111827; }
+.list-count { font-size: 23rpx; color: #8a94a6; }
+.list-create-btn {
+  height: 68rpx;
+  padding: 0 24rpx;
+  border-radius: 14rpx;
+  background: #4F6EF7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+.list-create-txt { font-size: 25rpx; color: #fff; font-weight: 600; }
 .token-card {
   background: #fff; border-radius: 20rpx; padding: 32rpx;
   box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06);
@@ -292,4 +477,118 @@ onLoad(() => {
 .guide-item { display: flex; margin-bottom: 16rpx; }
 .guide-dot { font-size: 28rpx; color: #4F6EF7; margin-right: 12rpx; }
 .guide-txt { font-size: 26rpx; color: #4b5563; line-height: 1.6; flex: 1; }
+
+/* 创建弹窗 */
+.create-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 99;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+}
+.create-panel {
+  width: 100%;
+  background: #fff;
+  border-radius: 28rpx 28rpx 0 0;
+  padding: 32rpx 28rpx calc(32rpx + env(safe-area-inset-bottom));
+}
+.create-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28rpx;
+}
+.create-title { font-size: 34rpx; font-weight: 700; color: #111827; }
+.close-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.field { margin-bottom: 28rpx; }
+.field-label {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 14rpx;
+}
+.field-input {
+  height: 84rpx;
+  border-radius: 14rpx;
+  background: #f8fafc;
+  padding: 0 22rpx;
+  font-size: 28rpx;
+  color: #111827;
+  border: 1rpx solid #e5e7eb;
+}
+.input-placeholder { color: #a1a1aa; }
+.segmented {
+  display: flex;
+  padding: 6rpx;
+  background: #f3f4f6;
+  border-radius: 16rpx;
+}
+.seg-item {
+  flex: 1;
+  height: 72rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  color: #6b7280;
+}
+.seg-active {
+  background: #fff;
+  color: #4F6EF7;
+  font-weight: 700;
+  box-shadow: 0 2rpx 8rpx rgba(79, 110, 247, 0.18);
+}
+.quota-input { margin-top: 16rpx; }
+.expire-grid { display: flex; gap: 14rpx; }
+.expire-item {
+  flex: 1;
+  height: 72rpx;
+  border-radius: 14rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 25rpx;
+  color: #4b5563;
+}
+.expire-active {
+  border-color: #4F6EF7;
+  background: #eef2ff;
+  color: #4F6EF7;
+  font-weight: 700;
+}
+.create-actions {
+  display: flex;
+  gap: 18rpx;
+  margin-top: 34rpx;
+}
+.cancel-btn,
+.submit-btn {
+  flex: 1;
+  height: 84rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+.cancel-btn { background: #f3f4f6; color: #4b5563; }
+.submit-btn { background: #4F6EF7; color: #fff; gap: 10rpx; }
+.submit-disabled { opacity: 0.65; }
 </style>

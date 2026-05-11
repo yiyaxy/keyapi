@@ -18,6 +18,10 @@ function redirectToLogin() {
 
 function buildHeader(withToken = true) {
   const header = { 'Content-Type': 'application/json' }
+  const tenantId = userStore.userInfo?.tenant_id
+  if (tenantId !== undefined && tenantId !== null && tenantId !== '') {
+    header['X-Tenant-Id'] = String(tenantId)
+  }
   if (withToken && userStore.token) {
     header['Cookie'] = userStore.token
     // 后端 authHelper 要求此头与 session 中的 id 匹配
@@ -57,6 +61,12 @@ function request(url, method, data, withToken = true, customHeader = {}) {
         if (!body) {
           showError('响应数据为空')
           return reject(new Error('Empty response'))
+        }
+
+        if (body.error) {
+          const msg = body.error.message || body.message || '请求失败'
+          showError(msg)
+          return reject(new Error(msg))
         }
 
         // 业务层失败

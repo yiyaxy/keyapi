@@ -301,10 +301,16 @@ func AdminUpdateApp(c *gin.Context) {
 		return
 	}
 
+	scope, tenantId, errMsg := resolveAppScope(c, req.Scope)
+	if errMsg != "" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": errMsg})
+		return
+	}
+
 	app := &model.AiApp{
 		Id:              id,
-		TenantId:        existing.TenantId,
-		Scope:           existing.Scope,
+		TenantId:        tenantId,
+		Scope:           scope,
 		Name:            req.Name,
 		Slug:            req.Slug,
 		Description:     req.Description,
@@ -318,7 +324,10 @@ func AdminUpdateApp(c *gin.Context) {
 		SessionTokenTTL: req.SessionTokenTTL,
 		Tags:            req.Tags,
 	}
-	if err := app.Update(); err != nil {
+	if app.SessionTokenTTL <= 0 {
+		app.SessionTokenTTL = 86400
+	}
+	if err := app.UpdateFrom(existing); err != nil {
 		common.ApiError(c, err)
 		return
 	}

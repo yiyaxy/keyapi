@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from app.api.routes import router as api_router
 from app import local_memory
-from app.agents.base_agent import llm_api_key_var, llm_base_url_var, llm_model_var
+from app.agents.base_agent import llm_api_key_var, llm_base_url_var, llm_model_var, llm_tenant_id_var
 
 FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 SPA_BASE_PATH = "/noterx"
@@ -139,6 +139,9 @@ async def extract_llm_headers(request: Request, call_next):
     model = request.headers.get("x-llm-model")
     if model:
         resets.append((llm_model_var, llm_model_var.set(model)))
+    tenant_id = request.headers.get("x-llm-tenant-id")
+    if tenant_id:
+        resets.append((llm_tenant_id_var, llm_tenant_id_var.set(tenant_id)))
         
     try:
         response = await call_next(request)

@@ -119,6 +119,25 @@ export const getTokens = (p = 1, size = 50) =>
   request.get('/api/token/', { p, size })
 
 /**
+ * 创建 Token
+ * @param {object} payload
+ * @param {string} payload.name Key 名称
+ * @param {boolean} payload.unlimited_quota 是否无限额度
+ * @param {number} payload.remain_quota 限额模式下的额度
+ * @param {number} payload.expired_time 过期时间 Unix 秒，-1 表示永不过期
+ */
+export const createToken = (payload = {}) =>
+  request.post('/api/token/', {
+    name: payload.name || '小程序 Key',
+    group: payload.group || '',
+    cross_group_retry: payload.cross_group_retry ?? false,
+    unlimited_quota: payload.unlimited_quota ?? true,
+    remain_quota: payload.remain_quota ?? 0,
+    expired_time: payload.expired_time ?? -1,
+    enable_image_gen: payload.enable_image_gen ?? true,
+  })
+
+/**
  * 获取 Token 完整 key
  * @param {number} id token id
  * 返回字段：key（完整 key，前端显示时通常需要加 sk- 前缀）
@@ -225,13 +244,27 @@ export const getAppGuestToken = (slug) =>
 
 export const getPricingModels = () => request.get('/api/pricing', null, false)
 
-export const createMobileChatCompletion = ({ model, group, messages }) =>
-  request.post('/pg/chat/completions', {
+function normalizeBearerToken(token) {
+  const value = String(token || '').trim()
+  if (!value) return ''
+  return value.startsWith('sk-') ? value : `sk-${value}`
+}
+
+export const createMobileChatCompletion = ({ model, messages, token, tenantId }) => {
+  const bearerToken = normalizeBearerToken(token)
+  if (!bearerToken) return Promise.reject(new Error('未获取到 AI 对话应用访问令牌'))
+  const headers = {
+    Authorization: `Bearer ${bearerToken}`,
+  }
+  if (tenantId !== undefined && tenantId !== null && tenantId !== '') {
+    headers['X-Tenant-Id'] = String(tenantId)
+  }
+  return request.postRaw('/v1/chat/completions', {
     model,
-    group,
     messages,
     stream: false,
-  })
+  }, headers, false)
+}
 
 function utf8Bytes(value) {
   const text = String(value)

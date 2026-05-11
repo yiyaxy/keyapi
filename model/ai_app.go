@@ -150,6 +150,33 @@ func (app *AiApp) Update() error {
 		Updates(app).Error
 }
 
+// UpdateFrom updates an existing app while allowing platform root flows to
+// change scope between tenant and platform.
+func (app *AiApp) UpdateFrom(existing *AiApp) error {
+	if existing == nil {
+		return errors.New("existing app is nil")
+	}
+	if app.Scope == "" {
+		app.Scope = AiAppScopeTenant
+	}
+	if app.Scope == AiAppScopePlatform {
+		app.TenantId = 0
+	}
+	cols := []string{"tenant_id", "scope", "name", "slug", "description", "icon_url", "target_url", "status",
+		"sort_order", "vendor_user_id", "guest_quota", "default_group",
+		"session_token_ttl", "tags"}
+	if existing.Scope == AiAppScopePlatform {
+		return WithTenantBypass(DB).Model(&AiApp{}).
+			Where("id = ? AND scope = ?", existing.Id, AiAppScopePlatform).
+			Select(cols).
+			Updates(app).Error
+	}
+	return DB.Model(&AiApp{}).
+		Where("id = ? AND tenant_id = ? AND scope = ?", existing.Id, existing.TenantId, AiAppScopeTenant).
+		Select(cols).
+		Updates(app).Error
+}
+
 func (app *AiApp) Delete() error {
 	if app.Scope == AiAppScopePlatform {
 		return WithTenantBypass(DB).

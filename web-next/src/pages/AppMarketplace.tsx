@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { usePublicApps, useGetSessionToken, useGetGuestToken, type AiApp } from '@/hooks/useAiApps';
+import { filterMarketplaceApps } from '@/lib/aiAppVisibility';
+import { getLlmTenantId, LLM_BASE_URL } from '@/lib/llm';
 
 function shouldAttachLlmBaseUrl(app: AiApp) {
   const value = `${app.slug} ${app.target_url}`.toLowerCase();
@@ -19,6 +21,8 @@ function persistSameOriginNoterxConfig(targetUrl: URL, key: string) {
   sessionStorage.setItem('noterx.session_token', key);
   const llmBaseUrl = targetUrl.searchParams.get('llm_base_url');
   if (llmBaseUrl) sessionStorage.setItem('noterx.llm_base_url', llmBaseUrl);
+  const tenantId = targetUrl.searchParams.get('tenant_id');
+  if (tenantId) sessionStorage.setItem('noterx.tenant_id', tenantId);
 }
 
 function getSessionKey(res: { key?: string; data?: { key?: string } }) {
@@ -29,8 +33,10 @@ function launchApp(app: AiApp, key: string) {
   const targetUrl = new URL(app.target_url, window.location.origin);
   const isNoteRx = shouldAttachLlmBaseUrl(app);
   if (isNoteRx) {
-    targetUrl.searchParams.set('llm_base_url', new URL('/v1', window.location.origin).toString());
+    targetUrl.searchParams.set('llm_base_url', LLM_BASE_URL);
     targetUrl.searchParams.set('token', key);
+    const tenantId = getLlmTenantId();
+    if (tenantId) targetUrl.searchParams.set('tenant_id', String(tenantId));
     if (targetUrl.origin === window.location.origin) {
       persistSameOriginNoterxConfig(targetUrl, key);
     }
@@ -269,7 +275,7 @@ export function AppMarketplacePage() {
     }
   }, []);
 
-  const apps = (list.data ?? []).filter(
+  const apps = filterMarketplaceApps(list.data ?? []).filter(
     (a) =>
       !search ||
       a.name.toLowerCase().includes(search.toLowerCase()) ||

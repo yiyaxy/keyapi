@@ -23,6 +23,7 @@ const api = axios.create({
 const SESSION_KEY = "noterx.session_token";
 const BASE_URL_KEY = "noterx.llm_base_url";
 const MODEL_KEY = "noterx.llm_model";
+const TENANT_KEY = "noterx.tenant_id";
 
 /**
  * 初始化：把 URL 里的参数提取到 sessionStorage，然后立即从 URL 清除。
@@ -62,6 +63,14 @@ function initLlmConfig(): void {
       dirty = true;
     }
 
+    const tenantId = params.get("tenant_id") || params.get("tenantId");
+    if (tenantId) {
+      sessionStorage.setItem(TENANT_KEY, tenantId);
+      params.delete("tenant_id");
+      params.delete("tenantId");
+      dirty = true;
+    }
+
     // 从浏览器历史中清除敏感参数，防止 token 出现在历史记录里
     if (dirty) {
       const newSearch = params.toString();
@@ -93,6 +102,9 @@ function getLlmHeaders(): Record<string, string> {
 
     const model = sessionStorage.getItem(MODEL_KEY);
     if (model) headers["X-LLM-Model"] = model;
+
+    const tenantId = sessionStorage.getItem(TENANT_KEY);
+    if (tenantId) headers["X-LLM-Tenant-Id"] = tenantId;
   } catch (e) {
     console.warn("Failed to get LLM config from sessionStorage", e);
   }

@@ -159,6 +159,7 @@ import { userStore } from '@/store/user.js'
 import { doCheckin, getAppSessionToken, getCheckinStatus, getPublicApps, getSelf, getTodayStat, getMonthStat, getStatus } from '@/services/api.js'
 import env from '@/config/env.js'
 import { renderQuota } from '@/utils/quota.js'
+import { filterMarketplaceApps } from '@/utils/ai-apps.js'
 
 const statusBarH = ref(0)
 const firstLoading = ref(true)
@@ -397,7 +398,7 @@ async function refresh() {
     if (statusRes) userStore.applyStatus(statusRes)
 
     const appRes = await Promise.resolve(getPublicApps()).catch(() => null)
-    if (Array.isArray(appRes)) appList.value = appRes.slice(0, 4)
+    if (Array.isArray(appRes)) appList.value = filterMarketplaceApps(appRes).slice(0, 4)
 
     if (userStore.isLoggedIn) {
       const [selfRes, todayRes, monthRes] = await Promise.allSettled([

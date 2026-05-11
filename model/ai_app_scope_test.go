@@ -139,6 +139,50 @@ func TestUpdate_PlatformScopeIgnoresTenantId(t *testing.T) {
 	require.Equal(t, 0, got.TenantId)
 }
 
+func TestUpdateFrom_AllowsTenantToPlatformScopeChange(t *testing.T) {
+	migrateAiAppForTest(t)
+
+	existing := &AiApp{
+		Scope: AiAppScopeTenant, TenantId: 10, Name: "tenant-app", Slug: "scope-to-platform",
+		TargetUrl: "https://x.example.com", Status: AiAppStatusOnline,
+	}
+	insertAiAppForTest(t, existing)
+
+	next := &AiApp{
+		Id: existing.Id, Scope: AiAppScopePlatform, Name: "platform-app", Slug: existing.Slug,
+		TargetUrl: existing.TargetUrl, Status: AiAppStatusOnline,
+	}
+	require.NoError(t, next.UpdateFrom(existing))
+
+	got, err := GetAiAppById(existing.Id)
+	require.NoError(t, err)
+	require.Equal(t, AiAppScopePlatform, got.Scope)
+	require.Equal(t, 0, got.TenantId)
+	require.Equal(t, "platform-app", got.Name)
+}
+
+func TestUpdateFrom_AllowsPlatformToTenantScopeChange(t *testing.T) {
+	migrateAiAppForTest(t)
+
+	existing := &AiApp{
+		Scope: AiAppScopePlatform, Name: "platform-app", Slug: "scope-to-tenant",
+		TargetUrl: "https://x.example.com", Status: AiAppStatusOnline,
+	}
+	insertAiAppForTest(t, existing)
+
+	next := &AiApp{
+		Id: existing.Id, Scope: AiAppScopeTenant, TenantId: 10, Name: "tenant-app", Slug: existing.Slug,
+		TargetUrl: existing.TargetUrl, Status: AiAppStatusOnline,
+	}
+	require.NoError(t, next.UpdateFrom(existing))
+
+	got, err := GetAiAppById(existing.Id)
+	require.NoError(t, err)
+	require.Equal(t, AiAppScopeTenant, got.Scope)
+	require.Equal(t, 10, got.TenantId)
+	require.Equal(t, "tenant-app", got.Name)
+}
+
 // Delete 平台 scope：同上
 func TestDelete_PlatformScope(t *testing.T) {
 	migrateAiAppForTest(t)

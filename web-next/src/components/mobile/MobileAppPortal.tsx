@@ -44,6 +44,8 @@ import {
 import { usePricing, type PricingEnvelope, type PricingRow } from '@/hooks/usePricing';
 import { toDisplay, usePublicConfig, type PublicConfig } from '@/hooks/usePublicConfig';
 import { api, ApiError } from '@/lib/api';
+import { filterMarketplaceApps } from '@/lib/aiAppVisibility';
+import { getLlmRequestHeaders, getLlmTenantId, LLM_BASE_URL, llmUrl } from '@/lib/llm';
 import { cn } from '@/lib/utils';
 
 type MobileRoute = 'home' | 'apps' | 'chat' | 'topup';
@@ -155,6 +157,7 @@ const MAX_ATTACHED_IMAGES = 16;
 const CHAT_INITIAL_LIMIT = 30;
 const HISTORY_PAGE_SIZE = 20;
 const MOBILE_IMAGE_APP_SLUG = import.meta.env.VITE_IMAGE_DIAGNOSIS_APP_SLUG ?? 'image-diagnosis';
+const MOBILE_CHAT_APP_SLUG = import.meta.env.VITE_MOBILE_CHAT_APP_SLUG ?? MOBILE_IMAGE_APP_SLUG;
 const MODEL_KIND_LABELS: Record<ModelKind, string> = {
   chat: '大语言模型',
   image: '图片模型',
@@ -181,6 +184,8 @@ function persistSameOriginNoterxConfig(targetUrl: URL, key: string) {
   sessionStorage.setItem('noterx.session_token', key);
   const llmBaseUrl = targetUrl.searchParams.get('llm_base_url');
   if (llmBaseUrl) sessionStorage.setItem('noterx.llm_base_url', llmBaseUrl);
+  const tenantId = targetUrl.searchParams.get('tenant_id');
+  if (tenantId) sessionStorage.setItem('noterx.tenant_id', tenantId);
 }
 
 function getSessionKey(res: { key?: string; data?: { key?: string } }) {
@@ -191,8 +196,10 @@ function launchApp(app: AiApp, key: string) {
   const targetUrl = new URL(app.target_url, window.location.origin);
   const isNoteRx = shouldAttachLlmBaseUrl(app);
   if (isNoteRx) {
-    targetUrl.searchParams.set('llm_base_url', new URL('/v1', window.location.origin).toString());
+    targetUrl.searchParams.set('llm_base_url', LLM_BASE_URL);
     targetUrl.searchParams.set('token', key);
+    const tenantId = getLlmTenantId();
+    if (tenantId) targetUrl.searchParams.set('tenant_id', String(tenantId));
     if (targetUrl.origin === window.location.origin) {
       persistSameOriginNoterxConfig(targetUrl, key);
     }
@@ -438,7 +445,7 @@ function normalizeRelayToken(token: string) {
   return value.startsWith('sk-') ? value : `sk-${value}`;
 }
 
-async function getMobileImageRelayToken() {
+async function getMobileRelayToken(appSlug: string, cacheNamespace: string, errorMessage: string) {
   const params = new URLSearchParams(window.location.search);
   const urlToken = normalizeRelayToken(params.get('token') || params.get('key') || '');
   if (urlToken) return urlToken;
@@ -450,15 +457,51 @@ async function getMobileImageRelayToken() {
     if (debugToken) return debugToken;
   }
 
-  const cacheKey = `image-diagnosis-token:${MOBILE_IMAGE_APP_SLUG}`;
+  const cacheKey = `${cacheNamespace}-token:${appSlug}`;
   const cached = normalizeRelayToken(window.sessionStorage.getItem(cacheKey) ?? '');
   if (cached) return cached;
 
-  const session = await api.post<{ key: string }>(`/api/app/${MOBILE_IMAGE_APP_SLUG}/session`);
+  const session = await api.post<{ key: string }>(`/api/app/${appSlug}/session`);
   const token = normalizeRelayToken(session.data.key ?? '');
-  if (!token) throw new Error('没有拿到图片模型调用凭证');
+  if (!token) throw new Error(errorMessage);
   window.sessionStorage.setItem(cacheKey, token);
   return token;
+}
+
+async function getMobileChatRelayToken() {
+  return getMobileRelayToken(MOBILE_CHAT_APP_SLUG, 'mobile-chat', '没有拿到大语言模型调用凭证');
+}
+
+async function getMobileImageRelayToken() {
+  return getMobileRelayToken(
+    MOBILE_IMAGE_APP_SLUG,
+    'image-diagnosis',
+    '没有拿到图片模型调用凭证'
+  );
+}
+
+async function submitMobileChatCompletion({
+  token,
+  model,
+  messages,
+}: {
+  token: string;
+  model: string;
+  messages: Array<{ role: ChatMessage['role']; content: string }>;
+}) {
+  const response = await fetch(llmUrl('/chat/completions'), {
+    method: 'POST',
+    headers: getLlmRequestHeaders(token),
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: false,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await safeReadResponseError(response));
+  }
+  return response.json();
 }
 
 function protectedAsyncImageRequestUrl(src: string) {
@@ -1170,21 +1213,14 @@ export function MobileChat({
               referenceImageUrls,
               onStatus: setImageTaskMessage,
             })
-          : (
-              await api.post<unknown>(
-                '/pg/chat/completions',
-                {
-                  model: activeModel.name,
-                  group: user?.group || undefined,
-                  messages: [...activeMessages, userMessage].slice(-8).map((m) => ({
-                    role: m.role,
-                    content: m.content,
-                  })),
-                  stream: false,
-                },
-                { rawEnvelope: true, timeout: 60_000 } as never
-              )
-            ).data;
+          : await submitMobileChatCompletion({
+              token: await getMobileChatRelayToken(),
+              model: activeModel.name,
+              messages: [...activeMessages, userMessage].slice(-8).map((m) => ({
+                role: m.role,
+                content: m.content,
+              })),
+            });
       const imageUrls = activeKind === 'image' ? extractImageUrls(data) : [];
       const reply: ChatMessage = {
         id: createMessageId('a'),
@@ -1721,7 +1757,8 @@ export function MobileChat({
 function RecommendedApps({ limit, showMore = false }: { limit?: number; showMore?: boolean }) {
   const { refresh } = useAuth();
   const appsQuery = usePublicApps();
-  const apps = limit ? (appsQuery.data ?? []).slice(0, limit) : (appsQuery.data ?? []);
+  const marketplaceApps = filterMarketplaceApps(appsQuery.data ?? []);
+  const apps = limit ? marketplaceApps.slice(0, limit) : marketplaceApps;
 
   async function onSessionInvalid() {
     toast.error('登录已失效，请重新登录');

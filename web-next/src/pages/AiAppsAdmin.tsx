@@ -357,7 +357,7 @@ function AppFormDialog({
               <Select
                 value={form.watch('scope')}
                 onValueChange={(v) => form.setValue('scope', v as 'platform' | 'tenant')}
-                disabled={isEdit || !isPlatformRoot}
+                disabled={!isPlatformRoot}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -370,7 +370,7 @@ function AppFormDialog({
                 </SelectContent>
               </Select>
               <p className='text-12 text-fg-2'>
-                {isEdit ? t('form.scope.locked') : t('form.scope.help')}
+                {isEdit && !isPlatformRoot ? t('form.scope.locked') : t('form.scope.help')}
               </p>
             </div>
           )}
