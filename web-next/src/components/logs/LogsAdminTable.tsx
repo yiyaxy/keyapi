@@ -7,6 +7,7 @@ import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
 import { CostBreakdown, parseOther } from './CostBreakdown';
+import { LatencyCell } from './LatencyCell';
 
 const TYPE_VARIANT: Record<LogType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   0: 'outline',
@@ -52,6 +53,7 @@ export function LogsAdminTable({
             <th className='px-3 py-2 font-medium'>{t('admin.table.col.channel')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.tokens')}</th>
             <th className='px-3 py-2 font-medium'>{t('table.col.quota')}</th>
+            <th className='px-3 py-2 font-medium'>{t('table.col.latency')}</th>
             <th className='px-3 py-2 font-medium'>{t('admin.table.col.ip')}</th>
             <th className='px-3 py-2' />
           </tr>
@@ -88,6 +90,9 @@ export function LogsAdminTable({
                 <CostBreakdown row={r} cfg={cfg}>
                   {r.quota > 0 ? fmtDisplay(r.quota, cfg) : t('table.unit.free')}
                 </CostBreakdown>
+              </td>
+              <td className='px-3 py-2'>
+                <LatencyCell useTime={r.use_time} other={r.other} />
               </td>
               <td className='px-3 py-2 font-mono text-12 text-fg-2'>{r.ip || '—'}</td>
               <td className='px-3 py-2'>

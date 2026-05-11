@@ -548,10 +548,10 @@ func GetSelf(c *gin.Context) {
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
 		// features 是按租户开通的功能开关集合。前端用它决定菜单显隐 / 路由守卫。
-		// 平台管理员（platform_role >= RoleAdminUser）默认拥有所有 feature；
-		// 普通租户管理员仅拥有租户被显式开通的 feature。
+		// 只有超管（platform_role >= RoleRootUser）默认拥有所有 feature；
+		// 租户管理员（含 platform_role == RoleAdminUser）仅拥有租户被显式开通的 feature。
 		"features": map[string]bool{
-			"chat_history": platformRole >= common.RoleAdminUser ||
+			"chat_history": platformRole >= common.RoleRootUser ||
 				model.IsChatHistoryViewEnabled(middleware.GetTenantId(c)),
 		},
 	}
@@ -717,7 +717,10 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
-	if myRole <= originUser.Role && myRole != common.RoleRootUser {
+	// 自己改自己不受同级保护规则约束（典型场景：租户管理员调整自身额度）。
+	// Edit() 仅落库 username/display_name/group/quota/remark/user_level_id/password，
+	// 不会改 role，所以无提权风险。
+	if originUser.Id != c.GetInt("id") && myRole <= originUser.Role && myRole != common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
