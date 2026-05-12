@@ -2,6 +2,8 @@
 .vscode
 .zed
 .history
+.agents
+skills-lock.json
 upload
 *.exe
 *.db

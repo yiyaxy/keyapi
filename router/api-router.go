@@ -753,6 +753,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			platformTenantRoute.GET("/", tenant.ListAllTenantsHandler)
 			platformTenantRoute.POST("/", tenant.CreateTenant)
+			platformTenantRoute.PUT("/:id", tenant.UpdateTenantByPlatform)
 			platformTenantRoute.DELETE("/:id", tenant.DeleteTenant)
 			platformTenantRoute.GET("/plans", tenant.ListTenantPlans)
 			platformTenantRoute.GET("/platform-channel-usage", tenant.ListPlatformChannelUsage)

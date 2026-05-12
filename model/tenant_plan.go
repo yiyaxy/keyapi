@@ -38,8 +38,9 @@ type TenantPlan struct {
 	// Defaults to 1.0 (no markup).
 	PlatformMarkup float64 `json:"platform_markup" gorm:"not null;default:1.0"`
 	// PlatformQuotaCap is the per-period quota ceiling for platform-scope channels.
-	// -1 means unlimited.
-	PlatformQuotaCap int64 `json:"platform_quota_cap" gorm:"bigint;default:-1"`
+	// -1 means unlimited; 0 means blocked. New tenants default to blocked so
+	// platform shared channels are enabled deliberately.
+	PlatformQuotaCap int64 `json:"platform_quota_cap" gorm:"bigint;default:0"`
 	// PlatformQuotaPeriod controls when PlatformQuotaUsed resets to zero.
 	// One of: none, daily, monthly.
 	PlatformQuotaPeriod string `json:"platform_quota_period" gorm:"type:varchar(16);default:'none'"`
@@ -111,7 +112,7 @@ func GetTenantPlan(tenantId int) (*TenantPlan, error) {
 		MaxTokens:                -1,
 		MaxChannels:              -1,
 		PlatformMarkup:           1.0,
-		PlatformQuotaCap:         -1,
+		PlatformQuotaCap:         0,
 		PlatformQuotaPeriod:      PlatformQuotaPeriodNone,
 		PlatformQuotaUsed:        0,
 		PlatformQuotaPeriodStart: 0,

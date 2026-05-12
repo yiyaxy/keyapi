@@ -115,7 +115,7 @@ func CreateTenant(c *gin.Context) {
 			Status:                   model.TenantPlanStatusActive,
 			ExpiresAt:                0,
 			PlatformMarkup:           1.0,
-			PlatformQuotaCap:         -1,
+			PlatformQuotaCap:         0,
 			PlatformQuotaPeriod:      model.PlatformQuotaPeriodNone,
 			PlatformQuotaUsed:        0,
 			PlatformQuotaPeriodStart: 0,
@@ -164,6 +164,49 @@ func CreateTenant(c *gin.Context) {
 		"admin_user_id":  adminUser.Id,
 		"admin_username": adminUser.Username,
 	})
+}
+
+func UpdateTenantByPlatform(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "无效的租户 ID")
+		return
+	}
+	var req UpdateTenantRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	updates := make(map[string]interface{})
+	if strings.TrimSpace(req.Name) != "" {
+		updates["name"] = strings.TrimSpace(req.Name)
+	}
+	if req.Status != 0 {
+		if req.Status != model.TenantStatusActive && req.Status != model.TenantStatusSuspended {
+			common.ApiErrorMsg(c, "租户状态只能设置为正常或暂停")
+			return
+		}
+		if id == model.DefaultTenantId && req.Status == model.TenantStatusSuspended {
+			common.ApiErrorMsg(c, "不能禁用默认租户")
+			return
+		}
+		updates["status"] = req.Status
+	}
+	if len(updates) == 0 {
+		common.ApiErrorMsg(c, "没有需要更新的字段")
+		return
+	}
+	if err := model.UpdateTenant(id, updates); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.ClearTenantCache()
+	var updated model.Tenant
+	if err := model.DB.Where("id = ? AND status <> ?", id, model.TenantStatusDeleted).First(&updated).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, updated)
 }
 
 func UpdateTenant(c *gin.Context) {

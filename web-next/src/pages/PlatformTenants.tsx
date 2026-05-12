@@ -16,10 +16,12 @@ import {
   useDeleteTenant,
   usePlatformTenants,
   useTenantPlans,
+  useUpdateTenantStatus,
   type TenantPlan,
 } from '@/hooks/usePlatformTenants';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import type { Tenant } from '@/hooks/useTenant';
-import { fmtDateSec } from '@/lib/format';
+import { fmtDateSec, fmtDisplay } from '@/lib/format';
 
 function statusMeta(status: number): {
   key: string;
@@ -37,13 +39,29 @@ function statusMeta(status: number): {
   }
 }
 
+function formatPlatformQuotaUsage(
+  plan: TenantPlan | undefined,
+  cfg: ReturnType<typeof usePublicConfig>
+): string {
+  if (!plan) return '-';
+  const used = fmtDisplay(plan.platform_quota_used ?? 0, cfg);
+  const cap = plan.platform_quota_cap;
+  if (cap < 0) return `${used} / 不限`;
+  if (cap === 0) return `${used} / 禁用`;
+  return `${used} / ${fmtDisplay(cap, cfg)}`;
+}
+
 export function PlatformTenantsPage() {
   const { t } = useTranslation('platform');
   const tenants = usePlatformTenants();
   const plans = useTenantPlans();
+  const publicConfig = usePublicConfig();
+  const cnyConfig = { ...publicConfig, quota_display_type: 'CNY' as const };
   const del = useDeleteTenant();
+  const updateStatus = useUpdateTenantStatus();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
+  const [statusTarget, setStatusTarget] = useState<Tenant | null>(null);
   const [planTarget, setPlanTarget] = useState<{ tenant: Tenant; plan: TenantPlan } | null>(null);
   const [accessTarget, setAccessTarget] = useState<Tenant | null>(null);
   const [featuresTarget, setFeaturesTarget] = useState<Tenant | null>(null);
@@ -84,6 +102,7 @@ export function PlatformTenantsPage() {
                 <th className='px-3 py-2 font-medium'>{t('tenants.col.name')}</th>
                 <th className='px-3 py-2 font-medium'>{t('tenants.col.slug')}</th>
                 <th className='px-3 py-2 font-medium'>{t('tenants.col.status')}</th>
+                <th className='px-3 py-2 font-medium'>平台渠道额度</th>
                 <th className='px-3 py-2 font-medium'>{t('tenants.col.created')}</th>
                 <th className='px-3 py-2' />
               </tr>
@@ -91,6 +110,8 @@ export function PlatformTenantsPage() {
             <tbody>
               {items.map((tnt) => {
                 const meta = statusMeta(tnt.status);
+                const plan = planByTenant.get(tnt.id);
+                const isSuspended = tnt.status === 2;
                 return (
                   <tr key={tnt.id} className='border-b border-line text-13 hover:bg-bg-1'>
                     <td className='px-3 py-2 text-fg-2'>{tnt.id}</td>
@@ -98,6 +119,9 @@ export function PlatformTenantsPage() {
                     <td className='px-3 py-2 font-mono'>{tnt.slug}</td>
                     <td className='px-3 py-2'>
                       <Badge variant={meta.variant}>{t(meta.key)}</Badge>
+                    </td>
+                    <td className='px-3 py-2 text-fg-1'>
+                      {formatPlatformQuotaUsage(plan, cnyConfig)}
                     </td>
                     <td className='px-3 py-2 text-fg-1'>{fmtDateSec(tnt.created_at)}</td>
                     <td className='px-3 py-2 text-right'>
@@ -128,6 +152,15 @@ export function PlatformTenantsPage() {
                         onClick={() => setFeaturesTarget(tnt)}
                       >
                         {t('tenants.action.features', { defaultValue: '功能开关' })}
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        disabled={tnt.id === 1 || updateStatus.isPending}
+                        onClick={() => setStatusTarget(tnt)}
+                      >
+                        {isSuspended ? '启用' : '禁用'}
                       </Button>
                       <Button
                         type='button'
@@ -172,6 +205,33 @@ export function PlatformTenantsPage() {
           onOpenChange={(o) => !o && setFeaturesTarget(null)}
         />
       )}
+      {statusTarget && (
+        <ConfirmDialog
+          open
+          title={statusTarget.status === 2 ? '启用租户' : '禁用租户'}
+          body={
+            statusTarget.status === 2
+              ? `确认启用租户 ${statusTarget.name}（${statusTarget.slug}）？启用后该租户可恢复访问。`
+              : `确认禁用租户 ${statusTarget.name}（${statusTarget.slug}）？禁用后该租户流量会立即停止。`
+          }
+          confirmLabel={statusTarget.status === 2 ? '启用' : '禁用'}
+          danger={statusTarget.status !== 2}
+          isPending={updateStatus.isPending}
+          onOpenChange={(o) => !o && setStatusTarget(null)}
+          onConfirm={() => {
+            const target = statusTarget;
+            const nextStatus = target.status === 2 ? 1 : 2;
+            setStatusTarget(null);
+            updateStatus.mutate(
+              { id: target.id, status: nextStatus },
+              {
+                onSuccess: () => toast.success(nextStatus === 1 ? '租户已启用' : '租户已禁用'),
+                onError: (e) => toast.error((e as Error).message),
+              }
+            );
+          }}
+        />
+      )}
       {deleteTarget && (
         <ConfirmDialog
           open
@@ -181,6 +241,8 @@ export function PlatformTenantsPage() {
             slug: deleteTarget.slug,
           })}
           confirmLabel={t('delete.confirm')}
+          confirmationText={deleteTarget.slug}
+          confirmationLabel={`请输入租户 slug「${deleteTarget.slug}」确认删除`}
           isPending={del.isPending}
           onOpenChange={(o) => !o && setDeleteTarget(null)}
           onConfirm={() => {

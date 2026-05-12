@@ -82,6 +82,20 @@ export function useCreateTenant() {
       const res = await api.post<Tenant>('/api/platform/tenants/', body);
       return res.data;
     },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.list });
+      void qc.invalidateQueries({ queryKey: keys.plans });
+    },
+  });
+}
+
+export function useUpdateTenantStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: number }) => {
+      const res = await api.put<Tenant>(`/api/platform/tenants/${id}`, { status });
+      return res.data;
+    },
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.list }),
   });
 }

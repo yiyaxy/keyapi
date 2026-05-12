@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export function ConfirmDialog({
   open,
@@ -18,6 +21,8 @@ export function ConfirmDialog({
   cancelLabel,
   danger = true,
   isPending,
+  confirmationText,
+  confirmationLabel,
   onOpenChange,
   onConfirm,
 }: {
@@ -28,10 +33,21 @@ export function ConfirmDialog({
   cancelLabel?: string;
   danger?: boolean;
   isPending?: boolean;
+  confirmationText?: string;
+  confirmationLabel?: string;
   onOpenChange: (o: boolean) => void;
   onConfirm: () => void;
 }) {
   const { t } = useTranslation('common');
+  const [typedConfirmation, setTypedConfirmation] = useState('');
+  const needsTypedConfirmation = Boolean(confirmationText);
+  const confirmDisabled =
+    Boolean(isPending) || (needsTypedConfirmation && typedConfirmation.trim() !== confirmationText);
+
+  useEffect(() => {
+    if (!open) setTypedConfirmation('');
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -39,6 +55,23 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{body}</DialogDescription>
         </DialogHeader>
+        {needsTypedConfirmation && (
+          <div className='space-y-2'>
+            <Label htmlFor='confirm-text'>
+              {confirmationLabel ??
+                t('confirm.type_to_confirm', {
+                  defaultValue: 'Type {{text}} to confirm',
+                  text: confirmationText,
+                })}
+            </Label>
+            <Input
+              id='confirm-text'
+              value={typedConfirmation}
+              autoComplete='off'
+              onChange={(event) => setTypedConfirmation(event.target.value)}
+            />
+          </div>
+        )}
         <DialogFooter>
           <Button variant='secondary' onClick={() => onOpenChange(false)}>
             {cancelLabel ?? t('actions.cancel', { defaultValue: 'Cancel' })}
@@ -49,7 +82,7 @@ export function ConfirmDialog({
                 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
                 : undefined
             }
-            disabled={isPending}
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {confirmLabel}
