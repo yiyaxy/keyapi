@@ -447,6 +447,20 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			for _, url := range taskResult.Urls {
 				imageData = append(imageData, dto.ImageData{Url: url})
 			}
+			if isAsyncImageTask(task) {
+				persisted, err := PersistTaskImageDataToStorage(ctx, task, imageData)
+				if err != nil {
+					task.Status = model.TaskStatusFailure
+					task.Progress = taskcommon.ProgressComplete
+					task.FailReason = fmt.Sprintf("persist generated image failed: %s", err.Error())
+					logger.LogError(ctx, fmt.Sprintf("Task %s image persistence failed: %s", task.TaskID, err.Error()))
+					if quota != 0 {
+						shouldRefund = true
+					}
+					break
+				}
+				imageData = persisted
+			}
 			if data, err := common.Marshal(imageData); err == nil {
 				task.PrivateData.ImageData = data
 			}
@@ -510,6 +524,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	return nil
+}
+
+func isAsyncImageTask(task *model.Task) bool {
+	return task != nil && (task.Platform == constant.TaskPlatformApimart || task.Platform == constant.TaskPlatformImageSyncWrap)
 }
 
 func redactVideoResponseBody(body []byte) []byte {

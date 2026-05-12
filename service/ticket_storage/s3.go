@@ -34,6 +34,7 @@ type Client interface {
 	PresignUpload(objectKey, contentType string, expires time.Duration) (url string, headers map[string]string, expiresAt time.Time, err error)
 	UploadObject(ctx context.Context, objectKey, contentType string, body []byte) error
 	HeadObject(objectKey string) (size int64, contentType string, err error)
+	DeleteObject(ctx context.Context, objectKey string) error
 	PresignGet(objectKey string, expires time.Duration) (url string, expiresAt time.Time, err error)
 	PresignGetWithResponse(ctx context.Context, objectKey string, expires time.Duration, resp PresignGetResponseOptions) (url string, expiresAt time.Time, err error)
 }
@@ -176,6 +177,24 @@ func (c *s3Client) HeadObject(objectKey string) (int64, string, error) {
 		contentType = *out.ContentType
 	}
 	return size, contentType, nil
+}
+
+func (c *s3Client) DeleteObject(ctx context.Context, objectKey string) error {
+	key := c.fullKey(objectKey)
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("objectKey is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("delete object: %w", err)
+	}
+	return nil
 }
 
 func (c *s3Client) PresignGet(objectKey string, expires time.Duration) (string, time.Time, error) {

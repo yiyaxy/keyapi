@@ -50,6 +50,7 @@ import { cn } from '@/lib/utils';
 
 type MobileRoute = 'home' | 'apps' | 'chat' | 'topup';
 type ModelKind = 'chat' | 'image';
+type MobileImageResolution = '1k' | '2k' | '4k' | 'auto';
 
 type MobileModel = {
   name: string;
@@ -156,12 +157,21 @@ function buildHistoryEntries(recordsDesc: ChatMessage[]): HistoryEntry[] {
 const MAX_ATTACHED_IMAGES = 16;
 const CHAT_INITIAL_LIMIT = 30;
 const HISTORY_PAGE_SIZE = 20;
+const DEFAULT_MOBILE_IMAGE_COUNT = 1;
+const DEFAULT_MOBILE_IMAGE_RESOLUTION: MobileImageResolution = '1k';
 const MOBILE_IMAGE_APP_SLUG = import.meta.env.VITE_IMAGE_DIAGNOSIS_APP_SLUG ?? 'image-diagnosis';
 const MOBILE_CHAT_APP_SLUG = import.meta.env.VITE_MOBILE_CHAT_APP_SLUG ?? MOBILE_IMAGE_APP_SLUG;
 const MODEL_KIND_LABELS: Record<ModelKind, string> = {
   chat: '大语言模型',
   image: '图片模型',
 };
+const MOBILE_IMAGE_COUNT_OPTIONS = [1, 2, 4] as const;
+const MOBILE_IMAGE_RESOLUTION_OPTIONS: Array<{ value: MobileImageResolution; label: string }> = [
+  { value: '1k', label: '1k' },
+  { value: '2k', label: '2k' },
+  { value: '4k', label: '4k' },
+  { value: 'auto', label: '自动' },
+];
 
 function pointsFromQuota(rawQuota: number, cfg: PublicConfig): string {
   const { value } = toDisplay(rawQuota, cfg);
@@ -525,11 +535,7 @@ async function getMobileChatRelayToken() {
 }
 
 async function getMobileImageRelayToken() {
-  return getMobileRelayToken(
-    MOBILE_IMAGE_APP_SLUG,
-    'image-diagnosis',
-    '没有拿到图片模型调用凭证'
-  );
+  return getMobileRelayToken(MOBILE_IMAGE_APP_SLUG, 'image-diagnosis', '没有拿到图片模型调用凭证');
 }
 
 async function submitMobileChatCompletion({
@@ -707,24 +713,31 @@ async function submitMobileAsyncImageGeneration({
   model,
   prompt,
   referenceImageUrls,
+  count,
+  resolution,
   onStatus,
 }: {
   token: string;
   model: MobileModel;
   prompt: string;
   referenceImageUrls: string[];
+  count: number;
+  resolution: MobileImageResolution;
   onStatus: (message: string) => void;
 }) {
   onStatus('准备提交图片任务');
   const body: Record<string, unknown> = {
     model: model.name,
     prompt,
-    size: '1024x1024',
-    n: 1,
+    size: '1:1',
+    n: Math.max(1, Math.min(4, count || DEFAULT_MOBILE_IMAGE_COUNT)),
     response_format: 'url',
     output_format: 'png',
     quality: 'medium',
   };
+  if (resolution !== 'auto') {
+    body.resolution = resolution;
+  }
   const imageUrls = referenceImageUrls.filter(Boolean).slice(0, MAX_ATTACHED_IMAGES);
   if (imageUrls.length > 0) {
     body.image = imageUrls[0];
@@ -1037,6 +1050,10 @@ export function MobileChat({
   });
   const [historyLoading, setHistoryLoading] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+  const [imageCount, setImageCount] = useState(DEFAULT_MOBILE_IMAGE_COUNT);
+  const [imageResolution, setImageResolution] = useState<MobileImageResolution>(
+    DEFAULT_MOBILE_IMAGE_RESOLUTION
+  );
   const [runningByKind, setRunningByKind] = useState<Record<ModelKind, boolean>>({
     chat: false,
     image: false,
@@ -1342,6 +1359,8 @@ export function MobileChat({
         model: activeModel,
         prompt: content,
         referenceImageUrls,
+        count: imageCount,
+        resolution: imageResolution,
         onStatus: setImageTaskMessage,
       });
       const imageUrls = extractImageUrls(data);
@@ -1672,27 +1691,91 @@ export function MobileChat({
 
         <div className='mt-3 space-y-2'>
           {kind === 'image' ? (
-            <div className='rounded-md border border-line bg-bg-1 p-2'>
+            <div className='rounded-md border border-line bg-bg-1 px-2 py-1.5'>
               <div className='flex items-center justify-between gap-2'>
-                <button
-                  type='button'
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={running || attachedImages.length >= MAX_ATTACHED_IMAGES}
-                  className='inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-bg-0 px-3 text-12 font-medium text-fg-1 disabled:opacity-50'
-                >
-                  <Upload className='h-3.5 w-3.5' />
-                  参考图
-                </button>
-                {attachedImages.length > 0 ? (
+                <div className='flex min-w-0 items-center gap-2'>
                   <button
                     type='button'
-                    onClick={clearAttachedImages}
-                    disabled={running}
-                    className='inline-flex h-9 items-center justify-center rounded-md px-3 text-12 font-medium text-fg-2 disabled:opacity-50'
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={running || attachedImages.length >= MAX_ATTACHED_IMAGES}
+                    className='inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-line bg-bg-0 px-2.5 text-12 font-medium text-fg-1 disabled:opacity-50'
                   >
-                    清空
+                    <Upload className='h-3.5 w-3.5' />
+                    参考图
+                    {attachedImages.length > 0 ? (
+                      <span className='text-11 text-fg-3'>{attachedImages.length}</span>
+                    ) : null}
                   </button>
-                ) : null}
+                  {attachedImages.length > 0 ? (
+                    <button
+                      type='button'
+                      onClick={clearAttachedImages}
+                      disabled={running}
+                      className='inline-flex h-8 shrink-0 items-center justify-center rounded-md px-2 text-12 font-medium text-fg-2 disabled:opacity-50'
+                    >
+                      清空
+                    </button>
+                  ) : null}
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type='button'
+                      disabled={running}
+                      className='inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-line bg-bg-0 px-2.5 text-12 font-medium text-fg-1 disabled:opacity-50'
+                    >
+                      {imageCount}张 ·{' '}
+                      {
+                        MOBILE_IMAGE_RESOLUTION_OPTIONS.find(
+                          (option) => option.value === imageResolution
+                        )?.label
+                      }
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end' className='w-48'>
+                    <div className='px-2 py-1.5'>
+                      <div className='mb-1 text-11 font-medium text-fg-2'>数量</div>
+                      <div className='grid grid-cols-3 gap-1'>
+                        {MOBILE_IMAGE_COUNT_OPTIONS.map((count) => (
+                          <button
+                            key={count}
+                            type='button'
+                            onClick={() => setImageCount(count)}
+                            className={cn(
+                              'h-8 rounded-md text-12 font-medium transition',
+                              imageCount === count
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-bg-1 text-fg-2 hover:bg-bg-2'
+                            )}
+                          >
+                            {count}张
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <DropdownMenuSeparator />
+                    <div className='px-2 py-1.5'>
+                      <div className='mb-1 text-11 font-medium text-fg-2'>分辨率</div>
+                      <div className='grid grid-cols-2 gap-1'>
+                        {MOBILE_IMAGE_RESOLUTION_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type='button'
+                            onClick={() => setImageResolution(option.value)}
+                            className={cn(
+                              'h-8 rounded-md text-12 font-medium transition',
+                              imageResolution === option.value
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-bg-1 text-fg-2 hover:bg-bg-2'
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <input
                 ref={fileInputRef}

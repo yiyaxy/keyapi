@@ -177,6 +177,10 @@ func main() {
 		trace.GoJob("payrecon", func() {
 			payment.StartPaymentReconcileLoop(5 * time.Minute)
 		})
+		// Mobile chat and generated image retention: keep both for 7 days.
+		trace.GoJob("mobchatclean", func() {
+			service.StartMobileChatRetentionCleanupLoop(time.Hour)
+		})
 	}
 
 	if common.IsMasterNode && constant.UpdateTask {

@@ -181,7 +181,7 @@ func UploadAppImages(c *gin.Context) {
 
 func ListMobileChatMessages(c *gin.Context) {
 	nowMs := time.Now().UnixMilli()
-	_ = model.DeleteExpiredMobileChatMessages(nowMs)
+	_, _ = service.CleanupExpiredMobileChatData(c.Request.Context(), time.UnixMilli(nowMs))
 
 	kind := normalizeMobileChatKind(c.Query("kind"))
 	limit := parseMobileChatInt(c.Query("limit"), 100)
@@ -270,7 +270,7 @@ func SaveMobileChatMessage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	_ = model.DeleteExpiredMobileChatMessages(nowMs)
+	_, _ = service.CleanupExpiredMobileChatData(c.Request.Context(), time.UnixMilli(nowMs))
 	common.ApiSuccess(c, mobileChatMessageToResponse(*record))
 }
 

@@ -326,6 +326,32 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	return tasks
 }
 
+func GetExpiredImageTasks(cutoffFinishTime int64, limit int) ([]*Task, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var tasks []*Task
+	err := WithTenantBypass(DB).
+		Where("platform IN ?", []constant.TaskPlatform{
+			constant.TaskPlatformApimart,
+			constant.TaskPlatformImageSyncWrap,
+		}).
+		Where("finish_time > 0 AND finish_time <= ?", cutoffFinishTime).
+		Where("status IN ?", []TaskStatus{TaskStatusSuccess, TaskStatusFailure}).
+		Order("finish_time ASC, id ASC").
+		Limit(limit).
+		Find(&tasks).Error
+	return tasks, err
+}
+
+func DeleteTasksByIDs(ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := WithTenantBypass(DB).Where("id IN ?", ids).Delete(&Task{})
+	return result.RowsAffected, result.Error
+}
+
 func GetByOnlyTaskId(taskId string) (*Task, bool, error) {
 	if taskId == "" {
 		return nil, false, nil
