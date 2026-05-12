@@ -20,6 +20,13 @@ export type TenantPlan = {
   renew_price_amount: number;
   renew_currency: string;
   platform_markup: number;
+  // Platform-channel per-period quota (-1 cap = unlimited; period: none/daily/monthly).
+  // 后端 GetTenantPlanInfo 返回前已经按当前时间做过 view-side reset，
+  // 所以拿到的 platform_quota_used 对应当前 period_start 的实时累计值。
+  platform_quota_cap: number;
+  platform_quota_used: number;
+  platform_quota_period: 'none' | 'daily' | 'monthly';
+  platform_quota_period_start: number;
   created_at: number;
   updated_at: number;
 };

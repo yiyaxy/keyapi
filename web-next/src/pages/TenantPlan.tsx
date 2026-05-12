@@ -16,6 +16,19 @@ import {
 } from '@/hooks/useTenantBilling';
 import { fmtDateSec, fmtDisplay, fmtNum } from '@/lib/format';
 
+type PlatformQuotaPeriod = 'none' | 'daily' | 'monthly';
+
+function periodLabel(t: (k: string) => string, period: PlatformQuotaPeriod): string {
+  switch (period) {
+    case 'daily':
+      return t('plan.platform_quota.period_daily');
+    case 'monthly':
+      return t('plan.platform_quota.period_monthly');
+    default:
+      return t('plan.platform_quota.period_none');
+  }
+}
+
 function formatLimit(
   value: number,
   kind: 'quota' | 'count',
@@ -86,6 +99,7 @@ export function TenantPlanPage() {
             <Row label={t('plan.expires_at')}>
               {p.expires_at > 0 ? fmtDateSec(p.expires_at) : t('plan.never')}
             </Row>
+            <PlatformQuotaRow plan={p} cfg={cfg} />
           </dl>
         </CardContent>
       </Card>
@@ -160,6 +174,73 @@ function MarkupCard({ currentMarkup }: { currentMarkup: number }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function PlatformQuotaRow({
+  plan,
+  cfg,
+}: {
+  plan: {
+    platform_quota_cap: number;
+    platform_quota_used: number;
+    platform_quota_period: PlatformQuotaPeriod;
+    platform_quota_period_start: number;
+  };
+  cfg: PublicConfig;
+}) {
+  const { t } = useTranslation('tenant');
+  const cap = plan.platform_quota_cap;
+  const used = Math.max(0, plan.platform_quota_used);
+  const isUnlimited = cap < 0;
+  const remaining = isUnlimited ? null : Math.max(0, cap - used);
+  const pct = !isUnlimited && cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : null;
+
+  return (
+    <div className='flex flex-col gap-1 border-b border-line pb-2 last:border-b-0 sm:col-span-2'>
+      <dt className='text-12 text-fg-2'>{t('plan.platform_quota.label')}</dt>
+      <dd className='space-y-1.5'>
+        <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1 tabular-nums text-fg-0'>
+          <span className='text-15 font-medium'>
+            {isUnlimited
+              ? t('plan.platform_quota.unlimited_remaining')
+              : t('plan.platform_quota.remaining_value', {
+                  value: fmtDisplay(remaining ?? 0, cfg),
+                })}
+          </span>
+          <span className='text-12 text-fg-2'>
+            {t('plan.platform_quota.used_of_cap', {
+              used: fmtDisplay(used, cfg),
+              cap: isUnlimited ? '∞' : fmtDisplay(cap, cfg),
+            })}
+          </span>
+        </div>
+        {pct !== null ? (
+          <div className='flex items-center gap-2'>
+            <div className='h-1.5 w-40 overflow-hidden rounded-full bg-bg-0'>
+              <div
+                className='h-full bg-fg-0 transition-[width]'
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className='text-12 tabular-nums text-fg-2'>{pct}%</span>
+          </div>
+        ) : null}
+        <div className='text-12 text-fg-2'>
+          {t('plan.platform_quota.period_label', {
+            value: periodLabel(t, plan.platform_quota_period),
+          })}
+          {plan.platform_quota_period !== 'none' && plan.platform_quota_period_start > 0 ? (
+            <>
+              {' · '}
+              {t('plan.platform_quota.period_start', {
+                value: fmtDateSec(plan.platform_quota_period_start),
+              })}
+            </>
+          ) : null}
+        </div>
+      </dd>
+    </div>
   );
 }
 

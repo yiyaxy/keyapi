@@ -25,7 +25,15 @@ func GetTenantPlanInfo(c *gin.Context) {
 		return
 	}
 
-	common.ApiSuccess(c, plan)
+	// 在序列化前对 PlatformQuotaUsed 做一次"如果应该 reset 就置 0"的视图修正，
+	// 避免租户在新周期开始但还没产生第一次写入时看到上一周期的陈旧 used。
+	// 真正的 DB reset 仍然由 IncrementTenantPlatformChannelUsed 在写入时处理。
+	// 注意：GetTenantPlan 返回的是缓存里的同一个指针，直接 mutate 会污染缓存，
+	// 所以这里 copy 一份再改。
+	view := *plan
+	applyEffectivePlatformQuota(&view)
+
+	common.ApiSuccess(c, &view)
 }
 
 // UpdateTenantMarkupRequest 是"租户自助调整对用户加价倍率"的请求体。

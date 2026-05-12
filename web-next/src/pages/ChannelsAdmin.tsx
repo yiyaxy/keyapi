@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -26,10 +27,75 @@ import {
   type Channel,
 } from '@/hooks/useChannels';
 import { PageAction } from '@/hooks/usePageAction';
+import { usePlatformChannelUsage } from '@/hooks/usePlatformChannelUsage';
 import { usePricing } from '@/hooks/usePricing';
+import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { useTenantPlan, useTenantPlatformChannelMarkups } from '@/hooks/useTenantBilling';
+import { fmtDisplay } from '@/lib/format';
 
 const PAGE_SIZE = 50;
+
+function PlatformPoolRemainingCard() {
+  const { t } = useTranslation('channels');
+  const cfg = usePublicConfig();
+  const usage = usePlatformChannelUsage();
+
+  if (usage.isPending) {
+    return (
+      <Card className='border-line bg-bg-1 shadow-none'>
+        <CardHeader className='pb-2'>
+          <CardTitle className='text-14 font-semibold tracking-tight text-fg-1'>
+            {t('pool.title')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className='pt-0'>
+          <Skeleton className='h-7 w-32' />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (usage.isError) {
+    return null;
+  }
+
+  const rows = usage.data ?? [];
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const unlimitedCount = rows.filter((row) => row.platform_quota_cap < 0).length;
+  const boundedRows = rows.filter((row) => row.platform_quota_cap >= 0);
+  const totalRemainingRaw = boundedRows.reduce(
+    (acc, row) => acc + Math.max(0, row.platform_quota_cap - row.platform_quota_used),
+    0
+  );
+
+  const hasUnlimited = unlimitedCount > 0;
+  const totalLabel = hasUnlimited ? '∞' : fmtDisplay(totalRemainingRaw, cfg);
+
+  return (
+    <Card className='border-line bg-bg-1 shadow-none'>
+      <CardHeader className='pb-2'>
+        <CardTitle className='flex items-baseline justify-between gap-3 text-14 font-semibold tracking-tight text-fg-1'>
+          <span>{t('pool.title')}</span>
+          <span className='text-12 font-normal text-fg-2'>{t('pool.subtitle')}</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className='flex flex-wrap items-baseline gap-x-6 gap-y-1 pt-0'>
+        <div className='text-3xl font-semibold tabular-nums text-fg-0'>{totalLabel}</div>
+        <div className='flex flex-wrap items-center gap-x-3 gap-y-1 text-12 text-fg-2'>
+          <span>{t('pool.bounded_tenants', { count: boundedRows.length })}</span>
+          {unlimitedCount > 0 ? (
+            <span className='rounded-full bg-bg-0 px-2 py-0.5 text-fg-1'>
+              {t('pool.unlimited_tenants', { count: unlimitedCount })}
+            </span>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function ChannelsAdminPage() {
   const { t } = useTranslation('channels');
@@ -41,6 +107,15 @@ export function ChannelsAdminPage() {
     type: -1,
   });
   const [page, setPage] = useState(1);
+  // 默认折叠平台渠道列表，避免在租户视角下挤占视线；用 localStorage 记住选择。
+  const [platformExpanded, setPlatformExpanded] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('channels.platformExpanded') === '1';
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('channels.platformExpanded', platformExpanded ? '1' : '0');
+  }, [platformExpanded]);
   const [formTarget, setFormTarget] = useState<'new' | Channel | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null);
   const [testTarget, setTestTarget] = useState<Channel | null>(null);
@@ -83,6 +158,8 @@ export function ChannelsAdminPage() {
       <PageAction>
         <Button onClick={() => setFormTarget('new')}>{t('page.create')}</Button>
       </PageAction>
+
+      {isRoot ? <PlatformPoolRemainingCard /> : null}
 
       {tenantView ? (
         <Card className='border-line bg-bg-1 shadow-none'>
@@ -180,12 +257,38 @@ export function ChannelsAdminPage() {
               </Card>
 
               <Card className='border-line bg-bg-1 shadow-none'>
-                <CardHeader className='pb-3'>
-                  <CardTitle className='text-16 font-semibold tracking-tight'>
-                    {t('section.platform_channels')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className='space-y-3 pt-0'>
+                <button
+                  type='button'
+                  onClick={() => setPlatformExpanded((v) => !v)}
+                  aria-expanded={platformExpanded}
+                  className={`flex w-full items-center justify-between gap-3 rounded-md px-6 pt-6 text-left transition-colors hover:bg-bg-0/40 ${
+                    platformExpanded ? 'pb-3' : 'pb-6'
+                  }`}
+                >
+                  <div className='flex items-center gap-2'>
+                    {platformExpanded ? (
+                      <ChevronDown className='h-4 w-4 text-fg-2' />
+                    ) : (
+                      <ChevronRight className='h-4 w-4 text-fg-2' />
+                    )}
+                    <CardTitle className='text-16 font-semibold tracking-tight'>
+                      {t('section.platform_channels')}
+                    </CardTitle>
+                    <Badge variant='outline' className='text-11'>
+                      {platformChannels.length}
+                    </Badge>
+                  </div>
+                  {!platformExpanded && platformChannels.length > 0 ? (
+                    <span className='text-12 text-fg-2'>
+                      {t('section.platform_channels_collapsed_hint', {
+                        count: platformChannels.length,
+                      })}
+                    </span>
+                  ) : null}
+                </button>
+                <CardContent
+                  className={`space-y-3 pt-0 ${platformExpanded ? '' : 'hidden'}`}
+                >
                   {tenantOverrides.isError && (
                     <InlineBanner
                       level='warn'

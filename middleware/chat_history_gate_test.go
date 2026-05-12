@@ -41,13 +41,34 @@ func runGate(t *testing.T, setup func(*gin.Context)) gateOutcome {
 	return out
 }
 
-// Platform admin (platform_role >= RoleAdminUser) must always pass.
-func TestChatHistoryViewGate_PlatformAdminBypasses(t *testing.T) {
+// Root (platform_role >= RoleRootUser) must always pass.
+func TestChatHistoryViewGate_RootBypasses(t *testing.T) {
 	out := runGate(t, func(c *gin.Context) {
-		c.Set("platform_role", common.RoleAdminUser)
+		c.Set("platform_role", common.RoleRootUser)
 	})
 	if !out.nextCalled {
-		t.Fatalf("platform admin must pass; aborted with status %d", out.status)
+		t.Fatalf("root must pass; aborted with status %d", out.status)
+	}
+}
+
+// Platform admin (RoleAdminUser, 10) must NOT bypass — only root does.
+// Without the per-tenant flag, an admin-level platform_role gets 403.
+func TestChatHistoryViewGate_PlatformAdminDoesNotBypass(t *testing.T) {
+	if model.DB == nil {
+		t.Skip("no DB")
+	}
+	tenantId := 93
+	_ = model.SetChatHistoryViewEnabled(tenantId, false)
+
+	out := runGate(t, func(c *gin.Context) {
+		c.Set("platform_role", common.RoleAdminUser)
+		c.Set(string(constant.ContextKeyTenantId), tenantId)
+	})
+	if out.nextCalled {
+		t.Fatalf("platform admin (10) must not bypass without tenant flag")
+	}
+	if out.status != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", out.status)
 	}
 }
 

@@ -204,6 +204,15 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Guard against partial hashes: cacheIncrUserQuota uses HIncrBy, which
+	// auto-creates a hash containing only the Quota field if the key was
+	// evicted. Reading that back yields Status=0 (zero value), which is
+	// neither Enabled (1) nor Disabled (2) and would falsely trip the
+	// "用户已被封禁" check in TokenAuth. Treat Status==0 as cache miss so
+	// the caller falls through to DB and reseeds all fields via updateUserCache.
+	if userCache.Status == 0 {
+		return nil, fmt.Errorf("user cache for %d is incomplete (missing Status), forcing DB reload", userId)
+	}
 	return &userCache, nil
 }
 

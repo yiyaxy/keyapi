@@ -13,14 +13,15 @@ import (
 )
 
 // ChatHistoryViewGate enforces the per-tenant "view chat history" feature
-// flag for the admin list/detail endpoints. Platform admins always pass —
-// they need cross-tenant visibility for ops/troubleshooting. Tenant admins
+// flag for the admin list/detail endpoints. Only root (platform_role >=
+// RoleRootUser) bypasses — they need cross-tenant visibility for ops /
+// troubleshooting. Tenant admins (including platform_role == RoleAdminUser)
 // only pass when the tenant's TenantOptionKeyChatHistoryView is "true".
 //
 // Mount AFTER TenantAdminAuth so role + tenant context are populated.
 func ChatHistoryViewGate() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.GetInt("platform_role") >= common.RoleAdminUser {
+		if c.GetInt("platform_role") >= common.RoleRootUser {
 			c.Next()
 			return
 		}
