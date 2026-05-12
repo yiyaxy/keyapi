@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { InlineBanner } from '@/components/auth/InlineBanner';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,7 +17,12 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { type CreateTenantPayload, useCreateTenant } from '@/hooks/usePlatformTenants';
+import {
+  type BatchCreatedTenant,
+  type CreateTenantPayload,
+  useBatchCreateTenants,
+  useCreateTenant,
+} from '@/hooks/usePlatformTenants';
 import { ApiError } from '@/lib/api';
 
 const schema = z.object({
@@ -37,7 +43,7 @@ const schema = z.object({
 });
 type Values = z.infer<typeof schema>;
 
-type CreateMode = 'single' | 'import';
+type CreateMode = 'single' | 'batch' | 'import';
 
 const CSV_HEADERS = ['名称', 'slug', '管理员用户名', '初始密码', '邮箱', '显示名'];
 
@@ -134,7 +140,12 @@ export function CreateTenantDialog({
 }) {
   const { t } = useTranslation('platform');
   const create = useCreateTenant();
+  const batchCreate = useBatchCreateTenants();
   const [mode, setMode] = useState<CreateMode>('single');
+  const [batchCount, setBatchCount] = useState('10');
+  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchCreatedTenant[]>([]);
   const [importRows, setImportRows] = useState<CreateTenantPayload[]>([]);
   const [importFileName, setImportFileName] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
@@ -166,6 +177,41 @@ export function CreateTenantDialog({
       onOpenChange(false);
     } catch {
       /* banner */
+    }
+  }
+
+  function parseBatchCount(): number | null {
+    const count = Number(batchCount);
+    if (!Number.isInteger(count) || count < 1 || count > 100) return null;
+    return count;
+  }
+
+  function requestBatchConfirm() {
+    setBatchError(null);
+    setBatchResult([]);
+    if (parseBatchCount() == null) {
+      setBatchError('批量生成数量必须在 1-100 之间。');
+      return;
+    }
+    setBatchConfirmOpen(true);
+  }
+
+  async function onBatchSubmit() {
+    const count = parseBatchCount();
+    if (count == null) {
+      setBatchError('批量生成数量必须在 1-100 之间。');
+      return;
+    }
+    setBatchConfirmOpen(false);
+    setBatchError(null);
+    try {
+      const result = await batchCreate.mutateAsync({ count });
+      setBatchResult(result.items ?? []);
+      toast.success(`已批量创建 ${result.total ?? result.items.length} 个租户`);
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? (error.backendMessage ?? error.message) : String(error);
+      setBatchError(message);
     }
   }
 
@@ -224,153 +270,234 @@ export function CreateTenantDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t('create.title')}</DialogTitle>
-        </DialogHeader>
-        {create.error instanceof ApiError && (
-          <InlineBanner
-            level='danger'
-            message={create.error.backendMessage ?? create.error.message}
-          />
-        )}
-        {importError && <InlineBanner level='danger' message={importError} />}
-        <div className='grid grid-cols-2 gap-2 rounded-md bg-bg-1 p-1'>
-          <Button
-            type='button'
-            variant={mode === 'single' ? 'secondary' : 'ghost'}
-            onClick={() => setMode('single')}
-          >
-            单个创建
-          </Button>
-          <Button
-            type='button'
-            variant={mode === 'import' ? 'secondary' : 'ghost'}
-            onClick={() => setMode('import')}
-          >
-            Excel 导入
-          </Button>
-        </div>
-        {mode === 'single' ? (
-          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
-            <div className='space-y-2'>
-              <Label htmlFor='ct-name'>{t('create.name')}</Label>
-              <Input id='ct-name' autoFocus {...form.register('name')} />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='ct-slug'>{t('create.slug')}</Label>
-              <Input id='ct-slug' {...form.register('slug')} />
-              <div className='text-12 text-fg-2'>{t('create.slug.hint')}</div>
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='ct-admin-username'>初始管理员用户名</Label>
-              <Input id='ct-admin-username' {...form.register('admin_username')} />
-              <div className='text-12 text-fg-2'>
-                字母/数字/下划线/连字符/点，1-20 位。该账号自动成为此租户的 admin。
-              </div>
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='ct-admin-password'>初始管理员密码</Label>
-              <Input
-                id='ct-admin-password'
-                type='password'
-                autoComplete='new-password'
-                {...form.register('admin_password')}
-              />
-              <div className='text-12 text-fg-2'>8-20 位，创建后请及时通知该租户使用人并修改。</div>
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='ct-admin-email'>管理员邮箱（可选）</Label>
-              <Input id='ct-admin-email' type='email' {...form.register('admin_email')} />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='ct-admin-display'>管理员显示名（可选）</Label>
-              <Input id='ct-admin-display' {...form.register('admin_display_name')} />
-            </div>
-            <DialogFooter>
-              <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>
-                {t('create.cancel')}
-              </Button>
-              <Button type='submit' disabled={create.isPending}>
-                {t('create.submit')}
-              </Button>
-            </DialogFooter>
-          </form>
-        ) : (
-          <div className='space-y-4'>
-            <div className='space-y-3 rounded-md border border-line bg-bg-1 p-3'>
-              <div>
-                <div className='text-14 font-medium text-fg-0'>下载模板后用 Excel 填写</div>
-                <div className='mt-1 text-12 text-fg-2'>
-                  模板字段：名称、slug、管理员用户名、初始密码、邮箱、显示名。前 4 列必填。
-                </div>
-              </div>
-              <Button type='button' variant='secondary' onClick={downloadTenantTemplate}>
-                下载 Excel 模板
-              </Button>
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='ct-import'>上传填写后的 CSV</Label>
-              <Input
-                ref={fileInputRef}
-                id='ct-import'
-                type='file'
-                accept='.csv,text/csv'
-                onChange={(event) => void onImportFile(event.target.files?.[0])}
-              />
-              <div className='text-12 text-fg-2'>
-                Excel 打开模板填写后，请另存为 CSV 再上传。当前文件：
-                {importFileName || '未选择'}。
-              </div>
-            </div>
-            {importRows.length > 0 && (
-              <div className='rounded-md border border-line'>
-                <div className='border-b border-line px-3 py-2 text-13 text-fg-1'>
-                  将创建 {importRows.length} 个租户
-                </div>
-                <div className='max-h-40 overflow-auto'>
-                  <table className='w-full text-left text-12'>
-                    <thead className='bg-bg-1 text-fg-2'>
-                      <tr>
-                        <th className='px-3 py-2 font-medium'>名称</th>
-                        <th className='px-3 py-2 font-medium'>slug</th>
-                        <th className='px-3 py-2 font-medium'>管理员</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importRows.slice(0, 5).map((row) => (
-                        <tr key={row.slug} className='border-t border-line'>
-                          <td className='px-3 py-2'>{row.name}</td>
-                          <td className='px-3 py-2 font-mono'>{row.slug}</td>
-                          <td className='px-3 py-2'>{row.admin_username}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {importRows.length > 5 && (
-                  <div className='border-t border-line px-3 py-2 text-12 text-fg-2'>
-                    仅预览前 5 行。
-                  </div>
-                )}
-              </div>
-            )}
-            <DialogFooter>
-              <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>
-                {t('create.cancel')}
-              </Button>
-              <Button
-                type='button'
-                disabled={create.isPending || importRows.length === 0}
-                onClick={() => void onImportSubmit()}
-              >
-                导入创建
-              </Button>
-            </DialogFooter>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('create.title')}</DialogTitle>
+          </DialogHeader>
+          {create.error instanceof ApiError && (
+            <InlineBanner
+              level='danger'
+              message={create.error.backendMessage ?? create.error.message}
+            />
+          )}
+          {importError && <InlineBanner level='danger' message={importError} />}
+          {batchError && <InlineBanner level='danger' message={batchError} />}
+          <div className='grid grid-cols-3 gap-2 rounded-md bg-bg-1 p-1'>
+            <Button
+              type='button'
+              variant={mode === 'single' ? 'secondary' : 'ghost'}
+              onClick={() => setMode('single')}
+            >
+              单个创建
+            </Button>
+            <Button
+              type='button'
+              variant={mode === 'batch' ? 'secondary' : 'ghost'}
+              onClick={() => setMode('batch')}
+            >
+              批量生成
+            </Button>
+            <Button
+              type='button'
+              variant={mode === 'import' ? 'secondary' : 'ghost'}
+              onClick={() => setMode('import')}
+            >
+              Excel 导入
+            </Button>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          {mode === 'single' ? (
+            <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-name'>{t('create.name')}</Label>
+                <Input id='ct-name' autoFocus {...form.register('name')} />
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-slug'>{t('create.slug')}</Label>
+                <Input id='ct-slug' {...form.register('slug')} />
+                <div className='text-12 text-fg-2'>{t('create.slug.hint')}</div>
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-admin-username'>初始管理员用户名</Label>
+                <Input id='ct-admin-username' {...form.register('admin_username')} />
+                <div className='text-12 text-fg-2'>
+                  字母/数字/下划线/连字符/点，1-20 位。该账号自动成为此租户的 admin。
+                </div>
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-admin-password'>初始管理员密码</Label>
+                <Input
+                  id='ct-admin-password'
+                  type='password'
+                  autoComplete='new-password'
+                  {...form.register('admin_password')}
+                />
+                <div className='text-12 text-fg-2'>
+                  8-20 位，创建后请及时通知该租户使用人并修改。
+                </div>
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-admin-email'>管理员邮箱（可选）</Label>
+                <Input id='ct-admin-email' type='email' {...form.register('admin_email')} />
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-admin-display'>管理员显示名（可选）</Label>
+                <Input id='ct-admin-display' {...form.register('admin_display_name')} />
+              </div>
+              <DialogFooter>
+                <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>
+                  {t('create.cancel')}
+                </Button>
+                <Button type='submit' disabled={create.isPending}>
+                  {t('create.submit')}
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : mode === 'batch' ? (
+            <div className='space-y-4'>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-batch-count'>批量生成数量</Label>
+                <Input
+                  id='ct-batch-count'
+                  type='number'
+                  min={1}
+                  max={100}
+                  value={batchCount}
+                  onChange={(event) => setBatchCount(event.target.value)}
+                />
+                <div className='text-12 text-fg-2'>
+                  只需要填写数量，系统会自动生成租户名称、slug、管理员账号和初始密码。单次最多 100
+                  个。
+                </div>
+              </div>
+              {batchResult.length > 0 && (
+                <div className='rounded-md border border-line'>
+                  <div className='border-b border-line px-3 py-2 text-13 text-fg-1'>
+                    已生成 {batchResult.length} 个账号，请保存初始密码。
+                  </div>
+                  <div className='max-h-56 overflow-auto'>
+                    <table className='w-full text-left text-12'>
+                      <thead className='bg-bg-1 text-fg-2'>
+                        <tr>
+                          <th className='px-3 py-2 font-medium'>租户</th>
+                          <th className='px-3 py-2 font-medium'>slug</th>
+                          <th className='px-3 py-2 font-medium'>账号</th>
+                          <th className='px-3 py-2 font-medium'>初始密码</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {batchResult.map((row) => (
+                          <tr key={row.tenant.slug} className='border-t border-line'>
+                            <td className='px-3 py-2'>{row.tenant.name}</td>
+                            <td className='px-3 py-2 font-mono'>{row.tenant.slug}</td>
+                            <td className='px-3 py-2 font-mono'>{row.admin_username}</td>
+                            <td className='px-3 py-2 font-mono'>{row.admin_password}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>
+                  {t('create.cancel')}
+                </Button>
+                <Button
+                  type='button'
+                  disabled={batchCreate.isPending}
+                  onClick={requestBatchConfirm}
+                >
+                  批量生成
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className='space-y-4'>
+              <div className='space-y-3 rounded-md border border-line bg-bg-1 p-3'>
+                <div>
+                  <div className='text-14 font-medium text-fg-0'>下载模板后用 Excel 填写</div>
+                  <div className='mt-1 text-12 text-fg-2'>
+                    模板字段：名称、slug、管理员用户名、初始密码、邮箱、显示名。前 4 列必填。
+                  </div>
+                </div>
+                <Button type='button' variant='secondary' onClick={downloadTenantTemplate}>
+                  下载 Excel 模板
+                </Button>
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='ct-import'>上传填写后的 CSV</Label>
+                <Input
+                  ref={fileInputRef}
+                  id='ct-import'
+                  type='file'
+                  accept='.csv,text/csv'
+                  onChange={(event) => void onImportFile(event.target.files?.[0])}
+                />
+                <div className='text-12 text-fg-2'>
+                  Excel 打开模板填写后，请另存为 CSV 再上传。当前文件：
+                  {importFileName || '未选择'}。
+                </div>
+              </div>
+              {importRows.length > 0 && (
+                <div className='rounded-md border border-line'>
+                  <div className='border-b border-line px-3 py-2 text-13 text-fg-1'>
+                    将创建 {importRows.length} 个租户
+                  </div>
+                  <div className='max-h-40 overflow-auto'>
+                    <table className='w-full text-left text-12'>
+                      <thead className='bg-bg-1 text-fg-2'>
+                        <tr>
+                          <th className='px-3 py-2 font-medium'>名称</th>
+                          <th className='px-3 py-2 font-medium'>slug</th>
+                          <th className='px-3 py-2 font-medium'>管理员</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importRows.slice(0, 5).map((row) => (
+                          <tr key={row.slug} className='border-t border-line'>
+                            <td className='px-3 py-2'>{row.name}</td>
+                            <td className='px-3 py-2 font-mono'>{row.slug}</td>
+                            <td className='px-3 py-2'>{row.admin_username}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {importRows.length > 5 && (
+                    <div className='border-t border-line px-3 py-2 text-12 text-fg-2'>
+                      仅预览前 5 行。
+                    </div>
+                  )}
+                </div>
+              )}
+              <DialogFooter>
+                <Button type='button' variant='secondary' onClick={() => onOpenChange(false)}>
+                  {t('create.cancel')}
+                </Button>
+                <Button
+                  type='button'
+                  disabled={create.isPending || importRows.length === 0}
+                  onClick={() => void onImportSubmit()}
+                >
+                  导入创建
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog
+        open={batchConfirmOpen}
+        title='确认批量生成'
+        body={`即将自动生成 ${parseBatchCount() ?? 0} 个租户及对应管理员账号。确认后会立即创建，初始密码只会在本次结果中展示。`}
+        confirmLabel='确认生成'
+        danger={false}
+        isPending={batchCreate.isPending}
+        onOpenChange={setBatchConfirmOpen}
+        onConfirm={() => void onBatchSubmit()}
+      />
+    </>
   );
 }

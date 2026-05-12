@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { Tenant } from '@/hooks/useTenant';
 import { api } from '@/lib/api';
 
 const keys = {
-  list: ['platform', 'tenants'] as const,
+  listRoot: ['platform', 'tenants'] as const,
+  list: (q: PlatformTenantsQuery) => ['platform', 'tenants', q] as const,
   plans: ['platform', 'tenant-plans'] as const,
   features: (tenantId: number) => ['platform', 'tenant-features', tenantId] as const,
 };
@@ -55,15 +56,50 @@ export type UpdateTenantPlanPayload = {
   platform_quota_period?: 'none' | 'daily' | 'monthly';
 };
 
-export function usePlatformTenants() {
-  return useQuery<Tenant[]>({
-    queryKey: keys.list,
-    queryFn: async () => {
-      const res = await api.get<Tenant[]>('/api/platform/tenants/');
-      return Array.isArray(res.data) ? res.data : [];
-    },
+export type PlatformTenantsQuery = {
+  p?: number;
+  page_size?: number;
+};
+
+export type PlatformTenantsPage = {
+  items: Tenant[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export function usePlatformTenants(q: PlatformTenantsQuery = {}) {
+  return useQuery<PlatformTenantsPage>({
+    queryKey: keys.list(q),
+    queryFn: () => fetchPlatformTenants(q),
+    placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
+}
+
+export async function fetchPlatformTenants(
+  q: PlatformTenantsQuery = {}
+): Promise<PlatformTenantsPage> {
+  const params = new URLSearchParams();
+  params.set('p', String(q.p ?? 1));
+  params.set('page_size', String(q.page_size ?? 50));
+  const res = await api.get<PlatformTenantsPage | Tenant[]>(
+    `/api/platform/tenants/?${params.toString()}`
+  );
+  if (Array.isArray(res.data)) {
+    return {
+      items: res.data,
+      total: res.data.length,
+      page: q.p ?? 1,
+      page_size: q.page_size ?? res.data.length,
+    };
+  }
+  return {
+    items: Array.isArray(res.data.items) ? res.data.items : [],
+    total: res.data.total ?? 0,
+    page: res.data.page ?? q.p ?? 1,
+    page_size: res.data.page_size ?? q.page_size ?? 50,
+  };
 }
 
 export type CreateTenantPayload = {
@@ -75,6 +111,29 @@ export type CreateTenantPayload = {
   admin_display_name?: string;
 };
 
+export type BatchCreateTenantsPayload = {
+  count: number;
+};
+
+export type BatchCreatedTenant = {
+  tenant: Tenant;
+  admin_user_id: number;
+  admin_username: string;
+  admin_password: string;
+};
+
+export type BatchCreateTenantsResult = {
+  items: BatchCreatedTenant[];
+  total: number;
+};
+
+export type ResetTenantAdminPasswordResult = {
+  tenant_id: number;
+  admin_user_id: number;
+  admin_username: string;
+  password: string;
+};
+
 export function useCreateTenant() {
   const qc = useQueryClient();
   return useMutation({
@@ -83,9 +142,36 @@ export function useCreateTenant() {
       return res.data;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.list });
+      void qc.invalidateQueries({ queryKey: keys.listRoot });
       void qc.invalidateQueries({ queryKey: keys.plans });
     },
+  });
+}
+
+export function useBatchCreateTenants() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: BatchCreateTenantsPayload) => {
+      const res = await api.post<BatchCreateTenantsResult>('/api/platform/tenants/batch', body);
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.listRoot });
+      void qc.invalidateQueries({ queryKey: keys.plans });
+    },
+  });
+}
+
+export function useResetTenantAdminPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.post<ResetTenantAdminPasswordResult>(
+        `/api/platform/tenants/${id}/reset-admin-password`
+      );
+      return res.data;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.listRoot }),
   });
 }
 
@@ -96,7 +182,7 @@ export function useUpdateTenantStatus() {
       const res = await api.put<Tenant>(`/api/platform/tenants/${id}`, { status });
       return res.data;
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.list }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.listRoot }),
   });
 }
 
@@ -107,7 +193,7 @@ export function useDeleteTenant() {
       await api.delete(`/api/platform/tenants/${id}`);
       return id;
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.list }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.listRoot }),
   });
 }
 

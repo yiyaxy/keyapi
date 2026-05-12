@@ -1,6 +1,9 @@
 package tenant
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,15 +36,118 @@ type UpdateTenantRequest struct {
 	Status int    `json:"status"`
 }
 
+type BatchCreateTenantsRequest struct {
+	Count int `json:"count"`
+}
+
+type BatchCreateTenantResult struct {
+	Tenant        *model.Tenant `json:"tenant"`
+	AdminUserId   int           `json:"admin_user_id"`
+	AdminUsername string        `json:"admin_username"`
+	AdminPassword string        `json:"admin_password"`
+}
+
+type ResetTenantAdminPasswordResult struct {
+	TenantId      int    `json:"tenant_id"`
+	AdminUserId   int    `json:"admin_user_id"`
+	AdminUsername string `json:"admin_username"`
+	Password      string `json:"password"`
+}
+
 // ListAllTenantsHandler 平台级：列出所有租户（不含已删除）。
 // 路由：GET /api/platform/tenants
 func ListAllTenantsHandler(c *gin.Context) {
-	items, err := model.ListAllTenants()
+	pageInfo := common.GetPageQuery(c)
+	items, total, err := model.ListAllTenants(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, items)
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%d", common.GetTimestamp())
+	}
+	return hex.EncodeToString(b)
+}
+
+func defaultTenantAdminPassword(username string) string {
+	return strings.TrimSpace(username) + "123"
+}
+
+func generatedAdminUsername(index int) string {
+	return fmt.Sprintf("u%06d%03d%s", common.GetTimestamp()%1000000, index, randomHex(2))
+}
+
+func createTenantWithAdminTx(tx *gorm.DB, req CreateTenantRequest, operatorId int) (*model.Tenant, *model.User, error) {
+	displayName := strings.TrimSpace(req.AdminDisplay)
+	if displayName == "" {
+		displayName = req.AdminUsername
+	}
+	tenant := &model.Tenant{
+		Name:   strings.TrimSpace(req.Name),
+		Slug:   strings.TrimSpace(req.Slug),
+		Status: model.TenantStatusActive,
+	}
+	adminUser := &model.User{
+		TenantId:    tenant.Id,
+		Username:    strings.TrimSpace(req.AdminUsername),
+		Password:    req.AdminPassword,
+		DisplayName: displayName,
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+	}
+	if email := strings.TrimSpace(req.AdminEmail); email != "" {
+		adminUser.Email = strings.ToLower(email)
+	}
+
+	if err := tx.Create(tenant).Error; err != nil {
+		return nil, nil, err
+	}
+	now := common.GetTimestamp()
+	plan := &model.TenantPlan{
+		TenantId:                 tenant.Id,
+		PlanName:                 model.TenantPlanDefaultName,
+		QuotaLimit:               -1,
+		RPMLimit:                 -1,
+		TPMLimit:                 -1,
+		MaxMembers:               -1,
+		MaxTokens:                -1,
+		MaxChannels:              -1,
+		Status:                   model.TenantPlanStatusActive,
+		ExpiresAt:                0,
+		PlatformMarkup:           1.0,
+		PlatformQuotaCap:         0,
+		PlatformQuotaPeriod:      model.PlatformQuotaPeriodNone,
+		PlatformQuotaUsed:        0,
+		PlatformQuotaPeriodStart: 0,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}
+	if err := model.WithTenantBypass(tx).Create(plan).Error; err != nil {
+		return nil, nil, err
+	}
+
+	adminUser.TenantId = tenant.Id
+	if err := adminUser.InsertWithTx(tx, 0); err != nil {
+		return nil, nil, err
+	}
+	membership := &model.TenantMembership{
+		TenantId:  tenant.Id,
+		UserId:    adminUser.Id,
+		Role:      model.TenantRoleAdmin,
+		Status:    model.TenantMembershipStatusActive,
+		InvitedBy: operatorId,
+	}
+	if err := model.WithTenantBypass(tx).Create(membership).Error; err != nil {
+		return nil, nil, err
+	}
+	return tenant, adminUser, nil
 }
 
 func CreateTenant(c *gin.Context) {
@@ -163,6 +269,127 @@ func CreateTenant(c *gin.Context) {
 		"tenant":         tenant,
 		"admin_user_id":  adminUser.Id,
 		"admin_username": adminUser.Username,
+	})
+}
+
+func generatedTenantSlug(tx *gorm.DB, index int) (string, error) {
+	for attempt := 0; attempt < 8; attempt++ {
+		slug := fmt.Sprintf("tenant-%d-%03d-%s", common.GetTimestamp(), index, randomHex(2))
+		var count int64
+		if err := tx.Model(&model.Tenant{}).Where("slug = ?", slug).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return slug, nil
+		}
+	}
+	return "", fmt.Errorf("failed to generate unique tenant slug")
+}
+
+func BatchCreateTenants(c *gin.Context) {
+	var req BatchCreateTenantsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.Count <= 0 || req.Count > 100 {
+		common.ApiErrorMsg(c, "批量生成数量必须在 1-100 之间")
+		return
+	}
+
+	operatorId := c.GetInt("id")
+	results := make([]BatchCreateTenantResult, 0, req.Count)
+	adminUsers := make([]*model.User, 0, req.Count)
+	txErr := model.DB.Transaction(func(tx *gorm.DB) error {
+		for i := 1; i <= req.Count; i++ {
+			slug, err := generatedTenantSlug(tx, i)
+			if err != nil {
+				return err
+			}
+			adminUsername := generatedAdminUsername(i)
+			password := defaultTenantAdminPassword(adminUsername)
+			createReq := CreateTenantRequest{
+				Name:          fmt.Sprintf("自动租户 %s", slug),
+				Slug:          slug,
+				AdminUsername: adminUsername,
+				AdminPassword: password,
+				AdminDisplay:  "租户管理员",
+			}
+			tenant, adminUser, err := createTenantWithAdminTx(tx, createReq, operatorId)
+			if err != nil {
+				return err
+			}
+			results = append(results, BatchCreateTenantResult{
+				Tenant:        tenant,
+				AdminUserId:   adminUser.Id,
+				AdminUsername: adminUser.Username,
+				AdminPassword: password,
+			})
+			adminUsers = append(adminUsers, adminUser)
+		}
+		return nil
+	})
+	if txErr != nil {
+		common.ApiError(c, txErr)
+		return
+	}
+
+	for _, adminUser := range adminUsers {
+		adminUser.FinalizeOAuthUserCreation(0)
+	}
+	model.ClearTenantCache()
+	common.ApiSuccess(c, gin.H{
+		"items": results,
+		"total": len(results),
+	})
+}
+
+func ResetTenantAdminPassword(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "无效的租户 ID")
+		return
+	}
+	var adminUser model.User
+	err = model.WithTenantBypass(model.DB).
+		Table("tenant_memberships AS tm").
+		Select("u.*").
+		Joins("JOIN users u ON u.id = tm.user_id").
+		Where("tm.tenant_id = ? AND tm.role = ? AND tm.status <> ?", id, model.TenantRoleAdmin, model.TenantMembershipStatusRemoved).
+		Order("tm.id ASC").
+		Limit(1).
+		Scan(&adminUser).Error
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if adminUser.Id <= 0 || strings.TrimSpace(adminUser.Username) == "" {
+		if err := model.WithTenantBypass(model.DB).
+			Where("tenant_id = ? AND role >= ? AND status = ?", id, model.TenantRoleAdmin, common.UserStatusEnabled).
+			Order("id ASC").
+			First(&adminUser).Error; err != nil {
+			common.ApiErrorMsg(c, "未找到该租户的管理员账号")
+			return
+		}
+	}
+	password := defaultTenantAdminPassword(adminUser.Username)
+	hashedPassword, err := common.Password2Hash(password)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.WithTenantBypass(model.DB).
+		Model(&model.User{}).
+		Where("id = ? AND tenant_id = ?", adminUser.Id, id).
+		Update("password", hashedPassword).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, ResetTenantAdminPasswordResult{
+		TenantId:      id,
+		AdminUserId:   adminUser.Id,
+		AdminUsername: adminUser.Username,
+		Password:      password,
 	})
 }
 

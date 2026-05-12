@@ -9,6 +9,9 @@ export type Tenant = {
   status: number;
   created_at: number;
   updated_at: number;
+  last_login_at?: number;
+  admin_user_id?: number;
+  admin_username?: string;
 };
 
 export type TenantMember = {

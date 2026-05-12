@@ -753,6 +753,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			platformTenantRoute.GET("/", tenant.ListAllTenantsHandler)
 			platformTenantRoute.POST("/", tenant.CreateTenant)
+			platformTenantRoute.POST("/batch", tenant.BatchCreateTenants)
+			platformTenantRoute.POST("/:id/reset-admin-password", tenant.ResetTenantAdminPassword)
 			platformTenantRoute.PUT("/:id", tenant.UpdateTenantByPlatform)
 			platformTenantRoute.DELETE("/:id", tenant.DeleteTenant)
 			platformTenantRoute.GET("/plans", tenant.ListTenantPlans)
