@@ -9,7 +9,7 @@ import (
 const InvalidateChannel = "keyapi:cache:invalidate"
 
 type InvalidateMessage struct {
-	Type       string `json:"type"`        // "option" | "channel_full" | "tenant_routing" | "tenant_option"
+	Type       string `json:"type"`        // "option" | "channel_full" | "tenant_routing" | "tenant_option" | "tenant_plan"
 	Key        string `json:"key"`         // option key, tenant id, "<tid>:<optKey>", or empty for channel_full
 	InstanceID string `json:"instance_id"` // publisher's process UUID
 	Ts         int64  `json:"ts"`          // unix seconds, for logging only

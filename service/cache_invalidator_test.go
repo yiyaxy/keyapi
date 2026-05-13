@@ -13,13 +13,15 @@ import (
 )
 
 type fakeReloader struct {
-	option        atomic.Int32
-	channelFull   atomic.Int32
-	tenantRouting atomic.Int32
-	tenantOption  atomic.Int32
-	lastOptionKey atomic.Value // string
-	lastTenantKey atomic.Value // string
-	lastTenantOpt atomic.Value // string "<tid>:<key>"
+	option         atomic.Int32
+	channelFull    atomic.Int32
+	tenantRouting  atomic.Int32
+	tenantOption   atomic.Int32
+	tenantPlan     atomic.Int32
+	lastOptionKey  atomic.Value // string
+	lastTenantKey  atomic.Value // string
+	lastTenantOpt  atomic.Value // string "<tid>:<key>"
+	lastTenantPlan atomic.Value // string tenant id
 }
 
 func (f *fakeReloader) ReloadOption(key string) error {
@@ -35,6 +37,10 @@ func (f *fakeReloader) ReloadTenantRoutingCache(tenantId int) {
 func (f *fakeReloader) InvalidateTenantOptionKey(tenantId int, key string) {
 	f.tenantOption.Add(1)
 	f.lastTenantOpt.Store(strconv.Itoa(tenantId) + ":" + key)
+}
+func (f *fakeReloader) InvalidateTenantPlan(tenantId int) {
+	f.tenantPlan.Add(1)
+	f.lastTenantPlan.Store(strconv.Itoa(tenantId))
 }
 
 func TestStartCacheInvalidator_DispatchesByType(t *testing.T) {
@@ -63,12 +69,13 @@ func TestStartCacheInvalidator_DispatchesByType(t *testing.T) {
 	publishAs(t, "peer-A", common.InvalidateMessage{Type: "channel_full"})
 	publishAs(t, "peer-A", common.InvalidateMessage{Type: "tenant_routing", Key: "7"})
 	publishAs(t, "peer-A", common.InvalidateMessage{Type: "tenant_option", Key: "42:ChannelDisableThreshold"})
+	publishAs(t, "peer-A", common.InvalidateMessage{Type: "tenant_plan", Key: "99"})
 	// 自己的消息（应被 selfID 过滤）
 	publishAs(t, "subscriber-instance", common.InvalidateMessage{Type: "option", Key: "ShouldIgnore"})
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if r.option.Load() == 1 && r.channelFull.Load() == 1 && r.tenantRouting.Load() == 1 && r.tenantOption.Load() == 1 {
+		if r.option.Load() == 1 && r.channelFull.Load() == 1 && r.tenantRouting.Load() == 1 && r.tenantOption.Load() == 1 && r.tenantPlan.Load() == 1 {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -85,11 +92,17 @@ func TestStartCacheInvalidator_DispatchesByType(t *testing.T) {
 	if r.tenantOption.Load() != 1 {
 		t.Errorf("tenant_option reload count = %d, want 1", r.tenantOption.Load())
 	}
+	if r.tenantPlan.Load() != 1 {
+		t.Errorf("tenant_plan reload count = %d, want 1", r.tenantPlan.Load())
+	}
 	if got := r.lastOptionKey.Load(); got != "Notice" {
 		t.Errorf("last option key = %v, want Notice", got)
 	}
 	if got := r.lastTenantOpt.Load(); got != "42:ChannelDisableThreshold" {
 		t.Errorf("last tenant_option key = %v, want 42:ChannelDisableThreshold", got)
+	}
+	if got := r.lastTenantPlan.Load(); got != "99" {
+		t.Errorf("last tenant_plan key = %v, want 99", got)
 	}
 }
 

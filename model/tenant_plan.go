@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,9 +68,32 @@ const (
 
 var tenantPlanCache sync.Map // tenantId -> *TenantPlan
 
-// InvalidateTenantPlanCache removes the cached plan for a given tenant.
+// InvalidateTenantPlanCache removes the cached plan for a given tenant on
+// THIS node only. Callers that just wrote to tenant_plans should use
+// BroadcastInvalidateTenantPlan instead, so peer nodes also drop their
+// stale in-memory copy. This local-only variant is kept for the pub/sub
+// subscriber path, where re-publishing would form a network amplification.
 func InvalidateTenantPlanCache(tenantId int) {
 	tenantPlanCache.Delete(tenantId)
+}
+
+// BroadcastInvalidateTenantPlan evicts the local cached plan AND notifies
+// peer nodes (via Redis pub/sub) to do the same. Use this whenever
+// tenant_plans was just written (UpsertTenantPlan, platform-quota
+// increment/reset, plan disable, payment-driven expires_at extension, ...).
+//
+// No-op publish when Redis is disabled (single-instance mode); local cache
+// is still cleared. Publish errors are intentionally swallowed: a failed
+// broadcast leaves peers with stale cache, but the local write is already
+// durable and SYNC_FREQUENCY-driven full reloads will eventually converge.
+func BroadcastInvalidateTenantPlan(tenantId int) {
+	InvalidateTenantPlanCache(tenantId)
+	if err := common.PublishInvalidate(common.InvalidateMessage{
+		Type: "tenant_plan",
+		Key:  strconv.Itoa(tenantId),
+	}); err != nil {
+		common.SysError(fmt.Sprintf("BroadcastInvalidateTenantPlan publish failed tenant=%d: %s", tenantId, err.Error()))
+	}
 }
 
 // ClearTenantPlanCache removes all cached tenant plans.
@@ -162,7 +186,7 @@ func UpsertTenantPlan(plan *TenantPlan) error {
 		}
 	}
 
-	InvalidateTenantPlanCache(plan.TenantId)
+	BroadcastInvalidateTenantPlan(plan.TenantId)
 	return nil
 }
 

@@ -16,6 +16,7 @@ type CacheReloader interface {
 	ReloadChannelCache()
 	ReloadTenantRoutingCache(tenantId int)
 	InvalidateTenantOptionKey(tenantId int, key string)
+	InvalidateTenantPlan(tenantId int)
 }
 
 type modelReloader struct{}
@@ -27,6 +28,11 @@ func (modelReloader) InvalidateTenantOptionKey(tenantId int, key string) {
 	// 注意：直接操作底层 tenantOptionCache，不走对外的 InvalidateTenantOptionCacheKey
 	// — 后者会再 publish 一次，N 个 peer 互相反弹会形成网状放大。
 	tenantOptionCache.Delete(cacheKey(tenantId, key))
+}
+func (modelReloader) InvalidateTenantPlan(id int) {
+	// 同上：只清本地 sync.Map，不调 BroadcastInvalidateTenantPlan，
+	// 否则订阅端会再 publish 一轮，造成节点之间互相反弹。
+	model.InvalidateTenantPlanCache(id)
 }
 
 // StartCacheInvalidator runs the subscriber loop in the current goroutine.
@@ -69,6 +75,14 @@ func startCacheInvalidatorWith(ctx context.Context, r CacheReloader) {
 			}
 			r.InvalidateTenantOptionKey(tid, parts[1])
 			common.SysLog("invalidate tenant_option evict: " + msg.Key)
+		case "tenant_plan":
+			id, err := strconv.Atoi(msg.Key)
+			if err != nil {
+				common.SysLog("invalidate: bad tenant_plan tenant id: " + msg.Key)
+				return
+			}
+			r.InvalidateTenantPlan(id)
+			common.SysLog("invalidate tenant_plan evict: " + msg.Key)
 		default:
 			common.SysLog("invalidate: unknown type: " + msg.Type)
 		}

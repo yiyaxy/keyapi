@@ -490,7 +490,7 @@ func DeleteTenant(c *gin.Context) {
 		return
 	}
 	model.ClearTenantCache()
-	model.InvalidateTenantPlanCache(id)
+	model.BroadcastInvalidateTenantPlan(id)
 	common.ApiSuccess(c, nil)
 }
 
