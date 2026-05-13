@@ -70,7 +70,10 @@ var defaultVendorIcons = map[string]string{
 // initDefaultVendorMapping 简化的默认供应商映射
 func initDefaultVendorMapping(metaMap map[string]*Model, vendorMap map[int]*Vendor, enableAbilities []AbilityWithChannel) {
 	for _, ability := range enableAbilities {
-		modelName := ability.Model
+		modelName := strings.TrimSpace(ability.Model)
+		if modelName == "" {
+			continue
+		}
 		if _, exists := metaMap[modelName]; exists {
 			continue
 		}

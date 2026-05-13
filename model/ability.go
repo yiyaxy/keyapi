@@ -157,6 +157,8 @@ func getChannelQuery(group string, model string, retry int, tenantId int) (*gorm
 }
 
 func GetChannel(group string, model string, retry int, tenantId ...int) (*Channel, error) {
+	group = strings.TrimSpace(group)
+	model = strings.TrimSpace(model)
 	var abilities []Ability
 	tid := 0
 	if len(tenantId) > 0 {
@@ -215,7 +217,15 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 	abilitySet := make(map[string]struct{})
 	abilities := make([]Ability, 0, len(models_))
 	for _, model := range models_ {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
 		for _, group := range groups_ {
+			group = strings.TrimSpace(group)
+			if group == "" {
+				continue
+			}
 			key := group + "|" + model
 			if _, exists := abilitySet[key]; exists {
 				continue
@@ -252,6 +262,11 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 func createAbilityRows(db *gorm.DB, abilities []Ability) error {
 	rows := make([]map[string]interface{}, 0, len(abilities))
 	for _, ability := range abilities {
+		ability.Group = strings.TrimSpace(ability.Group)
+		ability.Model = strings.TrimSpace(ability.Model)
+		if ability.Group == "" || ability.Model == "" {
+			continue
+		}
 		// 平台渠道的 ability 必须 tenant_id=0，避免被缓存按 tenant 前缀分桶 /
 		// 被守门员按租户列过滤。调用方即便传进来一个继承自 channel 的非 0 值
 		// （历史脏数据、未走 AddChannel 归零路径），这里统一收口。
@@ -324,7 +339,15 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	abilitySet := make(map[string]struct{})
 	abilities := make([]Ability, 0, len(models_))
 	for _, model := range models_ {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
 		for _, group := range groups_ {
+			group = strings.TrimSpace(group)
+			if group == "" {
+				continue
+			}
 			key := group + "|" + model
 			if _, exists := abilitySet[key]; exists {
 				continue

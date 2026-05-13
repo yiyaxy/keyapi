@@ -84,6 +84,7 @@ func GetVendors() []PricingVendor {
 }
 
 func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
+	model = strings.TrimSpace(model)
 	if model == "" {
 		return make([]constant.EndpointType, 0)
 	}
@@ -111,8 +112,12 @@ func updatePricing() {
 	containsList := make([]*Model, 0)
 	for i := range allMeta {
 		m := &allMeta[i]
+		modelName := strings.TrimSpace(m.ModelName)
+		if modelName == "" {
+			continue
+		}
 		if m.NameRule == NameRuleExact {
-			metaMap[m.ModelName] = m
+			metaMap[modelName] = m
 		} else {
 			switch m.NameRule {
 			case NameRulePrefix:
@@ -127,28 +132,52 @@ func updatePricing() {
 
 	// 将非精确规则模型匹配到 metaMap
 	for _, m := range prefixList {
+		metaName := strings.TrimSpace(m.ModelName)
+		if metaName == "" {
+			continue
+		}
 		for _, pricingModel := range enableAbilities {
-			if strings.HasPrefix(pricingModel.Model, m.ModelName) {
-				if _, exists := metaMap[pricingModel.Model]; !exists {
-					metaMap[pricingModel.Model] = m
+			pricingModelName := strings.TrimSpace(pricingModel.Model)
+			if pricingModelName == "" {
+				continue
+			}
+			if strings.HasPrefix(pricingModelName, metaName) {
+				if _, exists := metaMap[pricingModelName]; !exists {
+					metaMap[pricingModelName] = m
 				}
 			}
 		}
 	}
 	for _, m := range suffixList {
+		metaName := strings.TrimSpace(m.ModelName)
+		if metaName == "" {
+			continue
+		}
 		for _, pricingModel := range enableAbilities {
-			if strings.HasSuffix(pricingModel.Model, m.ModelName) {
-				if _, exists := metaMap[pricingModel.Model]; !exists {
-					metaMap[pricingModel.Model] = m
+			pricingModelName := strings.TrimSpace(pricingModel.Model)
+			if pricingModelName == "" {
+				continue
+			}
+			if strings.HasSuffix(pricingModelName, metaName) {
+				if _, exists := metaMap[pricingModelName]; !exists {
+					metaMap[pricingModelName] = m
 				}
 			}
 		}
 	}
 	for _, m := range containsList {
+		metaName := strings.TrimSpace(m.ModelName)
+		if metaName == "" {
+			continue
+		}
 		for _, pricingModel := range enableAbilities {
-			if strings.Contains(pricingModel.Model, m.ModelName) {
-				if _, exists := metaMap[pricingModel.Model]; !exists {
-					metaMap[pricingModel.Model] = m
+			pricingModelName := strings.TrimSpace(pricingModel.Model)
+			if pricingModelName == "" {
+				continue
+			}
+			if strings.Contains(pricingModelName, metaName) {
+				if _, exists := metaMap[pricingModelName]; !exists {
+					metaMap[pricingModelName] = m
 				}
 			}
 		}
@@ -179,12 +208,17 @@ func updatePricing() {
 	modelGroupsMap := make(map[string]*types.Set[string])
 
 	for _, ability := range enableAbilities {
-		groups, ok := modelGroupsMap[ability.Model]
+		modelName := strings.TrimSpace(ability.Model)
+		groupName := strings.TrimSpace(ability.Group)
+		if modelName == "" || groupName == "" {
+			continue
+		}
+		groups, ok := modelGroupsMap[modelName]
 		if !ok {
 			groups = types.NewSet[string]()
-			modelGroupsMap[ability.Model] = groups
+			modelGroupsMap[modelName] = groups
 		}
-		groups.Add(ability.Group)
+		groups.Add(groupName)
 	}
 
 	//这里使用切片而不是Set，因为一个模型可能支持多个端点类型，并且第一个端点是优先使用端点
@@ -192,14 +226,18 @@ func updatePricing() {
 
 	// 先根据已有能力填充原生端点
 	for _, ability := range enableAbilities {
-		endpoints := modelSupportEndpointsStr[ability.Model]
-		channelTypes := common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
+		modelName := strings.TrimSpace(ability.Model)
+		if modelName == "" {
+			continue
+		}
+		endpoints := modelSupportEndpointsStr[modelName]
+		channelTypes := common.GetEndpointTypesByChannelType(ability.ChannelType, modelName)
 		for _, channelType := range channelTypes {
 			if !common.StringsContains(endpoints, string(channelType)) {
 				endpoints = append(endpoints, string(channelType))
 			}
 		}
-		modelSupportEndpointsStr[ability.Model] = endpoints
+		modelSupportEndpointsStr[modelName] = endpoints
 	}
 
 	// 再补充模型自定义端点：若配置有效则替换默认端点，不做合并

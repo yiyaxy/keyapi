@@ -1,6 +1,7 @@
 package ratio_setting
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -140,6 +141,8 @@ var defaultModelRatio = map[string]float64{
 	"claude-3-7-sonnet-20250219-thinking":       1.5,
 	"claude-sonnet-4-20250514":                  1.5,
 	"claude-sonnet-4-5-20250929":                1.5,
+	"claude-sonnet-4-6":                         1.5,
+	"claude-sonnet-4-6-thinking":                1.5,
 	"claude-opus-4-5-20251101":                  2.5,
 	"claude-opus-4-6":                           2.5,
 	"claude-opus-4-6-max":                       2.5,
@@ -354,7 +357,7 @@ func ModelPrice2JSONString() string {
 }
 
 func UpdateModelPriceByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(modelPriceMap, jsonStr, InvalidateExposedDataCache)
+	return loadNormalizedFloatMapFromJSONString(modelPriceMap, jsonStr, InvalidateExposedDataCache)
 }
 
 // GetModelPrice 返回模型的价格，如果模型不存在则返回-1，false
@@ -383,7 +386,7 @@ func GetModelPrice(name string, printErr bool) (float64, bool) {
 }
 
 func UpdateModelRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(modelRatioMap, jsonStr, InvalidateExposedDataCache)
+	return loadNormalizedFloatMapFromJSONString(modelRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
 // 处理带有思考预算的模型名称，方便统一定价
@@ -431,7 +434,7 @@ func CompletionRatio2JSONString() string {
 }
 
 func UpdateCompletionRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(completionRatioMap, jsonStr, InvalidateExposedDataCache)
+	return loadNormalizedFloatMapFromJSONString(completionRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
 func GetCompletionRatio(name string) float64 {
@@ -661,10 +664,11 @@ func ImageRatio2JSONString() string {
 }
 
 func UpdateImageRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonString(imageRatioMap, jsonStr)
+	return loadNormalizedFloatMapFromJSONString(imageRatioMap, jsonStr, nil)
 }
 
 func GetImageRatio(name string) (float64, bool) {
+	name = FormatMatchingModelName(name)
 	ratio, ok := imageRatioMap.Get(name)
 	if !ok {
 		return 1, false // Default to 1 if not found
@@ -677,7 +681,7 @@ func AudioRatio2JSONString() string {
 }
 
 func UpdateAudioRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(audioRatioMap, jsonStr, InvalidateExposedDataCache)
+	return loadNormalizedFloatMapFromJSONString(audioRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
 func AudioCompletionRatio2JSONString() string {
@@ -685,7 +689,7 @@ func AudioCompletionRatio2JSONString() string {
 }
 
 func UpdateAudioCompletionRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(audioCompletionRatioMap, jsonStr, InvalidateExposedDataCache)
+	return loadNormalizedFloatMapFromJSONString(audioCompletionRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
 func GetModelRatioCopy() map[string]float64 {
@@ -700,8 +704,9 @@ func GetCompletionRatioCopy() map[string]float64 {
 	return completionRatioMap.ReadAll()
 }
 
-// 转换模型名，减少渠道必须配置各种带参数模型
+// FormatMatchingModelName normalizes model names for pricing lookup.
 func FormatMatchingModelName(name string) string {
+	name = strings.TrimSpace(name)
 
 	if strings.HasPrefix(name, "gemini-2.5-flash-lite") {
 		name = handleThinkingBudgetModel(name, "gemini-2.5-flash-lite", "gemini-2.5-flash-lite-thinking-*")
@@ -731,4 +736,54 @@ func GetModelRatioOrPrice(model string) (float64, bool, bool) { // price or rati
 		return modelRatio, false, true
 	}
 	return 37.5, false, false
+}
+
+func normalizeModelConfigKey(name string) string {
+	return strings.TrimSpace(name)
+}
+
+func normalizeFloatMapKeys(raw map[string]float64) map[string]float64 {
+	normalized := make(map[string]float64, len(raw))
+	exactKeys := make(map[string]bool, len(raw))
+
+	keys := make([]string, 0, len(raw))
+	for key := range raw {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		normalizedKey := normalizeModelConfigKey(key)
+		if normalizedKey == "" || normalizedKey != key {
+			continue
+		}
+		normalized[normalizedKey] = raw[key]
+		exactKeys[normalizedKey] = true
+	}
+
+	for _, key := range keys {
+		normalizedKey := normalizeModelConfigKey(key)
+		if normalizedKey == "" || normalizedKey == key || exactKeys[normalizedKey] {
+			continue
+		}
+		if _, exists := normalized[normalizedKey]; exists {
+			continue
+		}
+		normalized[normalizedKey] = raw[key]
+	}
+
+	return normalized
+}
+
+func loadNormalizedFloatMapFromJSONString(m *types.RWMap[string, float64], jsonStr string, onSuccess func()) error {
+	raw := make(map[string]float64)
+	if err := common.Unmarshal([]byte(jsonStr), &raw); err != nil {
+		return err
+	}
+	m.Clear()
+	m.AddAll(normalizeFloatMapKeys(raw))
+	if onSuccess != nil {
+		onSuccess()
+	}
+	return nil
 }

@@ -1,9 +1,12 @@
 package model
 
+import "strings"
+
 func GetModelEnableGroups(modelName string) []string {
 	// 确保缓存最新
 	GetPricing()
 
+	modelName = strings.TrimSpace(modelName)
 	if modelName == "" {
 		return make([]string, 0)
 	}
@@ -21,6 +24,7 @@ func GetModelEnableGroups(modelName string) []string {
 func GetModelQuotaTypes(modelName string) []int {
 	GetPricing()
 
+	modelName = strings.TrimSpace(modelName)
 	modelEnableGroupsLock.RLock()
 	quota, ok := modelQuotaTypeMap[modelName]
 	modelEnableGroupsLock.RUnlock()

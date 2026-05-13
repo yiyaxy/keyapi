@@ -324,12 +324,16 @@ func FetchUpstreamRatios(c *gin.Context) {
 			modelPriceMap := make(map[string]float64)
 
 			for _, item := range pricingItems {
+				modelName := strings.TrimSpace(item.ModelName)
+				if modelName == "" {
+					continue
+				}
 				if item.QuotaType == 1 {
-					modelPriceMap[item.ModelName] = item.ModelPrice
+					modelPriceMap[modelName] = item.ModelPrice
 				} else {
-					modelRatioMap[item.ModelName] = item.ModelRatio
+					modelRatioMap[modelName] = item.ModelRatio
+					completionRatioMap[modelName] = item.CompletionRatio
 					// completionRatio 可能为 0，此时也直接赋值，保持与上游一致
-					completionRatioMap[item.ModelName] = item.CompletionRatio
 				}
 			}
 
