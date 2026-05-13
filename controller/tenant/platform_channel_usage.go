@@ -82,6 +82,6 @@ func ResetPlatformChannelUsage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	model.InvalidateTenantPlanCache(id)
+	model.BroadcastInvalidateTenantPlan(id)
 	common.ApiSuccess(c, gin.H{"ok": true})
 }

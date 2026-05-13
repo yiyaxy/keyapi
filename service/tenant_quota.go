@@ -338,7 +338,7 @@ func IncrementTenantPlatformChannelUsed(tenantId int, quotaDelta int) {
 			return
 		}
 		if res.RowsAffected > 0 {
-			model.InvalidateTenantPlanCache(tenantId)
+			model.BroadcastInvalidateTenantPlan(tenantId)
 			return
 		}
 	}

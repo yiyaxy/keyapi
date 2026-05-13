@@ -148,7 +148,7 @@ func RunTenantPlanStateMachine() {
 				p.TenantId, err.Error()))
 			continue
 		}
-		model.InvalidateTenantPlanCache(p.TenantId)
+		model.BroadcastInvalidateTenantPlan(p.TenantId)
 		// 写告警（租户计划到期停服会被下次 sweep 产出 plan_disabled 告警，这里主动写
 		// 一条历史条目便于前端显示）
 		_, _ = model.UpsertTenantAlert(p.TenantId, "plan_expired_disabled", "critical",

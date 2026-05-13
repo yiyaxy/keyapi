@@ -546,7 +546,7 @@ func applySubSuccess(tx *gorm.DB, order *model.PaymentOrder, postCommit *[]func(
 	// stale DB and then re-populating the cache with the old values.
 	tid := order.TenantId
 	*postCommit = append(*postCommit, func() {
-		model.InvalidateTenantPlanCache(tid)
+		model.BroadcastInvalidateTenantPlan(tid)
 	})
 	return nil
 }
