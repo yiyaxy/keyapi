@@ -22,6 +22,7 @@ import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState 
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { MarkdownContent } from '@/components/common/MarkdownContent';
 import { RechargeCard } from '@/components/topup/RechargeCard';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -1572,13 +1573,20 @@ export function MobileChat({
               >
                 <div
                   className={cn(
-                    'max-w-[86%] whitespace-pre-wrap rounded-lg px-3 py-2 text-13 leading-6',
+                    'max-w-[86%] rounded-lg px-3 py-2 text-13 leading-6',
                     message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'whitespace-pre-wrap bg-primary text-primary-foreground'
                       : 'border border-line bg-bg-0 text-fg-0'
                   )}
                 >
-                  <div>{message.content}</div>
+                  {message.role === 'assistant' ? (
+                    <MarkdownContent
+                      content={message.content}
+                      className='prose prose-chat max-w-none text-13 leading-6'
+                    />
+                  ) : (
+                    <div>{message.content}</div>
+                  )}
                   {message.images?.length ? (
                     <div className='mt-2 grid gap-2'>
                       {message.images.map((src) => (
