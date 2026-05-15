@@ -40,6 +40,7 @@ export type AuthContextValue = {
     email: string;
     password: string;
     verification_code: string;
+    aff_code?: string;
   }) => Promise<void>;
   logout: (opts?: { silent?: boolean }) => Promise<void>;
 };

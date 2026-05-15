@@ -132,6 +132,9 @@ function FieldList({
                 />
               );
             }
+            if (f.kind === 'secret') {
+              return <SecretRow key={f.key} field={f} />;
+            }
             return (
               <TextRow
                 key={f.key}

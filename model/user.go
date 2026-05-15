@@ -58,6 +58,8 @@ type User struct {
 	Remark                    string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer            string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
 	IpSet                     string         `json:"ip_set,omitempty" gorm:"type:text;column:ip_set;default:''"`
+	// Used by email/password self-registration to avoid free quota grants.
+	SkipRegistrationQuota bool `json:"-" gorm:"-:all"`
 	// MergedInto 非零时，表示本账户已被合并到 MergedInto 指向的主账户，
 	// 账户随之软删除、WeChatId 清空，历史数据仍可追溯到此行（审计用）。
 	MergedInto int `json:"merged_into,omitempty" gorm:"type:int;default:0;index"`
@@ -530,7 +532,10 @@ func (user *User) Insert(inviterId int) error {
 			return err
 		}
 	}
-	newUserQuota := getNewUserQuotaForTenant(user.TenantId)
+	newUserQuota := 0
+	if !user.SkipRegistrationQuota {
+		newUserQuota = getNewUserQuotaForTenant(user.TenantId)
+	}
 	user.Quota = newUserQuota
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
@@ -569,7 +574,7 @@ func (user *User) Insert(inviterId int) error {
 	}
 	if inviterId != 0 {
 		rebateSetting := GetEffectiveRebateSetting(inviterId, user.TenantId)
-		if rebateSetting.InviteeReward > 0 {
+		if !user.SkipRegistrationQuota && rebateSetting.InviteeReward > 0 {
 			_ = IncreaseUserQuota(user.Id, rebateSetting.InviteeReward, true, user.TenantId)
 			RecordLogWithTenant(user.TenantId, user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(rebateSetting.InviteeReward)))
 		}

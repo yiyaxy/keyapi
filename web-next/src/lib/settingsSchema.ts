@@ -199,6 +199,7 @@ export const SETTINGS_GROUPS: Group[] = [
       f('SMTPAccount', 'text', { zh: 'SMTP 账号', en: 'SMTP account' }),
       f('SMTPFrom', 'text', { zh: '发件人地址', en: 'SMTP from' }),
       f('SMTPSSLEnabled', 'bool', { zh: '启用 SSL', en: 'Use SSL' }),
+      f('SMTPToken', 'secret', { zh: 'SMTP 密码 / 授权码', en: 'SMTP password / token' }),
     ],
   },
   {

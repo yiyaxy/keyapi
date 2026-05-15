@@ -13,6 +13,7 @@ type RegisterBody = {
   email: string;
   password: string;
   verification_code: string;
+  aff_code?: string;
 };
 type AppTokenWhoAmI = {
   id: number;

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -18,8 +19,16 @@ func setupTenantMailTestDB(t *testing.T) func() {
 	prevUsingPostgreSQL := common.UsingPostgreSQL
 	prevUsingMySQL := common.UsingMySQL
 	prevOptionMap := common.OptionMap
+	prevSMTPServer := common.SMTPServer
+	prevSMTPPort := common.SMTPPort
+	prevSMTPSSLEnabled := common.SMTPSSLEnabled
+	prevSMTPAccount := common.SMTPAccount
+	prevSMTPFrom := common.SMTPFrom
+	prevSMTPToken := common.SMTPToken
+	prevSystemName := common.SystemName
 
 	model.InitColForTest()
+	tenantOptionCache = sync.Map{}
 	common.UsingSQLite = true
 	common.UsingPostgreSQL = false
 	common.UsingMySQL = false
@@ -44,9 +53,17 @@ func setupTenantMailTestDB(t *testing.T) func() {
 		common.UsingSQLite = prevUsingSQLite
 		common.UsingPostgreSQL = prevUsingPostgreSQL
 		common.UsingMySQL = prevUsingMySQL
+		common.SMTPServer = prevSMTPServer
+		common.SMTPPort = prevSMTPPort
+		common.SMTPSSLEnabled = prevSMTPSSLEnabled
+		common.SMTPAccount = prevSMTPAccount
+		common.SMTPFrom = prevSMTPFrom
+		common.SMTPToken = prevSMTPToken
+		common.SystemName = prevSystemName
 		common.OptionMapRWMutex.Lock()
 		common.OptionMap = prevOptionMap
 		common.OptionMapRWMutex.Unlock()
+		tenantOptionCache = sync.Map{}
 	}
 }
 
@@ -108,13 +125,46 @@ func TestGetTenantSMTPConfig_UsesTenantOverrides(t *testing.T) {
 	}
 }
 
-func TestCanSendTenantEmail_UsesFallbacks(t *testing.T) {
+func TestGetTenantSMTPConfig_DoesNotUsePlatformFallbackForTenant(t *testing.T) {
 	restore := setupTenantMailTestDB(t)
 	defer restore()
 
 	common.SMTPServer = "platform.smtp.example"
-	common.SMTPAccount = ""
+	common.SMTPPort = 465
+	common.SMTPSSLEnabled = true
+	common.SMTPAccount = "platform@example.com"
+	common.SMTPFrom = "platform-from@example.com"
+	common.SMTPToken = "platform-token"
+
+	cfg := GetTenantSMTPConfig(42)
+	if cfg.Server != "" {
+		t.Fatalf("tenant SMTP Server should not fallback to platform, got %q", cfg.Server)
+	}
+	if cfg.Account != "" {
+		t.Fatalf("tenant SMTP Account should not fallback to platform, got %q", cfg.Account)
+	}
+	if cfg.From != "" {
+		t.Fatalf("tenant SMTP From should not fallback to platform, got %q", cfg.From)
+	}
+	if cfg.Token != "" {
+		t.Fatalf("tenant SMTP Token should not fallback to platform, got %q", cfg.Token)
+	}
+	if CanSendTenantEmail(42) {
+		t.Fatalf("tenant without its own complete SMTP config should not be considered configured")
+	}
+}
+
+func TestCanSendTenantEmail_PlatformContextUsesPlatformConfig(t *testing.T) {
+	restore := setupTenantMailTestDB(t)
+	defer restore()
+
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["SMTPServer"] = "platform.smtp.example"
+	common.OptionMap["SMTPAccount"] = "platform@example.com"
+	common.OptionMap["SMTPToken"] = "platform-token"
+	common.OptionMapRWMutex.Unlock()
+
 	if !CanSendTenantEmail(0) {
-		t.Fatalf("expected platform SMTP fallback to be considered configured")
+		t.Fatalf("expected platform SMTP config to be considered configured without tenant context")
 	}
 }

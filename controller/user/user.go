@@ -213,12 +213,13 @@ func Register(c *gin.Context) {
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
 	cleanUser := model.User{
-		TenantId:    middleware.GetTenantId(c),
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.Username,
-		InviterId:   inviterId,
-		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+		TenantId:              middleware.GetTenantId(c),
+		Username:              user.Username,
+		Password:              user.Password,
+		DisplayName:           user.Username,
+		InviterId:             inviterId,
+		SkipRegistrationQuota: true,
+		Role:                  common.RoleCommonUser, // 明确设置角色为普通用户
 	}
 	if user.Email != "" {
 		// 邮箱统一转为小写存储，确保大小写不敏感

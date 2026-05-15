@@ -33,6 +33,7 @@ export function Login() {
   const [wechatOpen, setWechatOpen] = useState(false);
   const wechatInitializedRef = useRef(false);
   const redirect = params.get('redirect') || '/';
+  const queryString = params.toString();
   const loginMode = params.get('mode');
   const passwordLoginEnabled = cfg.password_login_enabled !== false;
   const wechatLoginEnabled = cfg.wechat_login === true || cfg.wx_mini_login === true;
@@ -77,7 +78,16 @@ export function Login() {
     <AuthLayout
       eyebrow={t('login.eyebrow')}
       title={t('login.title')}
-      footer={undefined}
+      footer={
+        cfg.register_enabled !== false && cfg.password_register_enabled !== false ? (
+          <Link
+            to={`/register${queryString ? `?${queryString}` : ''}`}
+            className='text-accent hover:underline'
+          >
+            {t('login.to_register')}
+          </Link>
+        ) : undefined
+      }
     >
       {!passwordLoginEnabled && !wechatLoginEnabled ? (
         <InlineBanner level='info' message='当前租户未开放可用的登录方式' />
