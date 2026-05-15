@@ -47,6 +47,9 @@ func TestMain(m *testing.M) {
 		&model.Tenant{},
 		&model.TenantPlan{},
 		&model.TenantAlertRecord{},
+		&model.TenantAuditLog{},
+		&model.UserIpRecord{},
+		&model.TenantMembership{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}

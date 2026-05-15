@@ -175,6 +175,7 @@ func StartTenantBillingAndPlanLoop(interval time.Duration) {
 func runTenantBillingAndPlanTick() {
 	// 1. 状态机：先处理到期
 	RunTenantPlanStateMachine()
+	RunTenantInactivitySweep()
 	// 2. 刷新/生成本月账单（为每个活跃租户）
 	tenants, err := model.ListActiveTenantsForSweep()
 	if err != nil {
