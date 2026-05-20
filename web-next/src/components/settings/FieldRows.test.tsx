@@ -210,3 +210,35 @@ describe('SelectRow', () => {
     expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
   });
 });
+
+const smtpTokenField: FieldDef = {
+  key: 'SMTPToken',
+  kind: 'secret',
+  label: { zh: 'SMTP 授权码', en: 'SMTP token' },
+};
+
+describe('SecretRow', () => {
+  test('即使未覆盖也不渲染"固化"按钮（无法固化未知明文）', () => {
+    const mutation = makeMutation();
+    wrap(
+      <SecretRow
+        field={smtpTokenField}
+        mutation={mutation}
+        overrideMeta={{ isOverridden: false, onReset: () => {} }}
+      />
+    );
+    expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
+  });
+
+  test('保存按钮在 draft 为空时 disabled', () => {
+    const mutation = makeMutation();
+    wrap(
+      <SecretRow
+        field={smtpTokenField}
+        mutation={mutation}
+        overrideMeta={{ isOverridden: false, onReset: () => {} }}
+      />
+    );
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+  });
+});
