@@ -86,12 +86,7 @@ describe('TextRow', () => {
   test('未传 overrideMeta（平台后台场景），按钮 disabled', () => {
     const mutation = makeMutation();
     wrap(
-      <TextRow
-        field={smtpServerField}
-        value='smtp.qq.com'
-        onSaved={() => {}}
-        mutation={mutation}
-      />
+      <TextRow field={smtpServerField} value='smtp.qq.com' onSaved={() => {}} mutation={mutation} />
     );
     expect(screen.getByRole('button', { name: '已保存' })).toBeDisabled();
   });
@@ -141,12 +136,7 @@ describe('BoolRow', () => {
   test('未传 overrideMeta（平台后台）不渲染"固化"按钮', () => {
     const mutation = makeMutation();
     wrap(
-      <BoolRow
-        field={drawingEnabledField}
-        value='true'
-        onSaved={() => {}}
-        mutation={mutation}
-      />
+      <BoolRow field={drawingEnabledField} value='true' onSaved={() => {}} mutation={mutation} />
     );
     expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
   });
@@ -200,12 +190,7 @@ describe('SelectRow', () => {
   test('未传 overrideMeta 不渲染"固化"按钮', () => {
     const mutation = makeMutation();
     wrap(
-      <SelectRow
-        field={quotaDisplayField}
-        value='cny'
-        onSaved={() => {}}
-        mutation={mutation}
-      />
+      <SelectRow field={quotaDisplayField} value='cny' onSaved={() => {}} mutation={mutation} />
     );
     expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
   });
