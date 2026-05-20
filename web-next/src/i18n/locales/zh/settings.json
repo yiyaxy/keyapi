@@ -7,6 +7,7 @@
   "action.saving": "保存中…",
   "action.revert": "还原",
   "action.reset": "恢复默认",
+  "action.force_override": "固化为租户值",
   "action.force_logout": "强制所有用户登出",
   "override.tenant": "租户覆盖",
   "override.platform": "平台默认",
