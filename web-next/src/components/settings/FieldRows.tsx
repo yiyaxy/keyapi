@@ -187,6 +187,8 @@ export function TextRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
   const initial = field.kind === 'json' ? isPrettyJson(value) : value;
   const [draft, setDraft] = useState(initial);
   const dirty = draft !== initial;
+  const canForceOverride = !!overrideMeta && !overrideMeta.isOverridden;
+  const inForceMode = !dirty && canForceOverride;
   const long = field.kind === 'longText' || field.kind === 'json';
 
   function save() {
@@ -213,6 +215,14 @@ export function TextRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
     );
   }
 
+  const saveLabel = update.isPending
+    ? t('action.saving')
+    : inForceMode
+      ? t('action.force_override')
+      : dirty
+        ? t('action.save')
+        : t('action.saved');
+
   return (
     <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
       <div className='flex items-center justify-between gap-4'>
@@ -230,8 +240,13 @@ export function TextRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
             </Button>
           )}
           <ResetButton meta={overrideMeta} />
-          <Button type='button' size='sm' disabled={!dirty || update.isPending} onClick={save}>
-            {update.isPending ? t('action.saving') : dirty ? t('action.save') : t('action.saved')}
+          <Button
+            type='button'
+            size='sm'
+            disabled={(!dirty && !canForceOverride) || update.isPending}
+            onClick={save}
+          >
+            {saveLabel}
           </Button>
         </div>
       </div>
