@@ -151,3 +151,62 @@ describe('BoolRow', () => {
     expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
   });
 });
+
+const quotaDisplayField: FieldDef = {
+  key: 'general_setting.quota_display_type',
+  kind: 'select',
+  label: { zh: '额度显示', en: 'Quota display' },
+  options: [
+    { value: 'usd', label: { zh: '美元', en: 'USD' } },
+    { value: 'cny', label: { zh: '人民币', en: 'CNY' } },
+  ],
+};
+
+describe('SelectRow', () => {
+  test('未覆盖时渲染"固化为租户值"按钮，点击提交当前 value', async () => {
+    const mutation = makeMutation();
+    const user = userEvent.setup();
+    wrap(
+      <SelectRow
+        field={quotaDisplayField}
+        value='cny'
+        onSaved={() => {}}
+        mutation={mutation}
+        overrideMeta={{ isOverridden: false, onReset: () => {} }}
+      />
+    );
+    const btn = screen.getByRole('button', { name: '固化为租户值' });
+    await user.click(btn);
+    expect(mutation.mutate).toHaveBeenCalledWith(
+      { key: 'general_setting.quota_display_type', value: 'cny' },
+      expect.any(Object)
+    );
+  });
+
+  test('已覆盖时不渲染"固化"按钮', () => {
+    const mutation = makeMutation();
+    wrap(
+      <SelectRow
+        field={quotaDisplayField}
+        value='cny'
+        onSaved={() => {}}
+        mutation={mutation}
+        overrideMeta={{ isOverridden: true, onReset: () => {} }}
+      />
+    );
+    expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
+  });
+
+  test('未传 overrideMeta 不渲染"固化"按钮', () => {
+    const mutation = makeMutation();
+    wrap(
+      <SelectRow
+        field={quotaDisplayField}
+        value='cny'
+        onSaved={() => {}}
+        mutation={mutation}
+      />
+    );
+    expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
+  });
+});
