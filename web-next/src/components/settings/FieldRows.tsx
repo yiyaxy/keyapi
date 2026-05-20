@@ -92,6 +92,7 @@ export function BoolRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
   const fallback = useUpdateOption();
   const update = mutation ?? fallback;
   const checked = coerceBool(value);
+  const canForceOverride = !!overrideMeta && !overrideMeta.isOverridden;
   return (
     <div className='flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0'>
       <div className='min-w-0 flex-1'>
@@ -107,6 +108,28 @@ export function BoolRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
         )}
       </div>
       <div className='flex shrink-0 items-center gap-1'>
+        {canForceOverride && (
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={update.isPending}
+            onClick={() => {
+              update.mutate(
+                { key: field.key, value },
+                {
+                  onSuccess: () => {
+                    onSaved(value);
+                    toast.success(t('toast.save.success'));
+                  },
+                  onError: (e) => toast.error((e as Error).message),
+                }
+              );
+            }}
+          >
+            {t('action.force_override')}
+          </Button>
+        )}
         <ResetButton meta={overrideMeta} />
         <Switch
           checked={checked}

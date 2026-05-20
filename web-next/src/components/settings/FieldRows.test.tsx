@@ -96,3 +96,58 @@ describe('TextRow', () => {
     expect(screen.getByRole('button', { name: '已保存' })).toBeDisabled();
   });
 });
+
+const drawingEnabledField: FieldDef = {
+  key: 'DrawingEnabled',
+  kind: 'bool',
+  label: { zh: '启用绘图', en: 'Drawing enabled' },
+};
+
+describe('BoolRow', () => {
+  test('未覆盖时渲染"固化为租户值"按钮，点击提交当前 value', async () => {
+    const mutation = makeMutation();
+    const user = userEvent.setup();
+    wrap(
+      <BoolRow
+        field={drawingEnabledField}
+        value='true'
+        onSaved={() => {}}
+        mutation={mutation}
+        overrideMeta={{ isOverridden: false, onReset: () => {} }}
+      />
+    );
+    const btn = screen.getByRole('button', { name: '固化为租户值' });
+    await user.click(btn);
+    expect(mutation.mutate).toHaveBeenCalledWith(
+      { key: 'DrawingEnabled', value: 'true' },
+      expect.any(Object)
+    );
+  });
+
+  test('已覆盖时不渲染"固化"按钮', () => {
+    const mutation = makeMutation();
+    wrap(
+      <BoolRow
+        field={drawingEnabledField}
+        value='true'
+        onSaved={() => {}}
+        mutation={mutation}
+        overrideMeta={{ isOverridden: true, onReset: () => {} }}
+      />
+    );
+    expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
+  });
+
+  test('未传 overrideMeta（平台后台）不渲染"固化"按钮', () => {
+    const mutation = makeMutation();
+    wrap(
+      <BoolRow
+        field={drawingEnabledField}
+        value='true'
+        onSaved={() => {}}
+        mutation={mutation}
+      />
+    );
+    expect(screen.queryByRole('button', { name: '固化为租户值' })).not.toBeInTheDocument();
+  });
+});
