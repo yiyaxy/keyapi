@@ -204,7 +204,11 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		var cachedTokensWithRatio decimal.Decimal
 		if !dCacheTokens.IsZero() {
 			if !summary.IsClaudeUsageSemantic && !legacyClaudeDerived {
-				baseTokens = baseTokens.Sub(dCacheTokens)
+				// OpenAI 语义下 cache_tokens 约定是 prompt_tokens 的子集，但部分上游
+				// （如把 Claude 包成 OpenAI 协议的代理）会上报超过 prompt_tokens 的
+				// 缓存读取量。如果直接相减 baseTokens 会变负，最终把 quota 也算成负数，
+				// 引发"账单被强制保底为 1 显示成 0、平台成本反而落库成负值"的怪象。
+				baseTokens = baseTokens.Sub(decimal.Min(baseTokens, dCacheTokens))
 			}
 			cachedTokensWithRatio = dCacheTokens.Mul(dCacheRatio)
 		}
@@ -213,7 +217,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		hasSplitCacheCreationTokens := summary.CacheCreationTokens5m > 0 || summary.CacheCreationTokens1h > 0
 		if !dCachedCreationTokens.IsZero() || hasSplitCacheCreationTokens {
 			if !summary.IsClaudeUsageSemantic && !legacyClaudeDerived {
-				baseTokens = baseTokens.Sub(dCachedCreationTokens)
+				baseTokens = baseTokens.Sub(decimal.Min(baseTokens, dCachedCreationTokens))
 				cachedCreationTokensWithRatio = dCachedCreationTokens.Mul(dCacheCreationRatio)
 			} else {
 				remaining := summary.CacheCreationTokens - summary.CacheCreationTokens5m - summary.CacheCreationTokens1h

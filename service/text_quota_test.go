@@ -316,3 +316,41 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.Equal(t, 172, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
 }
+
+// Regression: an upstream serving Claude via OpenAI-compatible protocol can
+// report cache_tokens > prompt_tokens (Anthropic-style cache read counts).
+// Before the clamp fix baseTokens would underflow to a negative value, the
+// final quota would be floored to 1 (rendering as "¥0.00" in the UI) and the
+// platform-cost ledger would receive a negative number.
+func TestCalculateTextQuotaSummaryClampsCacheReadOverflow(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatOpenAI,
+		OriginModelName: "claude-sonnet-4-6",
+		PriceData: types.PriceData{
+			ModelRatio:      1.5,
+			CompletionRatio: 5,
+			CacheRatio:      0.1,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     26325,
+		CompletionTokens: 292,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 35070, // exceeds prompt_tokens
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// baseTokens clamped to 0 instead of -8745.
+	// quota = (0 + 35070*0.1 + 292*5) * 1.5 = (3507 + 1460) * 1.5 = 7450.5 -> 7451
+	require.Equal(t, 7451, summary.Quota)
+	require.GreaterOrEqual(t, summary.Quota, 0)
+}
