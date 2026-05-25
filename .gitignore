@@ -8,7 +8,7 @@ upload
 *.exe
 *.db
 build
-.build/
+/dist/
 *.db-journal
 /logs
 logs-slave/

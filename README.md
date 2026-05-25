@@ -2,7 +2,7 @@
 
 New API 是一套面向多租户、渠道分发和 OpenAI-compatible 模型调用的中转站系统。项目包含 Go 后端、`web-next` 管理端、`wxapp` 小程序端，以及 `apps/` 下的独立应用。
 
-这份文档面向开发、部署和运维人员，重点说明本仓库的本地开发、构建验证和服务器 `.build` 离线打包部署方式。面向租户用户、分销商和普通用户的使用说明请看 [UserReadme.md](UserReadme.md)。
+这份文档面向开发、部署和运维人员，重点说明本仓库的本地开发、构建验证和服务器 `dist/` 离线打包部署方式。面向租户用户、分销商和普通用户的使用说明请看 [UserReadme.md](UserReadme.md)。
 
 ## 项目结构
 
@@ -20,6 +20,7 @@ New API 是一套面向多租户、渠道分发和 OpenAI-compatible 模型调�
 |-- docker-compose.yml       # Docker Compose 参考配置
 |-- Dockerfile               # 容器镜像参考构建文件
 |-- .env.example             # 后端环境变量示例
+|-- build.ps1                # Windows 一键打包脚本，输出 dist/
 |-- new-api.service          # systemd 服务示例
 |-- README.md                # 当前文档
 `-- UserReadme.md            # 面向最终用户的说明
@@ -98,76 +99,78 @@ cd apps/noterx
 # 查看 apps/noterx/README.md
 ```
 
-## 生产部署推荐：`.build` 离线包
+## 生产部署推荐：`build.ps1` 离线包
 
-推荐在本地或 CI 机器上完成编译，把部署产物统一放进根目录 `.build/`，再上传到服务器。这样服务器不需要安装 Node.js，也不需要在生产机上拉取前端依赖。
+推荐在本地或 CI 机器上完成编译，把部署产物统一放进根目录 `dist/`，再上传到服务器。这样服务器不需要安装 Go、Node.js，也不需要在生产机上拉取前端依赖。
+
+当前仓库已提供 `build.ps1`，这是 Windows 环境下的主打包入口：
+
+```powershell
+.\build.ps1                  # 默认构建 linux/amd64
+.\build.ps1 -Arch arm64      # 构建 ARM64 Linux 服务器产物
+.\build.ps1 -SkipWeb         # 跳过前端构建，复用已有 web-next/dist
+```
+
+脚本会检查 Go、Node.js/npm，构建 `web-next`，再交叉编译 Linux 后端二进制。`-SkipWeb` 只适合前端没有变化且 `web-next/dist/index.html` 已存在的场景。
 
 ### 产物目录约定
 
 ```text
-.build/
+dist/
 |-- new-api                  # Linux 可执行文件
 |-- .env.example             # 环境变量模板，部署后复制为 .env
-|-- new-api.service          # systemd 示例，可按服务器路径调整
-|-- web-next/
-|   `-- dist/                # 管理端静态资源
-|-- docs/                    # 可选，部署说明或变更记录
-`-- package-info.txt         # 可选，记录构建时间、分支、commit
 ```
 
-`web-next/dist` 必须和 `new-api` 放在同一个部署目录下的 `web-next/dist` 路径，否则后端无法正确提供管理端页面。
+注意：`build.ps1` 当前只把后端二进制和 `.env.example` 复制到根目录 `dist/`，前端静态资源仍保留在源码目录的 `web-next/dist`。如果你只上传 `dist/new-api`，服务器上还需要同步 `web-next/dist`，否则后端无法正确提供管理端页面。
 
-### Linux / macOS 打包命令
+推荐上传内容：
 
-在仓库根目录执行：
-
-```bash
-rm -rf .build
-mkdir -p .build/web-next .build/docs
-
-cd web-next
-npm install
-npm run build
-cd ..
-
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o .build/new-api main.go
-
-cp -r web-next/dist .build/web-next/
-cp .env.example .build/.env.example
-cp new-api.service .build/new-api.service
-printf "built_at=%s\ncommit=%s\n" "$(date -Iseconds)" "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" > .build/package-info.txt
-
-tar -czf new-api-build.tar.gz -C .build .
+```text
+dist/new-api
+dist/.env.example
+web-next/dist/
+new-api.service              # 可选，使用 systemd 时上传
 ```
-
-如果服务器是 ARM64，把 `GOARCH=amd64` 改成 `GOARCH=arm64`。
 
 ### Windows PowerShell 打包命令
 
 在仓库根目录执行：
 
 ```powershell
-Remove-Item -Recurse -Force .build -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force .build\web-next, .build\docs | Out-Null
+.\build.ps1
+```
 
-Push-Location web-next
+ARM64 服务器：
+
+```powershell
+.\build.ps1 -Arch arm64
+```
+
+前端没有变化、只重编后端：
+
+```powershell
+.\build.ps1 -SkipWeb
+```
+
+### Linux / macOS 等价打包命令
+
+没有 PowerShell 时，可在仓库根目录手动执行等价流程：
+
+```bash
+rm -rf dist
+mkdir -p dist
+
+cd web-next
 npm install
 npm run build
-Pop-Location
+cd ..
 
-$env:GOOS = "linux"
-$env:GOARCH = "amd64"
-$env:CGO_ENABLED = "0"
-go build -ldflags "-s -w" -o .build\new-api main.go
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/new-api main.go
 
-Copy-Item -Recurse web-next\dist .build\web-next\dist
-Copy-Item .env.example .build\.env.example
-Copy-Item new-api.service .build\new-api.service
-"built_at=$(Get-Date -Format o)" | Set-Content .build\package-info.txt
-"commit=$(git rev-parse --short HEAD 2>$null)" | Add-Content .build\package-info.txt
-
-tar -czf new-api-build.tar.gz -C .build .
+cp .env.example dist/.env.example
 ```
+
+如果服务器是 ARM64，把 `GOARCH=amd64` 改成 `GOARCH=arm64`。
 
 ### 上传和部署
 
@@ -175,7 +178,13 @@ tar -czf new-api-build.tar.gz -C .build .
 
 ```bash
 mkdir -p /data/service/key-api/keyapi
-tar -xzf new-api-build.tar.gz -C /data/service/key-api/keyapi
+
+# 示例：从本机上传
+ssh user@server 'mkdir -p /data/service/key-api/keyapi/web-next'
+scp dist/new-api dist/.env.example user@server:/data/service/key-api/keyapi/
+scp -r web-next/dist user@server:/data/service/key-api/keyapi/web-next/
+scp new-api.service user@server:/data/service/key-api/keyapi/
+
 cd /data/service/key-api/keyapi
 
 cp .env.example .env
@@ -224,7 +233,7 @@ docker compose up -d --build
 
 - `docker-compose.yml` 中 `environment` 会覆盖 `env_file: .env` 里的同名变量。
 - 生产环境必须修改 PostgreSQL 默认密码、`SESSION_SECRET`、数据库地址和公开域名。
-- 当前 Dockerfile 是参考文件；如果本地仓库缺少 `VERSION` 或 `frontend_v2` 目录，优先使用上面的 `.build` 离线包方式，或先同步 Dockerfile 所需资源。
+- 当前 Dockerfile 是参考文件；如果本地仓库缺少 `VERSION` 或 `frontend_v2` 目录，优先使用上面的 `build.ps1` / `dist/` 离线包方式，或先同步 Dockerfile 所需资源。
 
 ## 关键配置
 
@@ -257,7 +266,7 @@ UserSelfTopUpEnabled=false
 - `.env` 已连接正式数据库，不使用本地测试库。
 - `SESSION_SECRET` 已设置为生产随机值。
 - `SERVER_ADDRESS` 已设置为正式访问域名。
-- `web-next/dist` 已随 `.build` 包一起部署到 `web-next/dist`。
+- `web-next/dist` 已随 `dist/new-api` 一起部署到服务器的 `web-next/dist`。
 - 后端 `/api/status` 返回 `success=true`。
 - 管理端可登录，租户、用户、渠道、模型、支付和 SMTP 配置可访问。
 - Redis、数据库、日志目录和数据目录权限正常。
