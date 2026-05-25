@@ -1,84 +1,58 @@
 # New API 项目说明
 
-New API 是一套面向多租户、分销商和模型服务分发的系统。项目包含 Go 后端、Web 管理端、小程序端，以及 `apps/` 目录下的独立应用。
+New API 是一套面向多租户、渠道分发和 OpenAI-compatible 模型调用的中转站系统。项目包含 Go 后端、`web-next` 管理端、`wxapp` 小程序端，以及 `apps/` 下的独立应用。
 
-本文档面向开发和部署人员，说明项目结构、核心功能、开发启动、构建部署和排查方法。面向分销商和租户用户的使用说明请查看 `UserReadme.md`。
+这份文档面向开发、部署和运维人员，重点说明本仓库的本地开发、构建验证和服务器 `.build` 离线打包部署方式。面向租户用户、分销商和普通用户的使用说明请看 [UserReadme.md](UserReadme.md)。
 
-## 核心功能
-
-- 多租户管理：租户、用户、余额、API Key、平台模型和配置独立管理。
-- 模型分发：支持文本大语言模型、图片模型、视频模型，模型列表可从后台接口动态获取。
-- 用户等级：不同等级可配置不同充值返利、邀请返利和折扣规则。
-- 充值和兑换：支持动态控制微信支付开关，保留统一的充值/兑换入口。
-- 分销邀请：支持邀请关系、下级管理、拉新奖励和上级充值返利。
-- 小程序端：登录、协议授权、充值兑换、API Key、签到、用户等级、分享拉新、我的下级等能力。
-- 管理端：配置租户、用户、模型、价格、等级、返利、支付、公告和业务参数。
-- LobeHub 独立应用：提供对话、图片生成、视频生成入口，接入本项目的模型网关。
-
-## 目录结构
+## 项目结构
 
 ```text
 .
-├── main.go                 # Go 后端入口
-├── controller/             # HTTP 控制器
-├── model/                  # 数据模型与数据库逻辑
-├── router/                 # API 路由
-├── service/                # 业务服务
-├── web-next/               # Web 管理端，React + Vite
-├── wxapp/                  # 小程序端，uni-app
-├── apps/                   # 独立应用，每个子项目有自己的 README.md
-├── docs/                   # 项目补充文档
-├── docker-compose.yml      # Docker Compose 部署配置
-├── .env.example            # 后端环境变量示例
-├── UserReadme.md           # 给最终用户/分销商看的使用文档
-└── README.md               # 当前开发与部署说明
+|-- main.go                  # Go 后端入口
+|-- controller/              # HTTP 控制器
+|-- model/                   # 数据模型、数据库访问和迁移
+|-- router/                  # API 路由
+|-- service/                 # 业务服务
+|-- web-next/                # Web 管理端，React + Vite
+|-- wxapp/                   # 小程序端，uni-app
+|-- apps/                    # 独立子应用，每个子目录按自己的 README 部署
+|-- docs/                    # 补充文档
+|-- docker-compose.yml       # Docker Compose 参考配置
+|-- Dockerfile               # 容器镜像参考构建文件
+|-- .env.example             # 后端环境变量示例
+|-- new-api.service          # systemd 服务示例
+|-- README.md                # 当前文档
+`-- UserReadme.md            # 面向最终用户的说明
 ```
-
-## 子项目说明
-
-主仓库里的后端、`web-next`、`wxapp` 是当前系统的核心组成部分。
-
-`apps/` 下的项目是独立项目，不和主系统共用开发命令。进入对应目录后，按该项目自己的 `README.md` 操作。
-
-| 路径 | 说明 |
-| --- | --- |
-| `apps/lobehub/` | 独立的 LobeHub 前端应用，已接入 New API 模型网关，支持对话、图片生成、视频生成 |
-| `apps/noterx/` | 独立的内容诊断应用，包含 FastAPI 后端和 React 前端 |
 
 ## 环境要求
 
-- Go 1.25 或兼容版本
-- Node.js 18+，用于 `web-next` 和 `wxapp`
-- MySQL / PostgreSQL / SQLite，按 `.env` 配置选择
-- Redis 可选，用于缓存、队列或限流相关能力
-- Docker 和 Docker Compose 可选，用于服务器部署
+- Go 1.25 或兼容版本。
+- Node.js 18+，用于 `web-next` 和 `wxapp`。
+- Bun 可选；仓库的 Dockerfile 使用 Bun 构建前端，本地也可以使用 `npm`。
+- PostgreSQL / MySQL / SQLite，按 `.env` 中的 `SQL_DSN` 配置选择。
+- Redis 可选，用于缓存、队列或限流相关能力。
+- Linux 服务器推荐使用 systemd 管理后端进程。
 
-## 后端开发
+## 本地开发
 
-1. 复制环境变量文件：
+### 1. 后端
 
 ```bash
 cp .env.example .env
-```
+# 修改 .env 中的数据库、Redis、模型服务、支付、登录等配置
 
-2. 修改 `.env` 中的数据库、Redis、模型服务、支付、登录等配置。
-
-3. 启动后端：
-
-```bash
 go mod download
-go run main.go
+go run main.go --port 3000
 ```
 
-4. 运行测试：
+常用验证命令：
 
 ```bash
-go test ./...
+go test ./model ./middleware ./controller/partner ./controller/payment ./controller/user
 ```
 
-## Web 管理端
-
-`web-next` 是管理后台，用于租户、用户、Key、模型、用户等级、邀请码、返利、充值、兑换、支付等后台能力。
+### 2. Web 管理端
 
 ```bash
 cd web-next
@@ -94,11 +68,9 @@ npm run build
 npm run preview
 ```
 
-构建产物默认输出到 `web-next/dist`。
+构建产物输出到 `web-next/dist`。后端启动时会读取该目录作为管理端静态资源。
 
-## 小程序端
-
-`wxapp` 是用户侧小程序端，包含登录、用户服务协议、隐私政策、余额、充值兑换、API Key、签到、用户等级、分享拉新、我的下级等功能。
+### 3. 小程序端
 
 ```bash
 cd wxapp
@@ -112,52 +84,11 @@ npm run dev:mp-weixin
 npm run build:mp-weixin
 ```
 
-构建产物位于 `wxapp/dist/build/mp-weixin`，使用微信开发者工具打开该目录进行预览和上传。
+产物位于 `wxapp/dist/build/mp-weixin`，用微信开发者工具打开该目录预览和上传。
 
-## LobeHub 应用
+### 4. apps 独立项目
 
-`apps/lobehub` 是独立前端应用，已按当前业务做了以下调整：
-
-- 默认中文界面，仅保留中文和英文资源。
-- 默认对接 New API 的 OpenAI-compatible 网关。
-- 首页主入口区分为 `AI 对话`、`图片生成`、`视频生成`，方便新用户理解。
-- `/image` 图片生成页使用后台支持的图片模型。
-- `/video` 视频生成页使用后台支持的视频模型。
-- 对话、图片、视频输入框已做收窄和居中，避免界面过宽。
-- 模型展示名做了小白友好化，例如 `gemini-3.1-flash-image-preview` 展示为 `Nano Banana 2`。
-
-### 模型接口配置
-
-LobeHub 的模型列表优先从 pricing 接口读取：
-
-```env
-OPENAI_PROXY_URL=https://token.cymoon.cn/v1
-MODEL_PRICING_URL=https://token.cymoon.cn/api/pricing
-DEFAULT_AGENT_CONFIG=model=gpt-5.5;provider=openai;
-```
-
-`MODEL_PRICING_URL` 返回的数据中：
-
-- `data[].model_name` 是模型名称。
-- `supported_endpoint_types` 包含 `openai`、`gemini`、`anthropic` 的模型会作为对话模型展示。
-- `supported_endpoint_types` 包含 `image-generation` 的模型会作为图片模型展示。
-- 视频模型按 LobeHub 视频模型能力读取，后续如果后台增加视频 endpoint 类型，可继续扩展。
-
-如果不配置 `MODEL_PRICING_URL`，系统会尝试从 `OPENAI_PROXY_URL` 推导 `/api/pricing` 地址。
-
-开发启动：
-
-```bash
-cd apps/lobehub
-pnpm install
-pnpm dev
-```
-
-具体命令和部署方式以 `apps/lobehub/README.md` 为准。
-
-## apps 独立项目开发
-
-`apps/` 下的项目独立维护，依赖、启动方式、部署方式以各自目录内的 `README.md` 为准。
+`apps/` 下的项目独立维护，不和主系统共用构建命令。进入对应目录后按该项目自己的 README 操作。
 
 ```bash
 cd apps/lobehub
@@ -167,75 +98,179 @@ cd apps/noterx
 # 查看 apps/noterx/README.md
 ```
 
-主系统开发时，不需要同时启动 `apps/` 下的所有项目。
+## 生产部署推荐：`.build` 离线包
 
-## 构建与部署
+推荐在本地或 CI 机器上完成编译，把部署产物统一放进根目录 `.build/`，再上传到服务器。这样服务器不需要安装 Node.js，也不需要在生产机上拉取前端依赖。
 
-### 方式一：直接部署
+### 产物目录约定
 
-适合已有服务器环境。
+```text
+.build/
+|-- new-api                  # Linux 可执行文件
+|-- .env.example             # 环境变量模板，部署后复制为 .env
+|-- new-api.service          # systemd 示例，可按服务器路径调整
+|-- web-next/
+|   `-- dist/                # 管理端静态资源
+|-- docs/                    # 可选，部署说明或变更记录
+`-- package-info.txt         # 可选，记录构建时间、分支、commit
+```
 
-1. 在服务器准备 Go、Node.js、数据库和可选 Redis。
-2. 配置根目录 `.env`。
-3. 构建管理端：
+`web-next/dist` 必须和 `new-api` 放在同一个部署目录下的 `web-next/dist` 路径，否则后端无法正确提供管理端页面。
+
+### Linux / macOS 打包命令
+
+在仓库根目录执行：
 
 ```bash
+rm -rf .build
+mkdir -p .build/web-next .build/docs
+
 cd web-next
 npm install
 npm run build
+cd ..
+
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o .build/new-api main.go
+
+cp -r web-next/dist .build/web-next/
+cp .env.example .build/.env.example
+cp new-api.service .build/new-api.service
+printf "built_at=%s\ncommit=%s\n" "$(date -Iseconds)" "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" > .build/package-info.txt
+
+tar -czf new-api-build.tar.gz -C .build .
 ```
 
-4. 构建小程序端：
+如果服务器是 ARM64，把 `GOARCH=amd64` 改成 `GOARCH=arm64`。
 
-```bash
-cd wxapp
+### Windows PowerShell 打包命令
+
+在仓库根目录执行：
+
+```powershell
+Remove-Item -Recurse -Force .build -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force .build\web-next, .build\docs | Out-Null
+
+Push-Location web-next
 npm install
-npm run build:mp-weixin
+npm run build
+Pop-Location
+
+$env:GOOS = "linux"
+$env:GOARCH = "amd64"
+$env:CGO_ENABLED = "0"
+go build -ldflags "-s -w" -o .build\new-api main.go
+
+Copy-Item -Recurse web-next\dist .build\web-next\dist
+Copy-Item .env.example .build\.env.example
+Copy-Item new-api.service .build\new-api.service
+"built_at=$(Get-Date -Format o)" | Set-Content .build\package-info.txt
+"commit=$(git rev-parse --short HEAD 2>$null)" | Add-Content .build\package-info.txt
+
+tar -czf new-api-build.tar.gz -C .build .
 ```
 
-5. 回到根目录构建后端：
+### 上传和部署
+
+服务器示例目录：`/data/service/key-api/keyapi`
 
 ```bash
-go build -o new-api main.go
+mkdir -p /data/service/key-api/keyapi
+tar -xzf new-api-build.tar.gz -C /data/service/key-api/keyapi
+cd /data/service/key-api/keyapi
+
+cp .env.example .env
+# 修改 .env：数据库、Redis、SESSION_SECRET、SERVER_ADDRESS、支付、SMTP、Partner API 等生产配置
+
+chmod +x new-api
+mkdir -p logs data
 ```
 
-6. 使用 systemd、Supervisor 或容器运行后端进程，并由 Nginx/Caddy 反向代理到后端服务。
+如果使用 systemd：
 
-### 方式二：Docker Compose 部署
+```bash
+cp new-api.service /etc/systemd/system/new-api.service
+systemctl daemon-reload
+systemctl enable new-api
+systemctl restart new-api
+systemctl status new-api
+```
 
-适合希望统一管理服务的环境。
+`new-api.service` 中默认目录是 `/data/service/key-api/keyapi`。如果你的部署目录不同，需要同步修改：
+
+- `WorkingDirectory`
+- `EnvironmentFile`
+- `ExecStart`
+- `--log-dir`
+
+服务启动后验证：
+
+```bash
+curl http://127.0.0.1:3000/api/status
+```
+
+再通过 Nginx 或 Caddy 反向代理到 `127.0.0.1:3000`。
+
+## Docker Compose 部署
+
+Docker Compose 适合一台机器上同时管理后端、PostgreSQL 和 Redis：
 
 ```bash
 cp .env.example .env
 # 修改 .env
-docker compose up -d
+docker compose up -d --build
 ```
 
-更新代码后重新构建：
+注意事项：
 
-```bash
-docker compose up -d --build
+- `docker-compose.yml` 中 `environment` 会覆盖 `env_file: .env` 里的同名变量。
+- 生产环境必须修改 PostgreSQL 默认密码、`SESSION_SECRET`、数据库地址和公开域名。
+- 当前 Dockerfile 是参考文件；如果本地仓库缺少 `VERSION` 或 `frontend_v2` 目录，优先使用上面的 `.build` 离线包方式，或先同步 Dockerfile 所需资源。
+
+## 关键配置
+
+常见生产环境变量：
+
+```env
+SQL_DSN=postgresql://user:password@host:5432/new-api
+REDIS_CONN_STRING=redis://127.0.0.1:6379
+SESSION_SECRET=change-me-to-a-long-random-string
+SERVER_ADDRESS=https://your-domain.com
+```
+
+客户系统对接专属租户时，还需要：
+
+```env
+PARTNER_API_TENANT_ID=33
+PARTNER_API_CLIENT_ID=tenant_33
+PARTNER_API_CLIENT_SECRET=change-me-to-a-long-random-secret
+PARTNER_API_KEY=change-me-to-a-long-random-secret
+```
+
+如果租户用户不允许自助充值，需要在租户配置中设置：
+
+```text
+UserSelfTopUpEnabled=false
 ```
 
 ## 上线检查
 
-- `.env` 已配置正式数据库，不使用本地测试库。
-- 后端服务能正常访问健康接口和核心 API。
-- `web-next` 构建通过，管理端可登录并访问租户配置。
-- `wxapp` 构建通过，小程序登录、协议授权、充值兑换、API Key、分享拉新页面可用。
-- 微信支付开关、回调地址、商户配置与当前租户一致。
-- 用户等级、充值赠送、邀请返利、拉新奖励上限已配置。
-- 模型服务的 `baseUrl`、模型名称、Key 已配置。
-- LobeHub 的 `OPENAI_PROXY_URL`、`MODEL_PRICING_URL`、`DEFAULT_AGENT_CONFIG` 已配置。
-- `/image` 和 `/video` 页面只展示后台支持的模型。
-- 日志目录、上传目录、数据库备份策略已准备。
+- `.env` 已连接正式数据库，不使用本地测试库。
+- `SESSION_SECRET` 已设置为生产随机值。
+- `SERVER_ADDRESS` 已设置为正式访问域名。
+- `web-next/dist` 已随 `.build` 包一起部署到 `web-next/dist`。
+- 后端 `/api/status` 返回 `success=true`。
+- 管理端可登录，租户、用户、渠道、模型、支付和 SMTP 配置可访问。
+- Redis、数据库、日志目录和数据目录权限正常。
+- Nginx/Caddy 反向代理、HTTPS 证书和回调域名已配置。
+- 支付、邮件、Partner API 等外部能力已按生产参数验证。
+- 已准备数据库备份和回滚方案。
 
 ## 常用排查
 
-- 后端启动失败：优先检查 `.env`、数据库连接、端口占用。
-- 管理端请求失败：检查 API 地址、反向代理和浏览器控制台错误。
-- 小程序接口失败：检查 `wxapp` 请求地址、小程序合法域名和登录态。
-- 支付失败：检查微信支付配置、证书、回调地址和租户支付开关。
-- 模型调用失败：检查模型服务地址、模型名称、Key、余额和网络连通性。
-- LobeHub 模型列表不对：检查 `MODEL_PRICING_URL` 是否可访问，以及 pricing 接口中的 `supported_endpoint_types`。
-- 图片/视频页面模型不对：重启 `apps/lobehub` 服务，并强刷浏览器缓存。
+- 后端启动失败：先看 `.env`、数据库连接、端口占用和 `logs/`。
+- 管理端白屏或 404：检查 `web-next/dist` 是否在部署目录内，以及反向代理是否转发到后端。
+- 接口跨域或域名异常：检查 `SERVER_ADDRESS`、Nginx/Caddy 配置和浏览器控制台。
+- 支付失败：检查租户支付配置、证书、回调地址和用户自助充值开关。
+- 邮件失败：检查租户 SMTP 配置；租户未配置时按系统配置兜底。
+- 模型调用失败：检查渠道状态、模型名称、Key、用户余额和租户额度。
+- Partner API 签名失败：检查 `client_id`、`client_secret`、UTC 秒级 `timestamp`、一次性 `nonce` 和 canonical string 字段顺序。
