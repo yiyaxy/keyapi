@@ -98,6 +98,9 @@ export function KvMapEditor({
     return false;
   }, [rows, initialRows]);
 
+  const canForceOverride = !!overrideMeta && !overrideMeta.isOverridden;
+  const inForceMode = !dirty && canForceOverride;
+
   const filteredRows = useMemo(() => {
     if (!filter) return rows;
     const q = filter.toLowerCase();
@@ -174,8 +177,19 @@ export function KvMapEditor({
               {t('action.reset')}
             </Button>
           )}
-          <Button type='button' size='sm' disabled={!dirty || update.isPending} onClick={save}>
-            {update.isPending ? t('action.saving') : dirty ? t('action.save') : t('action.saved')}
+          <Button
+            type='button'
+            size='sm'
+            disabled={(!dirty && !canForceOverride) || update.isPending}
+            onClick={save}
+          >
+            {update.isPending
+              ? t('action.saving')
+              : inForceMode
+                ? t('action.force_override')
+                : dirty
+                  ? t('action.save')
+                  : t('action.saved')}
           </Button>
         </div>
       </div>

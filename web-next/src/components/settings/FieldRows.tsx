@@ -92,6 +92,7 @@ export function BoolRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
   const fallback = useUpdateOption();
   const update = mutation ?? fallback;
   const checked = coerceBool(value);
+  const canForceOverride = !!overrideMeta && !overrideMeta.isOverridden;
   return (
     <div className='flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0'>
       <div className='min-w-0 flex-1'>
@@ -107,6 +108,28 @@ export function BoolRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
         )}
       </div>
       <div className='flex shrink-0 items-center gap-1'>
+        {canForceOverride && (
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={update.isPending}
+            onClick={() => {
+              update.mutate(
+                { key: field.key, value },
+                {
+                  onSuccess: () => {
+                    onSaved(value);
+                    toast.success(t('toast.save.success'));
+                  },
+                  onError: (e) => toast.error((e as Error).message),
+                }
+              );
+            }}
+          >
+            {t('action.force_override')}
+          </Button>
+        )}
         <ResetButton meta={overrideMeta} />
         <Switch
           checked={checked}
@@ -134,6 +157,7 @@ export function SelectRow({ field, value, onSaved, mutation, overrideMeta }: Row
   const fallback = useUpdateOption();
   const update = mutation ?? fallback;
   const options = field.options ?? [];
+  const canForceOverride = !!overrideMeta && !overrideMeta.isOverridden;
   return (
     <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
       <div className='flex items-center justify-between gap-4'>
@@ -145,6 +169,28 @@ export function SelectRow({ field, value, onSaved, mutation, overrideMeta }: Row
           <div className='font-mono text-11 text-fg-2'>{field.key}</div>
         </div>
         <div className='flex shrink-0 items-center gap-1'>
+          {canForceOverride && (
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={update.isPending}
+              onClick={() => {
+                update.mutate(
+                  { key: field.key, value },
+                  {
+                    onSuccess: () => {
+                      onSaved(value);
+                      toast.success(t('toast.save.success'));
+                    },
+                    onError: (e) => toast.error((e as Error).message),
+                  }
+                );
+              }}
+            >
+              {t('action.force_override')}
+            </Button>
+          )}
           <ResetButton meta={overrideMeta} />
           <Select
             value={value}
@@ -187,6 +233,8 @@ export function TextRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
   const initial = field.kind === 'json' ? isPrettyJson(value) : value;
   const [draft, setDraft] = useState(initial);
   const dirty = draft !== initial;
+  const canForceOverride = !!overrideMeta && !overrideMeta.isOverridden;
+  const inForceMode = !dirty && canForceOverride;
   const long = field.kind === 'longText' || field.kind === 'json';
 
   function save() {
@@ -213,6 +261,14 @@ export function TextRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
     );
   }
 
+  const saveLabel = update.isPending
+    ? t('action.saving')
+    : inForceMode
+      ? t('action.force_override')
+      : dirty
+        ? t('action.save')
+        : t('action.saved');
+
   return (
     <div className='space-y-2 border-b border-line py-3 last:border-b-0'>
       <div className='flex items-center justify-between gap-4'>
@@ -230,8 +286,13 @@ export function TextRow({ field, value, onSaved, mutation, overrideMeta }: RowPr
             </Button>
           )}
           <ResetButton meta={overrideMeta} />
-          <Button type='button' size='sm' disabled={!dirty || update.isPending} onClick={save}>
-            {update.isPending ? t('action.saving') : dirty ? t('action.save') : t('action.saved')}
+          <Button
+            type='button'
+            size='sm'
+            disabled={(!dirty && !canForceOverride) || update.isPending}
+            onClick={save}
+          >
+            {saveLabel}
           </Button>
         </div>
       </div>

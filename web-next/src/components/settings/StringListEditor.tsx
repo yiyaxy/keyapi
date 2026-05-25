@@ -55,6 +55,9 @@ export function StringListEditor({
     return items.some((v, i) => v !== initial[i]);
   }, [items, initial]);
 
+  const canForceOverride = !!overrideMeta && !overrideMeta.isOverridden;
+  const inForceMode = !dirty && canForceOverride;
+
   function add() {
     const v = input.trim();
     if (!v) return;
@@ -127,8 +130,19 @@ export function StringListEditor({
               {t('action.reset')}
             </Button>
           )}
-          <Button type='button' size='sm' disabled={!dirty || update.isPending} onClick={save}>
-            {update.isPending ? t('action.saving') : dirty ? t('action.save') : t('action.saved')}
+          <Button
+            type='button'
+            size='sm'
+            disabled={(!dirty && !canForceOverride) || update.isPending}
+            onClick={save}
+          >
+            {update.isPending
+              ? t('action.saving')
+              : inForceMode
+                ? t('action.force_override')
+                : dirty
+                  ? t('action.save')
+                  : t('action.saved')}
           </Button>
         </div>
       </div>
