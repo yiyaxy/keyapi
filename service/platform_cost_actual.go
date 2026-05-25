@@ -160,6 +160,12 @@ func computePlatformCostActualWithSurcharges(pd types.PriceData, usage *dto.Usag
 	}
 
 	result := int(total.Round(0).IntPart())
+	// 平台成本绝不能为负：上游/计费配置异常时（例如 cache_tokens > prompt_tokens
+	// 又恰好绕过了上面的 clamp）落库成负值会直接污染对账。落到这里说明数据已经
+	// 异常，先按 0 处理再走下面 ==0 的兜底逻辑。
+	if result < 0 {
+		result = 0
+	}
 	if result == 0 {
 		totalTokens := usage.PromptTokens + usage.CompletionTokens
 		hasSurcharge := s.WebSearchQuota+s.ClaudeWebSearchQuota+s.FileSearchQuota+s.ImageGenerationCallQuota+s.AudioInputQuota > 0
@@ -217,11 +223,14 @@ func computePlatformCostTokenBase(pd types.PriceData, usage *dto.Usage, relayInf
 	baseTokens := dPrompt
 	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
 	if !isAnthropic && !legacyClaudeDerived {
+		// 与 service/text_quota.go 中一致：OpenAI 语义下扣减 cache/cache_creation
+		// 时如果上游上报的缓存量超过 prompt_tokens，必须 clamp 到 baseTokens
+		// 当前值，否则平台成本会落库成负数。
 		if !dCache.IsZero() {
-			baseTokens = baseTokens.Sub(dCache)
+			baseTokens = baseTokens.Sub(decimal.Min(baseTokens, dCache))
 		}
 		if !dCacheCreation.IsZero() {
-			baseTokens = baseTokens.Sub(dCacheCreation)
+			baseTokens = baseTokens.Sub(decimal.Min(baseTokens, dCacheCreation))
 		}
 	}
 	if !dImage.IsZero() {
