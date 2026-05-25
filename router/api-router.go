@@ -514,6 +514,13 @@ func SetApiRouter(router *gin.Engine) {
 			purchaseRoute.POST("/subscription/delete", payment.AdminDeleteSubscriptionOrderAction)
 		}
 
+		partnerSignedRoute := apiRouter.Group("/partner")
+		{
+			partnerSignedRoute.POST("/sso/exchange", partner.SSOExchange)
+			partnerSignedRoute.GET("/sso/login", partner.SSOLogin)
+			partnerSignedRoute.POST("/users/query", partner.QueryUsers)
+		}
+
 		partnerRoute := apiRouter.Group("/partner")
 		partnerRoute.Use(middleware.PartnerAuth())
 		{

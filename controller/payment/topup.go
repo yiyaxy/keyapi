@@ -25,11 +25,12 @@ import (
 )
 
 func GetTopUpInfo(c *gin.Context) {
+	selfTopUpEnabled := userSelfTopUpEnabled(c)
 	// 获取支付方式
 	payMethods := operation_setting.PayMethods
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
-	if setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "" {
+	if selfTopUpEnabled && setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "" {
 		// 检查是否已经包含 Stripe
 		hasStripe := false
 		for _, method := range payMethods {
@@ -60,7 +61,7 @@ func GetTopUpInfo(c *gin.Context) {
 				setting.WaffoSandboxApiKey != "" &&
 				setting.WaffoSandboxPrivateKey != "" &&
 				setting.WaffoSandboxPublicCert != ""))
-	if enableWaffo {
+	if selfTopUpEnabled && enableWaffo {
 		hasWaffo := false
 		for _, method := range payMethods {
 			if method["type"] == "waffo" {
@@ -83,7 +84,7 @@ func GetTopUpInfo(c *gin.Context) {
 	// 如果当前租户已配置微信支付（S2 原生），注入到支付方式列表
 	enableWechatTopup := false
 	tid := middleware.GetTenantId(c)
-	if tid > 0 {
+	if selfTopUpEnabled && tid > 0 {
 		wechatCfg, wechatErr := model.GetTenantPaymentConfig(tid, "wechat")
 		if wechatErr == nil && wechatCfg.Enabled && !wechatCfg.PlatformLocked &&
 			wechatCfg.Mchid != "" && wechatCfg.AppId != "" {
@@ -107,10 +108,11 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
-		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
-		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_waffo_topup":  enableWaffo,
+		"self_topup_enabled":  selfTopUpEnabled,
+		"enable_online_topup": selfTopUpEnabled && operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
+		"enable_stripe_topup": selfTopUpEnabled && setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
+		"enable_creem_topup":  selfTopUpEnabled && setting.CreemApiKey != "" && setting.CreemProducts != "[]",
+		"enable_waffo_topup":  selfTopUpEnabled && enableWaffo,
 		"enable_wechat_topup": enableWechatTopup,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
@@ -127,6 +129,18 @@ func GetTopUpInfo(c *gin.Context) {
 		"discount":         operation_setting.GetPaymentSetting().AmountDiscount,
 	}
 	common.ApiSuccess(c, data)
+}
+
+func userSelfTopUpEnabled(c *gin.Context) bool {
+	return service.GetConfigBool(middleware.GetTenantId(c), "UserSelfTopUpEnabled", true)
+}
+
+func requireUserSelfTopUpEnabled(c *gin.Context) bool {
+	if userSelfTopUpEnabled(c) {
+		return true
+	}
+	common.ApiErrorMsg(c, "用户自助充值已关闭，请联系租户管理员统一结算")
+	return false
 }
 
 type EpayRequest struct {
@@ -209,6 +223,9 @@ func getMinTopup(tenantId int) int64 {
 }
 
 func RequestEpay(c *gin.Context) {
+	if !requireUserSelfTopUpEnabled(c) {
+		return
+	}
 	var req EpayRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
@@ -471,6 +488,9 @@ func EpayNotify(c *gin.Context) {
 }
 
 func RequestAmount(c *gin.Context) {
+	if !requireUserSelfTopUpEnabled(c) {
+		return
+	}
 	var req AmountRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
@@ -498,6 +518,9 @@ func RequestAmount(c *gin.Context) {
 }
 
 func PreviewTopUp(c *gin.Context) {
+	if !requireUserSelfTopUpEnabled(c) {
+		return
+	}
 	var req AmountRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {

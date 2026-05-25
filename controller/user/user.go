@@ -1307,6 +1307,10 @@ func getTopUpLock(userID int) *topUpTryLock {
 }
 
 func TopUp(c *gin.Context) {
+	if !service.GetConfigBool(middleware.GetTenantId(c), "UserSelfTopUpEnabled", true) {
+		common.ApiErrorMsg(c, "用户自助充值已关闭，请联系租户管理员统一结算")
+		return
+	}
 	id := c.GetInt("id")
 	lock := getTopUpLock(id)
 	if !lock.TryLock() {

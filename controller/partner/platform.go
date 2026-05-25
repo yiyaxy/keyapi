@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -64,8 +65,18 @@ func Capabilities(c *gin.Context) {
 			"custom_currency_rate": operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
 		},
 		"data_endpoints": []gin.H{
+			{"method": "POST", "path": "/api/partner/sso/exchange", "description": "silent login and stable API key exchange"},
+			{"method": "GET", "path": "/api/partner/sso/login", "description": "one-time ticket browser login"},
+			{"method": "POST", "path": "/api/partner/users/query", "description": "user balance, usage and top-up sync"},
 			{"method": "GET", "path": "/api/partner/topups", "description": "user token purchase records"},
 			{"method": "GET", "path": "/api/partner/rebates", "description": "affiliate rebate records"},
+		},
+		"billing_policy": gin.H{
+			"settlement":        "tenant_admin_unified",
+			"user_self_topup":   service.GetConfigBool(tenantId, "UserSelfTopUpEnabled", true),
+			"sync_frequency":    "client_defined",
+			"stable_api_key":    true,
+			"model_restriction": false,
 		},
 		"tool_interfaces": []gin.H{
 			{"name": "openai_compatible", "base_path": "/v1", "auth": "Authorization: Bearer sk-..."},

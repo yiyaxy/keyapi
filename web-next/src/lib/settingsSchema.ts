@@ -289,6 +289,10 @@ export const SETTINGS_GROUPS: Group[] = [
         zh: '订阅返利次数',
         en: 'Subscription rebate count',
       }),
+      f('UserSelfTopUpEnabled', 'bool', {
+        zh: '允许用户自助充值',
+        en: 'Allow user self top-up',
+      }),
       f('MinTopUp', 'number', { zh: '最小充值额', en: 'Min top-up' }),
       // DisplayInCurrencyEnabled intentionally omitted — it's a legacy bool
       // that only toggles between USD/TOKENS and, when saved, overwrites

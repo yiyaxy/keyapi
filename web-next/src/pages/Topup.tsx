@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { useRedeem } from '@/hooks/useRedeem';
+import { useTopupInfo } from '@/hooks/useTopup';
 import { ApiError } from '@/lib/api';
 import { fmtDisplay } from '@/lib/format';
 
@@ -20,6 +21,7 @@ export function TopupPage() {
   const { user, status } = useAuth();
   const cfg = usePublicConfig();
   const redeem = useRedeem();
+  const topupInfo = useTopupInfo();
   const [code, setCode] = useState('');
 
   if (status === 'loading') {
@@ -35,6 +37,7 @@ export function TopupPage() {
   }
 
   const totalQuota = user.quota + user.used_quota;
+  const selfTopupEnabled = topupInfo.data?.self_topup_enabled ?? true;
 
   async function onRedeem() {
     const trimmed = code.trim();
@@ -73,34 +76,38 @@ export function TopupPage() {
           </div>
         </CardContent>
       </Card>
-      <RechargeCard />
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('redeem.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className='space-y-3'>
-          <p className='text-13 text-fg-2'>{t('redeem.body')}</p>
-          {redeem.error instanceof ApiError && (
-            <InlineBanner
-              level='danger'
-              message={redeem.error.backendMessage ?? redeem.error.message}
-            />
-          )}
-          <div className='flex gap-2'>
-            <Input
-              value={code}
-              placeholder={t('redeem.placeholder')}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void onRedeem();
-              }}
-            />
-            <Button onClick={() => void onRedeem()} disabled={redeem.isPending}>
-              {t('redeem.submit')}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {selfTopupEnabled && (
+        <>
+          <RechargeCard />
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('redeem.title')}</CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-13 text-fg-2'>{t('redeem.body')}</p>
+              {redeem.error instanceof ApiError && (
+                <InlineBanner
+                  level='danger'
+                  message={redeem.error.backendMessage ?? redeem.error.message}
+                />
+              )}
+              <div className='flex gap-2'>
+                <Input
+                  value={code}
+                  placeholder={t('redeem.placeholder')}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void onRedeem();
+                  }}
+                />
+                <Button onClick={() => void onRedeem()} disabled={redeem.isPending}>
+                  {t('redeem.submit')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
       <Card className='lg:col-span-2'>
         <CardHeader>
           <CardTitle>{t('contact.title')}</CardTitle>

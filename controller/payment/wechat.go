@@ -221,12 +221,21 @@ func resolveMiniOpenidForUser(c *gin.Context, userId int) (string, error) {
 }
 
 func CreateWechatTopupNative(c *gin.Context) {
+	if !requireUserSelfTopUpEnabled(c) {
+		return
+	}
 	createTopupHandler(model.PaymentProductFormNative)(c)
 }
 func CreateWechatTopupH5(c *gin.Context) {
+	if !requireUserSelfTopUpEnabled(c) {
+		return
+	}
 	createTopupHandler(model.PaymentProductFormH5)(c)
 }
 func CreateWechatTopupJsapi(c *gin.Context) {
+	if !requireUserSelfTopUpEnabled(c) {
+		return
+	}
 	createTopupHandler(model.PaymentProductFormJsapi)(c)
 }
 

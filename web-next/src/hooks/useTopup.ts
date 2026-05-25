@@ -34,6 +34,21 @@ export type CreateTopupPayload = {
   openid?: string; // jsapi only; native/h5 ignore
 };
 
+export type TopupInfo = {
+  self_topup_enabled?: boolean;
+  enable_wechat_topup?: boolean;
+};
+
+export function useTopupInfo() {
+  return useQuery<TopupInfo>({
+    queryKey: ['topup', 'info'] as const,
+    queryFn: async () => {
+      const res = await api.get<TopupInfo>('/api/user/topup/info');
+      return res.data;
+    },
+  });
+}
+
 export function useCreateWechatTopupNative() {
   return useMutation({
     mutationFn: async (payload: CreateTopupPayload) => {

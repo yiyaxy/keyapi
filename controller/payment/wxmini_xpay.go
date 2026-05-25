@@ -123,6 +123,9 @@ func GetWxminiXpayTiers(c *gin.Context) {
 }
 
 func CreateWxminiTopupXpay(c *gin.Context) {
+	if !requireUserSelfTopUpEnabled(c) {
+		return
+	}
 	tid := middleware.GetTenantId(c)
 	userId := c.GetInt("id")
 	if tid <= 0 || userId <= 0 {
