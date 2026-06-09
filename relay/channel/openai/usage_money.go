@@ -12,7 +12,7 @@ import (
 // ok=false 表示无法计费(usage 缺失或无可计费 token),调用方应保持 UsageMoney 为 nil(省略字段)。
 // 金额经由 service.CalculateTextQuota 得到,与 PostTextConsumeQuota 的扣费口径完全一致。
 func computeUsageMoney(c *gin.Context, info *relaycommon.RelayInfo, usage *dto.Usage) (float64, bool) {
-	if usage == nil || usage.PromptTokens+usage.CompletionTokens == 0 {
+	if usage == nil || (usage.PromptTokens == 0 && usage.CompletionTokens == 0) {
 		return 0, false
 	}
 	quota := service.CalculateTextQuota(c, info, usage)
