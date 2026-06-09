@@ -53,12 +53,12 @@ UsageMoney *float64 `json:"usage_money,omitempty"`
 
 ### 2. 金额计算入口(单一来源)
 
-在 `service` 包导出薄封装,复用既有的纯计算函数:
+`service` 包**已有**导出函数,直接复用(无需新增):
 
 ```go
-// ComputeTextQuota 返回本次请求的应扣额度(整数 quota)。
-// 它复用 calculateTextQuotaSummary,与 PostTextConsumeQuota 的扣费口径完全一致。
-func ComputeTextQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) int {
+// CalculateTextQuota returns the same quota used by PostTextConsumeQuota
+// without writing logs or settling billing.  (service/text_quota.go:291)
+func CalculateTextQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) int {
     return calculateTextQuotaSummary(ctx, relayInfo, usage).Quota
 }
 ```
@@ -76,7 +76,7 @@ func QuotaToUSD(quota int) float64 {
 }
 ```
 
-**一致性保证**:`calculateTextQuotaSummary` 是纯函数,只依赖 `relayInfo.PriceData`、`usage` 以及在请求早期就已 set 好的若干 ctx 值;`Quota` 完全由这些决定(唯一随时间变化的 `UseTimeSeconds` 不参与 `Quota`)。因此 handler 阶段调用 `ComputeTextQuota` 得到的金额,与稍后 `PostTextConsumeQuota` 扣费用的 `summary.Quota`,在相同输入下严格相等 → **`usage_money` == 真实扣费**。无需跨包缓存。
+**一致性保证**:`calculateTextQuotaSummary` 是纯函数,只依赖 `relayInfo.PriceData`、`usage` 以及在请求早期就已 set 好的若干 ctx 值;`Quota` 完全由这些决定(唯一随时间变化的 `UseTimeSeconds` 不参与 `Quota`)。因此 handler 阶段调用 `CalculateTextQuota` 得到的金额,与稍后 `PostTextConsumeQuota` 扣费用的 `summary.Quota`,在相同输入下严格相等 → **`usage_money` == 真实扣费**。无需跨包缓存。
 
 ### 3. 非流式注入(`OpenaiHandler`)
 
@@ -121,10 +121,11 @@ func QuotaToUSD(quota int) float64 {
 | 文件 | 改动 |
 |------|------|
 | `dto/openai_response.go` | `Usage` 新增 `UsageMoney *float64` |
-| `service/text_quota.go` | 导出 `ComputeTextQuota` |
+| `service/text_quota.go` | 无需改动,复用已有 `CalculateTextQuota` |
 | `common/quota.go` | 新增 `QuotaToUSD` |
+| `relay/channel/openai/usage_money.go` | 新增 `computeUsageMoney` / `patchUsageMoneyIntoJSON` 助手 |
 | `relay/channel/openai/relay-openai.go` | `OpenaiHandler` 非流式注入;`OaiStreamHandler` 流式注入 |
-| 对应 `_test.go` | 新增上述单测/集成测试 |
+| 对应 `_test.go` | 新增上述单测 |
 
 ## 非目标(YAGNI)
 
