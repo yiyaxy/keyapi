@@ -239,6 +239,10 @@ type Usage struct {
 
 	// OpenRouter Params
 	Cost any `json:"cost,omitempty"`
+
+	// UsageMoney 为本次请求消耗的金额,单位 USD(= quota / QuotaPerUnit)。
+	// 指针类型:nil 表示无法计费/未计算(JSON 省略);0 表示成本确为 0(如免费模型)。
+	UsageMoney *float64 `json:"usage_money,omitempty"`
 }
 
 type OpenAIVideoResponse struct {
