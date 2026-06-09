@@ -257,6 +257,17 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
 	}
 
+	// case 2:上游自带 usage chunk(已确定 usage,且即将在下方/重写分支被转发)。
+	// 先做与计费一致的(幂等)usage 后处理,再算钱,并把 usage_money 补丁进该 chunk,
+	// 使后续无论从普通分支还是 needRewrite 分支转发的都是带 usage_money 的版本。
+	if containStreamUsage {
+		applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
+		if money, ok := computeUsageMoney(c, info, usage); ok {
+			usage.UsageMoney = &money
+			lastStreamData = string(patchUsageMoneyIntoJSON(common.StringToByteSlice(lastStreamData), money))
+		}
+	}
+
 	if info.RelayFormat == types.RelayFormatOpenAI {
 		if shouldSendLastResp && !needRewrite {
 			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
@@ -298,6 +309,14 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
+
+	// case 1:上游未带 usage,稍后由 HandleFinalResponse→GenerateFinalUsageResponse 合成最终
+	// usage chunk;在此设置 usage_money 即可随合成 chunk 带出。(case 2 已在上方处理过,跳过避免重复)
+	if !containStreamUsage {
+		if money, ok := computeUsageMoney(c, info, usage); ok {
+			usage.UsageMoney = &money
+		}
+	}
 
 	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, model, systemFingerprint, usage, containStreamUsage)
 
