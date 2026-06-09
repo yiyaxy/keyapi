@@ -1,6 +1,9 @@
 package common
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestQuotaToUSD(t *testing.T) {
 	cases := []struct {
@@ -17,7 +20,7 @@ func TestQuotaToUSD(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			got := QuotaToUSD(c.quota)
-			if got != c.want {
+			if math.Abs(got-c.want) > 1e-9 {
 				t.Fatalf("QuotaToUSD(%d) = %v, want %v", c.quota, got, c.want)
 			}
 		})
