@@ -535,24 +535,30 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	applyUsagePostProcessing(info, &simpleResponse.Usage, responseBody)
 
+	// 计算本次消耗金额(USD)并写入 usage.usage_money
+	if money, ok := computeUsageMoney(c, info, &simpleResponse.Usage); ok {
+		simpleResponse.Usage.UsageMoney = &money
+	}
+
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
-		if usageModified {
-			var bodyMap map[string]interface{}
-			err = common.Unmarshal(responseBody, &bodyMap)
-			if err != nil {
-				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
-			}
-			bodyMap["usage"] = simpleResponse.Usage
-			responseBody, _ = common.Marshal(bodyMap)
-		}
 		if forceFormat {
+			// 整体重序列化,simpleResponse.Usage 已含 usage_money
 			responseBody, err = common.Marshal(simpleResponse)
 			if err != nil {
 				return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 			}
-		} else {
-			break
+		} else if usageModified {
+			// 上游未给 usage、我方已估算:用估算后的 usage(含 usage_money)替换 usage 节点
+			var bodyMap map[string]interface{}
+			if err = common.Unmarshal(responseBody, &bodyMap); err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
+			bodyMap["usage"] = simpleResponse.Usage
+			responseBody, _ = common.Marshal(bodyMap)
+		} else if simpleResponse.Usage.UsageMoney != nil {
+			// 常规透传场景:只把 usage_money 补丁进上游 body,保留上游 usage 其它字段
+			responseBody = patchUsageMoneyIntoJSON(responseBody, *simpleResponse.Usage.UsageMoney)
 		}
 	case types.RelayFormatClaude:
 		claudeResp := service.ResponseOpenAI2Claude(&simpleResponse, info)
