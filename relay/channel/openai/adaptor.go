@@ -592,6 +592,9 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		return &requestBody, nil
 
 	default:
+		if err := normalizeImageReferences(&request); err != nil {
+			return nil, err
+		}
 		return request, nil
 	}
 }
