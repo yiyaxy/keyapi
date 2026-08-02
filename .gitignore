@@ -103,3 +103,4 @@ apps/lobehub/*.log
 !apps/lobehub/src/features/Conversation/store/slices/data/**
 !apps/lobehub/src/store/file/slices/upload/
 !apps/lobehub/src/store/file/slices/upload/**
+web/node_modules
