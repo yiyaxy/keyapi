@@ -1,0 +1,37 @@
+# Install as:
+#   sudo cp docs/examples/keyapi@.service /etc/systemd/system/keyapi@.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now keyapi@master
+#   sudo systemctl enable --now keyapi@slave-1
+#
+# Environment files:
+#   /opt/keyapi/config/keyapi-master.env
+#   /opt/keyapi/config/keyapi-slave-1.env
+
+[Unit]
+Description=KeyAPI node %i
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=keyapi
+Group=keyapi
+WorkingDirectory=/opt/keyapi/current
+EnvironmentFile=/opt/keyapi/config/keyapi-%i.env
+ExecStart=/opt/keyapi/current/new-api --port ${PORT} --log-dir /var/log/keyapi/%i
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+LimitNOFILE=1048576
+
+# Basic hardening for a direct-run service.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/keyapi/current /var/log/keyapi
+
+[Install]
+WantedBy=multi-user.target

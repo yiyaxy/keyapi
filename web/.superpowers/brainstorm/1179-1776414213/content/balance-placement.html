@@ -1,0 +1,138 @@
+<h2>Q3 — 余额(balance)放哪？</h2>
+<p class="subtitle">付费用户在 Logs / API Keys / Playground 任何页都应该 60 秒看到余额。但顶栏刚刚被洗干净了，所以得挑个新地方。</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="display:flex;height:280px;font-size:10px;background:#fafafa;color:#222;">
+            <div style="width:180px;display:flex;flex-direction:column;border-right:1px solid #e5e5e5;background:#fff;">
+              <div style="padding:10px 12px;font-weight:600;border-bottom:1px solid #eee;">keyapi</div>
+              <div style="flex:1;padding:10px 8px;">
+                <div style="color:#888;font-size:9px;margin:4px 4px;">OVERVIEW</div>
+                <div style="padding:5px 8px;background:#f0f0f0;border-radius:4px;">Dashboard</div>
+                <div style="padding:5px 8px;color:#555;">Logs</div>
+                <div style="padding:5px 8px;color:#555;">Analytics</div>
+                <div style="color:#888;font-size:9px;margin:8px 4px;">BILLING</div>
+                <div style="padding:5px 8px;color:#555;">Top up</div>
+                <div style="padding:5px 8px;color:#555;">Invoices</div>
+              </div>
+              <div style="border-top:1px solid #eee;padding:12px;background:#fafafa;">
+                <div style="font-size:9px;color:#888;letter-spacing:0.05em;">BALANCE</div>
+                <div style="font-size:16px;font-weight:600;color:#111;margin:2px 0;font-variant-numeric:tabular-nums;">¥ 1,284.50</div>
+                <div style="height:4px;background:#eee;border-radius:2px;margin:4px 0;">
+                  <div style="width:65%;height:100%;background:#111;border-radius:2px;"></div>
+                </div>
+                <div style="font-size:9px;color:#888;margin-top:3px;">Top up ↗</div>
+              </div>
+              <div style="border-top:1px solid #eee;padding:8px 12px;display:flex;align-items:center;gap:8px;">
+                <div style="width:22px;height:22px;border-radius:999px;background:#ddd;"></div>
+                <div style="flex:1;font-size:10px;">sg@example.com</div>
+              </div>
+            </div>
+            <div style="flex:1;padding:20px;">
+              <div style="font-size:11px;color:#888;">Dashboard</div>
+              <div style="height:80px;margin-top:8px;background:#fff;border:1px solid #eee;border-radius:6px;"></div>
+              <div style="height:80px;margin-top:10px;background:#fff;border:1px solid #eee;border-radius:6px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 侧栏底部固定卡（推荐）</h3>
+      <p>OpenAI Platform 的做法 —— 侧栏底栏上方一个常驻 balance 卡：金额 + 进度条 + "Top up" CTA。在任何页面都可见，不跟主内容抢焦点；Dashboard 上仍然有大号 hero 卡。侧栏折叠时只剩金额数字。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="display:flex;flex-direction:column;height:280px;font-size:10px;background:#fafafa;color:#222;">
+            <div style="height:40px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #e5e5e5;background:#fff;">
+              <div style="font-weight:600;">keyapi</div>
+              <div style="flex:1;"></div>
+              <div style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:4px;color:#555;margin-right:8px;">acme ▾</div>
+              <div style="width:24px;height:24px;border-radius:999px;background:#ddd;"></div>
+            </div>
+            <div style="flex:1;display:flex;">
+              <div style="width:180px;border-right:1px solid #e5e5e5;background:#fff;padding:10px 8px;">
+                <div style="color:#888;font-size:9px;margin:4px 4px;">OVERVIEW</div>
+                <div style="padding:5px 8px;background:#f0f0f0;border-radius:4px;">Dashboard</div>
+                <div style="padding:5px 8px;color:#555;">Logs</div>
+                <div style="padding:5px 8px;color:#555;">Analytics</div>
+              </div>
+              <div style="flex:1;padding:16px;">
+                <div style="font-size:11px;color:#888;">Logs</div>
+                <div style="margin-top:8px;padding:12px 14px;border:1px dashed #ddd;border-radius:6px;background:#fff;display:flex;align-items:center;gap:10px;">
+                  <div>
+                    <div style="font-size:9px;color:#888;">BALANCE</div>
+                    <div style="font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;">¥ 1,284.50</div>
+                  </div>
+                  <div style="flex:1;"></div>
+                  <div style="padding:4px 10px;background:#111;color:#fff;border-radius:4px;font-size:10px;">Top up</div>
+                </div>
+                <div style="height:60px;margin-top:14px;background:#fff;border:1px solid #eee;border-radius:6px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 每页主内容区的顶部 banner</h3>
+      <p>每个页面进来，标题下方第一个组件就是 balance banner。无需侧栏让位，视觉最抢眼。<b>但</b>：违反 "One primary per screen"，每页都跟 CTA 抢焦点；Dashboard 会出现"banner + hero 卡"重复。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="display:flex;flex-direction:column;height:280px;font-size:10px;background:#fafafa;color:#222;">
+            <div style="height:40px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #e5e5e5;background:#fff;">
+              <div style="font-weight:600;">keyapi</div>
+              <div style="flex:1;"></div>
+              <div style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:4px;color:#555;margin-right:8px;">acme ▾</div>
+              <div style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:4px;color:#111;margin-right:8px;font-weight:600;font-variant-numeric:tabular-nums;">¥ 1,284.50</div>
+              <div style="width:24px;height:24px;border-radius:999px;background:#ddd;"></div>
+            </div>
+            <div style="flex:1;display:flex;">
+              <div style="width:180px;border-right:1px solid #e5e5e5;background:#fff;padding:10px 8px;">
+                <div style="color:#888;font-size:9px;margin:4px 4px;">OVERVIEW</div>
+                <div style="padding:5px 8px;background:#f0f0f0;border-radius:4px;">Dashboard</div>
+                <div style="padding:5px 8px;color:#555;">Logs</div>
+              </div>
+              <div style="flex:1;padding:16px;">
+                <div style="font-size:11px;color:#888;">Dashboard</div>
+                <div style="height:70px;margin-top:8px;background:#fff;border:1px solid #eee;border-radius:6px;"></div>
+                <div style="height:70px;margin-top:10px;background:#fff;border:1px solid #eee;border-radius:6px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 顶栏 balance chip（妥协）</h3>
+      <p>打破 Q1 的"左栏为王"洁癖，在顶栏塞一个 balance chip（只显示数字，可点 → Top up）。优点：最熟悉的位置、最小视觉代价。<b>但</b>：刚定的极简顶栏又被破坏，长期容易被别的需求再塞东西。</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>我的推荐：A（侧栏底部固定卡）</h3>
+  <ul>
+    <li>符合 Q1 选的 OpenAI 派，不回头</li>
+    <li>让余额成为侧栏的"脚注英雄" —— 每次视线扫侧栏就被顺便带到</li>
+    <li>进度条可以兼表示"套餐消耗百分比"或"距离阈值告警多远"</li>
+    <li>Dashboard 上仍然会有一个更大的 hero balance 卡（数字巨大、tabular、+本月消耗趋势），不冲突</li>
+    <li>侧栏折叠成 icon rail 时，只显示数字（无 label 无进度条）</li>
+  </ul>
+</div>
+
+<p class="subtitle">点卡片选。如果三个都不喜欢，在终端说你的方案（比如"balance 只在 Dashboard，其它页面靠顶栏 workspace 切换时下拉显示"）。</p>

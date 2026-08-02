@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Playground square concept</title>
+    <link rel="stylesheet" href="fonts/fonts.css" />
+    <link rel="stylesheet" href="colors_and_type.css" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg-0);
+        color: var(--text-0);
+        font-family: var(--font-sans);
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--border);
+        background: var(--bg-0);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .brand {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+      }
+
+      .brand img {
+        width: 24px;
+        height: 24px;
+        border-radius: var(--r-sm);
+      }
+
+      .nav {
+        padding: 12px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .nav-group {
+        display: grid;
+        gap: 6px;
+      }
+
+      .nav-title {
+        padding: 0 8px 4px;
+        font-size: 12px;
+        line-height: 16px;
+        color: var(--text-2);
+      }
+
+      .nav-item {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 10px;
+        border-radius: var(--r-sm);
+        color: var(--text-1);
+        font-size: 14px;
+      }
+
+      .nav-item.active {
+        background: var(--bg-2);
+        color: var(--text-0);
+        font-weight: 500;
+      }
+
+      .nav-mark {
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--r-xs);
+        background: var(--bg-1);
+      }
+
+      .nav-item.active .nav-mark {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .shell {
+        min-width: 0;
+        display: grid;
+        grid-template-rows: 56px 1fr;
+      }
+
+      .topbar {
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-0);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 24px;
+      }
+
+      .search {
+        width: 360px;
+        max-width: 42vw;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--r-sm);
+        background: var(--bg-1);
+        color: var(--text-2);
+      }
+
+      .search-dot {
+        width: 10px;
+        height: 10px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--r-pill);
+      }
+
+      .top-spacer {
+        flex: 1;
+      }
+
+      .tenant {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-1);
+        font-size: 13px;
+      }
+
+      .avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--r-pill);
+        background: var(--bg-2);
+        border: 1px solid var(--border);
+      }
+
+      .page {
+        padding: 24px;
+      }
+
+      .page-inner {
+        max-width: 1280px;
+        margin: 0 auto;
+        display: grid;
+        gap: 24px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: end;
+      }
+
+      .hero-copy {
+        display: grid;
+        gap: 8px;
+      }
+
+      .kicker {
+        color: var(--text-2);
+        font-size: 13px;
+        line-height: 18px;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: 32px;
+        line-height: 38px;
+        letter-spacing: 0;
+        font-weight: 600;
+      }
+
+      .hero p {
+        margin: 0;
+        color: var(--text-1);
+        max-width: 620px;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .btn {
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: var(--r-sm);
+        border: 1px solid var(--border);
+        padding: 0 14px;
+        background: var(--bg-1);
+        color: var(--text-0);
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .btn.primary {
+        background: var(--primary);
+        color: var(--primary-fg);
+        border-color: var(--primary);
+      }
+
+      .btn-icon {
+        width: 14px;
+        height: 14px;
+        border-radius: var(--r-xs);
+        border: 1px solid currentColor;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .stat {
+        background: var(--bg-1);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        padding: 16px;
+        min-height: 104px;
+        display: grid;
+        gap: 8px;
+        align-content: space-between;
+      }
+
+      .stat-label {
+        color: var(--text-2);
+        font-size: 13px;
+      }
+
+      .stat-value {
+        font-size: 24px;
+        line-height: 30px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .stat-value.accent {
+        color: var(--accent);
+      }
+
+      .stat-caption {
+        color: var(--text-1);
+        font-size: 13px;
+      }
+
+      .workbench {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      .main-stack {
+        display: grid;
+        gap: 24px;
+        min-width: 0;
+      }
+
+      .surface {
+        background: var(--bg-1);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+      }
+
+      .surface-head {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .surface-title {
+        font-weight: 600;
+      }
+
+      .surface-subtitle {
+        color: var(--text-2);
+        font-size: 13px;
+      }
+
+      .filters {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: var(--r-pill);
+        border: 1px solid var(--border);
+        padding: 0 10px;
+        color: var(--text-1);
+        background: var(--bg-0);
+        font-size: 13px;
+      }
+
+      .chip.on {
+        color: var(--text-0);
+        background: var(--accent-soft);
+        border-color: color-mix(in oklab, var(--accent) 48%, var(--border));
+      }
+
+      .model-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        padding: 16px;
+      }
+
+      .model-card {
+        min-height: 164px;
+        display: grid;
+        align-content: space-between;
+        gap: 14px;
+        padding: 16px;
+        border-radius: var(--r-md);
+        border: 1px solid var(--border);
+        background: var(--bg-0);
+      }
+
+      .model-card.selected {
+        border-color: color-mix(in oklab, var(--accent) 65%, var(--border));
+        background: color-mix(in oklab, var(--accent-soft) 45%, var(--bg-0));
+      }
+
+      .model-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .provider {
+        display: grid;
+        gap: 2px;
+      }
+
+      .provider-name {
+        color: var(--text-2);
+        font-size: 12px;
+        line-height: 16px;
+      }
+
+      .model-name {
+        font-weight: 600;
+        line-height: 20px;
+      }
+
+      .health {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-1);
+        font-size: 12px;
+      }
+
+      .health::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: var(--r-pill);
+        background: var(--success);
+      }
+
+      .capabilities {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .tag {
+        border-radius: var(--r-xs);
+        background: var(--bg-2);
+        color: var(--text-1);
+        padding: 2px 6px;
+        font-size: 12px;
+        line-height: 16px;
+      }
+
+      .model-metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        font-size: 13px;
+      }
+
+      .metric {
+        display: grid;
+        gap: 2px;
+      }
+
+      .metric span {
+        color: var(--text-2);
+        font-size: 12px;
+      }
+
+      .metric b {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .runner {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        min-height: 420px;
+      }
+
+      .runner-pane {
+        min-width: 0;
+        padding: 16px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 16px;
+      }
+
+      .runner-pane + .runner-pane {
+        border-left: 1px solid var(--border);
+      }
+
+      .pane-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .select-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-1);
+      }
+
+      .select-pill {
+        border-radius: var(--r-pill);
+        padding: 4px 8px;
+        background: var(--bg-2);
+        color: var(--text-0);
+        font-weight: 500;
+      }
+
+      .editor {
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        background: var(--bg-0);
+        display: grid;
+        grid-template-rows: 36px 1fr;
+        min-height: 260px;
+      }
+
+      .editor-tabs {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .tab {
+        height: 28px;
+        padding: 0 10px;
+        display: inline-flex;
+        align-items: center;
+        border-radius: var(--r-sm);
+        color: var(--text-1);
+        font-size: 13px;
+      }
+
+      .tab.on {
+        background: var(--bg-2);
+        color: var(--text-0);
+        font-weight: 500;
+      }
+
+      .prompt {
+        margin: 0;
+        padding: 14px;
+        border: 0;
+        resize: none;
+        background: transparent;
+        color: var(--text-0);
+        outline: none;
+        line-height: 20px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field label {
+        color: var(--text-2);
+        font-size: 12px;
+        line-height: 16px;
+      }
+
+      .inputbox {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: var(--r-sm);
+        background: var(--bg-0);
+        padding: 0 10px;
+        color: var(--text-0);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .answer {
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        background: var(--bg-0);
+        min-height: 260px;
+        padding: 14px;
+        display: grid;
+        align-content: start;
+        gap: 12px;
+      }
+
+      .role {
+        color: var(--text-2);
+        font-size: 12px;
+        line-height: 16px;
+      }
+
+      .answer p {
+        margin: 0;
+        color: var(--text-0);
+      }
+
+      .usage {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .usage-item {
+        min-height: 56px;
+        border: 1px solid var(--border);
+        border-radius: var(--r-sm);
+        background: var(--bg-0);
+        padding: 8px;
+        display: grid;
+        gap: 2px;
+      }
+
+      .usage-item span {
+        color: var(--text-2);
+        font-size: 12px;
+      }
+
+      .usage-item b {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .side {
+        display: grid;
+        gap: 16px;
+      }
+
+      .side-card {
+        background: var(--bg-1);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        padding: 16px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .side-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .side-title {
+        font-weight: 600;
+      }
+
+      .small-link {
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .code {
+        margin: 0;
+        border-radius: var(--r-md);
+        border: 1px solid var(--border);
+        background: var(--bg-2);
+        padding: 12px;
+        color: var(--text-0);
+        font-size: 12px;
+        line-height: 18px;
+        overflow: hidden;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .route-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .route {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        min-height: 42px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--r-sm);
+        background: var(--bg-0);
+      }
+
+      .route-main {
+        display: grid;
+        gap: 2px;
+      }
+
+      .route-name {
+        font-weight: 500;
+        font-size: 13px;
+      }
+
+      .route-meta {
+        color: var(--text-2);
+        font-size: 12px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: var(--r-pill);
+        padding: 3px 8px;
+        background: var(--success-soft);
+        color: var(--text-0);
+        font-size: 12px;
+      }
+
+      .status::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: var(--r-pill);
+        background: var(--success);
+      }
+
+      .timeline {
+        display: grid;
+        gap: 10px;
+      }
+
+      .run {
+        display: grid;
+        gap: 2px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .run:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+
+      .run-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 13px;
+      }
+
+      .run-time {
+        color: var(--text-2);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .run-meta {
+        color: var(--text-2);
+        font-size: 12px;
+      }
+
+      @media (max-width: 1100px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .workbench,
+        .runner {
+          grid-template-columns: 1fr;
+        }
+
+        .runner-pane + .runner-pane {
+          border-left: 0;
+          border-top: 1px solid var(--border);
+        }
+
+        .model-grid,
+        .stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="assets/logo.png" alt="" />
+          <span>AllModels</span>
+        </div>
+        <nav class="nav">
+          <div class="nav-group">
+            <div class="nav-title">Build</div>
+            <div class="nav-item"><span class="nav-mark"></span>Dashboard</div>
+            <div class="nav-item"><span class="nav-mark"></span>API Keys</div>
+            <div class="nav-item active"><span class="nav-mark"></span>Playground</div>
+            <div class="nav-item"><span class="nav-mark"></span>Logs</div>
+            <div class="nav-item"><span class="nav-mark"></span>应用广场</div>
+          </div>
+          <div class="nav-group">
+            <div class="nav-title">Billing</div>
+            <div class="nav-item"><span class="nav-mark"></span>Top up</div>
+            <div class="nav-item"><span class="nav-mark"></span>Orders</div>
+            <div class="nav-item"><span class="nav-mark"></span>Plan</div>
+            <div class="nav-item"><span class="nav-mark"></span>SmartCache</div>
+          </div>
+          <div class="nav-group">
+            <div class="nav-title">Admin</div>
+            <div class="nav-item"><span class="nav-mark"></span>Channels</div>
+            <div class="nav-item"><span class="nav-mark"></span>Users</div>
+            <div class="nav-item"><span class="nav-mark"></span>Settings</div>
+          </div>
+        </nav>
+      </aside>
+
+      <main class="shell">
+        <header class="topbar">
+          <div class="search"><span class="search-dot"></span><span>Search models, tags, providers</span></div>
+          <div class="top-spacer"></div>
+          <div class="tenant"><span>CYMOON tenant</span><span class="avatar"></span></div>
+        </header>
+
+        <section class="page">
+          <div class="page-inner">
+            <div class="hero">
+              <div class="hero-copy">
+                <div class="kicker">Console / Playground</div>
+                <h1>Playground 广场</h1>
+                <p>发现可用模型，比较价格和稳定性，在同一页完成试跑、Token 选择和 API 调用样例。</p>
+              </div>
+              <div class="hero-actions">
+                <button class="btn"><span class="btn-icon"></span>Compare</button>
+                <button class="btn primary"><span class="btn-icon"></span>Run test</button>
+              </div>
+            </div>
+
+            <div class="stats">
+              <div class="stat">
+                <div class="stat-label">Balance</div>
+                <div class="stat-value accent">$128.40</div>
+                <div class="stat-caption">可运行约 42 次长上下文测试</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Online models</div>
+                <div class="stat-value">86</div>
+                <div class="stat-caption">12 providers, 4 unstable</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Median latency</div>
+                <div class="stat-value">842 ms</div>
+                <div class="stat-caption">近 15 分钟聚合</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Cache saved</div>
+                <div class="stat-value">18.6%</div>
+                <div class="stat-caption">SmartCache 命中节省</div>
+              </div>
+            </div>
+
+            <div class="workbench">
+              <div class="main-stack">
+                <section class="surface">
+                  <div class="surface-head">
+                    <div>
+                      <div class="surface-title">模型广场</div>
+                      <div class="surface-subtitle">按能力、成本、稳定性筛选</div>
+                    </div>
+                    <div class="filters">
+                      <span class="chip on">Hot</span>
+                      <span class="chip">低成本</span>
+                      <span class="chip">长上下文</span>
+                      <span class="chip">Vision</span>
+                      <span class="chip">稳定优先</span>
+                    </div>
+                  </div>
+                  <div class="model-grid">
+                    <article class="model-card selected">
+                      <div class="model-top">
+                        <div class="provider">
+                          <span class="provider-name">OpenAI</span>
+                          <span class="model-name">gpt-4.1-mini</span>
+                        </div>
+                        <span class="health">99.98%</span>
+                      </div>
+                      <div class="capabilities">
+                        <span class="tag">128k</span>
+                        <span class="tag">Text</span>
+                        <span class="tag">Tool call</span>
+                      </div>
+                      <div class="model-metrics">
+                        <div class="metric"><span>Input</span><b>$0.40 / 1M</b></div>
+                        <div class="metric"><span>Latency</span><b>720 ms</b></div>
+                      </div>
+                    </article>
+                    <article class="model-card">
+                      <div class="model-top">
+                        <div class="provider">
+                          <span class="provider-name">Anthropic</span>
+                          <span class="model-name">claude-sonnet-4</span>
+                        </div>
+                        <span class="health">99.91%</span>
+                      </div>
+                      <div class="capabilities">
+                        <span class="tag">200k</span>
+                        <span class="tag">Reasoning</span>
+                        <span class="tag">Code</span>
+                      </div>
+                      <div class="model-metrics">
+                        <div class="metric"><span>Input</span><b>$3.00 / 1M</b></div>
+                        <div class="metric"><span>Latency</span><b>1,180 ms</b></div>
+                      </div>
+                    </article>
+                    <article class="model-card">
+                      <div class="model-top">
+                        <div class="provider">
+                          <span class="provider-name">Google</span>
+                          <span class="model-name">gemini-2.5-pro</span>
+                        </div>
+                        <span class="health">99.84%</span>
+                      </div>
+                      <div class="capabilities">
+                        <span class="tag">1M</span>
+                        <span class="tag">Vision</span>
+                        <span class="tag">Long doc</span>
+                      </div>
+                      <div class="model-metrics">
+                        <div class="metric"><span>Input</span><b>$1.25 / 1M</b></div>
+                        <div class="metric"><span>Latency</span><b>1,420 ms</b></div>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="surface">
+                  <div class="surface-head">
+                    <div>
+                      <div class="surface-title">试跑工作台</div>
+                      <div class="surface-subtitle">选择 Token 后直接生成兼容 OpenAI 的请求</div>
+                    </div>
+                    <span class="chip on">gpt-4.1-mini</span>
+                  </div>
+                  <div class="runner">
+                    <div class="runner-pane">
+                      <div class="pane-head">
+                        <div class="select-line">Token <span class="select-pill">prod-web-default</span></div>
+                        <div class="select-line">Quota <span class="select-pill">$24.80</span></div>
+                      </div>
+                      <div class="editor">
+                        <div class="editor-tabs">
+                          <span class="tab on">Prompt</span>
+                          <span class="tab">System</span>
+                          <span class="tab">JSON</span>
+                        </div>
+                        <textarea class="prompt">帮我把这段错误日志归类，输出根因、影响范围和下一步排查动作。</textarea>
+                      </div>
+                      <div class="controls">
+                        <div class="field">
+                          <label>Temperature</label>
+                          <div class="inputbox"><span>0.4</span><span class="subtle">balanced</span></div>
+                        </div>
+                        <div class="field">
+                          <label>Max tokens</label>
+                          <div class="inputbox"><span>2,048</span></div>
+                        </div>
+                        <button class="btn primary"><span class="btn-icon"></span>Run</button>
+                      </div>
+                    </div>
+                    <div class="runner-pane">
+                      <div class="pane-head">
+                        <div class="select-line">Response <span class="select-pill">streaming</span></div>
+                        <div class="select-line">Channel <span class="select-pill">cn-east-02</span></div>
+                      </div>
+                      <div class="answer">
+                        <div class="role">ASSISTANT / gpt-4.1-mini</div>
+                        <p>根因倾向于上游 Channel 超时，错误集中在同一租户的批量任务。建议先查看该 Channel 的 5 分钟延迟曲线，再临时降权到备用线路。</p>
+                        <p>影响范围：API 调用成功率下降 2.4%，主要影响长上下文请求。</p>
+                      </div>
+                      <div class="usage">
+                        <div class="usage-item"><span>Input</span><b>1,284</b></div>
+                        <div class="usage-item"><span>Output</span><b>428</b></div>
+                        <div class="usage-item"><span>Latency</span><b>836 ms</b></div>
+                        <div class="usage-item"><span>Cost</span><b>$0.0021</b></div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <aside class="side">
+                <section class="side-card">
+                  <div class="side-head">
+                    <div class="side-title">API 调用样例</div>
+                    <div class="small-link">Copy</div>
+                  </div>
+                  <pre class="code">curl https://token.cymoon.cn/v1/chat/completions \
+  -H "Authorization: Bearer sk-..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1-mini",
+    "messages": [
+      {"role": "user", "content": "..."}
+    ]
+  }'</pre>
+                </section>
+
+                <section class="side-card">
+                  <div class="side-head">
+                    <div class="side-title">推荐线路</div>
+                    <div class="small-link">Refresh</div>
+                  </div>
+                  <div class="route-list">
+                    <div class="route">
+                      <div class="route-main">
+                        <div class="route-name">cn-east-02</div>
+                        <div class="route-meta">720 ms / $0.40 input</div>
+                      </div>
+                      <span class="status">Best</span>
+                    </div>
+                    <div class="route">
+                      <div class="route-main">
+                        <div class="route-name">global-fallback</div>
+                        <div class="route-meta">980 ms / $0.46 input</div>
+                      </div>
+                      <span class="chip">Backup</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="side-card">
+                  <div class="side-head">
+                    <div class="side-title">最近运行</div>
+                    <div class="small-link">Logs</div>
+                  </div>
+                  <div class="timeline">
+                    <div class="run">
+                      <div class="run-top"><span>日志归因</span><span class="run-time">14:28</span></div>
+                      <div class="run-meta">gpt-4.1-mini / $0.0021 / 836 ms</div>
+                    </div>
+                    <div class="run">
+                      <div class="run-top"><span>SQL 改写</span><span class="run-time">14:21</span></div>
+                      <div class="run-meta">claude-sonnet-4 / $0.0184 / 1,224 ms</div>
+                    </div>
+                    <div class="run">
+                      <div class="run-top"><span>账单摘要</span><span class="run-time">14:03</span></div>
+                      <div class="run-meta">gemini-2.5-pro / $0.0118 / 1,542 ms</div>
+                    </div>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

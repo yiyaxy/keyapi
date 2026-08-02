@@ -1,0 +1,116 @@
+<h2>Q2 — 侧栏信息架构（IA）</h2>
+<p class="subtitle">按"付费用户动线"分组：最先打开的在最上面，越往下越次要。管理员/平台向的条目只对有权限的用户可见（条件渲染），不挤占普通用户的视觉。</p>
+
+<div class="split" style="gap:20px;">
+
+  <div class="mockup" style="flex:0 0 280px;">
+    <div class="mockup-header">Proposal — end paying user</div>
+    <div class="mockup-body" style="padding:0;background:#fff;">
+      <div style="font-size:12px;color:#222;">
+
+        <div style="padding:10px 12px 6px;color:#999;font-size:10px;letter-spacing:0.08em;">OVERVIEW</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;background:#f4f4f4;font-weight:500;">📊 Dashboard</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">📜 Logs</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🔍 Request trace</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">📈 Analytics</div>
+
+        <div style="padding:14px 12px 6px;color:#999;font-size:10px;letter-spacing:0.08em;">BILLING</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">💳 Top up</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">📦 Subscription</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🎟️ Redeem code</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🧾 Invoices</div>
+
+        <div style="padding:14px 12px 6px;color:#999;font-size:10px;letter-spacing:0.08em;">DEVELOP</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🔑 API Keys</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🧪 Playground</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">💬 Chat</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">📚 Models &amp; pricing</div>
+
+        <div style="padding:14px 12px 6px;color:#999;font-size:10px;letter-spacing:0.08em;">SUPPORT</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🎫 Tickets</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">📨 Inbox</div>
+
+        <div style="border-top:1px solid #eee;margin:14px 0 0;"></div>
+        <div style="padding:10px 12px;color:#888;font-size:10px;">User menu 里：Settings · 主题 · 语言 · 通知 · About · 登出</div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="flex:0 0 280px;">
+    <div class="mockup-header">Proposal — tenant admin 额外多出来的分组（有权限才显示）</div>
+    <div class="mockup-body" style="padding:0;background:#fff;">
+      <div style="font-size:12px;color:#222;">
+        <div style="padding:10px 12px 6px;color:#888;font-size:10px;">… (以上普通用户分组原样保留)</div>
+
+        <div style="padding:14px 12px 6px;color:#999;font-size:10px;letter-spacing:0.08em;">TENANT ADMIN</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🏢 Tenant dashboard</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">👥 Members</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">📦 Plan</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">⚙️ Config</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">💰 Bills</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🔔 Alerts</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">📋 Audit</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🔌 Channels</div>
+
+        <div style="padding:14px 12px 6px;color:#999;font-size:10px;letter-spacing:0.08em;">AGENT / 分销 (仅启用)</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🤝 Affiliate</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">💸 Rebate</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="flex:0 0 280px;">
+    <div class="mockup-header">Proposal — platform super admin</div>
+    <div class="mockup-body" style="padding:0;background:#fff;">
+      <div style="font-size:12px;color:#222;">
+        <div style="padding:10px 12px 6px;color:#888;font-size:10px;">… (以上所有分组保留)</div>
+
+        <div style="padding:14px 12px 6px;color:#999;font-size:10px;letter-spacing:0.08em;">PLATFORM</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🏛️ Tenants</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🤖 Agents</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🧾 Invoices (admin)</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🎫 Tickets (admin)</div>
+        <div style="padding:6px 12px;display:flex;gap:8px;align-items:center;color:#555;">🛠️ Site settings</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>这版 IA 做了几件事</h3>
+  <ul>
+    <li><b>OVERVIEW 置顶</b> —— 登录第一眼直奔 Dashboard，余额是主角</li>
+    <li><b>BILLING 紧跟 OVERVIEW</b> —— 你说"最终付费用户"，那花钱的入口只能比开发者工作台还高</li>
+    <li><b>DEVELOP 合并</b> —— API Keys / Playground / Chat / Models &amp; pricing 在一起；<code>Model</code> 和 <code>Pricing</code> 合成一个"Models &amp; pricing"入口，减少二级页面数</li>
+    <li><b>SUPPORT 极简</b> —— 只留 Tickets + Inbox；About / Privacy / Agreement / Refund 收进 footer 或用户菜单</li>
+    <li><b>User menu 兜底</b> —— Settings、主题、语言、通知、About、登出；用户不会频繁切主题/语言，放这里合适</li>
+    <li><b>管理员向条件渲染</b> —— 普通用户完全看不到 TENANT ADMIN / PLATFORM 分组，不污染动线</li>
+  </ul>
+</div>
+
+<div class="options" data-multiselect style="margin-top:20px;">
+  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>OK，就这样</h3><p>分组合理，可以进下一个问题</p></div>
+  </div>
+  <div class="option" data-choice="merge-chat" onclick="toggleSelect(this)">
+    <div class="letter">M</div>
+    <div class="content"><h3>Chat 合并到 Playground</h3><p>两者都是交互调模型，减少一项</p></div>
+  </div>
+  <div class="option" data-choice="move-redeem" onclick="toggleSelect(this)">
+    <div class="letter">R</div>
+    <div class="content"><h3>Redeem code 塞进 Top up</h3><p>不单独占一行，做 Top up 页的 tab 或按钮</p></div>
+  </div>
+  <div class="option" data-choice="split-dev" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content"><h3>DEVELOP 里 Models &amp; pricing 拆开</h3><p>Pricing 是只读价目表，Models 是接入文档，合并反而糊</p></div>
+  </div>
+  <div class="option" data-choice="keep-static" onclick="toggleSelect(this)">
+    <div class="letter">S</div>
+    <div class="content"><h3>About / Privacy 不收 footer，就放侧栏最下</h3><p>担心 footer 不够显眼</p></div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:14px;">多选 — 同意哪几条就点哪几个；都不想动就只点第一条 OK。其它想法在终端直接说，比如"Analytics 太次要，挪到 Logs 下面别单列"之类。</p>

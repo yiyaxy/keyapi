@@ -1,0 +1,122 @@
+<h2>Q4 — 侧栏折叠 & 响应式断点</h2>
+<p class="subtitle">当前 <code>index.css</code> 里已有 <code>--sidebar-width: 180px</code> / <code>--sidebar-width-collapsed: 60px</code>，<code>MobileMenuButton.jsx</code> 已存在但没有明确断点规则。这题定三件事：展开宽度 / 折叠形态 / 切换触发器 / 断点策略。</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="font-size:10px;color:#222;">
+
+            <div style="background:#f5f5f5;padding:6px 10px;font-size:9px;color:#666;">Desktop ≥ 1024px · 持久展开 240px</div>
+            <div style="display:flex;height:90px;background:#fafafa;">
+              <div style="width:170px;background:#fff;border-right:1px solid #e5e5e5;padding:8px;">
+                <div style="padding:4px 6px;background:#f0f0f0;border-radius:3px;margin-bottom:3px;">▸ Dashboard</div>
+                <div style="padding:4px 6px;color:#555;">▸ Logs</div>
+                <div style="padding:4px 6px;color:#555;">▸ Top up</div>
+              </div>
+              <div style="flex:1;"></div>
+            </div>
+
+            <div style="background:#f5f5f5;padding:6px 10px;font-size:9px;color:#666;">Tablet 768–1023px · 折叠为 64px icon rail</div>
+            <div style="display:flex;height:90px;background:#fafafa;">
+              <div style="width:50px;background:#fff;border-right:1px solid #e5e5e5;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                <div style="width:26px;height:26px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;">📊</div>
+                <div style="width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;">📜</div>
+                <div style="width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;">💳</div>
+              </div>
+              <div style="flex:1;"></div>
+            </div>
+
+            <div style="background:#f5f5f5;padding:6px 10px;font-size:9px;color:#666;">Mobile &lt; 768px · 隐藏，hamburger 打开 drawer</div>
+            <div style="display:flex;height:90px;background:#fafafa;position:relative;">
+              <div style="width:100%;padding:10px 16px;">
+                <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:14px;">☰</span><span>Dashboard</span></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 经典三态（推荐）</h3>
+      <p><b>Desktop ≥ 1024</b>：240px 持久展开<br/><b>Tablet 768–1023</b>：自动折叠 64px icon rail，hover 条目出 tooltip<br/><b>Mobile &lt; 768</b>：完全隐藏，顶栏 hamburger 打开 drawer<br/><b>触发</b>：顶栏收合按钮 + <code>Ctrl/⌘ + B</code> 快捷键；用户选择记 <code>localStorage</code>。切换带 200ms cubic-bezier 过渡。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="font-size:10px;color:#222;">
+            <div style="background:#f5f5f5;padding:6px 10px;font-size:9px;color:#666;">Desktop 任何宽度 · 常驻 64px rail，悬停浮层展开</div>
+            <div style="display:flex;height:120px;background:#fafafa;position:relative;">
+              <div style="width:50px;background:#fff;border-right:1px solid #e5e5e5;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:6px;z-index:1;">
+                <div style="width:26px;height:26px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;">📊</div>
+                <div style="width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;">📜</div>
+                <div style="width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;">💳</div>
+                <div style="width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;">🔑</div>
+              </div>
+              <div style="position:absolute;left:50px;top:0;bottom:0;width:200px;background:#fff;border-right:1px solid #e5e5e5;box-shadow:4px 0 14px rgba(0,0,0,0.06);padding:8px;">
+                <div style="padding:4px 8px;background:#f0f0f0;border-radius:3px;margin-bottom:3px;">Dashboard</div>
+                <div style="padding:4px 8px;color:#555;">Logs</div>
+                <div style="padding:4px 8px;color:#555;">Top up</div>
+                <div style="padding:4px 8px;color:#555;">API Keys</div>
+                <div style="font-size:8px;color:#888;margin-top:4px;">（hover 触发，释放鼠标自动收回）</div>
+              </div>
+              <div style="flex:1;"></div>
+            </div>
+            <div style="background:#f5f5f5;padding:6px 10px;font-size:9px;color:#666;">Mobile · 同 A，drawer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 恒定 icon rail + hover 浮层</h3>
+      <p>桌面端侧栏永远是 64px rail，<b>不占持久宽度</b>，鼠标悬停时展开一个 200px 浮层（不挤主内容）。点 📌 可以钉住保持展开。内容区利用率最大化，最适合大表格 / 长图表。<br/>缺点：新手不一定发现 hover 机制；label 不常驻降低辨识度。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="font-size:10px;color:#222;">
+            <div style="background:#f5f5f5;padding:6px 10px;font-size:9px;color:#666;">Desktop · 持久 240px（不折叠）</div>
+            <div style="display:flex;height:110px;background:#fafafa;">
+              <div style="width:170px;background:#fff;border-right:1px solid #e5e5e5;padding:8px;">
+                <div style="padding:4px 6px;background:#f0f0f0;border-radius:3px;margin-bottom:3px;">Dashboard</div>
+                <div style="padding:4px 6px;color:#555;">Logs</div>
+                <div style="padding:4px 6px;color:#555;">Top up</div>
+                <div style="padding:4px 6px;color:#555;">API Keys</div>
+              </div>
+              <div style="flex:1;"></div>
+            </div>
+            <div style="background:#f5f5f5;padding:6px 10px;font-size:9px;color:#666;">Mobile &lt; 768px · drawer，无 tablet 中间态</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 不折叠，只有 Desktop / Mobile 两态</h3>
+      <p>桌面端彻底不给折叠选项，永远展开；&lt; 768 直接 drawer。最简单，代码最少，没有第三种状态要测。<br/>缺点：窄屏笔记本（13" 1280 宽）牺牲 240px 给侧栏会很挤；没给 power user 留"我想看更多数据"的通道。</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>其它子决策（A 方案默认值，选其它方案我再问）</h3>
+  <ul>
+    <li><b>宽度</b>：240px 展开 / 64px rail —— 比当前的 180/60 更宽松，给 label 和 tabular 数字留余地</li>
+    <li><b>切换</b>：顶栏图标按钮 + <code>Ctrl/⌘ + B</code> 快捷键（VS Code / Cursor 派）</li>
+    <li><b>记忆</b>：折叠状态 <code>localStorage</code>，下次登录保留</li>
+    <li><b>折叠时</b>：底部 balance 卡只剩金额数字（无 label、无进度条、无 CTA）；hover 卡出 tooltip 显示完整信息</li>
+    <li><b>移动端 drawer</b>：从左滑入，点空白区关闭，路由跳转自动关闭</li>
+    <li><b>tooltip 延迟</b>：300ms，避免掠过时闪烁</li>
+  </ul>
+</div>
+
+<p class="subtitle">选完这一题 brainstorm 就收尾，我给你写完整 design doc。有别的想法（比如"快捷键别占 Ctrl+B 跟浏览器粗体冲突"、"tablet 也要 drawer 不要 rail"）终端里说。</p>

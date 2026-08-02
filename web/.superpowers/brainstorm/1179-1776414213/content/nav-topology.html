@@ -1,0 +1,134 @@
+<h2>Q1 — Shell 的导航拓扑选哪个？</h2>
+<p class="subtitle">这会决定后面所有页面的骨架。按我们的参考系（OpenAI Platform / Anthropic Console），三种典型路线：</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="display:flex;flex-direction:column;height:260px;font-size:10px;background:#0a0a0a;color:#e5e5e5;">
+            <div style="height:40px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #222;background:#0a0a0a;">
+              <div style="font-weight:600;">keyapi</div>
+              <div style="flex:1;"></div>
+              <div style="padding:4px 10px;border:1px solid #333;border-radius:4px;margin-right:8px;">workspace ▾</div>
+              <div style="width:24px;height:24px;border-radius:999px;background:#333;"></div>
+            </div>
+            <div style="flex:1;display:flex;">
+              <div style="width:160px;border-right:1px solid #222;padding:12px 8px;background:#0a0a0a;">
+                <div style="color:#888;font-size:9px;margin:6px 4px;">USAGE</div>
+                <div style="padding:6px 8px;border-radius:4px;background:#1a1a1a;color:#fff;">Dashboard</div>
+                <div style="padding:6px 8px;color:#999;">Logs</div>
+                <div style="padding:6px 8px;color:#999;">Analytics</div>
+                <div style="color:#888;font-size:9px;margin:10px 4px 6px;">BILLING</div>
+                <div style="padding:6px 8px;color:#999;">Top up</div>
+                <div style="padding:6px 8px;color:#999;">Subscription</div>
+                <div style="padding:6px 8px;color:#999;">Invoices</div>
+                <div style="color:#888;font-size:9px;margin:10px 4px 6px;">DEVELOP</div>
+                <div style="padding:6px 8px;color:#999;">API Keys</div>
+                <div style="padding:6px 8px;color:#999;">Playground</div>
+              </div>
+              <div style="flex:1;padding:16px;background:#0a0a0a;color:#666;">
+                <div style="font-size:11px;color:#888;">Balance</div>
+                <div style="font-size:22px;font-weight:600;color:#fff;margin:4px 0 12px;">¥ 1,284.50</div>
+                <div style="height:4px;background:#1a1a1a;border-radius:2px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 左栏为王（OpenAI 派）</h3>
+      <p>顶栏只留 <b>workspace 切换 + 用户头像</b>。所有一级导航进左侧栏，带分组 label（USAGE / BILLING / DEVELOP）。通知、主题、语言全部收进用户菜单。最克制、最像 platform.openai.com。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="display:flex;flex-direction:column;height:260px;font-size:10px;background:#fafafa;color:#222;">
+            <div style="height:44px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #e5e5e5;background:#fff;">
+              <div style="font-weight:600;">keyapi</div>
+              <div style="width:20px;"></div>
+              <div style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:4px;color:#555;">acme ▾</div>
+              <div style="flex:1;"></div>
+              <div style="padding:4px 8px;border:1px solid #e5e5e5;border-radius:4px;margin-right:6px;color:#555;font-weight:600;">¥ 1,284.50</div>
+              <div style="width:22px;height:22px;border-radius:4px;background:#eee;margin-right:6px;"></div>
+              <div style="width:22px;height:22px;border-radius:4px;background:#eee;margin-right:6px;"></div>
+              <div style="width:24px;height:24px;border-radius:999px;background:#ddd;"></div>
+            </div>
+            <div style="flex:1;display:flex;">
+              <div style="width:160px;border-right:1px solid #e5e5e5;padding:12px 8px;background:#fff;">
+                <div style="color:#888;font-size:9px;margin:6px 4px;">USAGE</div>
+                <div style="padding:6px 8px;border-radius:4px;background:#f0f0f0;color:#111;font-weight:500;">Dashboard</div>
+                <div style="padding:6px 8px;color:#555;">Logs</div>
+                <div style="color:#888;font-size:9px;margin:10px 4px 6px;">BILLING</div>
+                <div style="padding:6px 8px;color:#555;">Top up</div>
+                <div style="padding:6px 8px;color:#555;">Subscription</div>
+                <div style="padding:6px 8px;color:#555;">Invoices</div>
+                <div style="color:#888;font-size:9px;margin:10px 4px 6px;">DEVELOP</div>
+                <div style="padding:6px 8px;color:#555;">API Keys</div>
+                <div style="padding:6px 8px;color:#555;">Playground</div>
+              </div>
+              <div style="flex:1;padding:16px;">
+                <div style="font-size:11px;color:#888;">Balance</div>
+                <div style="font-size:22px;font-weight:600;color:#111;margin:4px 0 12px;">¥ 1,284.50</div>
+                <div style="height:4px;background:#eee;border-radius:2px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 左栏 + 轻顶栏（Anthropic 派，推荐）</h3>
+      <p>左栏分组导航保留；顶栏承载 <b>workspace 切换 + 余额 chip + 通知 / 主题 / 用户</b>。余额 chip 常驻顶栏 —— "Money is the hero" 兜底。语言切换收进用户菜单，通知和主题各留一个图标。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;border:none;">
+        <div class="mockup-body" style="padding:0;">
+          <div style="display:flex;flex-direction:column;height:260px;font-size:10px;background:#fafafa;color:#222;">
+            <div style="height:44px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #e5e5e5;background:#fff;">
+              <div style="font-weight:600;">keyapi</div>
+              <div style="width:16px;"></div>
+              <div style="padding:4px 8px;color:#111;font-weight:500;border-bottom:2px solid #111;margin:0 8px;">Usage</div>
+              <div style="padding:4px 8px;color:#555;margin:0 8px;">Billing</div>
+              <div style="padding:4px 8px;color:#555;margin:0 8px;">Develop</div>
+              <div style="padding:4px 8px;color:#555;margin:0 8px;">Models</div>
+              <div style="flex:1;"></div>
+              <div style="padding:4px 8px;border:1px solid #e5e5e5;border-radius:4px;color:#555;margin-right:6px;font-weight:600;">¥ 1,284.50</div>
+              <div style="width:24px;height:24px;border-radius:999px;background:#ddd;"></div>
+            </div>
+            <div style="flex:1;display:flex;">
+              <div style="width:180px;border-right:1px solid #e5e5e5;padding:12px 8px;background:#fff;">
+                <div style="color:#888;font-size:9px;margin:6px 4px;">USAGE</div>
+                <div style="padding:6px 8px;border-radius:4px;background:#f0f0f0;">Dashboard</div>
+                <div style="padding:6px 8px;color:#555;">Logs</div>
+                <div style="padding:6px 8px;color:#555;">Analytics</div>
+                <div style="padding:6px 8px;color:#555;">Request trace</div>
+              </div>
+              <div style="flex:1;padding:16px;">
+                <div style="font-size:11px;color:#888;">Balance</div>
+                <div style="font-size:22px;font-weight:600;color:#111;margin:4px 0 12px;">¥ 1,284.50</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 顶栏一级 + 侧栏二级</h3>
+      <p>顶栏承担 <b>一级分区切换</b>（Usage / Billing / Develop / Models），侧栏只显示当前分区的二级导航。更像 Vercel / Supabase；对超大页面数（55+）最能收敛视觉负担，但切换开销多一次点击。</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <p class="subtitle">点卡片选择；如果都不满意、或你有第四种思路（比如完全不要左栏只保留顶栏 + 命令面板），在终端告诉我。</p>
+</div>
