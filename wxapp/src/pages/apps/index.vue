@@ -156,7 +156,7 @@ const userInfo = ref(null)
 const quickChatInput = ref('')
 const quickChatFocus = ref(false)
 const chatControlApp = ref(null)
-const H5_CHAT_URL = 'https://token.cymoon.cn/m/chat'
+const H5_CHAT_URL = 'https://token.mooschh.com/m/chat'
 
 const filteredApps = computed(() => {
   const keyword = search.value.trim().toLowerCase()

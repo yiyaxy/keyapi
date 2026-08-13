@@ -35,7 +35,8 @@
     "build:mp-weixin": "uni build -p mp-weixin",
     "build:quickapp-webview": "uni build -p quickapp-webview",
     "build:quickapp-webview-huawei": "uni build -p quickapp-webview-huawei",
-    "build:quickapp-webview-union": "uni build -p quickapp-webview-union"
+    "build:quickapp-webview-union": "uni build -p quickapp-webview-union",
+    "test:production-domain": "uni build -p mp-weixin && node scripts/check-production-domain.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-3071120230427001",
